@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +29,18 @@ jobs:
         env:
           TARGET_DATE: '2026-08-31'
         run: python scripts/acquisition_probe.py
+
+      - name: Publish probe report to repository
+        if: always()
+        run: |
+          mkdir -p artifacts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f artifacts/acquisition_probe.json ]; then
+            git add artifacts/acquisition_probe.json
+            git diff --cached --quiet || git commit -m "chore: publish acquisition probe [skip ci]"
+            git push
+          fi
 
       - name: Upload probe report
         if: always()
