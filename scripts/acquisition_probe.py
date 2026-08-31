@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import requests
@@ -30,7 +29,6 @@ def compact(obj: Any) -> Any:
 def nse_session() -> requests.Session:
     s = requests.Session()
     s.headers.update({"User-Agent": UA, "Accept": "application/json,text/plain,*/*", "Accept-Language": "en-US,en;q=0.9", "Referer": "https://www.nseindia.com/"})
-    # Establish NSE cookies before API calls; this materially reduces false blocks.
     r = s.get("https://www.nseindia.com/", timeout=20)
     r.raise_for_status()
     return s
@@ -40,8 +38,7 @@ def nse_get(s: requests.Session, name: str, url: str) -> dict[str, Any]:
     started = time.perf_counter()
     try:
         r = s.get(url, timeout=30)
-        elapsed = round(time.perf_counter() - started, 3)
-        result: dict[str, Any] = {"source": "NSE", "dataset": name, "url": url, "status_code": r.status_code, "elapsed_s": elapsed, "content_type": r.headers.get("content-type", ""), "bytes": len(r.content)}
+        result: dict[str, Any] = {"source": "NSE", "dataset": name, "url": url, "status_code": r.status_code, "elapsed_s": round(time.perf_counter() - started, 3), "content_type": r.headers.get("content-type", ""), "bytes": len(r.content)}
         if r.ok:
             try:
                 result["payload"] = compact(r.json())
@@ -57,29 +54,24 @@ def nse_get(s: requests.Session, name: str, url: str) -> dict[str, Any]:
 def bse_probe() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     try:
-        import bseindia
         from bseindia import equity
-
         for name, fn in (("bulk_deals", equity.bulk_deal_as_on_today), ("block_deals", equity.block_deal_as_on_today)):
             started = time.perf_counter()
             try:
                 data = fn()
-                count = len(data) if hasattr(data, "__len__") else None
-                results.append({"source": "BSE", "dataset": name, "method": "bseindia", "status": "success", "elapsed_s": round(time.perf_counter() - started, 3), "count": count, "columns": list(data.columns) if hasattr(data, "columns") else [], "sample": data.head(2).to_dict(orient="records") if hasattr(data, "head") else None})
+                results.append({"source": "BSE", "dataset": name, "method": "bseindia", "status": "success", "elapsed_s": round(time.perf_counter() - started, 3), "count": len(data) if hasattr(data, "__len__") else None, "columns": list(data.columns) if hasattr(data, "columns") else [], "sample": data.head(2).to_dict(orient="records") if hasattr(data, "head") else None})
             except Exception as exc:
                 results.append({"source": "BSE", "dataset": name, "method": "bseindia", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
     except Exception as exc:
         results.append({"source": "BSE", "dataset": "library_import", "method": "bseindia", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
 
-    # Official BSE insider page: test reachability separately. BSE commonly blocks
-    # non-browser clients; a 403 is recorded as a finding, not hidden.
     s = requests.Session()
     s.headers.update({"User-Agent": UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Referer": "https://www.bseindia.com/"})
     started = time.perf_counter()
     try:
         home = s.get("https://www.bseindia.com/", timeout=20)
         page = s.get("https://www.bseindia.com/corporates/xbrldetails.aspx", timeout=30)
-        results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "success" if page.ok else "blocked_or_error", "homepage_status": home.status_code, "status_code": page.status_code, "elapsed_s": round(time.perf_counter() - started, 3), "content_type": page.headers.get("content-type", ""), "bytes": len(page.content), "note": "Reachability probe only; parsing is deliberately not inferred from HTTP success."})
+        results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "success" if page.ok else "blocked_or_error", "homepage_status": home.status_code, "status_code": page.status_code, "elapsed_s": round(time.perf_counter() - started, 3), "content_type": page.headers.get("content-type", ""), "bytes": len(page.content)})
     except Exception as exc:
         results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
     return results
@@ -87,7 +79,6 @@ def bse_probe() -> list[dict[str, Any]]:
 
 def main() -> int:
     report: dict[str, Any] = {"target_date": TARGET_DATE, "target_date_display": DDMMYYYY, "phase": "1+2 acquisition probe", "results": []}
-
     try:
         s = nse_session()
         q = f"from={DDMMYYYY}&to={DDMMYYYY}"
@@ -98,15 +89,11 @@ def main() -> int:
         ])
     except Exception as exc:
         report["results"].append({"source": "NSE", "dataset": "session_bootstrap", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
-
     report["results"].extend(bse_probe())
-
     os.makedirs("artifacts", exist_ok=True)
     with open("artifacts/acquisition_probe.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
-
     print(json.dumps(report, indent=2, default=str))
-    # Probe is diagnostic: don't fail the workflow merely because one exchange blocks.
     return 0
 
 
