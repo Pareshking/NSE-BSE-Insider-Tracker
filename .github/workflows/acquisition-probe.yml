@@ -1,0 +1,39 @@
+name: NSE-BSE Acquisition Probe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Probe NSE and BSE
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/acquisition_probe.py
+
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-bse-acquisition-probe
+          path: artifacts/acquisition_probe.json
+          retention-days: 14
