@@ -15,7 +15,6 @@ on:
     paths:
       - '.github/workflows/bse-validation.yml'
       - 'scripts/bse_*.py'
-      - 'scripts/bse*'
       - 'requirements.txt'
 
 jobs:
@@ -32,10 +31,20 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Run BSE-only acquisition
         run: python scripts/bse_raw_capture_v2.py
+      - name: Validate BSE evidence
+        if: always()
+        run: python scripts/bse_validate.py
       - name: Upload BSE evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bse-only-validation-v5
-          path: artifacts/
+          path: artifacts/data_validation_v5
+          if-no-files-found: warn
+      - name: Upload BSE validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bse-validation-report-v1
+          path: artifacts/bse_validation
           if-no-files-found: warn
