@@ -13,8 +13,6 @@ NSE and BSE acquisition/validation are **strictly separate**. The earlier combin
 NSE categories: **Insider Trading → Bulk Deals → Block Deals → Rights Issues → Preferential Issues → NSE certification**.
 BSE categories: **Insider Trading → Bulk Deals → Block Deals → Rights Issues → Preferential Issues → BSE certification**.
 
-For every category: preserve working acquisition, record unresolved defects as TODO, and continue to the next independent category when the current category's usable scope is validated. Do not declare full exchange certification until all required categories and date/completeness/dedup gates pass.
-
 ## Dedicated workflows
 
 - `.github/workflows/nse-validation.yml` — NSE-only certification path.
@@ -29,38 +27,53 @@ Page count is never a completeness criterion. A one-day result is not historical
 
 ### NSE
 
-1. **Insider hardening:** `scripts/nse_insider.py` now bootstraps the actual NSE Insider Trading page session before calling the PIT endpoint and records explicit 1D/7D/30D/90D evidence, status, native columns and distinct transaction dates. An empty JSON response now also triggers a CSV diagnostic request.
-2. **Bulk/Block evidence:** both scripts now write per-window counts and distinct dates rather than only aggregate row counts. This makes nested-window duplication and historical coverage auditable.
+1. **Insider hardening:** `scripts/nse_insider.py` now bootstraps the actual NSE Insider Trading page session before calling the PIT endpoint and records explicit 1D/7D/30D/90D evidence. Empty JSON also triggers a CSV diagnostic fallback.
+2. **Bulk/Block evidence:** both scripts now write per-window counts and distinct dates rather than only aggregate row counts.
 3. **Rights/Preferential diagnostics:** both scripts now use browser-rendered diagnostics that capture populated tables, page text and NSE network/API requests for 1D/7D/30D/90D. They do not treat an empty JavaScript shell as success.
 4. **Workflow evidence:** the dedicated NSE workflow continues through Rights/Preferential and uploads all NSE-specific evidence directories.
 
-**Observed prior NSE evidence:** the last certified-path run returned 280 Bulk rows and 221 Block rows across four requested windows, but the artifact did not expose per-window distinct dates, so this is **not** historical certification. Insider returned HTTP 200 JSON with zero rows for all 1D/7D/30D/90D windows while the homepage returned 403; this is consistent with an NSE session/cookie problem and is now explicitly addressed by page-session bootstrap. Rights produced zero populated tables. Preferential failed because the old script waited for a table that never appeared.
+**Observed prior NSE evidence:** the last certification-path run returned 280 Bulk rows and 221 Block rows across four requested windows, but its artifact did not expose per-window distinct dates. Insider returned HTTP 200 JSON with zero rows for all 1D/7D/30D/90D windows while the NSE homepage returned 403. Rights produced zero populated tables. Preferential failed because the old script waited for a table that never appeared.
 
-Current NSE status remains **BLOCKED / PENDING CERTIFICATION** until new evidence is executed and inspected.
+Current NSE status remains **BLOCKED / PENDING CERTIFICATION** until the hardened scripts are actually executed and their real output inspected.
 
-### BSE
+### BSE — diagnostic run inspected
 
-1. **Historical capture hardening:** `scripts/bse_raw_capture_v2.py` now uses the requested `LOOKBACK_DAYS`/`TARGET_DATE`, attempts actual datepicker interaction, captures browser/network requests, preserves native controls and anchor attributes, and records detail-page evidence for Rights/Preferential.
-2. **BSE-only validator added:** `scripts/bse_validate.py` performs BSE-only normalization, native-column checks, semantic checks, date extraction, intra-BSE duplicate counting and a separate detail-page gate for Rights/Preferential.
-3. **Dedicated workflow hardened:** `.github/workflows/bse-validation.yml` now runs capture → BSE-only validation → separate evidence artifacts and has a 30-minute runtime bound. It does not invoke NSE acquisition.
-4. **Important existing evidence:** BSE transaction capture is real, but the previous 90-day attempt was not historical certification because its date-range interaction did not demonstrate genuine 90-day variation. The new capture is instrumented to diagnose that defect rather than assume success.
+Run **33449251611 / artifact 9779221849** completed successfully, but it ran the pre-hardening acquisition code. It is useful diagnostic evidence only, not BSE certification.
 
-Current BSE status remains **BLOCKED / PENDING CERTIFICATION** until the new evidence proves historical date coverage and all five categories pass.
+The 90-day capture exposed the following:
+
+- **Insider:** 158 raw rows; 20 distinct transaction/broadcast date values spanning **2026-02-26 through 2026-08-31**. The date-search click reported `no_change`, so the source's default dataset must not be confused with proof that the requested date range was applied. Native fields and real promoter/acquisition semantics are present.
+- **Bulk:** 74 rows, all observed on **31/08/2026**. Date search reported `no_change`. Therefore historical certification is **failed/pending**.
+- **Block:** 41 extracted rows, with the first table element containing a whole multiline/tab-separated rendered table. The native row structure is recoverable, but parsing must flatten this representation. Observed records are all **31 Aug 26**. Duplicate executions exist and must be keyed deterministically.
+- **Rights:** 110 index rows across 10 captured pages. Underlying API discovered: `Pubissues_FurtherIssuesummary_RI_isd_ng/w?fromdt=&todt=&company=`. Detail/lifecycle extraction is still pending.
+- **Preferential:** 530 index rows across 10 captured pages; 20 detail pages produced 712 rendered detail rows. Underlying APIs discovered include `Pubissues_FurtherIssuesummary_Pref_isd_ng/w?fromdt=&todt=&company=` and `Pubissues_FurtherXbrlview_pref_ng/w?Fld_companyid=...&flag=...&Fld_AuthoriseDate=...`. This is strong extraction progress, but not certification until lifecycle semantics and historical coverage are validated.
+
+Additional first-party BSE APIs discovered from the live pages:
+
+- Bulk: `https://api.bseindia.com/BseIndiaAPI/api/BulkDeal_Beta/w`
+- Block: `https://api.bseindia.com/BseIndiaAPI/api/BlockDeal_Beta/w`
+- Insider: `https://api.bseindia.com/BseIndiaAPI/api/getCorp_Regulation_ng/w`
+
+A new `scripts/bse_api_probe.py` now captures request headers and response bodies for these first-party APIs, so the next BSE run can establish the exact API contract and historical parameterization rather than relying on UI datepicker behaviour.
+
+`bse_validate.py` was also hardened to flatten BSE's multiline/tab-separated Angular table representation and normalize B/S deal types to BUY/SELL while preserving raw native rows.
+
+Current BSE status remains **BLOCKED / PENDING CERTIFICATION**.
 
 ## Category gates
 
 | Exchange | Category | Status | Next gate |
 |---|---|---|---|
-| NSE | Insider | 🟡 Working / pending | Inspect 1D/7D/30D/90D real dates + promoter semantics |
-| NSE | Bulk | 🟡 Working / pending | Inspect 90D distinct dates + completeness |
-| NSE | Block | 🟡 Working / pending | Inspect 90D distinct dates + completeness |
+| NSE | Insider | 🟡 Working / pending | Execute hardened 1D/7D/30D/90D + promoter semantics |
+| NSE | Bulk | 🟡 Working / pending | Execute hardened 90D distinct-date audit |
+| NSE | Block | 🟡 Working / pending | Execute hardened 90D distinct-date audit |
 | NSE | Rights | 🔴 Not certified | Identify/populate underlying API/data |
 | NSE | Preferential | 🔴 Not certified | Identify/populate underlying API/data |
-| BSE | Insider | 🟡 Working / pending | Validate datepicker result + native normalization |
-| BSE | Bulk | 🟡 Working / pending | Prove 90D distinct dates |
-| BSE | Block | 🟡 Working / pending | Prove 90D dates + deterministic dedup |
-| BSE | Rights | 🔴 Not certified | Detail/lifecycle extraction |
-| BSE | Preferential | 🔴 Not certified | Detail/lifecycle extraction |
+| BSE | Insider | 🟡 Working / pending | API contract + historical parameter audit |
+| BSE | Bulk | 🔴 Historical test failed | API parameterization + 90D date coverage |
+| BSE | Block | 🔴 Historical test failed | API parameterization + 90D date coverage + dedup |
+| BSE | Rights | 🟡 Index/detail acquisition working | Lifecycle API normalization + date coverage |
+| BSE | Preferential | 🟡 Index/detail acquisition working | Lifecycle API normalization + date coverage |
 
 ## Promoter transaction rule
 
@@ -83,7 +96,7 @@ Promoter buying must be identified from source semantics, not merely `buyQuantit
 
 ## Execution dependency
 
-The GitHub integration available to this engineering session exposes workflow inspection and reruns but does not expose the Actions `workflow_dispatch` write operation. The latest BSE-only diagnostic run (`33449251611`) is still executing its older acquisition code; it is not being treated as certification. The updated dedicated workflows are committed on `main` and require a fresh dispatch/push-triggered run before their new evidence can be inspected. This is an execution-tool limitation, not a data-certification pass.
+The GitHub integration available to this engineering session exposes workflow inspection/reruns but not the Actions `workflow_dispatch` write operation. Therefore the hardened workflows/scripts are committed on `main`, but a fresh certification run cannot be dispatched from this session. The inspected BSE run above is explicitly not treated as certification.
 
 ## Mandatory engineering loop
 
