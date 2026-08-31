@@ -29,19 +29,21 @@ Page count is never a completeness criterion. A one-day result is not historical
 
 ### NSE
 
-1. **Insider hardening:** `scripts/nse_insider.py` now bootstraps NSE browser cookies before calling the PIT endpoint and records explicit 1D/7D/30D/90D evidence, status, native columns and distinct transaction dates. This directly addresses the previously observed false-looking short-window zero results.
+1. **Insider hardening:** `scripts/nse_insider.py` now bootstraps the actual NSE Insider Trading page session before calling the PIT endpoint and records explicit 1D/7D/30D/90D evidence, status, native columns and distinct transaction dates. An empty JSON response now also triggers a CSV diagnostic request.
 2. **Bulk/Block evidence:** both scripts now write per-window counts and distinct dates rather than only aggregate row counts. This makes nested-window duplication and historical coverage auditable.
-3. **Rights/Preferential diagnostics:** both scripts were replaced with browser-rendered diagnostics that capture populated tables, page text and NSE network/API requests for 1D/7D/30D/90D. They no longer treat an empty JavaScript shell as success.
-4. **Workflow evidence:** the dedicated NSE workflow now continues through Rights/Preferential even if one extraction fails and uploads all NSE-specific evidence directories.
+3. **Rights/Preferential diagnostics:** both scripts now use browser-rendered diagnostics that capture populated tables, page text and NSE network/API requests for 1D/7D/30D/90D. They do not treat an empty JavaScript shell as success.
+4. **Workflow evidence:** the dedicated NSE workflow continues through Rights/Preferential and uploads all NSE-specific evidence directories.
 
-Current NSE status remains **BLOCKED / PENDING CERTIFICATION** until the new evidence is inspected. No NSE category has been upgraded to certified solely from code execution.
+**Observed prior NSE evidence:** the last certified-path run returned 280 Bulk rows and 221 Block rows across four requested windows, but the artifact did not expose per-window distinct dates, so this is **not** historical certification. Insider returned HTTP 200 JSON with zero rows for all 1D/7D/30D/90D windows while the homepage returned 403; this is consistent with an NSE session/cookie problem and is now explicitly addressed by page-session bootstrap. Rights produced zero populated tables. Preferential failed because the old script waited for a table that never appeared.
+
+Current NSE status remains **BLOCKED / PENDING CERTIFICATION** until new evidence is executed and inspected.
 
 ### BSE
 
 1. **Historical capture hardening:** `scripts/bse_raw_capture_v2.py` now uses the requested `LOOKBACK_DAYS`/`TARGET_DATE`, attempts actual datepicker interaction, captures browser/network requests, preserves native controls and anchor attributes, and records detail-page evidence for Rights/Preferential.
 2. **BSE-only validator added:** `scripts/bse_validate.py` performs BSE-only normalization, native-column checks, semantic checks, date extraction, intra-BSE duplicate counting and a separate detail-page gate for Rights/Preferential.
-3. **Dedicated workflow hardened:** `.github/workflows/bse-validation.yml` now runs capture → BSE-only validation → separate evidence artifacts. It does not invoke NSE acquisition.
-4. **Important existing evidence:** BSE transaction capture is real, but the previous 90-day attempt was not historical certification because its date-range interaction did not demonstrate genuine 90-day variation. The new capture is specifically instrumented to diagnose that defect rather than assume success.
+3. **Dedicated workflow hardened:** `.github/workflows/bse-validation.yml` now runs capture → BSE-only validation → separate evidence artifacts and has a 30-minute runtime bound. It does not invoke NSE acquisition.
+4. **Important existing evidence:** BSE transaction capture is real, but the previous 90-day attempt was not historical certification because its date-range interaction did not demonstrate genuine 90-day variation. The new capture is instrumented to diagnose that defect rather than assume success.
 
 Current BSE status remains **BLOCKED / PENDING CERTIFICATION** until the new evidence proves historical date coverage and all five categories pass.
 
@@ -78,6 +80,10 @@ Promoter buying must be identified from source semantics, not merely `buyQuantit
 - Cross-exchange matching: **BLOCKED** until NSE and BSE certification.
 - R2 one-year backfill: **BLOCKED** and not started.
 - Production schema freeze: **BLOCKED**.
+
+## Execution dependency
+
+The GitHub integration available to this engineering session exposes workflow inspection and reruns but does not expose the Actions `workflow_dispatch` write operation. The latest BSE-only diagnostic run (`33449251611`) is still executing its older acquisition code; it is not being treated as certification. The updated dedicated workflows are committed on `main` and require a fresh dispatch/push-triggered run before their new evidence can be inspected. This is an execution-tool limitation, not a data-certification pass.
 
 ## Mandatory engineering loop
 
