@@ -1,0 +1,49 @@
+name: NSE Validation Only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-nse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: NSE Insider
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_insider.py
+      - name: NSE Bulk
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_bulk.py
+      - name: NSE Block
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_block.py
+      - name: NSE Rights
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_rights.py
+      - name: NSE Preferential
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_preferential.py
+      - name: Upload NSE evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-only-validation
+          path: artifacts/nse_validation
+          retention-days: 14
