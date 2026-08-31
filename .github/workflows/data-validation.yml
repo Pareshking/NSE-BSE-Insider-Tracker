@@ -35,6 +35,12 @@ jobs:
           TARGET_DATE: '2026-08-31'
           SECOND_DATE: '2026-08-28'
         run: python scripts/data_validation_v4.py
+      - name: Probe BSE 90-day date coverage
+        if: always()
+        env:
+          TARGET_DATE: '2026-08-31'
+          LOOKBACK_DAYS: '90'
+        run: python scripts/bse_90day_probe.py
       - name: Probe BSE insider historical date selection
         if: always()
         run: |
@@ -47,5 +53,6 @@ jobs:
           name: nse-bse-data-validation-v4
           path: |
             artifacts/data_validation_v4
+            artifacts/bse_90day
             artifacts/insider_historical_probe
           retention-days: 14
