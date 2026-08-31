@@ -22,7 +22,8 @@ out={}
 for ds,u in pages.items():
  d.get(u);time.sleep(4);initial,links=issue_rows();ctl=controls();pages_data=[];seen=set();hist={'attempted':False,'status':'not_available'}
  if ds in ('rights_issue','preferential_issue'):
-  for _ in range(60):
+  # TEST LIMIT: capture at most 5 pages until pagination behavior is proven.
+  for _ in range(5):
    rs,ls=issue_rows();sig=tuple(tuple(r) for r in rs[:3])
    if sig in seen or not rs:break
    seen.add(sig);pages_data.append({'rows':rs,'links':ls})
