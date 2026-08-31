@@ -11,7 +11,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,22 +30,29 @@ jobs:
           TARGET_DATE: '2026-08-31'
         run: python scripts/acquisition_probe.py
 
-      - name: Publish probe report to repository
+      - name: Validate NSE and BSE record structures
+        env:
+          TARGET_DATE: '2026-08-31'
+          SECOND_DATE: '2026-08-28'
+        run: python scripts/data_validation_v2.py
+
+      - name: Publish probe and validation reports
         if: always()
         run: |
           mkdir -p artifacts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -f artifacts/acquisition_probe.json ]; then
-            git add artifacts/acquisition_probe.json
-            git diff --cached --quiet || git commit -m "chore: publish acquisition probe [skip ci]"
-            git push
-          fi
+          if [ -f artifacts/acquisition_probe.json ]; then git add artifacts/acquisition_probe.json; fi
+          if [ -d artifacts/data_validation_v2 ]; then git add artifacts/data_validation_v2; fi
+          git diff --cached --quiet || git commit -m "chore: publish acquisition and validation reports [skip ci]"
+          git push
 
-      - name: Upload probe report
+      - name: Upload acquisition and validation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nse-bse-acquisition-probe
-          path: artifacts/acquisition_probe.json
+          name: nse-bse-acquisition-and-validation
+          path: |
+            artifacts/acquisition_probe.json
+            artifacts/data_validation_v2
           retention-days: 14
