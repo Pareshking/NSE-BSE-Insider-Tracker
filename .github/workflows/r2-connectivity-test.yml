@@ -2,6 +2,8 @@ name: R2 Connectivity Test
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
