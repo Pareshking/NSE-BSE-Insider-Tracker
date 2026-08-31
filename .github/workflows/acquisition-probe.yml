@@ -22,11 +22,23 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Probe NSE and BSE
+      - name: NSE Insider acquisition
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_insider.py
+      - name: NSE Bulk acquisition
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_bulk.py
+      - name: NSE Block acquisition
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_block.py
+      - name: Legacy orchestrator evidence
         env:
           TARGET_DATE: '2026-08-31'
         run: python scripts/acquisition_probe.py
-      - name: Capture full paginated BSE records
+      - name: Capture BSE evidence
         run: python scripts/bse_raw_capture_v2.py
       - name: Validate NSE and BSE real records
         env:
@@ -39,9 +51,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull --rebase origin main
-          git add artifacts/acquisition_probe.json artifacts/data_validation_v4
+          git add artifacts
           if ! git diff --cached --quiet; then
-            git commit -m "chore: publish acquisition and NSE BSE validation v4 [skip ci]"
+            git commit -m "chore: publish acquisition and validation evidence [skip ci]"
             git push origin main
           fi
       - name: Upload validation artifact
@@ -49,7 +61,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nse-bse-acquisition-validation-v4
-          path: |
-            artifacts/acquisition_probe.json
-            artifacts/data_validation_v4
+          path: artifacts
           retention-days: 14
