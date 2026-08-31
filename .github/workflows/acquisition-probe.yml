@@ -11,48 +11,42 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Probe NSE and BSE
         env:
           TARGET_DATE: '2026-08-31'
         run: python scripts/acquisition_probe.py
-
-      - name: Validate NSE and BSE record structures
+      - name: Capture full BSE rendered records
+        run: python scripts/bse_raw_capture.py
+      - name: Validate NSE and BSE real records
         env:
           TARGET_DATE: '2026-08-31'
           SECOND_DATE: '2026-08-28'
-        run: python scripts/data_validation_v2.py
-
-      - name: Publish probe and validation reports
+        run: python scripts/data_validation_v3.py
+      - name: Publish reports
         if: always()
         run: |
-          mkdir -p artifacts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -f artifacts/acquisition_probe.json ]; then git add artifacts/acquisition_probe.json; fi
-          if [ -d artifacts/data_validation_v2 ]; then git add artifacts/data_validation_v2; fi
-          git diff --cached --quiet || git commit -m "chore: publish acquisition and validation reports [skip ci]"
+          git add artifacts/acquisition_probe.json artifacts/data_validation_v3
+          git diff --cached --quiet || git commit -m "chore: publish acquisition and NSE BSE validation v3 [skip ci]"
           git push
-
-      - name: Upload acquisition and validation artifacts
+      - name: Upload validation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nse-bse-acquisition-and-validation
+          name: nse-bse-acquisition-validation-v3
           path: |
             artifacts/acquisition_probe.json
-            artifacts/data_validation_v2
+            artifacts/data_validation_v3
           retention-days: 14
