@@ -1,0 +1,6452 @@
+{
+  "target_date": "2026-08-31",
+  "datasets": {
+    "bulk_deals": {
+      "tables": [
+        {
+          "links": [],
+          "rows": [
+            [
+              "Deal Date",
+              "Security Code",
+              "Security Name",
+              "Client Name",
+              "Deal Type *",
+              "Quantity",
+              "Price **"
+            ],
+            [
+              "31/08/2026",
+              "544445",
+              "APL",
+              "PRAKRUTI R PALI",
+              "B",
+              "1,00,000",
+              "123.88"
+            ],
+            [
+              "31/08/2026",
+              "544445",
+              "APL",
+              "SNEHLATA MANOJ KATHOTIA",
+              "B",
+              "43,000",
+              "119.10"
+            ],
+            [
+              "31/08/2026",
+              "520121",
+              "ARCEEIN",
+              "RAMESH CHANDER GUPTA",
+              "S",
+              "1,86,002",
+              "14.25"
+            ],
+            [
+              "31/08/2026",
+              "520121",
+              "ARCEEIN",
+              "SADRAVYA MONEY MANAGEMENT PVT LTD",
+              "B",
+              "1,86,003",
+              "14.25"
+            ],
+            [
+              "31/08/2026",
+              "538576",
+              "BHANDERI",
+              "PRAVINBHAI LABHUBHAI VAGHASIYA",
+              "S",
+              "21,600",
+              "128.00"
+            ],
+            [
+              "31/08/2026",
+              "538576",
+              "BHANDERI",
+              "PLENITUDE ENTERPRISES PRIVATE LIMITED",
+              "B",
+              "31,200",
+              "128.00"
+            ],
+            [
+              "31/08/2026",
+              "539335",
+              "CALLISTA",
+              "ESPS CAPITAL ADVISORS PVT LTD",
+              "S",
+              "30,900",
+              "143.65"
+            ],
+            [
+              "31/08/2026",
+              "539335",
+              "CALLISTA",
+              "KETAN RASHIKLAL DOSHI",
+              "B",
+              "20,000",
+              "143.65"
+            ],
+            [
+              "31/08/2026",
+              "526546",
+              "CHOKSILA",
+              "NEXUS GLOBAL OPPORTUNITIES FUND",
+              "B",
+              "1,61,273",
+              "144.25"
+            ],
+            [
+              "31/08/2026",
+              "526546",
+              "CHOKSILA",
+              "ASC CONSULTING PRIVATE LIMITED",
+              "S",
+              "43,273",
+              "144.25"
+            ],
+            [
+              "31/08/2026",
+              "526546",
+              "CHOKSILA",
+              "EMKAY COMMERCIAL COMPANY LIMITED",
+              "S",
+              "1,18,000",
+              "144.25"
+            ],
+            [
+              "31/08/2026",
+              "543960",
+              "CONCORDBIO",
+              "DSP MUTUAL FUND",
+              "B",
+              "12,88,114",
+              "1,404.10"
+            ],
+            [
+              "31/08/2026",
+              "543960",
+              "CONCORDBIO",
+              "1575773 ONTARIO INC",
+              "S",
+              "20,92,325",
+              "1,404.10"
+            ],
+            [
+              "31/08/2026",
+              "544807",
+              "CRAZY",
+              "ARIHANT CAPITAL MARKETS LIMITED",
+              "B",
+              "3,00,000",
+              "57.00"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "NYD GROUP AND CO",
+              "B",
+              "4,96,921",
+              "12.07"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "RAJKUMAR JAIN",
+              "S",
+              "1,91,862",
+              "12.11"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "RAJKUMAR M JAIN HUF",
+              "S",
+              "1,22,500",
+              "12.08"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "VANDANA JAIN",
+              "S",
+              "2,32,500",
+              "12.00"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "MSB E TRADE SECURITIES LIMITED",
+              "S",
+              "4,77,000",
+              "12.08"
+            ],
+            [
+              "31/08/2026",
+              "531502",
+              "ESARIND",
+              "MSB E TRADE SECURITIES LIMITED",
+              "B",
+              "5,80,600",
+              "12.04"
+            ],
+            [
+              "31/08/2026",
+              "531486",
+              "FILME",
+              "VISAGAR FINANCIAL SERVICES LIMITED",
+              "S",
+              "3,50,000",
+              "1.10"
+            ],
+            [
+              "31/08/2026",
+              "531723",
+              "GATECH",
+              "RATHOD DIGVIJAYSINH RAJENDRASINH",
+              "B",
+              "1,02,35,631",
+              "1.12"
+            ],
+            [
+              "31/08/2026",
+              "531592",
+              "GENPHARMA",
+              "RAJESH MIRCHUMAL SADHWANI",
+              "B",
+              "40,00,000",
+              "1.05"
+            ],
+            [
+              "31/08/2026",
+              "544759",
+              "GLPL",
+              "AMOL LAXMIKANT MUJUMDAR",
+              "B",
+              "60,000",
+              "41.00"
+            ],
+            [
+              "31/08/2026",
+              "544759",
+              "GLPL",
+              "VEER SINGH THAKUR",
+              "S",
+              "60,000",
+              "41.00"
+            ],
+            [
+              "31/08/2026",
+              "513059",
+              "GSAUTO",
+              "BINDU GARG",
+              "S",
+              "82,599",
+              "22.64"
+            ],
+            [
+              "31/08/2026",
+              "544675",
+              "GTIL",
+              "KAMAL KUMAR DUGAR AND CO ( PROP : KAMAL KUMAR DUGAR)",
+              "B",
+              "73,600",
+              "102.98"
+            ],
+            [
+              "31/08/2026",
+              "524238",
+              "GUJINJEC",
+              "RAJNIKANT KISHORKUMAR SHAH",
+              "B",
+              "9,00,000",
+              "11.45"
+            ],
+            [
+              "31/08/2026",
+              "524238",
+              "GUJINJEC",
+              "PATADIYA CHIRAGKUMAR RAJESHKUMAR",
+              "S",
+              "9,00,030",
+              "11.45"
+            ],
+            [
+              "31/08/2026",
+              "544630",
+              "HELLOJI",
+              "MAHABIR TRADEVENTURES LLP",
+              "S",
+              "26,400",
+              "118.75"
+            ],
+            [
+              "31/08/2026",
+              "542446",
+              "JONJUA",
+              "GUNVIT GUPTA",
+              "S",
+              "2,55,513",
+              "4.10"
+            ],
+            [
+              "31/08/2026",
+              "542446",
+              "JONJUA",
+              "DEEPINDERSINGHSINGH",
+              "S",
+              "1,59,093",
+              "4.10"
+            ],
+            [
+              "31/08/2026",
+              "536073",
+              "JULIEN",
+              "SHAH DIPAK KANAYALAL",
+              "B",
+              "6,05,000",
+              "1.18"
+            ],
+            [
+              "31/08/2026",
+              "531778",
+              "KACHCHH",
+              "TUSHAR SHAMJIBHAI PATEL",
+              "S",
+              "27,991",
+              "28.65"
+            ],
+            [
+              "31/08/2026",
+              "526935",
+              "KALIND",
+              "ABHISHEK ASHVINBHAI KAMDAR",
+              "S",
+              "49,41,753",
+              "4.25"
+            ],
+            [
+              "31/08/2026",
+              "526935",
+              "KALIND",
+              "ONIX RENEWABLE LIMITED",
+              "S",
+              "47,99,067",
+              "4.30"
+            ],
+            [
+              "31/08/2026",
+              "526935",
+              "KALIND",
+              "JASANI DHARMENDRA BHAI BECHARBHAI",
+              "B",
+              "48,45,001",
+              "4.24"
+            ],
+            [
+              "31/08/2026",
+              "539408",
+              "KUBERJI",
+              "NEO APEX SHARE BROKING SERVICES LLP",
+              "B",
+              "19,104",
+              "56.22"
+            ],
+            [
+              "31/08/2026",
+              "539408",
+              "KUBERJI",
+              "GREEN PEAKS ENTERPRISES LLP",
+              "B",
+              "20,000",
+              "56.22"
+            ],
+            [
+              "31/08/2026",
+              "544554",
+              "KVSCASTING",
+              "VASUNDHARA PRAKASH SHINDE",
+              "S",
+              "1,02,000",
+              "90.96"
+            ],
+            [
+              "31/08/2026",
+              "517320",
+              "MAGNUS",
+              "NEEL DAMJI BHANUSHALI",
+              "S",
+              "19,000",
+              "26.29"
+            ],
+            [
+              "31/08/2026",
+              "517320",
+              "MAGNUS",
+              "RAJESH KUMAR RATHORE",
+              "S",
+              "70,000",
+              "23.96"
+            ],
+            [
+              "31/08/2026",
+              "517320",
+              "MAGNUS",
+              "JAGID VANITABEN RAJENDRAPRASAD",
+              "B",
+              "1,04,339",
+              "24.85"
+            ],
+            [
+              "31/08/2026",
+              "517320",
+              "MAGNUS",
+              "JAGID VANITABEN RAJENDRAPRASAD",
+              "S",
+              "27,674",
+              "26.30"
+            ],
+            [
+              "31/08/2026",
+              "531281",
+              "MARBLE",
+              "RIDDISIDDHI BULLIONS LIMITED",
+              "B",
+              "2,81,315",
+              "120.00"
+            ],
+            [
+              "31/08/2026",
+              "531281",
+              "MARBLE",
+              "PSH CONSTRUCTIONS PRIVATE LIMITED",
+              "S",
+              "2,80,000",
+              "120.00"
+            ],
+            [
+              "31/08/2026",
+              "526143",
+              "MPL",
+              "SHAH DIPAK KANAYALAL",
+              "B",
+              "61,000",
+              "7.49"
+            ],
+            [
+              "31/08/2026",
+              "544851",
+              "MVELECTRO",
+              "IRAGE BROKING SERVICES LLP",
+              "S",
+              "1,97,674",
+              "748.04"
+            ],
+            [
+              "31/08/2026",
+              "544851",
+              "MVELECTRO",
+              "IRAGE BROKING SERVICES LLP",
+              "B",
+              "2,15,740",
+              "746.67"
+            ],
+            [
+              "31/08/2026",
+              "544851",
+              "MVELECTRO",
+              "HRTI PRIVATE LIMITED",
+              "B",
+              "1,59,055",
+              "746.81"
+            ],
+            [
+              "31/08/2026",
+              "544851",
+              "MVELECTRO",
+              "HRTI PRIVATE LIMITED",
+              "S",
+              "1,63,224",
+              "747.07"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "NEO PRIME FUND",
+              "B",
+              "9,00,000",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "SOCIETE GENERALE",
+              "B",
+              "10,59,166",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "36,67,000",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "40,49,000",
+              "279.90"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "AUGUSTA INVESTMENTS II PTE LTD",
+              "S",
+              "23,38,129",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "PLUTUS WEALTH MANAGEMENT LLP",
+              "B",
+              "38,66,906",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "544260",
+              "NORTHARC",
+              "COHESION MK BEST IDEAS SUB-TRUST",
+              "B",
+              "24,28,057",
+              "278.00"
+            ],
+            [
+              "31/08/2026",
+              "513119",
+              "ONIXSOLAR",
+              "ABHISHEK ASHVINBHAI KAMDAR",
+              "S",
+              "1,85,514",
+              "331.30"
+            ],
+            [
+              "31/08/2026",
+              "538647",
+              "PURSHOTTAM",
+              "SATABDI TRACOM PRIVATE LIMITED",
+              "S",
+              "1,72,660",
+              "33.76"
+            ],
+            [
+              "31/08/2026",
+              "538647",
+              "PURSHOTTAM",
+              "MANMAL MARKETING LIMITED",
+              "S",
+              "1,82,512",
+              "33.80"
+            ],
+            [
+              "31/08/2026",
+              "538647",
+              "PURSHOTTAM",
+              "ARSTU TRADELINKS LIMITED",
+              "S",
+              "2,18,000",
+              "34.00"
+            ],
+            [
+              "31/08/2026",
+              "538647",
+              "PURSHOTTAM",
+              "PRANIDHI VENTURES PRIVATE LIMITED",
+              "B",
+              "5,72,563",
+              "33.90"
+            ],
+            [
+              "31/08/2026",
+              "511116",
+              "QUADRANT",
+              "FINDOC INVESTMART PVT LTD",
+              "B",
+              "44,64,319",
+              "0.57"
+            ],
+            [
+              "31/08/2026",
+              "532915",
+              "RELIGARE",
+              "ASHISH DHAWAN",
+              "B",
+              "19,01,448",
+              "237.00"
+            ],
+            [
+              "31/08/2026",
+              "539669",
+              "RGF",
+              "PUSPJEET KUMAR",
+              "S",
+              "44,57,445",
+              "1.55"
+            ],
+            [
+              "31/08/2026",
+              "539669",
+              "RGF",
+              "QAPLA INVESTMENTS",
+              "B",
+              "44,83,504",
+              "1.53"
+            ],
+            [
+              "31/08/2026",
+              "542145",
+              "RONI",
+              "SHAILESH SURESH BAJAJ",
+              "B",
+              "3,600",
+              "23.97"
+            ],
+            [
+              "31/08/2026",
+              "542145",
+              "RONI",
+              "SHAILESH SURESH BAJAJ",
+              "S",
+              "66,600",
+              "21.66"
+            ],
+            [
+              "31/08/2026",
+              "544490",
+              "SHREEJISPG",
+              "JAINAM BROKING LIMITED",
+              "B",
+              "10,62,000",
+              "645.30"
+            ],
+            [
+              "31/08/2026",
+              "538897",
+              "SHRINIWAS",
+              "GLASTON MARIO MENEZES",
+              "S",
+              "27,250",
+              "17.14"
+            ],
+            [
+              "31/08/2026",
+              "531499",
+              "SYBLY",
+              "MERCY ABRAHAM",
+              "S",
+              "2,50,003",
+              "1.20"
+            ],
+            [
+              "31/08/2026",
+              "531499",
+              "SYBLY",
+              "AMIT JUGRAJ JAIN",
+              "B",
+              "1,90,000",
+              "1.20"
+            ]
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "theme-toggle",
+          "name": "",
+          "text": "",
+          "type": "checkbox",
+          "value": "on"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "-A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "+A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "bd-versions",
+          "name": "",
+          "text": "All",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "All",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+1",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+0",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "MF/ETFS",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Debts/Others",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Currency Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Commodity Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Electronic Gold Receipts",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Hybrid Security",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Muncipal Bonds",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "SSE",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u25b6",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u275a\u275a",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Funds Mobilized Using BSE Platform",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Disclaimer",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Website Policies",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Privacy Policy",
+          "type": "button",
+          "value": ""
+        }
+      ],
+      "url": "https://www.bseindia.com/markets/equity/eqreports/bulk_deals",
+      "title": "Bulk Deals"
+    },
+    "block_deals": {
+      "tables": [
+        {
+          "links": [],
+          "rows": [
+            [
+              "Deal Date\tSecurity Code\tSecurity Name\tClient Name\tDeal Type *\tQuantity\tTrade Price\n31 Aug 26\t544260\tNORTHARC\tSOCIETE GENERALE\tB\t1,059,166\t278.00\n31 Aug 26\t544260\tNORTHARC\tPLUTUS WEALTH MANAGEMENT LLP\tB\t1,528,777\t278.00\n31 Aug 26\t544260\tNORTHARC\tPLUTUS WEALTH MANAGEMENT LLP\tB\t2,338,129\t278.00\n31 Aug 26\t544260\tNORTHARC\tCOHESION MK BEST IDEAS SUB-TRUST\tB\t1,079,057\t278.00\n31 Aug 26\t544260\tNORTHARC\tCOHESION MK BEST IDEAS SUB-TRUST\tB\t1,349,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tNEO PRIME FUND\tB\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tASHOKA INDIA EQUITY INVESTMENT TRUST PLC\tB\t621,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tINDIA ACORN FUND LTD\tB\t279,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,059,166\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,079,057\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,528,777\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t1,349,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tAUGUSTA INVESTMENTS II PTE LTD\tS\t2,338,129\t278.00\n31 Aug 26\t544490\tSHREEJISPG\tJAINAM BROKING LIMITED\tB\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tJAINAM BROKING LIMITED\tB\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tASHOKKUMAR HARIDAS LAL\tS\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tLAL JITENDRA HARIDAS\tS\t531,000\t645.30"
+            ],
+            [
+              "Deal Date",
+              "Security Code",
+              "Security Name",
+              "Client Name",
+              "Deal Type *",
+              "Quantity",
+              "Trade Price"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "SOCIETE GENERALE",
+              "B",
+              "1,059,166",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "PLUTUS WEALTH MANAGEMENT LLP",
+              "B",
+              "1,528,777",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "PLUTUS WEALTH MANAGEMENT LLP",
+              "B",
+              "2,338,129",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "COHESION MK BEST IDEAS SUB-TRUST",
+              "B",
+              "1,079,057",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "COHESION MK BEST IDEAS SUB-TRUST",
+              "B",
+              "1,349,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "NEO PRIME FUND",
+              "B",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "ASHOKA INDIA EQUITY INVESTMENT TRUST PLC",
+              "B",
+              "621,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "INDIA ACORN FUND LTD",
+              "B",
+              "279,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,059,166",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,079,057",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,528,777",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "1,349,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "AUGUSTA INVESTMENTS II PTE LTD",
+              "S",
+              "2,338,129",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "JAINAM BROKING LIMITED",
+              "B",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "JAINAM BROKING LIMITED",
+              "B",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "ASHOKKUMAR HARIDAS LAL",
+              "S",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "LAL JITENDRA HARIDAS",
+              "S",
+              "531,000",
+              "645.30"
+            ]
+          ]
+        },
+        {
+          "links": [],
+          "rows": [
+            [
+              "Deal Date",
+              "Security Code",
+              "Security Name",
+              "Client Name",
+              "Deal Type *",
+              "Quantity",
+              "Trade Price"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "SOCIETE GENERALE",
+              "B",
+              "1,059,166",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "PLUTUS WEALTH MANAGEMENT LLP",
+              "B",
+              "1,528,777",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "PLUTUS WEALTH MANAGEMENT LLP",
+              "B",
+              "2,338,129",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "COHESION MK BEST IDEAS SUB-TRUST",
+              "B",
+              "1,079,057",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "COHESION MK BEST IDEAS SUB-TRUST",
+              "B",
+              "1,349,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "NEO PRIME FUND",
+              "B",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "ASHOKA INDIA EQUITY INVESTMENT TRUST PLC",
+              "B",
+              "621,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "INDIA ACORN FUND LTD",
+              "B",
+              "279,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,059,166",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,079,057",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+              "S",
+              "1,528,777",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "900,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+              "S",
+              "1,349,000",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544260",
+              "NORTHARC",
+              "AUGUSTA INVESTMENTS II PTE LTD",
+              "S",
+              "2,338,129",
+              "278.00"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "JAINAM BROKING LIMITED",
+              "B",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "JAINAM BROKING LIMITED",
+              "B",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "ASHOKKUMAR HARIDAS LAL",
+              "S",
+              "531,000",
+              "645.30"
+            ],
+            [
+              "31 Aug 26",
+              "544490",
+              "SHREEJISPG",
+              "LAL JITENDRA HARIDAS",
+              "S",
+              "531,000",
+              "645.30"
+            ]
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "theme-toggle",
+          "name": "",
+          "text": "",
+          "type": "checkbox",
+          "value": "on"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "-A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "+A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "bd-versions",
+          "name": "",
+          "text": "All",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "All",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+1",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+0",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "MF/ETFS",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Debts/Others",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Currency Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Commodity Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Electronic Gold Receipts",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Hybrid Security",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Muncipal Bonds",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "SSE",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u25b6",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u275a\u275a",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Funds Mobilized Using BSE Platform",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Disclaimer",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Website Policies",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Privacy Policy",
+          "type": "button",
+          "value": ""
+        }
+      ],
+      "url": "https://www.bseindia.com/markets/equity/eqreports/block_deals",
+      "title": "Block Deals"
+    },
+    "insider_trading": {
+      "tables": [
+        {
+          "links": [],
+          "rows": [
+            [
+              "Security Code",
+              "Security Name",
+              "Name of Person",
+              "Category of Person *",
+              "Securities held pre Transaction",
+              "Securities Acquired / Disposed",
+              "Securities held post Transaction",
+              "Period ##",
+              "Mode of Acquisition #",
+              "Trading in Derivatives",
+              "Reported to Exchange"
+            ],
+            [
+              "Type of Securities\u00a0**",
+              "Number",
+              "Value",
+              "Transaction Type",
+              "Type of Contract",
+              "Buy Value (Units~)",
+              "Sale Value (Units~)"
+            ],
+            [
+              "533316",
+              "STEL Holdings Ltd",
+              "SOFREAL MERCANTRADE PRIVATE LTD",
+              "Promoter Group",
+              "2,60,373(1.41)",
+              "Equity",
+              "1,353",
+              "8,39,768.00",
+              "Acquisition",
+              "2,61,726(1.42)",
+              "26/08/2026\n26/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "533316",
+              "STEL Holdings Ltd",
+              "SOFREAL MERCANTRADE PRIVATE LTD",
+              "Promoter Group",
+              "2,61,726(1.42)",
+              "Equity",
+              "2,543",
+              "24,23,421.00",
+              "Acquisition",
+              "2,64,269(1.43)",
+              "27/08/2026\n27/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "533316",
+              "STEL Holdings Ltd",
+              "SOFREAL MERCANTRADE PRIVATE LTD",
+              "Promoter Group",
+              "2,64,269(1.43)",
+              "Equity",
+              "8",
+              "4,935.00",
+              "Acquisition",
+              "2,64,277(1.43)",
+              "27/08/2026\n27/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "500245",
+              "Kirloskar Ferrous Industries Ltd",
+              "Srinivasa Kadaramandalagi",
+              "Employee",
+              "721(0.00)",
+              "Equity",
+              "150",
+              "67,145.00",
+              "Disposal",
+              "571(0.00)",
+              "27/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "500245",
+              "Kirloskar Ferrous Industries Ltd",
+              "Srinivasa Kadaramandalagi",
+              "Employee",
+              "571(0.00)",
+              "Equity",
+              "258",
+              "1,15,727.00",
+              "Disposal",
+              "313(0.00)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "512441",
+              "Enbee Trade & Finance Ltd",
+              "BHARATHI NARENDRA GALA",
+              "Promoter Group",
+              "1,85,00,000(2.65)",
+              "Equity",
+              "41,00,000",
+              "12,70,468.00",
+              "Disposal",
+              "1,44,00,000(2.06)",
+              "26/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "512441",
+              "Enbee Trade & Finance Ltd",
+              "SSAMTA AMAR GAALA",
+              "Promoter Group",
+              "2,27,00,000(3.36)",
+              "Equity",
+              "38,16,837",
+              "12,03,548.00",
+              "Disposal",
+              "1,88,83,163(2.71)",
+              "26/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "505537",
+              "Zee Entertainment Enterprises Ltd",
+              "Sunbright Mauritius Investments Limited",
+              "Promoter Group",
+              "20,94,47,805(17.90)",
+              "Warrant",
+              "2,40,59,266",
+              "75,78,66,879.00",
+              "Acquisition",
+              "23,35,07,071(19.56)",
+              "27/08/2026\n27/08/2026",
+              "Preferential Offer",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543281",
+              "Suvidhaa Infoserve Ltd",
+              "Prashant Prahaladray Thakar",
+              "Director",
+              "34,71,520(1.65)",
+              "Equity",
+              "7,604",
+              "17,489.00",
+              "Disposal",
+              "34,63,916(1.65)",
+              "31/08/2026\n31/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543281",
+              "Suvidhaa Infoserve Ltd",
+              "Prashant Prahaladray Thakar",
+              "Director",
+              "34,71,520(1.65)",
+              "Equity",
+              "7,604",
+              "17,489.00",
+              "Disposal",
+              "34,63,916(1.65)",
+              "31/08/2026\n31/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "544291",
+              "Rajesh Power Services Ltd",
+              "Kurang Ramachandra Panchal",
+              "Promoter and Director",
+              "27,13,503(15.07)",
+              "Equity",
+              "1,800",
+              "14,46,714.00",
+              "Acquisition",
+              "27,15,303(15.08)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "544291",
+              "Rajesh Power Services Ltd",
+              "Bhavnaben Rajendrabhai Patel",
+              "Promoter Group",
+              "1,77,565(0.99)",
+              "Equity",
+              "2,100",
+              "16,85,481.00",
+              "Acquisition",
+              "1,79,665(1.00)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "517500",
+              "Roto Pumps Ltd",
+              "Shalini Gupta",
+              "Promoter Group",
+              "6,14,020(0.33)",
+              "Equity",
+              "4,900",
+              "3,17,830.00",
+              "Disposal",
+              "6,09,120(0.32)",
+              "25/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532612",
+              "Indoco Remedies Ltd",
+              "ADITI M. PANANDIKAR",
+              "Promoter and Director",
+              "29,17,158(3.16)",
+              "Equity",
+              "5,000",
+              "12,24,240.00",
+              "Acquisition",
+              "29,22,158(3.17)",
+              "28/08/2026\n31/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532612",
+              "Indoco Remedies Ltd",
+              "MADHURA SURESH KARE",
+              "Promoter",
+              "24,79,513(2.69)",
+              "Equity",
+              "5,000",
+              "12,24,220.00",
+              "Acquisition",
+              "24,84,513(2.69)",
+              "28/08/2026\n31/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532281",
+              "HCL Technologies Ltd",
+              "HCL Technologies Stock Options Trust",
+              "Designated Person",
+              "76,82,549(0.28)",
+              "Equity",
+              "3,777",
+              "48,91,215.00",
+              "Disposal",
+              "76,78,772(0.28)",
+              "27/08/2026\n27/08/2026",
+              "ESOS",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "533282",
+              "Gravita India Ltd",
+              "Gravita Employee Welfare Trust",
+              "Trust",
+              "9,61,249(1.30)",
+              "Equity",
+              "2,062",
+              "37,58,772.00",
+              "Disposal",
+              "9,59,187(1.30)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "541206",
+              "OBCL Ltd",
+              "OBCL INFRASTRUCTURE PRIVATE LIMITED",
+              "Promoter Group",
+              "23,10,617(10.95)",
+              "Equity",
+              "20,629",
+              "11,20,264.00",
+              "Acquisition",
+              "23,31,246(11.05)",
+              "24/08/2026\n25/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543769",
+              "Indong Tea Company Ltd",
+              "HARIRAM GARG",
+              "Promoter",
+              "26,50,661(13.65)",
+              "Equity",
+              "16,000",
+              "1,31,735.00",
+              "Acquisition",
+              "26,66,661(13.73)",
+              "24/08/2026\n29/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "542857",
+              "Greenpanel Industries Ltd",
+              "Shobhan Mittal",
+              "Promoter and Director",
+              "1,68,23,899(13.72)",
+              "Equity",
+              "61,500",
+              "99,04,150.00",
+              "Acquisition",
+              "1,68,85,399(13.77)",
+              "27/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "542857",
+              "Greenpanel Industries Ltd",
+              "Shobhan Mittal",
+              "Promoter and Director",
+              "1,68,23,899(13.72)",
+              "Equity",
+              "61,500",
+              "99,04,150.00",
+              "Acquisition",
+              "1,68,85,399(13.77)",
+              "27/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543644",
+              "Infobeans Technologies Ltd",
+              "Shashikala Bohra",
+              "Promoter Group",
+              "34,47,800(3.55)",
+              "Equity",
+              "4,67,909",
+              "7,92,26,352.00",
+              "Disposal",
+              "29,79,891(3.07)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543644",
+              "Infobeans Technologies Ltd",
+              "Mitesh Bohra",
+              "Promoter",
+              "61,26,600(6.32)",
+              "Equity",
+              "40,619",
+              "72,33,025.00",
+              "Disposal",
+              "60,85,981(6.28)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "527001",
+              "Ashapura Minechem Ltd",
+              "CHETAN NAVNITLAL SHAH",
+              "Promoter",
+              "66,52,767(6.96)",
+              "Equity",
+              "25,000",
+              "1,45,92,790.00",
+              "Acquisition",
+              "66,77,767(6.99)",
+              "27/08/2026\n27/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532842",
+              "Sree Rayalaseema Hi-Strength Hypo Ltd",
+              "TGV Industries Private Limited",
+              "Promoter Group",
+              "17,196(0.10)",
+              "Equity",
+              "2,663",
+              "13,14,723.00",
+              "Acquisition",
+              "19,859(0.12)",
+              "31/08/2026\n31/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "526666",
+              "Bhartiya International Ltd",
+              "RAJ KUMAR CHAWLA",
+              "KMP",
+              "1,527(0.01)",
+              "Equity",
+              "4,800",
+              "42,39,160.00",
+              "Acquisition",
+              "6,327(0.05)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "526666",
+              "Bhartiya International Ltd",
+              "CHANDAN RASTOGI",
+              "Employee",
+              "0(0.00)",
+              "Equity",
+              "500",
+              "4,27,500.00",
+              "Acquisition",
+              "500(0.00)",
+              "31/08/2026\n31/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "544484",
+              "BlueStone Jewellery and Lifestyle Ltd",
+              "Kshitij Arora",
+              "Designated Person",
+              "6,973(0.00)",
+              "Equity",
+              "2,500",
+              "19,99,325.00",
+              "Disposal",
+              "4,473(0.00)",
+              "31/08/2026\n31/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532809",
+              "Firstsource Solutions Ltd",
+              "Firstsource Employee Benefit Trust",
+              "Trust",
+              "54,74,506(0.78)",
+              "Equity",
+              "874",
+              "2,41,661.00",
+              "Disposal",
+              "54,73,632(0.78)",
+              "25/08/2026\n25/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532809",
+              "Firstsource Solutions Ltd",
+              "Firstsource Employee Benefit Trust",
+              "Trust",
+              "54,73,632(0.78)",
+              "Equity",
+              "59,309",
+              "1,59,58,273.00",
+              "Disposal",
+              "54,14,323(0.77)",
+              "27/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532809",
+              "Firstsource Solutions Ltd",
+              "Firstsource Employee Benefit Trust",
+              "Trust",
+              "54,14,323(0.77)",
+              "Equity",
+              "36,307",
+              "97,68,761.00",
+              "Disposal",
+              "53,78,016(0.77)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532809",
+              "Firstsource Solutions Ltd",
+              "Firstsource Employee Benefit Trust",
+              "Trust",
+              "53,78,016(0.77)",
+              "Equity",
+              "1,73,393",
+              "17,33,930.00",
+              "Disposal",
+              "52,04,623(0.74)",
+              "28/08/2026\n28/08/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532777",
+              "Info Edge (India) Ltd",
+              "Rinchan Gupta",
+              "Designated Person",
+              "53,594(0.01)",
+              "Equity",
+              "3,000",
+              "40,56,110.00",
+              "Disposal",
+              "50,594(0.01)",
+              "27/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532777",
+              "Info Edge (India) Ltd",
+              "Nitin Bansal",
+              "Designated Person",
+              "28,421(0.00)",
+              "Equity",
+              "5,000",
+              "67,50,000.00",
+              "Disposal",
+              "23,421(0.00)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532777",
+              "Info Edge (India) Ltd",
+              "Info Edge Employees Stock Option Plan Trust",
+              "Trust",
+              "4,50,169(0.07)",
+              "Equity",
+              "15,716",
+              "31,432.00",
+              "Disposal",
+              "4,34,453(0.07)",
+              "27/08/2026\n27/08/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543974",
+              "Vishnu Prakash R Punglia Ltd",
+              "Vijay Punglia",
+              "Promoter Group",
+              "38,15,000(3.06)",
+              "Equity",
+              "3,50,000",
+              "1,15,46,500.00",
+              "Revoke",
+              "41,65,000(3.34)",
+              "27/08/2026\n27/08/2026",
+              "Revocation Of Pledge",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543358",
+              "Sansera Engineering Ltd",
+              "Devappa Devaraj",
+              "Promoter",
+              "1,76,374(0.28)",
+              "Equity",
+              "70,000",
+              "27,01,86,000.00",
+              "Disposal",
+              "1,06,374(0.17)",
+              "28/08/2026\n28/08/2026",
+              "Gift",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "533284",
+              "R P P Infra Projects Ltd",
+              "CMK Projects Private Limited",
+              "Designated Person",
+              "0(0.00)",
+              "Equity",
+              "5,13,500",
+              "2,91,54,316.00",
+              "Acquisition",
+              "5,13,500(1.04)",
+              "27/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543748",
+              "Aarti Pharmalabs Ltd",
+              "Safechem Enterprises Private Limited",
+              "Promoter Group",
+              "4,55,750(0.50)",
+              "Equity",
+              "600",
+              "5,11,888.00",
+              "Disposal",
+              "4,55,150(0.50)",
+              "26/08/2026\n27/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "539221",
+              "Sportking India Ltd",
+              "SHAKTI JINDAL",
+              "Employees Immediate Relative",
+              "0(0.00)",
+              "Equity",
+              "19,000",
+              "0.00",
+              "Acquisition",
+              "19,000(0.01)",
+              "25/08/2026\n25/08/2026",
+              "Inheritance",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "539221",
+              "Sportking India Ltd",
+              "SHAKTI JINDAL",
+              "Employees Immediate Relative",
+              "0(0.00)",
+              "Equity",
+              "19,000",
+              "0.00",
+              "Acquisition",
+              "19,000(0.01)",
+              "25/08/2026\n25/08/2026",
+              "Inheritance",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532927",
+              "eClerx Services Ltd",
+              "Eclerx Employee Welfare",
+              "Trust",
+              "21,65,576(2.30)",
+              "Equity",
+              "12,229",
+              "2,37,23,752.00",
+              "Acquisition",
+              "21,77,805(2.32)",
+              "27/08/2026\n27/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532927",
+              "eClerx Services Ltd",
+              "Eclerx Employee Welfare",
+              "Trust",
+              "21,77,805(2.32)",
+              "Equity",
+              "12,151",
+              "2,37,23,778.00",
+              "Acquisition",
+              "21,89,956(2.33)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "543442",
+              "Brand Concepts Ltd",
+              "Govind Shridhar Shrikhande",
+              "Director",
+              "15,827(0.12)",
+              "Equity",
+              "3,163",
+              "5,03,647.00",
+              "Acquisition",
+              "18,990(0.15)",
+              "27/08/2026\n27/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "512131",
+              "Signet Industries Ltd",
+              "Mukesh Sangla",
+              "Promoter and Director",
+              "12,99,998(4.42)",
+              "Equity",
+              "17,756",
+              "12,69,936.00",
+              "Acquisition",
+              "13,17,754(4.48)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "511589",
+              "Avonmore Capital & Management Services Ltd",
+              "INNOVATIVE MONEY MATTERS PRIVATE LIMITED",
+              "Promoter",
+              "9,46,04,785(33.52)",
+              "Equity",
+              "20,000",
+              "2,78,200.00",
+              "Acquisition",
+              "9,46,24,785(33.53)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "531400",
+              "Almondz Global Securities Ltd",
+              "INNOVATIVE MONEY MATTERS PRIVATE LIMITED",
+              "Promoter",
+              "1,95,000(0.10)",
+              "Equity",
+              "5,000",
+              "80,864.00",
+              "Acquisition",
+              "2,00,000(0.10)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "507785",
+              "Tainwala Chemicals and Plastics (India) Ltd",
+              "Mahendra Kumar Singhania (Revised)",
+              "Designated Person",
+              "25,000(0.27)",
+              "Equity",
+              "25,000",
+              "48,31,250.00",
+              "Disposal",
+              "0(0.00)",
+              "09/06/2026\n09/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "507785",
+              "Tainwala Chemicals and Plastics (India) Ltd",
+              "Periwinkle Fashions Private Limited (Revised)",
+              "Promoter Group",
+              "8,844(0.09)",
+              "Equity",
+              "25,000",
+              "48,31,250.00",
+              "Acquisition",
+              "33,844(0.36)",
+              "09/06/2026\n09/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "531592",
+              "Genpharmasec Ltd",
+              "Rajesh Sadhwani",
+              "Promoter and Director",
+              "7,30,00,000(13.18)",
+              "Equity",
+              "50,00,000",
+              "50,50,000.00",
+              "Acquisition",
+              "7,80,00,000(14.09)",
+              "28/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "500304",
+              "NIIT Ltd",
+              "Pawar Family Trust",
+              "Promoter Group",
+              "2,69,70,780(19.69)",
+              "Equity",
+              "2,40,890",
+              "2,46,47,489.00",
+              "Acquisition",
+              "2,72,11,670(19.86)",
+              "25/08/2026\n26/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "500304",
+              "NIIT Ltd",
+              "Thadani Family Trust",
+              "Promoter Group",
+              "2,75,19,364(20.09)",
+              "Equity",
+              "2,40,890",
+              "2,46,48,549.00",
+              "Acquisition",
+              "2,77,60,254(20.26)",
+              "25/08/2026\n26/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "530315",
+              "Hindustan Tin Works Ltd-$",
+              "PAAYAL BHATIA",
+              "Promoter",
+              "1,50,820(1.45)",
+              "Equity",
+              "22,965",
+              "26,96,129.00",
+              "Acquisition",
+              "1,73,785(1.67)",
+              "21/08/2026\n28/08/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "532488",
+              "Divis Laboratories Ltd",
+              "K. Sridevi",
+              "Immediate Relative",
+              "3,100(0.00)",
+              "Equity",
+              "200",
+              "18,50,000.00",
+              "Disposal",
+              "2,900(0.00)",
+              "28/08/2026\n28/08/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "31/08/2026"
+            ],
+            [
+              "504341",
+              "Ravindra Energy Ltd",
+              "ABHAY WADHWA",
+              "Promoter Group",
+              "27,777(0.14)",
+              "Any other instrument",
+              "27,777",
+              "15,38,742.00",
+              "Disposal",
+              "0(0.00)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533148",
+              "JSW Energy Ltd",
+              "JSW Energy Employees Welfare Trust",
+              "Trust",
+              "10,36,260(0.06)",
+              "Equity Shares",
+              "9",
+              "5,057.00",
+              "Disposal",
+              "10,36,251(0.06)",
+              "17/06/2026\n17/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533148",
+              "JSW Energy Ltd",
+              "JSW Energy Employees Welfare Trust",
+              "Trust",
+              "10,36,251(0.06)",
+              "Equity Shares",
+              "78",
+              "44,753.00",
+              "Disposal",
+              "10,36,173(0.06)",
+              "18/06/2026\n18/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533148",
+              "JSW Energy Ltd",
+              "JSW Energy Employees Welfare Trust",
+              "Trust",
+              "10,36,173(0.06)",
+              "Equity Shares",
+              "661",
+              "3,83,973.00",
+              "Disposal",
+              "10,35,512(0.06)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533148",
+              "JSW Energy Ltd",
+              "JSW Energy Employees ESOP Trust",
+              "Trust",
+              "21,000(0.06)",
+              "Equity Shares",
+              "1,000",
+              "51,960.00",
+              "Disposal",
+              "20,000(0.06)",
+              "18/06/2026\n18/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "530445",
+              "Sumeru Industries Ltd",
+              "Pooja Raja",
+              "Promoters Immediate Relative",
+              "12,14,407(1.69)",
+              "Equity Shares",
+              "65,000",
+              "1,04,000.00",
+              "Acquisition",
+              "12,79,407(1.78)",
+              "22/06/2026\n22/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "530445",
+              "Sumeru Industries Ltd",
+              "Pooja Raja",
+              "Promoters Immediate Relative",
+              "12,14,407(1.69)",
+              "Equity Shares",
+              "65,000",
+              "1,04,000.00",
+              "Acquisition",
+              "12,79,407(1.78)",
+              "22/06/2026\n22/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531553",
+              "Disha Resources Ltd",
+              "Mayadevi Krishnavtar Kabra",
+              "Promoter",
+              "6,78,000(9.27)",
+              "Equity Shares",
+              "2,44,448",
+              "0.00",
+              "Acquisition",
+              "9,22,448(12.61)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531553",
+              "Disha Resources Ltd",
+              "Radhadevi Premnarayan Maheshwari",
+              "Promoters Immediate Relative",
+              "2,44,448(3.34)",
+              "Equity Shares",
+              "2,44,448",
+              "0.00",
+              "Disposal",
+              "0(0.00)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544759",
+              "Goldline Pharmaceutical Ltd",
+              "Swapan Khandelwal",
+              "Promoter & Director",
+              "27,49,988(28.65)",
+              "Equity Shares",
+              "60,000",
+              "25,95,960.00",
+              "Acquisition",
+              "28,09,988(29.27)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "512441",
+              "Enbee Trade & Finance Ltd",
+              "BHARATHI NARENDRA GALA",
+              "Promoter Group",
+              "2,15,81,410(3.08)",
+              "Equity Shares",
+              "69,00,000",
+              "17,40,612.00",
+              "Disposal",
+              "1,46,81,410(2.09)",
+              "19/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "512441",
+              "Enbee Trade & Finance Ltd",
+              "MEYHUL GAALA",
+              "Promoter Group",
+              "2,88,69,300(4.13)",
+              "Equity Shares",
+              "68,50,000",
+              "20,73,689.00",
+              "Disposal",
+              "2,20,19,300(3.15)",
+              "19/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "501423",
+              "Shaily Engineering Plastics Ltd",
+              "Purnendu Mallick",
+              "Designated Person",
+              "1,508(0.00)",
+              "Equity Shares",
+              "1,500",
+              "40,97,100.00",
+              "Pledge",
+              "1,508(0.00)",
+              "19/06/2026\n19/06/2026",
+              "Creation Of Pledge",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "501423",
+              "Shaily Engineering Plastics Ltd",
+              "Mitesh Patel",
+              "Designated Person",
+              "8,555(0.02)",
+              "Equity Shares",
+              "3,500",
+              "95,59,900.00",
+              "Pledge",
+              "8,555(0.02)",
+              "19/06/2026\n19/06/2026",
+              "Creation Of Pledge",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544227",
+              "Unicommerce Esolutions Ltd",
+              "KAPIL MAKHIJA",
+              "KMP",
+              "6,25,240(0.55)",
+              "Equity Shares",
+              "40,000",
+              "35,83,700.00",
+              "Disposal",
+              "5,85,240(0.52)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532856",
+              "Time Technoplast Ltd",
+              "Time Securities Services Private Limited",
+              "Promoter",
+              "8,46,92,772(17.16)",
+              "Equity Shares",
+              "10,00,000",
+              "17,80,24,228.00",
+              "Acquisition",
+              "8,56,92,772(17.36)",
+              "23/06/2026\n23/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532856",
+              "Time Technoplast Ltd",
+              "Raghupathy Thyagarajan",
+              "Promoter & Director",
+              "90,77,500(1.84)",
+              "Equity Shares",
+              "4,00,000",
+              "7,13,52,000.00",
+              "Disposal",
+              "86,77,500(1.76)",
+              "23/06/2026\n23/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532856",
+              "Time Technoplast Ltd",
+              "Naveen Kumar Jain",
+              "Promoter & Director",
+              "89,97,500(1.82)",
+              "Equity Shares",
+              "2,00,000",
+              "3,53,04,000.00",
+              "Disposal",
+              "87,97,500(1.78)",
+              "23/06/2026\n23/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532856",
+              "Time Technoplast Ltd",
+              "Vishal Anil Jain",
+              "Promoter Group",
+              "5,99,880(0.12)",
+              "Equity Shares",
+              "4,00,000",
+              "7,13,16,000.00",
+              "Disposal",
+              "1,99,880(0.04)",
+              "23/06/2026\n23/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539843",
+              "NINtec Systems Ltd",
+              "Niraj Chhaganraj Gemawat",
+              "Promoter & Director",
+              "34,03,366(18.32)",
+              "Equity Shares",
+              "2,000",
+              "14,43,534.00",
+              "Acquisition",
+              "34,05,366(18.33)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539843",
+              "NINtec Systems Ltd",
+              "Niraj Chhaganraj Gemawat",
+              "Promoter & Director",
+              "34,05,366(18.33)",
+              "Equity Shares",
+              "1,000",
+              "7,24,494.00",
+              "Acquisition",
+              "34,06,366(18.34)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539843",
+              "NINtec Systems Ltd",
+              "Niraj Chhaganraj Gemawat",
+              "Promoter & Director",
+              "34,06,366(18.34)",
+              "Equity Shares",
+              "2,000",
+              "15,08,906.00",
+              "Acquisition",
+              "34,08,366(18.35)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539843",
+              "NINtec Systems Ltd",
+              "Niraj Chhaganraj Gemawat",
+              "Promoter & Director",
+              "34,08,366(18.35)",
+              "Equity Shares",
+              "2,500",
+              "19,45,278.00",
+              "Acquisition",
+              "34,10,866(18.36)",
+              "23/06/2026\n23/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539843",
+              "NINtec Systems Ltd",
+              "Niraj Chhaganraj Gemawat",
+              "Promoter & Director",
+              "34,10,866(18.36)",
+              "Equity Shares",
+              "2,500",
+              "19,37,917.00",
+              "Acquisition",
+              "34,13,366(18.38)",
+              "23/06/2026\n23/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533108",
+              "Bhilwara Technical Textiles Ltd",
+              "DIPLOMAT LEASING AND FINANCE PRIVATE LIMITED",
+              "Promoter Group",
+              "18,28,504(3.13)",
+              "Equity Shares",
+              "1,00,000",
+              "34,71,000.00",
+              "Acquisition",
+              "19,28,504(3.30)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531456",
+              "Minaxi Textiles Ltd",
+              "Kiritkumar Shambhubhai Patel",
+              "Promoter",
+              "91,62,458(18.52)",
+              "Equity Shares",
+              "1,963",
+              "3,297.00",
+              "Acquisition",
+              "91,64,421(18.53)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531456",
+              "Minaxi Textiles Ltd",
+              "Dinehkumar Purushottambhai Patel",
+              "Promoter",
+              "91,56,457(18.53)",
+              "Equity Shares",
+              "4,275",
+              "7,182.00",
+              "Acquisition",
+              "91,60,732(18.54)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Amit Kalley",
+              "Designated Person",
+              "13,639(0.00)",
+              "Any other instrument",
+              "635",
+              "7,66,081.00",
+              "Acquisition",
+              "14,274(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Joseph J. Alenchery",
+              "Designated Person",
+              "12,125(0.00)",
+              "Any other instrument",
+              "920",
+              "11,09,912.00",
+              "Acquisition",
+              "13,045(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Rakesh Babu Gollapalli",
+              "Designated Person",
+              "0(0.00)",
+              "Any other instrument",
+              "1,083",
+              "13,06,560.00",
+              "Acquisition",
+              "1,083(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Ramesh J. Chougule",
+              "Designated Person",
+              "3,351(0.00)",
+              "Any other instrument",
+              "1,312",
+              "15,82,832.00",
+              "Acquisition",
+              "4,663(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Suresh MSR",
+              "Designated Person",
+              "317(0.00)",
+              "Any other instrument",
+              "1,069",
+              "12,89,670.00",
+              "Acquisition",
+              "1,386(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500209",
+              "Infosys Ltd",
+              "Venkateshwaran Ananthakrishnan",
+              "Designated Person",
+              "27,107(0.00)",
+              "Any other instrument",
+              "3,828",
+              "46,18,201.00",
+              "Acquisition",
+              "30,935(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539289",
+              "Aurum PropTech Ltd",
+              "Jitendra Jagadev",
+              "Designated Person",
+              "98,000(0.13)",
+              "Equity Shares",
+              "9,000",
+              "17,24,383.00",
+              "Disposal",
+              "89,000(0.12)",
+              "02/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539289",
+              "Aurum PropTech Ltd",
+              "Jitendra Jagadev",
+              "Designated Person",
+              "89,000(0.12)",
+              "Equity Shares",
+              "2,500",
+              "4,72,933.00",
+              "Disposal",
+              "86,500(0.11)",
+              "02/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539524",
+              "Dr. Lal PathLabs Ltd",
+              "Dr. Lal PathLabs Employee Welfare Trust",
+              "Other",
+              "6,40,996(0.38)",
+              "Equity Shares",
+              "2,346",
+              "11,730.00",
+              "Disposal",
+              "6,38,650(0.38)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539524",
+              "Dr. Lal PathLabs Ltd",
+              "Satish Kumar Singh",
+              "Designated Person",
+              "560(0.00)",
+              "Equity Shares",
+              "1,474",
+              "7,370.00",
+              "Acquisition",
+              "2,034(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539524",
+              "Dr. Lal PathLabs Ltd",
+              "Prashant Kishore",
+              "Designated Person",
+              "4,528(0.00)",
+              "Equity Shares",
+              "600",
+              "9,90,600.00",
+              "Disposal",
+              "3,928(0.00)",
+              "17/06/2026\n17/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539524",
+              "Dr. Lal PathLabs Ltd",
+              "Prashant Kishore",
+              "Designated Person",
+              "3,928(0.00)",
+              "Equity Shares",
+              "872",
+              "4,360.00",
+              "Acquisition",
+              "4,800(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543593",
+              "Dhampur Bio Organics Ltd",
+              "DBO Employee Welfare Trust",
+              "Trust",
+              "6,39,383(0.96)",
+              "Equity Shares",
+              "10,000",
+              "11,47,931.00",
+              "Acquisition",
+              "6,49,383(0.98)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543593",
+              "Dhampur Bio Organics Ltd",
+              "DBO Employee Welfare Trust",
+              "Trust",
+              "6,49,383(0.98)",
+              "Equity Shares",
+              "10,000",
+              "11,35,197.00",
+              "Acquisition",
+              "6,59,383(0.99)",
+              "23/06/2026\n23/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532100",
+              "Indo City Infotech Ltd-$",
+              "Aneel Jain",
+              "Promoter & Director",
+              "20,70,000(19.90)",
+              "Equity Shares",
+              "5,000",
+              "79,057.00",
+              "Acquisition",
+              "20,75,000(19.95)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "542772",
+              "360 ONE WAM LTD",
+              "PRIYA PRADIP BISWAS",
+              "Designated Person",
+              "45,020(0.00)",
+              "Equity Shares",
+              "1,300",
+              "14,95,960.00",
+              "Disposal",
+              "43,720(0.00)",
+              "19/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "523850",
+              "Axtel Industries Ltd",
+              "MEENA PATHAK",
+              "Directors Immediate Relative",
+              "10,62,710(6.58)",
+              "Equity Shares",
+              "18,100",
+              "81,54,231.00",
+              "Disposal",
+              "10,44,610(6.47)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544726",
+              "Kotyark Industries Ltd",
+              "BHAVINIBEN GAURANG SHAH",
+              "Promoter Group",
+              "5,95,120(5.79)",
+              "Equity Shares",
+              "9,500",
+              "38,00,000.00",
+              "Disposal",
+              "5,85,620(5.70)",
+              "18/06/2026\n18/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544726",
+              "Kotyark Industries Ltd",
+              "BHAVINIBEN GAURANG SHAH",
+              "Promoter Group",
+              "5,85,620(5.70)",
+              "Equity Shares",
+              "23,051",
+              "90,91,314.00",
+              "Disposal",
+              "5,62,569(5.47)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "542123",
+              "The Phosphate Company Ltd",
+              "DEVENDRA FINVEST & HOLDING PVT. LTD.",
+              "Promoter Group",
+              "34,730(0.96)",
+              "Equity Shares",
+              "28,000",
+              "43,47,000.00",
+              "Disposal",
+              "6,730(0.19)",
+              "22/06/2026\n22/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "542123",
+              "The Phosphate Company Ltd",
+              "RAMESH KUMAR BANGUR",
+              "Promoter Group",
+              "90,990(2.52)",
+              "Equity Shares",
+              "28,000",
+              "43,47,000.00",
+              "Acquisition",
+              "1,18,990(3.30)",
+              "22/06/2026\n22/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532443",
+              "Cera Sanitaryware Ltd",
+              "Cera Sanitaryware Employees Welfare Trust",
+              "Trust",
+              "4,576(0.04)",
+              "Equity Shares",
+              "707",
+              "43,89,763.00",
+              "Disposal",
+              "3,869(0.03)",
+              "18/06/2026\n18/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544578",
+              "Rubicon Research Ltd",
+              "DINESH BHASKAR RAJADHYAX",
+              "Employee",
+              "32,282(0.02)",
+              "Equity Shares",
+              "2,282",
+              "1,363.00",
+              "Disposal",
+              "30,000(0.02)",
+              "17/06/2026\n17/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539598",
+              "AMPL Capital Ltd",
+              "Mohit K Chheda",
+              "Director",
+              "11,87,935(1.93)",
+              "Equity Shares",
+              "11,87,935",
+              "35,04,40,826.00",
+              "Disposal",
+              "0(0.00)",
+              "19/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539598",
+              "AMPL Capital Ltd",
+              "Dilip Nanji Chheda",
+              "Directors Immediate Relative",
+              "25,13,985(4.09)",
+              "Equity Shares",
+              "1,05,648",
+              "30,12,024.00",
+              "Disposal",
+              "24,08,337(3.91)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539598",
+              "AMPL Capital Ltd",
+              "Laxmi Trading & investment partnership firm (Partner : Mohit K Chheda, Dilip Nanji Chheda and Nayna Dilip Chheda)",
+              "Other",
+              "6,16,417(1.00)",
+              "Equity Shares",
+              "6,16,417",
+              "1,81,84,302.00",
+              "Disposal",
+              "0(0.00)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543377",
+              "Adishakti Loha and Ispat Ltd",
+              "PAWAN KUMAR MITTAL",
+              "Promoter",
+              "3,92,525(3.12)",
+              "Equity Shares",
+              "20,000",
+              "2,93,000.00",
+              "Disposal",
+              "3,72,525(2.97)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543377",
+              "Adishakti Loha and Ispat Ltd",
+              "PAWAN KUMAR MITTAL",
+              "Promoter",
+              "3,72,525(2.97)",
+              "Equity Shares",
+              "2,00,000",
+              "29,10,000.00",
+              "Disposal",
+              "1,72,525(1.37)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "517372",
+              "Gujarat Intrux Ltd-$",
+              "Jignesh Bhupatlal Dhorda",
+              "Promoter Group",
+              "25,022(0.73)",
+              "Equity Shares",
+              "1,002",
+              "4,33,293.00",
+              "Disposal",
+              "24,020(0.70)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532354",
+              "Virgo Global Ltd",
+              "Shri Nakoda Logistics Private Limited",
+              "Promoter",
+              "32,54,150(30.98)",
+              "Equity Shares",
+              "11,15,797",
+              "78,44,053.00",
+              "Disposal",
+              "21,38,353(20.36)",
+              "17/06/2026\n17/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "530499",
+              "AK Capital Services Ltd",
+              "A. K. Mittal",
+              "Promoter & Director",
+              "11,69,121(17.71)",
+              "Equity Shares",
+              "10",
+              "17,350.00",
+              "Acquisition",
+              "11,69,131(17.71)",
+              "18/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532683",
+              "AIA Engineering Ltd",
+              "S. N. Jetheliya",
+              "KMP",
+              "5,600(0.01)",
+              "Equity Shares",
+              "50",
+              "2,33,000.00",
+              "Disposal",
+              "5,550(0.01)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "532683",
+              "AIA Engineering Ltd",
+              "S. N. Jetheliya",
+              "KMP",
+              "5,550(0.01)",
+              "Equity Shares",
+              "100",
+              "4,77,000.00",
+              "Disposal",
+              "5,450(0.01)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "517500",
+              "Roto Pumps Ltd",
+              "Shalini Gupta",
+              "Promoter Group",
+              "6,27,043(0.33)",
+              "Equity Shares",
+              "1,000",
+              "65,240.00",
+              "Disposal",
+              "6,26,043(0.33)",
+              "18/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543530",
+              "Paradeep Phosphates Ltd",
+              "ZUARI MAROC PHOSPHATES PRIVATE LIMITED",
+              "Promoter",
+              "52,28,26,697(50.36)",
+              "Equity Shares",
+              "80,273",
+              "1,06,71,493.00",
+              "Acquisition",
+              "52,29,06,970(50.37)",
+              "18/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543530",
+              "Paradeep Phosphates Ltd",
+              "ZUARI MAROC PHOSPHATES PRIVATE LIMITED",
+              "Promoter",
+              "52,29,06,970(50.37)",
+              "Equity Shares",
+              "65,000",
+              "88,71,850.00",
+              "Acquisition",
+              "52,29,71,970(50.37)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "540575",
+              "Star Cement Ltd",
+              "MAHABIR PRASAD AGARWAL FAMILY TRUST",
+              "Trust",
+              "1,83,74,214(4.55)",
+              "Equity Shares",
+              "16,381",
+              "34,91,374.00",
+              "Acquisition",
+              "1,83,90,595(4.55)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "540575",
+              "Star Cement Ltd",
+              "SUMITRA DEVI AGARWAL FAMILY TRUST",
+              "Trust",
+              "1,83,90,409(4.55)",
+              "Equity Shares",
+              "6,805",
+              "14,52,853.00",
+              "Acquisition",
+              "1,83,97,214(4.55)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "514030",
+              "Deepak Spinners Ltd-$",
+              "NANDINI DAGA",
+              "Promoter Group",
+              "2,99,509(4.17)",
+              "Equity Shares",
+              "15,350",
+              "17,77,595.00",
+              "Acquisition",
+              "3,14,859(4.38)",
+              "09/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543530",
+              "Paradeep Phosphates Ltd",
+              "ZUARI MAROC PHOSPHATES PRIVATE LIMITED",
+              "Promoter",
+              "52,28,26,697(50.36)",
+              "Equity Shares",
+              "80,273",
+              "1,06,71,493.00",
+              "Acquisition",
+              "52,29,06,970(50.37)",
+              "18/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543530",
+              "Paradeep Phosphates Ltd",
+              "ZUARI MAROC PHOSPHATES PRIVATE LIMITED",
+              "Promoter",
+              "52,29,06,970(50.37)",
+              "Equity Shares",
+              "65,000",
+              "88,71,850.00",
+              "Acquisition",
+              "52,29,71,970(50.37)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544137",
+              "Indus Infra Trust",
+              "Aadharshila Infratech Private Limited",
+              "Other",
+              "6,64,50,000(15.00)",
+              "Any other instrument",
+              "2,52,10,084",
+              "2,99,99,99,996.00",
+              "Acquisition",
+              "9,16,60,084(15.00)",
+              "16/06/2026\n16/06/2026",
+              "Preferential Offer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544137",
+              "Indus Infra Trust",
+              "Aadharshila Infratech Private Limited",
+              "Other",
+              "6,64,50,000(15.00)",
+              "Any other instrument",
+              "2,52,10,084",
+              "2,99,99,99,996.00",
+              "Acquisition",
+              "9,16,60,084(15.00)",
+              "16/06/2026\n16/06/2026",
+              "Preferential Offer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544248",
+              "Mach Travel Solutions Ltd",
+              "AMIT BHATIA",
+              "Promoter & Director",
+              "1,40,72,000(66.89)",
+              "Equity Shares",
+              "5,400",
+              "7,80,943.00",
+              "Acquisition",
+              "1,40,77,400(66.92)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "544248",
+              "Mach Travel Solutions Ltd",
+              "AMIT BHATIA",
+              "Promoter & Director",
+              "1,40,70,200(66.88)",
+              "Equity Shares",
+              "1,800",
+              "2,68,172.00",
+              "Acquisition",
+              "1,40,72,000(66.89)",
+              "18/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531869",
+              "Sacheta Metals Ltd",
+              "ANKIT SATISHKUMAR SHAH",
+              "Promoter Group",
+              "1,27,56,118(10.20)",
+              "Equity Shares",
+              "25,625",
+              "99,168.00",
+              "Acquisition",
+              "1,27,81,743(10.22)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "526269",
+              "Crestchem Ltd",
+              "DIPAK NARENDRAPRASAD PATEL",
+              "Promoter & Director",
+              "8,88,039(29.60)",
+              "Equity Shares",
+              "1,000",
+              "1,41,622.00",
+              "Acquisition",
+              "8,89,039(29.63)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "526829",
+              "Confidence Petroleum India Ltd",
+              "CONFIDENCE LPG BOTTLING PRIVATE LIMITED",
+              "Promoter Group",
+              "1,11,45,698(3.35)",
+              "Equity Shares",
+              "14,00,000",
+              "9,89,38,000.00",
+              "Acquisition",
+              "1,25,45,698(3.77)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "526829",
+              "Confidence Petroleum India Ltd",
+              "CONFIDENCE LPG BOTTLING PRIVATE LIMITED",
+              "Promoter Group",
+              "1,11,45,698(3.35)",
+              "Equity Shares",
+              "14,00,000",
+              "9,89,38,000.00",
+              "Acquisition",
+              "1,25,45,698(3.77)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "543241",
+              "Veer Global Infraconstruction Ltd",
+              "DEV VIJAY BHANSHALI",
+              "Promoter Group",
+              "3,40,251(2.09)",
+              "Equity Shares",
+              "3,005",
+              "4,27,822.00",
+              "Acquisition",
+              "3,43,256(2.11)",
+              "16/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533014",
+              "Sicagen India Ltd",
+              "Twinshield Consultants Private Limited",
+              "Promoter Group",
+              "20,59,619(5.21)",
+              "Equity Shares",
+              "15,45,500",
+              "8,50,02,500.00",
+              "Acquisition",
+              "36,05,119(9.11)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533014",
+              "Sicagen India Ltd",
+              "South India Travels Pvt. Ltd.",
+              "Promoter Group",
+              "19,40,113(4.90)",
+              "Equity Shares",
+              "15,45,500",
+              "8,50,02,500.00",
+              "Disposal",
+              "3,94,613(1.00)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500202",
+              "India Lease Development Ltd",
+              "RAJIV GUPTA",
+              "Promoter",
+              "9,13,245(6.21)",
+              "Equity Shares",
+              "60,000",
+              "5,84,305.00",
+              "Acquisition",
+              "9,73,245(6.62)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "940227",
+              "PRACHAY CAPITAL Ltd",
+              "Prachay Capital Holdings Private Limited",
+              "Promoter Group",
+              "10,522(0.34)",
+              "Debentures",
+              "1,500",
+              "14,92,521.00",
+              "Disposal",
+              "9,022(0.29)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "940227",
+              "PRACHAY CAPITAL Ltd",
+              "Prachay Capital Holdings Private Limited",
+              "Promoter Group",
+              "9,022(0.29)",
+              "Debentures",
+              "500",
+              "5,00,000.00",
+              "Disposal",
+              "8,522(0.27)",
+              "19/06/2026\n19/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "940227",
+              "PRACHAY CAPITAL Ltd",
+              "Prachay Capital Holdings Private Limited",
+              "Promoter Group",
+              "8,522(0.27)",
+              "Debentures",
+              "500",
+              "5,00,000.00",
+              "Disposal",
+              "8,022(0.26)",
+              "20/06/2026\n20/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "500124",
+              "Dr Reddys Laboratories Ltd",
+              "Tricia Wetzel",
+              "Designated Person",
+              "1,275(0.00)",
+              "Any other instrument",
+              "4,275",
+              "54,19,845.00",
+              "Acquisition",
+              "5,550(0.00)",
+              "19/06/2026\n19/06/2026",
+              "ESOP",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "517393",
+              "Reganto Enterprises Ltd",
+              "VISTARA NETWORK PRIVATE LIMITED",
+              "Designated Person",
+              "2,22,86,661(15.23)",
+              "Equity Shares",
+              "54,016",
+              "3,73,767.00",
+              "Disposal",
+              "2,22,32,645(15.19)",
+              "19/06/2026\n19/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533095",
+              "Bengal & Assam Company Ltd",
+              "Raghupati Singhania (Karta of Raghupati Singhania HUF)",
+              "Promoter Group",
+              "30,758(0.27)",
+              "Equity Shares",
+              "30,758",
+              "0.00",
+              "Disposal",
+              "0(0.00)",
+              "19/06/2026\n19/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533095",
+              "Bengal & Assam Company Ltd",
+              "Raghupati Singhania",
+              "Promoter Group",
+              "9,73,516(8.54)",
+              "Equity Shares",
+              "15,379",
+              "0.00",
+              "Acquisition",
+              "9,88,895(8.67)",
+              "19/06/2026\n19/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533095",
+              "Bengal & Assam Company Ltd",
+              "Sunanda Singhania",
+              "Promoter Group",
+              "21,955(0.19)",
+              "Equity Shares",
+              "15,379",
+              "0.00",
+              "Acquisition",
+              "37,334(0.33)",
+              "19/06/2026\n19/06/2026",
+              "Inter-se Transfer",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "514470",
+              "Winsome Textile Industries Ltd-$",
+              "SHILPA BAGRODIA",
+              "Promoter Group",
+              "10,78,754(5.44)",
+              "Equity Shares",
+              "90,000",
+              "81,91,134.00",
+              "Acquisition",
+              "11,68,754(5.89)",
+              "19/06/2026\n19/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531802",
+              "Prerna Infrabuild Ltd",
+              "VIJAY CHANDULAL SHAH HUF",
+              "Promoter Group",
+              "45,70,543(12.65)",
+              "Equity Shares",
+              "78,200",
+              "23,23,944.00",
+              "Acquisition",
+              "46,48,743(12.87)",
+              "23/06/2026\n23/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531802",
+              "Prerna Infrabuild Ltd",
+              "VIJAY CHANDULAL SHAH HUF",
+              "Promoter Group",
+              "45,38,728(12.56)",
+              "Equity Shares",
+              "31,815",
+              "8,97,819.00",
+              "Acquisition",
+              "45,70,543(12.65)",
+              "22/06/2026\n23/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "526269",
+              "Crestchem Ltd",
+              "SONALBEN DUSHYANTBHAI PATEL",
+              "Directors Immediate Relative",
+              "9,045(0.30)",
+              "Equity Shares",
+              "1,250",
+              "1,75,882.00",
+              "Disposal",
+              "7,795(0.26)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "531802",
+              "Prerna Infrabuild Ltd",
+              "VIJAY CHANDULAL SHAH HUF",
+              "Promoter Group",
+              "45,16,215(12.50)",
+              "Equity Shares",
+              "22,513",
+              "6,42,071.00",
+              "Acquisition",
+              "45,38,728(12.56)",
+              "16/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539436",
+              "Coffee Day Enterprises Ltd",
+              "Coffee Day Consolidations Private Limited (Revised)",
+              "Promoter Group",
+              "54,54,823(2.58)",
+              "Equity Shares",
+              "1,50,000",
+              "39,48,000.00",
+              "Revoke",
+              "54,54,823(2.58)",
+              "24/04/2026\n24/04/2026",
+              "Pledge Released",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539436",
+              "Coffee Day Enterprises Ltd",
+              "Coffee Day Consolidations Private Limited (Revised)",
+              "Promoter Group",
+              "54,54,823(2.58)",
+              "Equity Shares",
+              "42,69,780",
+              "10,07,66,808.00",
+              "Revoke",
+              "54,54,823(2.58)",
+              "26/02/2026\n25/03/2026",
+              "Pledge Released",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "539289",
+              "Aurum PropTech Ltd",
+              "Aurum RealEstate Developers Limited",
+              "Promoter",
+              "3,66,98,355(47.87)",
+              "Equity Shares",
+              "30,000",
+              "62,35,185.00",
+              "Acquisition",
+              "3,67,28,355(47.91)",
+              "22/06/2026\n22/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "513119",
+              "Onix Solar Energy Ltd",
+              "Onix Renewable Limited",
+              "Promoter",
+              "1,98,96,131(53.97)",
+              "Equity Shares",
+              "13,82,246",
+              "53,21,64,710.00",
+              "Disposal",
+              "1,85,13,885(50.22)",
+              "22/06/2026\n22/06/2026",
+              "Off Market",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "533090",
+              "Landsmill Green Ltd",
+              "Lakhmendra Khurana",
+              "Promoter & Director",
+              "14,57,91,451(0.10)",
+              "Equity Shares",
+              "5,00,00,000",
+              "4,20,00,000.00",
+              "Disposal",
+              "9,57,91,451(6.79)",
+              "19/06/2026\n19/06/2026",
+              "Gift",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "590066",
+              "KCP Ltd",
+              "VRK GRANDSONS INVESTMENT LTD",
+              "Promoter Group",
+              "43,54,505(3.38)",
+              "Equity Shares",
+              "35,000",
+              "57,79,717.00",
+              "Acquisition",
+              "43,89,505(3.40)",
+              "17/06/2026\n18/06/2026",
+              "Market Purchase",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ],
+            [
+              "504080",
+              "JSL Industries Ltd",
+              "SAATYAKI ANANT AMIN",
+              "Promoter Group",
+              "1,75,674(14.96)",
+              "Equity Shares",
+              "1,000",
+              "8,53,160.00",
+              "Disposal",
+              "1,74,674(14.88)",
+              "22/06/2026\n22/06/2026",
+              "Market Sale",
+              "",
+              "",
+              "",
+              "23/06/2026"
+            ]
+          ]
+        },
+        {
+          "links": [],
+          "rows": [
+            [
+              ""
+            ],
+            [
+              "Note-\nRegulation 7(2) - Disclosure to the Exchange by Listed company in terms of Regulation 7(2) (b) of SEBI (Prohibition of Insider Trading) Regulations, 2015.\nSecurities shall have the meaning as defined under regulation 2(1)(i) of SEBI (Prohibition of Insider Trading) Regulations, 2015.\nTransaction type = Buy / Sales / Pledge/ Revoke / Invoke\n* -(Promoter/KMP/Director /Immediate Relatives / Employee / etc )\n** - (Share/Warrants /Convertible Debenture etc)\n# -market purchase / public rights/preferential offer / off market / inter-se transfer etc.\n## - Period of Allotment advice / acquisition of shares / sale of shares (ddmmyyyy )\n~ - Number of Units = (Contracts * lot size) , Buy/Sales Value = Notional Value\nIn Case of Options, notional Value shall be calculated based on Premium plus strike price of options\nFor Additional details kindly download excel file."
+            ]
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "theme-toggle",
+          "name": "",
+          "text": "",
+          "type": "checkbox",
+          "value": "on"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "-A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "+A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "bd-versions",
+          "name": "",
+          "text": "All",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "All",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+1",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+0",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "MF/ETFS",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Debts/Others",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Currency Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Commodity Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Electronic Gold Receipts",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Hybrid Security",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Muncipal Bonds",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "SSE",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u25b6",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u275a\u275a",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "btnSubmit",
+          "name": "btnSubmit",
+          "text": "",
+          "type": "submit",
+          "value": "Submit"
+        },
+        {
+          "id": "ButtonReset",
+          "name": "BtnReset",
+          "text": "",
+          "type": "submit",
+          "value": "Reset"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Funds Mobilized Using BSE Platform",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Disclaimer",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Website Policies",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Privacy Policy",
+          "type": "button",
+          "value": ""
+        }
+      ],
+      "url": "https://www.bseindia.com/corporates/insider_trading_new?expandable=2",
+      "title": "Disclosures under SEBI"
+    },
+    "rights_issue": {
+      "tables": [
+        {
+          "links": [
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": "View Detail"
+            }
+          ],
+          "rows": [
+            [
+              "Company Name",
+              "In-Principle Stage",
+              "Listing Stage"
+            ],
+            [
+              "GACM Technologies Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Om Metallogic Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Shanti Gold International Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Krishival Foods Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "3B Films Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Manoj Jewellers Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Prabha Energy Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Covance Softsol Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "A B Infrabuild Ltd",
+              "View Detail",
+              "View Detail"
+            ],
+            [
+              "Travels & Rentals Ltd",
+              "View Detail",
+              "View Detail"
+            ]
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "theme-toggle",
+          "name": "",
+          "text": "",
+          "type": "checkbox",
+          "value": "on"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "-A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "+A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "bd-versions",
+          "name": "",
+          "text": "All",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "All",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+1",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+0",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "MF/ETFS",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Debts/Others",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Currency Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Commodity Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Electronic Gold Receipts",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Hybrid Security",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Muncipal Bonds",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "SSE",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u25b6",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u275a\u275a",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "inputCompName1",
+          "name": "compname",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "btnsubmit",
+          "name": "submit3",
+          "text": "",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "",
+          "type": "submit",
+          "value": "Reset"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Previous",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "1",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "2",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "3",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "27",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Next",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-0-toggle",
+          "name": "",
+          "text": "Further Issues",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-1-toggle",
+          "name": "",
+          "text": "Public Issues",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-2-toggle",
+          "name": "",
+          "text": "Issue Summary Document",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-3-toggle",
+          "name": "",
+          "text": "Offer Documents",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-4-toggle",
+          "name": "",
+          "text": "RHP",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-5-toggle",
+          "name": "",
+          "text": "BSE BOND \u2013 EBP",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-6-toggle",
+          "name": "",
+          "text": "INVITs (Private)",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-7-toggle",
+          "name": "",
+          "text": "About Public Issues",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Funds Mobilized Using BSE Platform",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Disclaimer",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Website Policies",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Privacy Policy",
+          "type": "button",
+          "value": ""
+        }
+      ],
+      "url": "https://www.bseindia.com/markets/publicissues/furtherissuesummary_ri",
+      "title": "Rights Issue"
+    },
+    "preferential_issue": {
+      "tables": [
+        {
+          "links": [
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=8255&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=8255&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14375&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14375&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13998&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13998&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14013&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14013&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13586&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13586&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13803&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13803&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13617&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13617&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13540&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13540&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13890&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13890&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13961&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13961&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13253&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13253&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13900&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13900&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13572&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13572&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13708&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13708&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13480&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13480&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13664&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13664&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13485&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13485&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13460&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13460&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13486&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13486&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13107&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13107&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13463&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13463&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13645&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13645&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13401&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13401&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13459&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13459&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13239&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13239&status=1",
+              "onclick": "",
+              "text": "View Details"
+            }
+          ],
+          "rows": [
+            [
+              "Display Preferential Issue table with the Company Name, IP Stage & Listing Stage\nCompany Name\n\t\nIP Stage\n\t\nListing Stage\n\nGACM Technologies Ltd\tView Details\tView Details\nTipco Engineering India Ltd\tView Details\tView Details\nSK Minerals & Additives Ltd\tView Details\tView Details\nL. T. Elevator Ltd\tView Details\tView Details\nDev Accelerator Ltd\tView Details\tView Details\nAsston Pharmaceuticals Ltd\tView Details\tView Details\nSambhv Steel Tubes Ltd\tView Details\tView Details\nAther Energy Ltd\tView Details\tView Details\nNetwork People Services Technologies Ltd\tView Details\tView Details\nSTL Networks Ltd\tView Details\tView Details\nRetaggio Industries Ltd\tView Details\tView Details\nSpectrum Electrical Industries Ltd\tView Details\tView Details\nParadeep Parivahan Ltd\tView Details\tView Details\nBeezaasan Explotech Ltd\tView Details\tView Details\nCLN Energy Ltd\tView Details\tView Details\nRDB Real Estate Constructions Ltd\tView Details\tView Details\nB.R.Goyal Infrastructure Ltd\tView Details\tView Details\nStandard Engineering Technology Ltd\tView Details\tView Details\nFabtech Cleanrooms Ltd\tView Details\tView Details\nDavin Sons Retail Ltd\tView Details\tView Details\nSenores Pharmaceuticals Ltd\tView Details\tView Details\nYash Highvoltage Ltd\tView Details\tView Details\nInnovana Thinklabs Ltd\tView Details\tView Details\nSubam Papers Ltd\tView Details\tView Details\nKross Ltd\tView Details\tView Details\nPrevious\n1\n2\n3\n...\n46\nNext"
+            ],
+            [
+              "Company Name",
+              "IP Stage",
+              "Listing Stage"
+            ],
+            [
+              "GACM Technologies Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Tipco Engineering India Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "SK Minerals & Additives Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "L. T. Elevator Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Dev Accelerator Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Asston Pharmaceuticals Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Sambhv Steel Tubes Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Ather Energy Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Network People Services Technologies Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "STL Networks Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Retaggio Industries Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Spectrum Electrical Industries Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Paradeep Parivahan Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Beezaasan Explotech Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "CLN Energy Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "RDB Real Estate Constructions Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "B.R.Goyal Infrastructure Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Standard Engineering Technology Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Fabtech Cleanrooms Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Davin Sons Retail Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Senores Pharmaceuticals Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Yash Highvoltage Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Innovana Thinklabs Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Subam Papers Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Kross Ltd",
+              "View Details",
+              "View Details"
+            ]
+          ]
+        },
+        {
+          "links": [
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=8255&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=8255&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14375&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14375&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13998&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13998&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14013&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=14013&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13586&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13586&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13803&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13803&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13617&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13617&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13540&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13540&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13890&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13890&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13961&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13961&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13253&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13253&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13900&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13900&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13572&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13572&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13708&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13708&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13480&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13480&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13664&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13664&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13485&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13485&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13460&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13460&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13486&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13486&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13107&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13107&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13463&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13463&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13645&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13645&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13401&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13401&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13459&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13459&status=1",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "",
+              "onclick": "",
+              "text": ""
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13239&status=0",
+              "onclick": "",
+              "text": "View Details"
+            },
+            {
+              "href": "https://www.bseindia.com/markets/PublicIssues/FurtherXbrlview_pref?id=13239&status=1",
+              "onclick": "",
+              "text": "View Details"
+            }
+          ],
+          "rows": [
+            [
+              "Company Name",
+              "IP Stage",
+              "Listing Stage"
+            ],
+            [
+              "GACM Technologies Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Tipco Engineering India Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "SK Minerals & Additives Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "L. T. Elevator Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Dev Accelerator Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Asston Pharmaceuticals Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Sambhv Steel Tubes Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Ather Energy Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Network People Services Technologies Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "STL Networks Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Retaggio Industries Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Spectrum Electrical Industries Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Paradeep Parivahan Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Beezaasan Explotech Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "CLN Energy Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "RDB Real Estate Constructions Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "B.R.Goyal Infrastructure Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Standard Engineering Technology Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Fabtech Cleanrooms Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Davin Sons Retail Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Senores Pharmaceuticals Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Yash Highvoltage Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Innovana Thinklabs Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Subam Papers Ltd",
+              "View Details",
+              "View Details"
+            ],
+            [
+              "Kross Ltd",
+              "View Details",
+              "View Details"
+            ]
+          ]
+        }
+      ],
+      "controls": [
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "theme-toggle",
+          "name": "",
+          "text": "",
+          "type": "checkbox",
+          "value": "on"
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "-A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "+A",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "scripsearchtxtbx",
+          "name": "",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "bd-versions",
+          "name": "",
+          "text": "All",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "All",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+1",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Equity T+0",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "MF/ETFS",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Debts/Others",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Currency Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Commodity Derivatives",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Electronic Gold Receipts",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Hybrid Security",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Muncipal Bonds",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "SSE",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Skip to main content",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u25b6",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "\u275a\u275a",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "txtcomp",
+          "name": "txtcomp",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "datepicker",
+          "text": "",
+          "type": "text",
+          "value": ""
+        },
+        {
+          "id": "btnsubmit",
+          "name": "",
+          "text": "",
+          "type": "submit",
+          "value": "Search"
+        },
+        {
+          "id": "btnReset",
+          "name": "",
+          "text": "",
+          "type": "submit",
+          "value": "Reset"
+        },
+        {
+          "id": "openBtn",
+          "name": "",
+          "text": "Related Links",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "closeBtn",
+          "name": "",
+          "text": "",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-0-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-1-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-2-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-3-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-4-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-5-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-6-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-7-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "ngb-accordion-item-8-toggle",
+          "name": "",
+          "text": "",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Previous",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "1",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "2",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "3",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "46",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Next",
+          "type": "submit",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Funds Mobilized Using BSE Platform",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Disclaimer",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Website Policies",
+          "type": "button",
+          "value": ""
+        },
+        {
+          "id": "",
+          "name": "",
+          "text": "Privacy Policy",
+          "type": "button",
+          "value": ""
+        }
+      ],
+      "url": "https://www.bseindia.com/markets/publicissues/furtherissuesummary_pref",
+      "title": "Preferential Issue"
+    }
+  }
+}
