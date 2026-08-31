@@ -28,7 +28,7 @@ Target date: `2026-08-31`
 | Bulk | 70 | 70 | `31-AUG-2026` | acquisition proven |
 | Block | 11 | 11 | `31-AUG-2026` | acquisition proven |
 
-NSE Insider is **not** considered empty. The official NSE page exposes multiple windows and Archive Data. A valid CSV header was previously returned but no records parsed for the tested request; this remains an active defect until multi-window retrieval and date semantics are verified.
+NSE Insider is **not** considered empty. The official NSE page exposes multiple windows and Archive Data. A valid CSV header was previously returned but no records parsed for the tested request; the corrected NSE engine now tests native JSON first and multiple windows. This remains blocked until a real non-empty result and its date semantics are verified.
 
 ### BSE
 
@@ -39,6 +39,10 @@ NSE Insider is **not** considered empty. The official NSE page exposes multiple 
 | Block | 19 | 17 | deal date `31 Aug 26` | acquisition proven; duplicate classification unresolved |
 | Rights | 50 in 5-page test | 50 | issue-stage/company rows | incomplete; actual termination unresolved |
 | Preferential | 5-page test | not production-certified | issue-stage/company rows | incomplete; actual termination unresolved |
+
+## Latest infrastructure defect found
+
+The standalone `NSE-BSE Data Validation` workflow previously ran `data_validation_v4.py` without first creating the required BSE raw capture file. Run `33441200777` failed with `FileNotFoundError: artifacts/data_validation_v4/bse_raw.json`; this was a workflow orchestration defect, not a source-data conclusion. The workflow has been corrected to acquire fresh BSE and NSE evidence before validation. The correction is commit `86bd2ee28b7039fa61333c48fd32de383763281b` and is awaiting fresh-run verification.
 
 ## Critical date rule
 
