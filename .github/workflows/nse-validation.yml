@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'NSE end date (YYYY-MM-DD)'
+        required: false
+        default: '2026-08-31'
+      lookback_days:
+        description: 'Historical validation window'
+        required: false
+        default: '90'
 
 permissions:
   contents: read
@@ -11,7 +20,7 @@ permissions:
 jobs:
   validate-nse:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,23 +33,28 @@ jobs:
         run: pip install -r requirements.txt
       - name: NSE Insider
         env:
-          TARGET_DATE: '2026-08-31'
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_insider.py
       - name: NSE Bulk
         env:
-          TARGET_DATE: '2026-08-31'
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_bulk.py
       - name: NSE Block
         env:
-          TARGET_DATE: '2026-08-31'
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_block.py
       - name: NSE Rights
         env:
-          TARGET_DATE: '2026-08-31'
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_rights.py
       - name: NSE Preferential
         env:
-          TARGET_DATE: '2026-08-31'
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_preferential.py
       - name: Upload NSE evidence
         if: always()
