@@ -1,0 +1,1 @@
+The isolated BSE 90-day workflow is now the active historical validation path. Its first push-triggered run must be inspected for actual BSE records and dates before certification.
