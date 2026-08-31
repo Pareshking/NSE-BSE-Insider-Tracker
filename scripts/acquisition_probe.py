@@ -6,6 +6,7 @@ import time
 from datetime import date, datetime
 from typing import Any
 
+import pandas as pd
 import requests
 
 TARGET_DATE = os.getenv("TARGET_DATE", "2026-08-31")
@@ -71,7 +72,6 @@ def nse_server_library() -> list[dict[str, Any]]:
 def bse_probe() -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
-    # Community package advertised for simple BSE bulk/block access.
     try:
         import bseindia.equity as equity
         for name, fn in (("bulk_deals", equity.bulk_deal_as_on_today), ("block_deals", equity.block_deal_as_on_today)):
@@ -84,24 +84,29 @@ def bse_probe() -> list[dict[str, Any]]:
     except Exception as exc:
         results.append({"source": "BSE", "dataset": "bseindia_import", "method": "bseindia", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
 
-    # Maintained BSE API wrapper: confirms that BSE's API can be reached from CI.
     try:
         from bse import BSE
         started = time.perf_counter()
         with BSE(download_folder="artifacts/bse") as bse:
-            lookup = bse.lookup("TCS")
-        results.append({"source": "BSE", "dataset": "api_reachability", "method": "BseIndiaApi", "status": "success", "elapsed_s": round(time.perf_counter() - started, 3), "lookup_sample": lookup})
+            code = bse.getScripCode("TCS")
+        results.append({"source": "BSE", "dataset": "api_reachability", "method": "BseIndiaApi", "status": "success", "elapsed_s": round(time.perf_counter() - started, 3), "tcs_code": code})
     except Exception as exc:
         results.append({"source": "BSE", "dataset": "api_reachability", "method": "BseIndiaApi", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
 
-    # Official BSE insider page: test reachability separately. Parsing is a separate task.
     s = requests.Session()
     s.headers.update({"User-Agent": UA, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Referer": "https://www.bseindia.com/"})
     started = time.perf_counter()
     try:
         home = s.get("https://www.bseindia.com/", timeout=20)
         page = s.get("https://www.bseindia.com/corporates/xbrldetails.aspx", timeout=30)
-        results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "success" if page.ok else "blocked_or_error", "homepage_status": home.status_code, "status_code": page.status_code, "elapsed_s": round(time.perf_counter() - started, 3), "content_type": page.headers.get("content-type", ""), "bytes": len(page.content)})
+        tables = []
+        if page.ok:
+            try:
+                tables = pd.read_html(page.text)
+            except Exception:
+                tables = []
+        text_lower = page.text.lower()
+        results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "success" if page.ok else "blocked_or_error", "homepage_status": home.status_code, "status_code": page.status_code, "elapsed_s": round(time.perf_counter() - started, 3), "content_type": page.headers.get("content-type", ""), "bytes": len(page.content), "html_table_count": len(tables), "contains_insider_text": "insider" in text_lower, "contains_regulation_7_2": "7(2)" in text_lower})
     except Exception as exc:
         results.append({"source": "BSE", "dataset": "insider_regulation_7_2", "method": "official_page", "status": "error", "error": f"{type(exc).__name__}: {exc}"})
     return results
@@ -111,7 +116,6 @@ def main() -> int:
     os.makedirs("artifacts/nse", exist_ok=True)
     os.makedirs("artifacts/bse", exist_ok=True)
     report: dict[str, Any] = {"target_date": TARGET_DATE, "target_date_display": DDMMYYYY, "phase": "1+2 acquisition probe", "results": []}
-
     try:
         s = nse_session()
         q = f"from={DDMMYYYY}&to={DDMMYYYY}"
@@ -122,10 +126,8 @@ def main() -> int:
         ])
     except Exception as exc:
         report["results"].append({"source": "NSE", "dataset": "session_bootstrap", "method": "direct_api", "status": "blocked_or_error", "error": f"{type(exc).__name__}: {exc}"})
-
     report["results"].extend(nse_server_library())
     report["results"].extend(bse_probe())
-
     with open("artifacts/acquisition_probe.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
     print(json.dumps(report, indent=2, default=str))
