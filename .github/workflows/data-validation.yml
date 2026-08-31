@@ -1,0 +1,51 @@
+name: NSE-BSE Data Validation
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run NSE and BSE record-level validation
+        env:
+          TARGET_DATE: '2026-08-31'
+          SECOND_DATE: '2026-08-28'
+        run: python scripts/data_validation_probe.py
+
+      - name: Publish validation report and normalized samples
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -d artifacts/data_validation ]; then
+            git add artifacts/data_validation
+            git diff --cached --quiet || git commit -m "chore: publish NSE BSE validation report [skip ci]"
+            git push
+          fi
+
+      - name: Upload validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-bse-data-validation
+          path: artifacts/data_validation
+          retention-days: 14
