@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,12 +22,21 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Acquire BSE evidence
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/bse_raw_capture_v2.py
+      - name: Acquire NSE evidence
+        env:
+          TARGET_DATE: '2026-08-31'
+        run: python scripts/nse_acquisition.py > artifacts/data_validation_v4/nse_acquisition_output.json
       - name: Run schema-aware NSE + BSE validation
         env:
           TARGET_DATE: '2026-08-31'
           SECOND_DATE: '2026-08-28'
         run: python scripts/data_validation_v4.py
       - name: Probe BSE insider historical date selection
+        if: always()
         run: |
           mkdir -p artifacts/insider_historical_probe
           python scripts/bse_insider_historical_probe.py | tee artifacts/insider_historical_probe/result.json
