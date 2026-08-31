@@ -111,6 +111,42 @@ def nse_selenium() -> list[dict[str, Any]]:
     return out
 
 
+def nse_further_issue_pages() -> list[dict[str, Any]]:
+    """Probe the same official NSE pages shown in the UI for Preferential and Right Issues.
+    Browser mode is used because NSE often blocks non-browser requests from cloud runners.
+    We record rendered row counts and API resource URLs so the next collector can use the
+    structured endpoint instead of scraping rendered text.
+    """
+    out: list[dict[str, Any]] = []
+    pages = {
+        "preferential_issue": "https://www.nseindia.com/companies-listing/corporate-filings-PREF",
+        "right_issue": "https://www.nseindia.com/companies-listing/corporate-filings-RI",
+    }
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        options = Options()
+        for arg in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", f"--user-agent={UA}"):
+            options.add_argument(arg)
+        driver = webdriver.Chrome(options=options)
+        try:
+            for dataset, page in pages.items():
+                t = time.perf_counter()
+                try:
+                    driver.get(page); time.sleep(5)
+                    rows = driver.execute_script("return Array.from(document.querySelectorAll('table tbody tr')).map(r => Array.from(r.cells).map(c => c.innerText.trim())).filter(r => r.length)")
+                    resources = driver.execute_script("return performance.getEntriesByType('resource').map(x => x.name).filter(x => x.includes('/api/')).slice(-80)")
+                    body = driver.find_element("tag name", "body").text
+                    out.append(make_result("NSE", dataset, "selenium_rendered_page", status="success", http_status=200, row_count=len(rows), sample_rows=rows[:3], api_resources=resources, contains_download_csv="Download (.csv)" in body, contains_xbrl="XBRL" in body, elapsed_s=round(time.perf_counter()-t,3), current_url=driver.current_url))
+                except Exception as exc:
+                    out.append(make_result("NSE", dataset, "selenium_rendered_page", status="error", error=f"{type(exc).__name__}: {exc}", elapsed_s=round(time.perf_counter()-t,3)))
+        finally:
+            driver.quit()
+    except Exception as exc:
+        out.append(make_result("NSE", "further_issue_import", "selenium_rendered_page", status="error", error=f"{type(exc).__name__}: {exc}"))
+    return out
+
+
 def bse_headers() -> dict[str, str]:
     return {"User-Agent": UA, "Referer": "https://www.bseindia.com/", "Accept": "application/json, text/plain, */*", "Accept-Language": "en-US,en;q=0.9"}
 
@@ -128,20 +164,45 @@ def bse_bulk_block() -> list[dict[str, Any]]:
 
 
 def bse_announcements() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     url = "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w"
-    params = {"pageno":"1", "strCat":"-1", "strPrevDate":YYYYMMDD, "strScrip":"", "strSearch":"P", "strToDate":YYYYMMDD, "strType":"C"}
-    try:
-        s = requests.Session(); s.headers.update(bse_headers()); s.get("https://www.bseindia.com/", timeout=20); r = s.get(url, params=params, timeout=30)
-        rec = make_result("BSE", "corporate_announcements", "official_api", status="success" if r.ok else "failed", status_code=r.status_code, bytes=len(r.content), content_type=r.headers.get("content-type",""), url=r.url)
-        if r.ok:
-            try:
-                payload = r.json(); table = payload.get("Table", []) if isinstance(payload, dict) else []
-                pit = [row for row in table if "insider" in json.dumps(row).lower() or "prohibition of insider" in json.dumps(row).lower() or "regulation 7(2)" in json.dumps(row).lower()]
-                rec.update(total_records=len(table), insider_like_records=len(pit), sample=pit[:3])
-            except Exception as exc: rec["parse_error"] = f"{type(exc).__name__}: {exc}"
-        else: rec["error_prefix"] = r.text[:300]
-        return [rec]
-    except Exception as exc: return [make_result("BSE", "corporate_announcements", "official_api", status="error", error=f"{type(exc).__name__}: {exc}")]
+    for term in ("Preferential", "Rights Issue", "Allotment"):
+        params = {"pageno":"1", "strCat":"-1", "strPrevDate":YYYYMMDD, "strScrip":"", "strSearch":term, "strToDate":YYYYMMDD, "strType":"C"}
+        try:
+            s = requests.Session(); s.headers.update(bse_headers()); s.get("https://www.bseindia.com/", timeout=20); r = s.get(url, params=params, timeout=30)
+            rec = make_result("BSE", f"corporate_announcements_{term.lower().replace(' ','_')}", "official_api", status="success" if r.ok else "failed", status_code=r.status_code, bytes=len(r.content), content_type=r.headers.get("content-type",""), url=r.url)
+            if r.ok:
+                try:
+                    payload = r.json(); table = payload.get("Table", []) if isinstance(payload, dict) else []
+                    rec.update(total_records=len(table), sample=table[:5])
+                except Exception as exc: rec["parse_error"] = f"{type(exc).__name__}: {exc}"
+            else: rec["error_prefix"] = r.text[:300]
+            out.append(rec)
+        except Exception as exc: out.append(make_result("BSE", f"corporate_announcements_{term.lower().replace(' ','_')}", "official_api", status="error", error=f"{type(exc).__name__}: {exc}"))
+    return out
+
+
+def bse_further_issue_pages() -> list[dict[str, Any]]:
+    """Probe BSE's official further-issue/public-issue and listing-notice surfaces.
+    BSE does not expose a single equivalent XBRL table as clearly as NSE, so we test
+    rights issue public-issue data plus corporate/listing notices used for allotments.
+    """
+    out: list[dict[str, Any]] = []
+    pages = {
+        "right_issue_public_issues": "https://www.bseindia.com/markets/PublicIssues/IPOIssues_new.aspx?id=2&Type=P",
+        "issue_summary": "https://www.bseindia.com/markets/PublicIssues/Issuesummary.aspx",
+        "corporate_announcements": "https://m.bseindia.com/corporates.aspx",
+    }
+    for dataset, url in pages.items():
+        t = time.perf_counter()
+        try:
+            s = requests.Session(); s.headers.update(bse_headers()); s.get("https://www.bseindia.com/", timeout=20); r = s.get(url, timeout=30)
+            tables = pd.read_html(StringIO(r.text)) if r.ok else []
+            text = r.text.lower()
+            out.append(make_result("BSE", dataset, "official_html", status="success" if r.ok else "failed", status_code=r.status_code, table_count=len(tables), row_counts=[len(x) for x in tables[:10]], contains_right_issue="right" in text, contains_preferential="preferential" in text, contains_allotment="allot" in text, bytes=len(r.content), elapsed_s=round(time.perf_counter()-t,3)))
+        except Exception as exc:
+            out.append(make_result("BSE", dataset, "official_html", status="error", error=f"{type(exc).__name__}: {exc}"))
+    return out
 
 
 def bse_api_wrapper() -> list[dict[str, Any]]:
@@ -156,7 +217,7 @@ def bse_api_wrapper() -> list[dict[str, Any]]:
 def main() -> int:
     os.makedirs("artifacts/nse", exist_ok=True); os.makedirs("artifacts/bse", exist_ok=True)
     report = {"target_date": TARGET_DATE, "phase": "1+2 acquisition probe", "generated_at_utc": datetime.utcnow().isoformat(), "results": []}
-    report["results"] += nse_direct(); report["results"] += nse_package(); report["results"] += nse_selenium(); report["results"] += bse_bulk_block(); report["results"] += bse_announcements(); report["results"] += bse_api_wrapper()
+    report["results"] += nse_direct(); report["results"] += nse_package(); report["results"] += nse_selenium(); report["results"] += nse_further_issue_pages(); report["results"] += bse_bulk_block(); report["results"] += bse_announcements(); report["results"] += bse_further_issue_pages(); report["results"] += bse_api_wrapper()
     with open("artifacts/acquisition_probe.json", "w", encoding="utf-8") as f: json.dump(report, f, indent=2, default=str)
     print(json.dumps(report, indent=2, default=str)); return 0
 
