@@ -17,9 +17,15 @@ NSE and BSE acquisition engines are separate. NSE categories are isolated where 
 - `scripts/nse_insider.py` — NSE Insider Trading only; official corporate-filings PIT endpoint; independent date-window testing.
 - `scripts/nse_bulk.py` — NSE Bulk Deals only.
 - `scripts/nse_block.py` — NSE Block Deals only.
+- `scripts/nse_rights.py` — NSE Rights Issue source/schema probe; independent date-window evidence.
+- `scripts/nse_preferential.py` — NSE Preferential Issue source/schema probe; independent date-window evidence.
 - `scripts/nse_acquisition.py` — shared NSE helper/legacy engine retained for compatibility; not the category certification path.
 - `scripts/bse_acquisition.py` — BSE-specific acquisition engine.
 - `scripts/acquisition_probe.py` — orchestration/legacy evidence only; it must not define the correctness of an exchange/category.
+
+### Dedicated workflow rule
+
+`/.github/workflows/nse-validation.yml` is the dedicated **NSE-only** validation workflow. It must not acquire BSE data. The older `data-validation.yml` remains a combined/legacy workflow and is **not** an NSE certification workflow. A green combined workflow must never be interpreted as NSE certification.
 
 Rights/Preferential must be explicitly investigated on **both NSE and BSE**. They are issue/lifecycle data, not merely another deal table.
 
@@ -27,9 +33,9 @@ Page count is never a completeness criterion. Pagination is only a transport mec
 
 ## NSE gates
 
-### Insider Trading — IN PROGRESS / BLOCKED until fresh run
+### Insider Trading — IN PROGRESS / BLOCKED until fresh isolated run
 
-Previous probe returned HTTP 200 with a header-only CSV and zero parsed rows. That was not evidence that NSE had no insider records. The official NSE page exposes date windows and archive data. A new isolated `scripts/nse_insider.py` establishes an NSE session and queries the native response for 1-day, 5-day, 30-day and 1-year windows, recording status, response mode, columns and counts.
+Previous probe returned HTTP 200 with a header-only CSV and zero parsed rows. That was not evidence that NSE had no insider records. The official NSE page exposes date windows and archive data. The isolated `scripts/nse_insider.py` establishes an NSE session and queries the native response for 1-day, 5-day, 30-day and 1-year windows, recording status, response mode, columns and counts.
 
 PASS requires a real non-empty dataset or documented proof of zero records, correct date semantics, complete requested window, native columns, and duplicate behavior.
 
@@ -43,11 +49,11 @@ Previously observed: 11 unique records for 31-Aug-2026 through the NSE package. 
 
 ### Rights Issues — NOT YET VALIDATED
 
-NSE Rights Issue acquisition/filing coverage is a mandatory NSE gate. The exact official NSE source, date semantics, lifecycle fields, historical/archive behavior and completeness mechanism must be identified and tested before this category can pass.
+NSE's native Rights Issue page is `corporate-filings-RI`. The page exposes company/ISIN filters, date filters and lifecycle fields including Record Date, Rights Ratio, Offer Price, issue opening/closing, entitlement dates, allotment, listing and trading approval dates. citeturn0search11 The new `scripts/nse_rights.py` is deliberately a source/schema/date-window probe first; it must be tested against real NSE output before extraction logic is promoted to production.
 
 ### Preferential Issues — NOT YET VALIDATED
 
-NSE Preferential Issue/allotment coverage is a mandatory NSE gate. The exact official NSE source, date semantics, lifecycle fields, historical/archive behavior and completeness mechanism must be identified and tested before this category can pass.
+NSE's native Preferential Issue page is `corporate-filings-PREF`. The page exposes company/ISIN filters and lifecycle fields including Board Resolution Date, allottee category, offer price, allotment date, shares allotted, amount raised, listing/trading approval and submission dates. citeturn0search0turn0search3 The new `scripts/nse_preferential.py` is deliberately a source/schema/date-window probe first; it must be tested against real NSE output before extraction logic is promoted to production.
 
 ## BSE gates
 
