@@ -30,9 +30,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Run BSE-only acquisition
+      - name: Run BSE-only raw acquisition
         run: python scripts/bse_raw_capture_v2.py
-      - name: Probe BSE API contracts
+      - name: Capture first-party BSE API contracts
+        if: always()
+        run: python scripts/bse_first_party_api_capture.py
+      - name: Probe BSE API contracts independently
         if: always()
         run: python scripts/bse_api_probe.py
       - name: Validate BSE evidence
@@ -42,20 +45,27 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bse-only-validation-v5
+          name: bse-only-validation-v6
           path: artifacts/data_validation_v5
           if-no-files-found: warn
-      - name: Upload BSE API evidence
+      - name: Upload BSE API contract evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bse-api-probe-v1
+          name: bse-api-contract-v2
+          path: artifacts/bse_api_contract
+          if-no-files-found: warn
+      - name: Upload BSE API probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bse-api-probe-v2
           path: artifacts/bse_api_probe
           if-no-files-found: warn
       - name: Upload BSE validation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bse-validation-report-v1
+          name: bse-validation-report-v2
           path: artifacts/bse_validation
           if-no-files-found: warn
