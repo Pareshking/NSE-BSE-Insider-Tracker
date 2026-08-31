@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,27 +25,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run NSE and BSE record-level validation
+      - name: Run exchange-specific normalization and cross-exchange validation
         env:
           TARGET_DATE: '2026-08-31'
           SECOND_DATE: '2026-08-28'
-        run: python scripts/data_validation_probe.py
+        run: python scripts/data_validation_v2.py
 
-      - name: Publish validation report and normalized samples
+      - name: Publish v2 validation report
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -d artifacts/data_validation ]; then
-            git add artifacts/data_validation
-            git diff --cached --quiet || git commit -m "chore: publish NSE BSE validation report [skip ci]"
+          if [ -d artifacts/data_validation_v2 ]; then
+            git add artifacts/data_validation_v2
+            git diff --cached --quiet || git commit -m "chore: publish exchange validation v2 [skip ci]"
             git push
           fi
 
-      - name: Upload validation artifact
+      - name: Upload v2 validation artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nse-bse-data-validation
-          path: artifacts/data_validation
+          name: nse-bse-data-validation-v2
+          path: artifacts/data_validation_v2
           retention-days: 14
