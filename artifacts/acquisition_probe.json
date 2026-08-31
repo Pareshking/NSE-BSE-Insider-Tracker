@@ -1,0 +1,127 @@
+{
+  "target_date": "2026-08-31",
+  "phase": "1+2 acquisition probe",
+  "generated_at_utc": "2026-08-31T19:44:15.223583",
+  "results": [
+    {
+      "source": "NSE",
+      "dataset": "homepage",
+      "method": "direct_api",
+      "status_code": 403,
+      "bytes": 368
+    },
+    {
+      "source": "NSE",
+      "dataset": "insider_trading",
+      "method": "direct_api",
+      "status_code": 200,
+      "elapsed_s": 0.597,
+      "bytes": 819,
+      "content_type": "text/csv",
+      "url": "https://www.nseindia.com/api/corporates-pit?index=equities&from_date=31-08-2026&to_date=31-08-2026&csv=true",
+      "body_prefix": "\u00ef\u00bb\u00bf\"SYMBOL \n\",\"COMPANY \n\",\"REGULATION \n\",\"NAME OF THE ACQUIRER/DISPOSER \n\",\"CATEGORY OF PERSON \n\",\"TYPE OF SECURITY (PRIOR) \n\",\"NO. OF SECURITY (PRIOR) \n\",\"% SHAREHOLDING (PRIOR) \n\",\"TYPE OF SECURITY (ACQUIRED/DISPLOSED) \n\",\"NO. OF SECURITIES (ACQUIRED/DISPLOSED) \n\",\"VALUE OF SECURITY (ACQUIRED/DISPLOSED) \n\",\"ACQUISITION/DISPOSAL TRANSACTION TYPE \n\",\"TYPE OF SECURITY (POST) \n\",\"NO. OF SECURITY (POST) \n\",\"% POST \n\",\"DATE OF ALLOTMENT/ACQUISITION FROM \n\",\"DATE OF ALLOTMENT/ACQUISITION TO \n\",\"DATE "
+    },
+    {
+      "source": "NSE",
+      "dataset": "bulk_deals",
+      "method": "direct_api",
+      "status_code": 200,
+      "elapsed_s": 1.19,
+      "bytes": 22083,
+      "content_type": "text/html",
+      "url": "https://www.nseindia.com/api/historical/bulk-deals?from=31-08-2026&to=31-08-2026",
+      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
+    },
+    {
+      "source": "NSE",
+      "dataset": "block_deals",
+      "method": "direct_api",
+      "status_code": 200,
+      "elapsed_s": 0.409,
+      "bytes": 22083,
+      "content_type": "text/html",
+      "url": "https://www.nseindia.com/api/historical/block-deals?from=31-08-2026&to=31-08-2026",
+      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
+    },
+    {
+      "source": "NSE",
+      "dataset": "bulk_deals",
+      "method": "nse_package_server",
+      "status": "success",
+      "count": 70,
+      "elapsed_s": 0.366,
+      "sample_keys": [
+        "BD_BUY_SELL",
+        "BD_CLIENT_NAME",
+        "BD_DT_DATE",
+        "BD_DT_ORDER",
+        "BD_QTY_TRD",
+        "BD_REMARKS",
+        "BD_SCRIP_NAME",
+        "BD_SYMBOL",
+        "BD_TP_WATP"
+      ]
+    },
+    {
+      "source": "NSE",
+      "dataset": "block_deals",
+      "method": "nse_package_server",
+      "status": "success",
+      "count": 11,
+      "elapsed_s": 0.819,
+      "sample_keys": [
+        "BD_BUY_SELL",
+        "BD_CLIENT_NAME",
+        "BD_DT_DATE",
+        "BD_DT_ORDER",
+        "BD_QTY_TRD",
+        "BD_REMARKS",
+        "BD_SCRIP_NAME",
+        "BD_SYMBOL",
+        "BD_TP_WATP"
+      ]
+    },
+    {
+      "source": "NSE",
+      "dataset": "insider_trading",
+      "method": "selenium_browser_fetch",
+      "status": "error",
+      "error": "TimeoutException: Message: script timeout\n  (Session info: chrome=151.0.7922.173)\nStacktrace:\n#0 0x55f6e703136a <unknown>\n#1 0x55f6e69a4d00 <unknown>\n#2 0x55f6e6a4483e <unknown>\n#3 0x55f6e6a430c3 <unknown>\n#4 0x55f6e69edc92 <unknown>\n#5 0x55f6e69eeb11 <unknown>\n#6 0x55f6e6ff68d0 <unknown>\n#7 0x55f6e6ff4f3a <unknown>\n#8 0x55f6e6fdf9b5 <unknown>\n#9 0x55f6e6ff5c0a <unknown>\n#10 0x55f6e6fc7740 <unknown>\n#11 0x55f6e701c9a8 <unknown>\n#12 0x55f6e701cb45 <unknown>\n#13 0x55f6e702ff1e <unknown>\n#14 0x7f8c1b69cb84 <unknown>\n#15 0x7f8c1b729d6c <unknown>\n"
+    },
+    {
+      "source": "BSE",
+      "dataset": "bulk_deals",
+      "method": "official_html",
+      "status": "error",
+      "error": "ValueError: No tables found"
+    },
+    {
+      "source": "BSE",
+      "dataset": "block_deals",
+      "method": "official_html",
+      "status": "error",
+      "error": "ValueError: No tables found"
+    },
+    {
+      "source": "BSE",
+      "dataset": "corporate_announcements",
+      "method": "official_api",
+      "status": "success",
+      "status_code": 200,
+      "bytes": 18,
+      "content_type": "application/json; charset=utf-8",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=P&strToDate=20260831&strType=C",
+      "total_records": 0,
+      "insider_like_records": 0,
+      "sample": []
+    },
+    {
+      "source": "BSE",
+      "dataset": "api_reachability",
+      "method": "BseIndiaApi",
+      "status": "success",
+      "tcs_code": "532540",
+      "elapsed_s": 0.435
+    }
+  ]
+}
