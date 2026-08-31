@@ -1,381 +1,717 @@
-# NSE-BSE Insider Tracker — Project Plan & Task Tracker
+# NSE-BSE Insider Tracker — AI Handover Memory & Master Task Tracker
 
-> Single source of truth for project scope, engineering decisions, validation status, and remaining work.
+> **Purpose:** This file is the persistent memory/handover document for any AI/engineer taking over this repository. Read this file before changing code. It records the project's mission, decisions, verified facts, failed experiments, current state, next actions, and definition of done.
 >
-> **Status:** Phase 1A + 1B + Phase 2 acquisition validation in progress.
-> **Target validation date:** 2026-08-31.
+> **Repository:** `Pareshking/NSE-BSE-Insider-Tracker`
+> **Primary branch:** `main`
+> **Current status:** Phase 1A + Phase 1B + Phase 2 acquisition validation in progress.
+> **Validation target date:** `2026-08-31` (the previous trading/disclosure day at the time this work started).
+> **Last updated:** 2026-09-01
 
-## 1. Mission
+---
 
-Build a reliable, low-cost NSE + BSE market-disclosure data system with:
+## 0. HANDOVER INSTRUCTIONS — READ FIRST
 
-- Official NSE and BSE data wherever practical.
-- Reliable fallback acquisition methods when exchanges block automated clients.
-- At least one year of historical data, with room to retain more when inexpensive.
-- Correct handling of BUY and SELL insider transactions.
-- Correct distinction between filings, transactions, allotments, listings, and market-deal events.
-- Deduplication without losing source provenance.
-- Compact storage in Cloudflare R2 rather than using GitHub as the primary data store.
-- GitHub Actions for scheduled acquisition/validation.
-- Streamlit as the user-facing application.
-- Auditable raw/source references so important records can be verified against NSE/BSE.
+### For the next AI/engineer
 
-## 2. Data domains
+1. **Do not restart or redesign the project from scratch.** Continue from the current `main` branch.
+2. **Read this file first**, then inspect the current repository/workflows/scripts before acting.
+3. Treat the checkboxes and `Verified Findings` section as the current project state. Do not claim planned work is completed.
+4. **Test → inspect results → fix → retest → continue.** Do not stop after the first failed method when a reasonable fallback exists.
+5. Do not ask the user for manual permission for each small engineering step. The user has explicitly authorized autonomous execution of the Phase 1/2 validation loop.
+6. Do not expose or request secret values in chat. GitHub repository secrets already contain the R2 credentials. Never commit credentials.
+7. Official NSE/BSE material is the authority. Third-party Python libraries are only acquisition mechanisms/fallbacks.
+8. A HTTP 200, a non-empty HTML page, or a successful Python call is **not** proof that useful data was acquired. Inspect actual records and fields.
+9. A failed wrapper is not automatically evidence that NSE/BSE blocked the request; distinguish **source blocking**, **endpoint change**, **parser/library failure**, **empty result**, and **network failure**.
+10. Keep insider transactions, bulk deals, block deals, rights issues, preferential issues, filings, transactions, allotments, and listings as distinct concepts.
+11. Do not move to production storage/backfill until acquisition reliability is sufficiently established.
+12. Update this document whenever a major test is verified, a method is rejected, an architecture decision is made, or a phase changes status.
 
-### A. Insider trading — Phase 1A
-- [ ] NSE Regulation 7(2), Equity
-- [ ] NSE SME / REIT / InvIT where applicable
-- [ ] BSE Regulation 7(2) / equivalent insider disclosures
-- [ ] BUY transactions
-- [ ] SELL transactions
-- [ ] Other relevant transaction types
-- [ ] Filing date vs transaction date
-- [ ] Promoter / director / designated-person / connected-person classification
-- [ ] Exchange of execution
-- [ ] Source document / XBRL / filing reference
-- [ ] Duplicate and amendment handling
+---
 
-### B. Market deals — Phase 2
-- [x] NSE Bulk Deals acquisition path demonstrated
-- [x] NSE Block Deals acquisition path demonstrated
-- [ ] BSE Bulk Deals reliable acquisition path
-- [ ] BSE Block Deals reliable acquisition path
-- [ ] Validate quantities, prices, client names, symbols and dates
-- [ ] Determine reliable historical retrieval method
-- [ ] Define how repeated/amended records are identified
+## 1. PROJECT MISSION
 
-**Important:** Bulk/block deals are market-disclosure datasets, not insider transactions. They must remain separate in storage and analytics.
+Build a reliable, low-cost NSE + BSE market-disclosure system that can collect, preserve, search, and analyse at least one year of historical data while remaining inexpensive enough to operate using GitHub Actions + Cloudflare R2 + Streamlit.
 
-### C. Further issues — Phase 1B
-- [ ] NSE Preferential Issue — proposed / in-principle
-- [ ] NSE Preferential Issue — post-allotment
-- [ ] NSE allotment/listing/trading-approval fields
-- [ ] NSE Rights Issue
-- [ ] BSE Preferential Issue announcements
-- [ ] BSE Preferential allotment/listing notices
-- [ ] BSE Rights Issue / public-issue data
-- [ ] Separate issue lifecycle events: announcement → approval → allotment → listing → trading commencement
-- [ ] Avoid counting multiple lifecycle disclosures as multiple issues
+Core goals:
 
-### D. Future candidate datasets
-- [ ] Bonus issues
-- [ ] Buybacks
-- [ ] Mergers / demergers / corporate actions if useful
-- [ ] Delivery / institutional indicators only after source quality is established
+- Prefer official NSE and BSE sources.
+- Survive exchange blocking/rate limiting through legitimate session/library/browser fallbacks.
+- Capture insider **BUY and SELL** transactions correctly.
+- Capture NSE/BSE **bulk and block deals** as separate market-activity datasets.
+- Capture **Rights and Preferential issues**, including lifecycle events where obtainable.
+- Maintain at least one year of history, with capacity for longer retention.
+- Store data compactly in Cloudflare R2, not as large GitHub repository files.
+- Deduplicate deterministically without destroying source provenance.
+- Preserve enough raw/source information to audit important records against NSE/BSE.
+- Provide a Streamlit UI over canonical data.
 
-These are deliberately out of the current acquisition-validation scope unless evidence shows they materially improve the tracker.
+The system is intended to become one site where these related datasets can be searched and correlated, **without incorrectly treating them as the same type of event**.
 
-## 3. Phase 1A — Insider acquisition validation
+---
 
-### Test strategy
-Test multiple acquisition paths from GitHub Actions against 2026-08-31:
+## 2. IMPORTANT PRODUCT/QUANTITATIVE DECISIONS
 
-1. Official NSE endpoint/API.
-2. Maintained NSE Python libraries/session methods.
-3. Direct official archive/XBRL/CSV paths.
-4. Browser/session fallback if required.
-5. Official BSE endpoint/page/API.
-6. Maintained BSE wrappers.
-7. Direct requests/session fallback.
+### 2.1 Insider vs market deals
+Bulk/block deals are **not insider transactions**. They must remain separate in storage and UI. They may later be correlated analytically, but a participant must not be labelled an insider merely because they appear in a bulk/block disclosure.
 
-For every method record:
+### 2.2 Filing vs underlying event
+A filing is a source publication. It is not necessarily one transaction/event.
 
-- HTTP/result status
-- record count
-- fields returned
-- BUY count
-- SELL count
-- date correctness
-- source/reference availability
-- repeatability
-- rate-limit/block behaviour
-- GitHub Actions compatibility
+We will model separately:
 
-### Acceptance criteria
-- [ ] At least one reliable NSE acquisition method.
-- [ ] At least one reliable BSE acquisition method.
-- [ ] BUY and SELL records verified.
-- [ ] Results cross-checked against official exchange material.
-- [ ] Failure mode is known and logged when a route is blocked.
-- [ ] Method can run unattended from GitHub Actions.
+- Filing
+- Insider transaction
+- Market deal
+- Issue
+- Issue lifecycle event
 
-## 4. Phase 1B — Further issue acquisition validation
+### 2.3 Issue lifecycle
+For Rights/Preferential issues, do not count the following as independent issues merely because they appear as separate disclosures:
 
-Test NSE and BSE Rights + Preferential issue data using official pages/endpoints first, then maintained wrappers/fallbacks.
+`announcement → approval → allotment → listing approval → trading commencement`
 
-Acceptance criteria:
+These are lifecycle events belonging to an issue.
 
-- [ ] NSE preferential data returned and fields validated.
-- [ ] NSE rights data returned and fields validated.
-- [ ] BSE preferential data returned and fields validated.
-- [ ] BSE rights data returned and fields validated.
-- [ ] Proposed issue and actual allotment are distinguishable.
-- [ ] Listing/trading commencement events are distinguishable.
-- [ ] Source references retained.
+### 2.4 BUY/SELL
+Do not infer SELL from a holding decrease. Use the disclosed transaction/action fields.
 
-## 5. Phase 2 — Bulk/block validation
+### 2.5 Cross-exchange duplication
+The same economic transaction/disclosure may appear through NSE and BSE. Do not blindly concatenate NSE + BSE rows. Identity and provenance must be designed to distinguish:
 
-### NSE
-- [x] Bulk acquisition works in GitHub Actions.
-- [x] Block acquisition works in GitHub Actions.
-- [ ] Validate returned records against official NSE output.
-- [ ] Test historical retrieval.
+- same filing mirrored across exchanges
+- same transaction executed on a specific exchange
+- genuinely separate transactions
+- amended/re-filed disclosure
 
-### BSE
-- [ ] Find working official endpoint/page.
-- [ ] Test direct session method.
-- [ ] Test wrapper(s).
-- [ ] Verify actual records rather than HTTP 200 alone.
-- [ ] Validate historical retrieval.
+### 2.6 Source hierarchy
+Preferred order:
 
-### Analytical boundary
-Do not label bulk/block participants as insiders unless an independent insider disclosure establishes that fact.
+1. Official exchange endpoint/data file/XBRL/document.
+2. A maintained library that reliably retrieves the official data.
+3. Direct session/request fallback.
+4. Browser automation only when justified and stable.
 
-## 6. Acquisition architecture
+A third-party library is never the authority for the meaning of a record.
 
-Planned production flow:
+---
 
-```text
-NSE/BSE official sources
-        │
-        ├── primary method
-        ├── library/session fallback
-        └── browser/direct fallback where justified
-                 │
-                 ▼
-          validation + normalization
-                 │
-                 ├── raw/source snapshot
-                 ├── canonical records
-                 └── acquisition audit log
-                 │
-                 ▼
-             Cloudflare R2
-                 │
-                 ▼
-             Streamlit app
-```
+## 3. VERIFIED INFRASTRUCTURE STATE
 
-GitHub is the **code/workflow layer**, not the long-term data warehouse.
+### Cloudflare R2
 
-## 7. Storage design — after acquisition is proven
-
-### Principles
-- Store compact columnar data (Parquet preferred) in R2.
-- Partition by source/domain/year/month as appropriate.
-- Compress files.
-- Do not repeatedly store identical raw payloads.
-- Keep canonical records separate from raw source snapshots.
-- Preserve source URL/document identifiers and retrieval timestamps.
-- Use deterministic record/event IDs for deduplication.
-- Keep amendments/corrections rather than silently overwriting history.
-- Maintain an acquisition manifest so missing days can be detected.
-
-### Retention
-- [ ] Minimum one-year historical coverage.
-- [ ] Backfill strategy defined.
-- [ ] Daily incremental update strategy.
-- [ ] Reconciliation/retry strategy for failed days.
-- [ ] Storage-size benchmark after one-year sample.
-
-## 8. Data model — planned
-
-Separate these concepts:
-
-### Filing
-A disclosure/publication received from NSE/BSE.
-
-### Transaction
-An underlying insider BUY/SELL transaction or other disclosed transaction.
-
-### Market deal
-A bulk/block deal disclosure.
-
-### Issue
-A rights/preferential issue and its lifecycle.
-
-### Issue event
-Announcement, approval, allotment, listing approval, trading commencement, etc.
-
-This distinction prevents one disclosure or lifecycle from being incorrectly counted multiple times.
-
-## 9. Deduplication requirements
-
-- [ ] Define stable source-specific IDs where available.
-- [ ] Define deterministic fallback IDs when source IDs are absent.
-- [ ] Include exchange/source in identity.
-- [ ] Include filing/document identifiers.
-- [ ] Include transaction date and participant/security attributes where needed.
-- [ ] Handle amended/re-filed disclosures explicitly.
-- [ ] Never deduplicate solely on company + date + BUY/SELL.
-- [ ] Test duplicate cases from both exchanges.
-
-## 10. BUY / SELL tracking
-
-The final system must support:
-
-- individual transaction history
-- daily BUY value/quantity
-- daily SELL value/quantity
-- net BUY/SELL activity
-- rolling 7/30/90/365-day totals
-- promoter/insider-level history where disclosed
-- company-level aggregation
-- separate NSE and BSE execution attribution
-- drill-down to source disclosure
-
-Do not infer a SELL merely because holdings decreased. Use disclosed transaction/action fields.
-
-## 11. Data quality controls
-
-Every production run should check:
-
-- [ ] expected trading/disclosure date
-- [ ] source response received
-- [ ] record count anomaly
-- [ ] schema drift
-- [ ] duplicate rate
-- [ ] missing critical fields
-- [ ] BUY/SELL distribution anomaly
-- [ ] unusually large day-over-day volume change
-- [ ] source availability / HTTP failures
-- [ ] successful write to R2
-- [ ] manifest updated
-
-A failed source must not silently produce an empty successful dataset.
-
-## 12. GitHub Actions
-
-Current acquisition probe workflow:
-
-- [x] Runs on `main` push.
-- [x] Supports manual dispatch.
-- [x] Uses Python 3.12.
-- [x] Runs acquisition probe.
-- [x] Publishes probe report as an artifact.
-- [x] Current workflow has write permission for probe-report publication.
-
-Future:
-
-- [ ] Separate test workflow from production ingestion workflow.
-- [ ] Scheduled daily ingestion after acquisition methods are hardened.
-- [ ] Retry/backoff.
-- [ ] Failure notification.
-- [ ] R2 write verification.
-- [ ] Historical backfill workflow.
-- [ ] Reconciliation workflow.
-
-## 13. Cloudflare R2
-
-Infrastructure already established:
+Already completed:
 
 - [x] Cloudflare account created.
-- [x] R2 bucket created.
-- [x] R2 S3-compatible API credentials created.
-- [x] Account ID available.
-- [x] GitHub Actions secrets configured:
+- [x] R2 enabled/bucket created.
+- [x] R2 S3 API credentials created.
+- [x] Cloudflare Account ID obtained.
+- [x] GitHub Actions repository secrets configured:
   - `CLOUDFLARE_ACCOUNT_ID`
   - `R2_ACCESS_KEY_ID`
   - `R2_SECRET_ACCESS_KEY`
   - `R2_BUCKET_NAME`
-- [x] GitHub → R2 connectivity test passed.
+- [x] R2 connectivity has been tested successfully.
 
-Next:
+**Important clarification:** Cloudflare calls these **S3 API keys** because R2 provides an S3-compatible API. This is still Cloudflare R2, not Amazon S3.
 
-- [ ] Define production bucket layout.
-- [ ] Implement canonical Parquet writer.
-- [ ] Implement manifest.
-- [ ] Implement atomic/validated writes.
-- [ ] Implement read layer for Streamlit.
+GitHub is the code/workflow layer. R2 is the intended long-term data layer.
 
-## 14. Streamlit application
+### GitHub Actions
 
-After data pipeline is reliable:
+Current acquisition probe workflow:
 
-- [ ] Repository application structure finalized.
-- [ ] Insider dashboard.
-- [ ] Bulk/block dashboard.
-- [ ] Rights/preferential dashboard.
-- [ ] Combined unusual-activity view.
-- [ ] Company search.
-- [ ] Insider/participant search.
-- [ ] Date range filters.
-- [ ] BUY vs SELL views.
-- [ ] Source-document drill-down.
-- [ ] Last successful ingestion timestamp.
-- [ ] Data-quality/status page.
-- [ ] Mobile-friendly layout.
+`.github/workflows/acquisition-probe.yml`
 
-## 15. Validation / research rules
+It:
 
-- Official NSE/BSE material is the reference standard whenever available.
-- Third-party libraries are acquisition tools, not authoritative sources.
-- A successful HTTP response is not sufficient evidence that data acquisition succeeded.
-- Record counts must be inspected.
-- Samples must be checked against official exchange data.
-- Never silently substitute stale cached data for a failed current-day source.
-- Keep acquisition logs so failures are diagnosable.
-- Do not claim a dataset is complete until historical and daily tests support that conclusion.
+- runs on pushes to `main`
+- supports `workflow_dispatch`
+- uses Python 3.12
+- executes `scripts/acquisition_probe.py`
+- targets `2026-08-31` for the current validation experiment
+- publishes `artifacts/acquisition_probe.json`
+- uploads a 14-day GitHub Actions artifact
 
-## 16. Current execution queue
-
-### NOW — acquisition validation
-- [x] Phase 1A/2 initial probe created.
-- [x] NSE bulk/block initial route demonstrated.
-- [x] BSE official page reachability demonstrated.
-- [ ] Finish current Phase 1A + 1B + Phase 2 probe.
-- [ ] Inspect complete probe artifact/logs.
-- [ ] Select best NSE insider method.
-- [ ] Select best BSE insider method.
-- [ ] Select best BSE bulk/block method.
-- [ ] Validate NSE/BSE Rights + Preferential methods.
-
-### NEXT — hardening
-- [ ] Repeat successful methods multiple times.
-- [ ] Test rate limiting.
-- [ ] Test transient failures and retries.
-- [ ] Test empty-day handling.
-- [ ] Test schema drift detection.
-- [ ] Build acquisition adapter interface.
-
-### THEN — storage
-- [ ] R2 layout.
-- [ ] Canonical schema.
-- [ ] Parquet compression/partitioning.
-- [ ] Deduplication.
-- [ ] Manifest/reconciliation.
-- [ ] One-year backfill.
-
-### THEN — application
-- [ ] Streamlit data layer.
-- [ ] Dashboards.
-- [ ] Search/filtering.
-- [ ] Analytics.
-- [ ] Production deployment.
-
-## 17. Definition of done
-
-The project is production-ready when:
-
-1. NSE and BSE data can be acquired unattended with a documented primary/fallback method.
-2. Insider BUY and SELL data are correctly captured and auditable.
-3. Bulk and block deals are reliably captured separately.
-4. Rights and preferential issue lifecycle data are captured separately from insider transactions.
-5. At least one year of data is stored outside GitHub in compact R2 objects.
-6. Duplicate/amended filings are handled deterministically.
-7. Failed or incomplete acquisition days are detectable and recoverable.
-8. Streamlit reads from the canonical R2 dataset rather than repository-sized data files.
-9. Every important displayed record can be traced to its exchange/source.
-10. Automated tests and acquisition checks remain green after deployment.
+The workflow has write permission because the probe is currently configured to publish its report to the repository.
 
 ---
 
-## Change log
+## 4. VERIFIED ACQUISITION FINDINGS SO FAR
+
+These are **verified observations**, not assumptions.
+
+### NSE — Insider
+
+- [ ] Production acquisition route not yet established.
+- Direct NSE API testing from a GitHub runner previously returned **HTTP 403**.
+- This proves that at least one direct route is blocked from the runner; it does **not** prove all NSE acquisition paths are blocked.
+- A browser/session/library fallback is being tested.
+
+### NSE — Bulk deals
+
+- [x] A GitHub Actions runner successfully retrieved **70 records** for 2026-08-31 through the `nse`/NSE server-library route during the initial probe.
+- Still needs validation against official NSE output and historical retrieval testing.
+
+### NSE — Block deals
+
+- [x] A GitHub Actions runner successfully retrieved **11 records** for 2026-08-31 through the `nse`/NSE server-library route during the initial probe.
+- Still needs validation against official NSE output and historical retrieval testing.
+
+### BSE — Insider
+
+- [ ] Production acquisition route not yet established.
+- Official BSE page reachability was demonstrated with **HTTP 200** during the initial probe.
+- The previous `bseindia` wrapper returned no tables.
+- `BseIndiaApi` previously failed with an internal `IndexError`.
+- Neither failure should yet be classified as BSE blocking; endpoint/parser/library behaviour must be investigated.
+
+### BSE — Bulk/Block
+
+- [ ] Reliable acquisition route not yet established.
+- Direct official endpoints/pages and wrapper alternatives are being tested.
+
+### NSE/BSE Rights + Preferential
+
+- [ ] Acquisition route not yet established.
+- NSE has dedicated corporate-filing surfaces for these further issues; the current probe is testing those routes.
+- BSE information is expected across corporate announcements, issue/public-issue surfaces, and allotment/listing notices; the probe is testing actual record retrieval rather than relying on page reachability.
+
+---
+
+## 5. CURRENT PHASE STATUS
+
+### PHASE 1A — INSIDER TRADING ACQUISITION
+
+**Goal:** Reliable unattended NSE + BSE Regulation 7(2) acquisition, including BUY and SELL.
+
+Status: **IN PROGRESS**
+
+Tasks:
+
+- [ ] NSE official route.
+- [ ] NSE maintained-library/session route.
+- [ ] NSE direct archive/XBRL/CSV route.
+- [ ] NSE browser/session fallback if required.
+- [ ] BSE official route.
+- [ ] BSE maintained wrapper route.
+- [ ] BSE direct session/API fallback.
+- [ ] Verify actual records, not merely HTTP success.
+- [ ] Verify BUY records.
+- [ ] Verify SELL records.
+- [ ] Verify transaction date vs filing date.
+- [ ] Verify participant/security/quantity/value fields.
+- [ ] Verify execution exchange where disclosed.
+- [ ] Preserve source document/XBRL/reference.
+- [ ] Test repeatability.
+- [ ] Test rate limiting/transient failure.
+- [ ] Cross-check samples against official exchange material.
+
+**Acceptance criteria:** at least one reliable unattended method per exchange, with BUY and SELL verified and source traceability.
+
+---
+
+### PHASE 1B — RIGHTS + PREFERENTIAL ISSUES
+
+**Goal:** Add capital-raising/further-issue data without mixing it with insider trades.
+
+Tasks:
+
+#### NSE
+- [ ] Preferential issue proposed/in-principle.
+- [ ] Preferential post-allotment.
+- [ ] Allotment date.
+- [ ] Number of shares/securities allotted.
+- [ ] Issue price / amount where available.
+- [ ] Listing/trading approval fields where available.
+- [ ] Rights issue data.
+
+#### BSE
+- [ ] Preferential issue announcements.
+- [ ] Preferential allotment/listing notices.
+- [ ] Rights/public-issue data.
+- [ ] Allotment/listing/trading commencement information where obtainable.
+
+#### Common
+- [ ] Stable issue identity.
+- [ ] Separate lifecycle events.
+- [ ] Source references.
+- [ ] Historical retrieval test.
+- [ ] Avoid double-counting one issue across lifecycle disclosures.
+
+Status: **IN PROGRESS**
+
+---
+
+### PHASE 2 — BULK + BLOCK DEALS
+
+**Goal:** Reliable market-deal acquisition for both exchanges.
+
+#### NSE
+- [x] Bulk route demonstrated: 70 records on 2026-08-31.
+- [x] Block route demonstrated: 11 records on 2026-08-31.
+- [ ] Cross-check sample against official NSE output.
+- [ ] Historical retrieval.
+- [ ] Repeatability/rate-limit test.
+
+#### BSE
+- [ ] Bulk route.
+- [ ] Block route.
+- [ ] Official endpoint/page validation.
+- [ ] Wrapper comparison.
+- [ ] Historical retrieval.
+- [ ] Repeatability/rate-limit test.
+
+Status: **IN PROGRESS**
+
+---
+
+## 6. CURRENT EXPERIMENT / LOOP
+
+The project is intentionally following this loop:
+
+```text
+Inspect current code
+      ↓
+Run acquisition test on GitHub Actions
+      ↓
+Inspect actual logs + records
+      ↓
+Classify failure precisely
+      ↓
+Try a reasonable alternative method
+      ↓
+Run again
+      ↓
+Cross-check successful records against official source
+      ↓
+Mark method PASS / FALLBACK / REJECTED
+      ↓
+Continue until Phase 1A/1B/2 have defensible acquisition routes
+```
+
+The user explicitly requested that this loop continue without pausing for approval after every small test.
+
+### Current probe scope
+
+The hardened probe is intended to test:
+
+- NSE insider
+- NSE bulk
+- NSE block
+- NSE preferential
+- NSE rights
+- BSE insider
+- BSE bulk
+- BSE block
+- BSE preferential
+- BSE rights
+- official-page/API availability
+- wrapper/library alternatives
+- browser/session fallback where justified
+
+**Do not declare success until the generated artifact/logs have been inspected.**
+
+---
+
+## 7. DATA MODEL — TARGET
+
+### Filing
+A source disclosure/publication from NSE or BSE.
+
+Suggested attributes:
+
+- source exchange
+- filing/document ID
+- filing date/time
+- company/security
+- document URL/reference
+- raw/source object reference
+- retrieval timestamp
+- content hash
+- amendment/version information
+
+### Insider Transaction
+Underlying disclosed transaction.
+
+Suggested attributes:
+
+- company/security
+- insider/participant as disclosed
+- role/category
+- transaction/action type
+- BUY/SELL
+- transaction date
+- quantity
+- price/value
+- holding before/after where disclosed
+- execution exchange where disclosed
+- source filing ID
+- deterministic event ID
+
+### Market Deal
+Bulk/block deal disclosure.
+
+Suggested attributes:
+
+- exchange/source
+- date
+- symbol/security
+- client/participant
+- buy/sell
+- quantity
+- price/weighted average price
+- source ID/reference
+
+### Issue
+A Rights or Preferential issue.
+
+### Issue Event
+One lifecycle event associated with an issue:
+
+- announcement
+- board approval
+- shareholder approval
+- in-principle approval
+- allotment
+- listing approval
+- trading commencement
+
+This separation is mandatory to prevent double-counting.
+
+---
+
+## 8. DEDUPLICATION / VERSIONING
+
+Requirements:
+
+- [ ] Use source-specific stable IDs where available.
+- [ ] Use deterministic fallback IDs when source IDs are absent.
+- [ ] Include source/exchange in identity where appropriate.
+- [ ] Preserve filing/document ID.
+- [ ] Include event/transaction date and security/participant attributes as needed.
+- [ ] Detect amended/re-filed disclosures.
+- [ ] Do not silently overwrite historical source data.
+- [ ] Never deduplicate only on company + date + BUY/SELL.
+- [ ] Test cross-exchange duplicates.
+- [ ] Test repeated daily pulls.
+
+A useful future pattern is to keep both:
+
+`source_filing_id` → provenance
+
+`canonical_event_id` → deduplicated economic event
+
+while retaining all source observations.
+
+---
+
+## 9. STORAGE PLAN — DO AFTER ACQUISITION IS PROVEN
+
+Cloudflare R2 should hold the durable dataset.
+
+Preferred structure:
+
+```text
+R2 bucket
+├── raw/
+│   ├── nse/
+│   └── bse/
+├── canonical/
+│   ├── insider/
+│   ├── bulk/
+│   ├── block/
+│   ├── preferential/
+│   └── rights/
+├── manifests/
+└── audits/
+```
+
+Exact partitioning is still to be benchmarked.
+
+### Principles
+
+- Prefer Parquet/columnar storage for canonical datasets.
+- Compress data.
+- Partition by domain/source/date as useful.
+- Avoid storing duplicate full payloads unnecessarily.
+- Keep raw/source snapshots for auditability, but use retention/deduplication intelligently.
+- Store deterministic IDs and retrieval metadata.
+- Maintain a manifest for every expected acquisition day/domain.
+- Make failed/partial days detectable.
+- Use atomic/validated writes so a failed run cannot masquerade as a complete day.
+
+### Retention goal
+
+- Minimum: **one year**.
+- Prefer ability to retain longer if R2 footprint remains small.
+- GitHub repository must not become the historical data warehouse.
+
+---
+
+## 10. DAILY INGESTION ARCHITECTURE — TARGET
+
+```text
+                NSE official sources
+                         │
+                ┌────────┴────────┐
+                │ primary adapter │
+                └────────┬────────┘
+                         │ fallback(s)
+                         ▼
+                    validation
+                         │
+BSE official ───────► normalization
+                         │
+                         ├──────────────┐
+                         ▼              ▼
+                  raw/source       canonical
+                  provenance        Parquet
+                         │              │
+                         └──────┬───────┘
+                                ▼
+                       R2 + manifest/audit
+                                │
+                                ▼
+                         Streamlit read layer
+```
+
+GitHub Actions performs scheduled collection and validation. R2 holds durable data. Streamlit reads canonical data.
+
+---
+
+## 11. DAILY DATA-QUALITY CONTROLS
+
+Every production ingestion should verify:
+
+- expected date
+- source availability
+- HTTP/status outcome
+- actual record count
+- schema fingerprint/drift
+- critical-field completeness
+- duplicate count
+- BUY/SELL distribution
+- abnormal record-count change
+- source/document references
+- successful R2 write
+- manifest update
+- no silent replacement by stale cache
+
+A source failure must be represented as a failure/partial state, **not an empty successful dataset**.
+
+---
+
+## 12. HISTORICAL BACKFILL
+
+After daily acquisition is reliable:
+
+- [ ] Determine official historical coverage for each dataset.
+- [ ] Determine safest backfill cadence/rate.
+- [ ] Backfill in bounded date ranges.
+- [ ] Check record counts and gaps.
+- [ ] Deduplicate during ingestion, not only at the end.
+- [ ] Preserve source references.
+- [ ] Write to R2 incrementally.
+- [ ] Build reconciliation report.
+- [ ] Verify minimum one-year coverage.
+
+Do not assume every NSE/BSE dataset has identical historical availability or API behaviour.
+
+---
+
+## 13. STREAMLIT — TARGET APPLICATION
+
+The eventual single-site UI should include:
+
+### Insider Trading
+- company search
+- insider/participant search
+- BUY/SELL filters
+- date range
+- quantity/value
+- promoter/director/category where disclosed
+- rolling 7/30/90/365-day views
+- source-document drill-down
+
+### Bulk / Block Deals
+- company/security
+- participant/client
+- BUY/SELL
+- quantity/value
+- date
+- exchange
+
+### Rights / Preferential
+- company
+- issue type
+- issue lifecycle status
+- proposed/allotted/listed/trading commencement
+- issue price/quantity where available
+- source reference
+
+### Combined analytics
+Potential future correlations:
+
+- insider activity + bulk/block activity
+- insider activity + capital raising
+- repeated insider BUY/SELL patterns
+- unusual activity windows
+
+**Important:** Correlation is not causation. UI labels must reflect what the data actually establishes.
+
+### Operational status
+The application should eventually display:
+
+- last successful ingestion
+- source status
+- data coverage
+- missing days
+- current dataset version
+
+---
+
+## 14. FUTURE DATASETS — NOT CURRENT BLOCKERS
+
+Potential additions after the core system is reliable:
+
+- Bonus issues
+- Buybacks
+- Mergers/demergers
+- Other corporate actions
+- Delivery/institutional indicators
+
+Do not expand scope merely for completeness. Add datasets when source quality and analytical value justify them.
+
+---
+
+## 15. PHASED MASTER CHECKLIST
+
+### Phase 0 — Infrastructure
+- [x] GitHub repository created.
+- [x] Cloudflare R2 created.
+- [x] R2 S3-compatible credentials created.
+- [x] Account ID obtained.
+- [x] GitHub secrets configured.
+- [x] R2 connectivity verified.
+
+### Phase 1A — Insider
+- [ ] NSE reliable route.
+- [ ] BSE reliable route.
+- [ ] BUY verified.
+- [ ] SELL verified.
+- [ ] Source auditability verified.
+- [ ] Historical retrieval verified.
+- [ ] Failure/retry behaviour verified.
+
+### Phase 1B — Rights/Preferential
+- [ ] NSE preferential.
+- [ ] NSE rights.
+- [ ] BSE preferential.
+- [ ] BSE rights.
+- [ ] Lifecycle model verified.
+- [ ] Historical retrieval verified.
+
+### Phase 2 — Bulk/Block
+- [x] NSE bulk route demonstrated.
+- [x] NSE block route demonstrated.
+- [ ] NSE validation/historical test.
+- [ ] BSE bulk reliable route.
+- [ ] BSE block reliable route.
+- [ ] BSE validation/historical test.
+
+### Phase 3 — Acquisition hardening
+- [ ] Adapter interface.
+- [ ] Retry/backoff.
+- [ ] Rate-limit handling.
+- [ ] Source fallback selection.
+- [ ] Schema drift checks.
+- [ ] Data-quality gates.
+- [ ] Failure notifications.
+
+### Phase 4 — Storage
+- [ ] R2 layout finalized.
+- [ ] Canonical schema finalized.
+- [ ] Parquet writer.
+- [ ] Compression/partition benchmark.
+- [ ] Dedup/versioning.
+- [ ] Manifest.
+- [ ] Atomic writes.
+- [ ] Read layer.
+
+### Phase 5 — Historical data
+- [ ] One-year backfill.
+- [ ] Gap detection.
+- [ ] Reconciliation.
+- [ ] Storage-size benchmark.
+
+### Phase 6 — Streamlit
+- [ ] Data access layer.
+- [ ] Insider dashboard.
+- [ ] Bulk/block dashboard.
+- [ ] Rights/preferential dashboard.
+- [ ] Combined analytics.
+- [ ] Search/filtering.
+- [ ] Source drill-down.
+- [ ] Data-quality page.
+- [ ] Mobile layout.
+
+### Phase 7 — Production
+- [ ] Scheduled daily ingestion.
+- [ ] Monitoring.
+- [ ] Failure alerts.
+- [ ] Automated tests.
+- [ ] Deployment verification.
+- [ ] Documentation.
+
+---
+
+## 16. DEFINITION OF DONE
+
+The project is production-ready only when all of the following are true:
+
+1. NSE and BSE data can be acquired unattended using documented primary/fallback methods.
+2. Insider BUY and SELL records are correctly captured.
+3. Bulk and block deals are captured separately and reliably.
+4. Rights and Preferential issue data are captured separately from insider transactions.
+5. Issue lifecycle events do not cause double-counting.
+6. At least one year of history is stored outside GitHub in compact R2 objects.
+7. Duplicate and amended filings are handled deterministically.
+8. Missing/failed acquisition days are detectable and recoverable.
+9. Streamlit reads canonical R2 data rather than repository-sized datasets.
+10. Important displayed records can be traced back to NSE/BSE source material.
+11. Daily acquisition has retry/rate-limit/failure handling.
+12. Data-quality checks prevent silent empty or incomplete datasets from being marked successful.
+13. Automated tests remain green after deployment.
+
+---
+
+## 17. CHANGE LOG / DECISION HISTORY
 
 ### 2026-09-01
-- Established this document as the project-wide task tracker and framework.
-- Added Phase 1A insider acquisition validation.
-- Added Phase 1B Rights + Preferential issue acquisition validation.
-- Added Phase 2 Bulk + Block deal validation.
-- Documented Cloudflare R2/GitHub architecture and one-year storage objective.
-- Documented filing/transaction/issue-event separation and deduplication requirements.
+
+- Created `NSE-BSE-Insider-Tracker` project and began acquisition-first architecture.
+- Created Cloudflare R2 storage and GitHub Actions credentials.
+- Established GitHub Actions as the acquisition execution layer and R2 as durable storage.
+- First acquisition probe found direct NSE API HTTP 403 from GitHub runner.
+- First probe successfully retrieved **70 NSE bulk** and **11 NSE block** records for 2026-08-31 using an NSE server/library route.
+- First BSE probe reached official page with HTTP 200 but existing wrappers did not yet yield reliable tables.
+- Expanded scope to include Rights and Preferential issues after identifying their official NSE/BSE availability.
+- Decided to treat Filing, Insider Transaction, Market Deal, Issue, and Issue Event as separate data-model concepts.
+- Decided not to move to storage/backfill until source acquisition reliability is established.
+- User explicitly authorized the AI to continue the Phase 1A + 1B + Phase 2 test/verify/fix/retest loop without requesting incremental approval.
+- This file was upgraded from a simple project plan into the **persistent AI handover/memory document** so another AI can continue the project without relying on chat history.
+
+---
+
+## 18. HANDOVER SNAPSHOT
+
+**If taking over today, the immediate job is:**
+
+> Inspect the latest GitHub Actions acquisition probe for 2026-08-31, inspect the actual JSON/log output, classify each NSE/BSE method as PASS / FALLBACK / REJECTED, then continue testing alternatives for any unresolved dataset. Do not move to R2 production storage until Phase 1A/1B/2 acquisition routes are defensible.
+
+**Current unresolved core question:**
+
+> Can GitHub Actions reliably acquire NSE + BSE insider, bulk, block, Rights, and Preferential data every day despite exchange anti-bot/rate-limit behaviour?
+
+Answer this with experiments and source verification, not assumptions.
