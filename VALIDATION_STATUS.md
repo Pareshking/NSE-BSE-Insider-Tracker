@@ -17,8 +17,8 @@ NSE and BSE acquisition engines are separate. NSE categories are isolated where 
 - `scripts/nse_insider.py` — NSE Insider Trading only; official corporate-filings PIT endpoint; independent date-window testing.
 - `scripts/nse_bulk.py` — NSE Bulk Deals only.
 - `scripts/nse_block.py` — NSE Block Deals only.
-- `scripts/nse_rights.py` — NSE Rights Issue source/schema probe; independent date-window evidence.
-- `scripts/nse_preferential.py` — NSE Preferential Issue source/schema probe; independent date-window evidence.
+- `scripts/nse_rights.py` — NSE Rights Issue extraction/validation using the official JS-rendered RI page.
+- `scripts/nse_preferential.py` — NSE Preferential Issue extraction/validation using the official JS-rendered PREF page.
 - `scripts/nse_acquisition.py` — shared NSE helper/legacy engine retained for compatibility; not the category certification path.
 - `scripts/bse_acquisition.py` — BSE-specific acquisition engine.
 - `scripts/acquisition_probe.py` — orchestration/legacy evidence only; it must not define the correctness of an exchange/category.
@@ -35,25 +35,29 @@ Page count is never a completeness criterion. Pagination is only a transport mec
 
 ### Insider Trading — IN PROGRESS / BLOCKED until fresh isolated run
 
-Previous probe returned HTTP 200 with a header-only CSV and zero parsed rows. That was not evidence that NSE had no insider records. The official NSE page exposes date windows and archive data. The isolated `scripts/nse_insider.py` establishes an NSE session and queries the native response for 1-day, 5-day, 30-day and 1-year windows, recording status, response mode, columns and counts.
+Previous isolated probe returned a real 1-year NSE dataset (9,347 records) but short windows returned zero. That discrepancy means date-window semantics are not yet certified. The official NSE page exposes date windows and archive data. The isolated `scripts/nse_insider.py` records response mode, native columns and counts for 1-day, 5-day, 30-day and 1-year windows.
 
 PASS requires a real non-empty dataset or documented proof of zero records, correct date semantics, complete requested window, native columns, and duplicate behavior.
 
-### Bulk Deals — IN PROGRESS
+### Bulk Deals — GREEN FOR ACQUISITION / CERTIFICATION PENDING
 
-Previously observed: 70 unique records for 31-Aug-2026 through the NSE package. It is isolated in `scripts/nse_bulk.py`. Fresh real-output and date-completeness verification is required before PASS.
+The isolated NSE engine produced **70 real records for 31-Aug-2026** in the previous validation run. Native NSE fields were observed, including `BD_DT_DATE`, `BD_SYMBOL`, `BD_CLIENT_NAME`, `BD_BUY_SELL`, `BD_QTY_TRD`, and `BD_TP_WATP`. Acquisition is therefore green, but historical date-window completeness and final dedup certification remain open.
 
-### Block Deals — IN PROGRESS
+### Block Deals — GREEN FOR ACQUISITION / CERTIFICATION PENDING
 
-Previously observed: 11 unique records for 31-Aug-2026 through the NSE package. It is isolated in `scripts/nse_block.py`. Fresh real-output and date-completeness verification is required before PASS.
+The isolated NSE engine produced **11 real records for 31-Aug-2026** in the previous validation run. Native NSE fields were observed. Acquisition is therefore green, but historical date-window completeness and final dedup certification remain open.
 
-### Rights Issues — NOT YET VALIDATED
+### Rights Issues — EXTRACTION IMPLEMENTED / RETEST REQUIRED
 
-NSE's native Rights Issue page is `corporate-filings-RI`. The page exposes company/ISIN filters, date filters and lifecycle fields including Record Date, Rights Ratio, Offer Price, issue opening/closing, entitlement dates, allotment, listing and trading approval dates. citeturn0search11 The new `scripts/nse_rights.py` is deliberately a source/schema/date-window probe first; it must be tested against real NSE output before extraction logic is promoted to production.
+Official NSE source: `https://www.nseindia.com/companies-listing/corporate-filings-RI`.
 
-### Preferential Issues — NOT YET VALIDATED
+The native page is JavaScript-rendered and exposes Company Details plus a lifecycle table containing Record Date, Rights Ratio, Offer Price, Issue Opening/Closing, Entitlement Opening/Closing, Date of Allotment, Number of Shares Allotted, Amount Raised, Number of Shares Listed, Date of Listing, Date of Trading Approval, Revised Flag and Date of Submission. The previous requests-only probe captured the page shell instead of the populated records. The implementation now uses Selenium to render the official page and extracts the actual DOM tables for 1D/5D/30D/1Y windows. This is **not certified until a fresh run proves real rows and date coverage**.
 
-NSE's native Preferential Issue page is `corporate-filings-PREF`. The page exposes company/ISIN filters and lifecycle fields including Board Resolution Date, allottee category, offer price, allotment date, shares allotted, amount raised, listing/trading approval and submission dates. citeturn0search0turn0search3 The new `scripts/nse_preferential.py` is deliberately a source/schema/date-window probe first; it must be tested against real NSE output before extraction logic is promoted to production.
+### Preferential Issues — EXTRACTION IMPLEMENTED / RETEST REQUIRED
+
+Official NSE source: `https://www.nseindia.com/companies-listing/corporate-filings-PREF`.
+
+The native page is JavaScript-rendered and exposes Company Details and lifecycle sections containing Symbol, Company Name, ISIN, CIN, Board Resolution Date, Allottee Category, Consideration, Offer Price, Date of Allotment, Total Number of Shares Allotted, Amount Raised, Date of Listing, Date of Trading Approval, Date of Submission and lock-in details. The previous requests-only probe captured the page shell instead of the populated records. The implementation now uses Selenium to render the official page and extracts the actual DOM tables for 1D/5D/30D/1Y windows. This is **not certified until a fresh run proves real rows and date coverage**.
 
 ## BSE gates
 
@@ -83,4 +87,4 @@ A green GitHub workflow is not data-quality certification. Actual records, nativ
 
 ## Current decision
 
-NSE remains the active exchange. The complete NSE gate list now explicitly includes Insider, Bulk, Block, Rights and Preferential Issues. Do not start BSE until every NSE category is independently certified. Do not build production R2 data or freeze the production schema before explicit authorization.
+NSE remains the active exchange. Bulk and Block acquisition are green; Insider remains blocked on date semantics; Rights and Preferential have corrected browser-based extraction code awaiting fresh real-output validation. Do not start BSE until every NSE category is independently certified. Do not build production R2 data or freeze the production schema before explicit authorization.
