@@ -1,0 +1,19 @@
+[
+  {
+    "BD_DT_DATE": "31-AUG-2026",
+    "BD_DT_ORDER": "2026-08-30T18:30:00.000Z",
+    "BD_SYMBOL": "NORTHARC",
+    "BD_SCRIP_NAME": "Northern Arc Capital Ltd",
+    "BD_CLIENT_NAME": "ACCION AFRICA-ASIA INVESTMENT COMPANY",
+    "BD_BUY_SELL": "SELL",
+    "BD_QTY_TRD": 5632137,
+    "BD_TP_WATP": 278,
+    "BD_REMARKS": null,
+    "company_norm": "",
+    "symbol_norm": "",
+    "person_norm": "",
+    "side_norm": "",
+    "quantity_num": null,
+    "price_num": null
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "BD_DT_DATE": "31-AUG-2026",
+    "BD_DT_ORDER": "2026-08-30T18:30:00.000Z",
+    "BD_SYMBOL": "AASTHA",
+    "BD_SCRIP_NAME": "Aastha Spintex Limited",
+    "BD_CLIENT_NAME": "HRTI PRIVATE LIMITED",
+    "BD_BUY_SELL": "SELL",
+    "BD_QTY_TRD": 195318,
+    "BD_TP_WATP": 82.79,
+    "BD_REMARKS": "-",
+    "company_norm": "",
+    "symbol_norm": "",
+    "person_norm": "",
+    "side_norm": "",
+    "quantity_num": null,
+    "price_num": null
+  }
+]
