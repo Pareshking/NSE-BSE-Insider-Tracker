@@ -1,6 +1,8 @@
 name: NSE Validation Only
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
