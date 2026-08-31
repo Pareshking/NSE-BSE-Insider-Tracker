@@ -20,7 +20,7 @@ permissions:
 jobs:
   validate-nse:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,11 +47,13 @@ jobs:
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_block.py
       - name: NSE Rights
+        if: always()
         env:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_rights.py
       - name: NSE Preferential
+        if: always()
         env:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
@@ -61,5 +63,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nse-only-validation
-          path: artifacts/nse_validation
+          path: |
+            artifacts/nse_insider
+            artifacts/nse_bulk
+            artifacts/nse_block
+            artifacts/nse_validation
           retention-days: 14
