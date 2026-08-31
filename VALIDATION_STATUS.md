@@ -32,6 +32,8 @@ NSE and BSE acquisition engines are separate. NSE categories are isolated where 
 
 `/.github/workflows/nse-validation.yml` is the dedicated **NSE-only** validation workflow. It must not acquire BSE data.
 
+`/.github/workflows/bse-validation.yml` is the dedicated **BSE-only** validation workflow. It must not acquire NSE data.
+
 `/.github/workflows/data-validation.yml` is the older **combined NSE+BSE diagnostic workflow**. It is not an exchange certification workflow and must not be used for NSE or BSE certification.
 
 **Never repeat the mistake of using the combined workflow as an NSE/BSE certification run.** New validation work must use the appropriate exchange-specific workflow.
@@ -68,7 +70,7 @@ Official NSE source: `https://www.nseindia.com/companies-listing/corporate-filin
 
 The page is JavaScript-rendered and exposes lifecycle information such as Record Date, Rights Ratio, Offer Price, Issue Opening/Closing, Entitlement dates, Allotment, Shares Allotted, Amount Raised, Listing, Trading Approval and Submission Date.
 
-The prior requests-only approach captured the page shell. Browser-rendered extraction was implemented, but the dedicated validation artifact showed no usable Rights tables. **Keep as pending; do not mark green merely because code exists.**
+The prior requests-only approach captured the page shell. Browser-rendered extraction was implemented, but the dedicated validation artifact showed no usable Rights tables.
 
 **TODO:** identify the real underlying data/API or reliable browser extraction, validate 90-day output, native fields and date semantics.
 
@@ -84,25 +86,53 @@ The dedicated NSE run failed at Preferential acquisition and produced no certifi
 
 ## BSE status
 
-BSE is now allowed to proceed independently; it must not wait for unresolved NSE items. Existing BSE diagnostic evidence showed:
+BSE proceeds independently and does not wait for unresolved NSE items.
+
+### BSE baseline acquisition evidence
+
+Previous BSE diagnostic evidence showed:
 
 - Insider: 154 raw / 146 unique
 - Bulk: 73
 - Block: 19 raw / 17 unique
-- Rights: 50
-- Preferential: 125
+- Rights: 50 index records
+- Preferential: 125 index records
 
 These are acquisition evidence, not historical certification.
 
-### BSE 90-day test
+### BSE Validation Only #3 — 90-day test result
 
-A fresh 90-day diagnostic run was started, but it used the legacy combined `data-validation.yml` workflow. **Do not use that run as exchange certification.**
+Run: **BSE Validation Only #3** (`c792abf`, run `33448485907`), manually triggered on `main`, completed **Success** in 1m31s with one BSE-only evidence artifact.
 
-**TODO:** run BSE 90-day testing through a BSE-only workflow for Insider, Bulk and Block; inspect actual distinct dates, row counts, native columns, completeness and dedup. Rights/Preferential remain pending-detail validation.
+The run produced genuine BSE evidence, but the returned transaction data was overwhelmingly the 31-Aug-2026 capture rather than a demonstrably complete 90-day history. Therefore the run is accepted as **BSE acquisition validation**, but **not 90-day historical certification**.
 
-### BSE data semantics
+Observed results:
 
-BSE Insider demonstrated promoter-group/category and acquisition information, including acquisition date and broadcast date. Bulk/Block records contain native B/S deal direction. Preserve these source semantics rather than prematurely collapsing them.
+- Insider: real records; promoter-group acquisition is present in source semantics. Example evidence includes `Promoter Group` + `Acquisition`, transaction date 26/08/2026 and broadcast date 31/08/2026.
+- Bulk: 73 real rows; native fields include deal date, security code/name, client name, deal type, quantity and price; BUY/SELL direction is present.
+- Block: 19 raw rows; real BSE block records captured; intra-source deduplication remains required.
+- Rights: 50 index/list records and View Detail links; underlying lifecycle/detail extraction remains pending.
+- Preferential: 125 index/list records and View Detail links; underlying lifecycle/detail extraction remains pending.
+
+**TODO:** obtain genuine BSE 90-day historical transaction coverage for Insider/Bulk/Block; inspect distinct dates and completeness; normalize Insider fields; perform intra-BSE dedup; extract Rights/Preferential detail pages.
+
+### BSE Insider normalization defect
+
+The raw BSE Insider source contains meaningful promoter/category and acquisition fields, but the current normalized representation does not reliably map positional BSE columns into `event_date`, company, person and related normalized fields.
+
+**TODO:** map BSE native columns explicitly and test against real promoter acquisition records before certification.
+
+### BSE Bulk / Block
+
+Bulk acquisition is working. Block acquisition is working, with raw-vs-unique counts demonstrating that deduplication matters.
+
+**TODO:** prove historical date-range behavior, source completeness and deterministic intra-BSE dedup keys.
+
+### BSE Rights / Preferential
+
+The index/list layer is working and exposes companies plus View Detail links. The detail/lifecycle layer is not yet certified.
+
+**TODO:** follow View Detail links, extract native lifecycle fields, determine date semantics and validate historical coverage.
 
 ## Promoter transaction rule
 
@@ -125,7 +155,7 @@ Do not stop the overall pipeline because one category fails. Keep verified/worki
 ## Current decision
 
 - NSE: Insider/Bulk/Block acquisition working but not fully certified; Rights pending; Preferential pending/failing.
-- BSE: acquisition baseline available; 90-day historical validation pending; Rights/Preferential detail validation pending.
+- BSE: Insider/Bulk/Block acquisition working; BSE #3 confirmed real source acquisition but **90-day historical certification remains pending**; Rights/Preferential index acquisition works but detail extraction remains pending.
 - Combined workflow: legacy diagnostic only; **never use it as the certification path again**.
 - Cross-exchange matching: blocked until independent exchange certification.
 - R2 backfill: blocked.
