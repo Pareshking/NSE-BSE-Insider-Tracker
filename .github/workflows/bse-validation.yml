@@ -1,0 +1,41 @@
+name: BSE Validation Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: Historical window in days
+        required: false
+        default: '90'
+      target_date:
+        description: End date YYYY-MM-DD (blank = today)
+        required: false
+        default: ''
+  push:
+    paths:
+      - '.github/workflows/bse-validation.yml'
+      - 'scripts/bse_*.py'
+      - 'scripts/bse*'
+      - 'requirements.txt'
+
+jobs:
+  validate-bse:
+    runs-on: ubuntu-latest
+    env:
+      LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
+      TARGET_DATE: ${{ inputs.target_date || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Run BSE-only acquisition
+        run: python scripts/bse_raw_capture_v2.py
+      - name: Upload BSE evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bse-only-validation
+          path: artifacts/
+          if-no-files-found: warn
