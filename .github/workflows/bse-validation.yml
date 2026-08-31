@@ -69,3 +69,6 @@ jobs:
           name: bse-validation-report-v2
           path: artifacts/bse_validation
           if-no-files-found: warn
+      - name: Validation contract marker
+        if: always()
+        run: echo "BSE first-party API validation run for current main commit"
