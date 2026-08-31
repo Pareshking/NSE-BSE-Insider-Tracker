@@ -1,7 +1,7 @@
 {
   "target_date": "2026-08-31",
   "phase": "1+2 acquisition probe",
-  "generated_at_utc": "2026-08-31T19:46:41.967160",
+  "generated_at_utc": "2026-08-31T19:51:36.423493",
   "results": [
     {
       "source": "NSE",
@@ -15,7 +15,7 @@
       "dataset": "insider_trading",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 0.446,
+      "elapsed_s": 0.417,
       "bytes": 819,
       "content_type": "text/csv",
       "url": "https://www.nseindia.com/api/corporates-pit?index=equities&from_date=31-08-2026&to_date=31-08-2026&csv=true",
@@ -26,8 +26,8 @@
       "dataset": "bulk_deals",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 0.322,
-      "bytes": 22083,
+      "elapsed_s": 1.106,
+      "bytes": 22082,
       "content_type": "text/html",
       "url": "https://www.nseindia.com/api/historical/bulk-deals?from=31-08-2026&to=31-08-2026",
       "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
@@ -37,8 +37,8 @@
       "dataset": "block_deals",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 0.34,
-      "bytes": 22083,
+      "elapsed_s": 0.525,
+      "bytes": 22082,
       "content_type": "text/html",
       "url": "https://www.nseindia.com/api/historical/block-deals?from=31-08-2026&to=31-08-2026",
       "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
@@ -49,7 +49,7 @@
       "method": "nse_package_server",
       "status": "success",
       "count": 70,
-      "elapsed_s": 0.056,
+      "elapsed_s": 0.285,
       "sample_keys": [
         "BD_BUY_SELL",
         "BD_CLIENT_NAME",
@@ -68,7 +68,7 @@
       "method": "nse_package_server",
       "status": "success",
       "count": 11,
-      "elapsed_s": 0.507,
+      "elapsed_s": 0.404,
       "sample_keys": [
         "BD_BUY_SELL",
         "BD_CLIENT_NAME",
@@ -86,7 +86,7 @@
       "dataset": "insider_trading",
       "method": "selenium_browser_fetch",
       "status": "error",
-      "error": "TimeoutException: Message: script timeout\n  (Session info: chrome=151.0.7922.173)\nStacktrace:\n#0 0x5645ceab736a <unknown>\n#1 0x5645ce42ad00 <unknown>\n#2 0x5645ce4ca83e <unknown>\n#3 0x5645ce4c90c3 <unknown>\n#4 0x5645ce473c92 <unknown>\n#5 0x5645ce474b11 <unknown>\n#6 0x5645cea7c8d0 <unknown>\n#7 0x5645cea7af3a <unknown>\n#8 0x5645cea659b5 <unknown>\n#9 0x5645cea7bc0a <unknown>\n#10 0x5645cea4d740 <unknown>\n#11 0x5645ceaa29a8 <unknown>\n#12 0x5645ceaa2b45 <unknown>\n#13 0x5645ceab5f1e <unknown>\n#14 0x7f88ce69cb84 <unknown>\n#15 0x7f88ce729d6c <unknown>\n"
+      "error": "TimeoutException: Message: script timeout\n  (Session info: chrome=151.0.7922.173)\nStacktrace:\n#0 0x55928100b36a <unknown>\n#1 0x55928097ed00 <unknown>\n#2 0x559280a1e83e <unknown>\n#3 0x559280a1d0c3 <unknown>\n#4 0x5592809c7c92 <unknown>\n#5 0x5592809c8b11 <unknown>\n#6 0x559280fd08d0 <unknown>\n#7 0x559280fcef3a <unknown>\n#8 0x559280fb99b5 <unknown>\n#9 0x559280fcfc0a <unknown>\n#10 0x559280fa1740 <unknown>\n#11 0x559280ff69a8 <unknown>\n#12 0x559280ff6b45 <unknown>\n#13 0x559281009f1e <unknown>\n#14 0x7f379729cb84 <unknown>\n#15 0x7f3797329d6c <unknown>\n"
     },
     {
       "source": "NSE",
@@ -140,7 +140,7 @@
       ],
       "contains_download_csv": true,
       "contains_xbrl": true,
-      "elapsed_s": 6.718,
+      "elapsed_s": 7.499,
       "current_url": "https://www.nseindia.com/companies-listing/corporate-filings-PREF"
     },
     {
@@ -192,7 +192,7 @@
       ],
       "contains_download_csv": true,
       "contains_xbrl": true,
-      "elapsed_s": 6.359,
+      "elapsed_s": 6.783,
       "current_url": "https://www.nseindia.com/companies-listing/corporate-filings-RI"
     },
     {
@@ -281,8 +281,8 @@
       "contains_right_issue": true,
       "contains_preferential": false,
       "contains_allotment": false,
-      "bytes": 39613,
-      "elapsed_s": 0.579
+      "bytes": 39612,
+      "elapsed_s": 0.348
     },
     {
       "source": "BSE",
@@ -290,7 +290,7 @@
       "method": "BseIndiaApi",
       "status": "success",
       "tcs_code": "532540",
-      "elapsed_s": 0.341
+      "elapsed_s": 0.267
     }
   ]
 }
