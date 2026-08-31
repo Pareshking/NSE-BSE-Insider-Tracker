@@ -17,6 +17,7 @@ on:
 jobs:
   bse-only:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
       TARGET_DATE: ${{ inputs.target_date || '' }}
@@ -27,12 +28,21 @@ jobs:
       - run: pip install -r requirements.txt
       - name: BSE historical window
         run: python scripts/bse_90d_validation.py
-      - name: BSE acquisition
+      - name: BSE raw acquisition
         run: python scripts/bse_raw_capture_v2.py
-      - name: Upload BSE evidence
+      - name: BSE first-party API contracts
+        if: always()
+        run: python scripts/bse_first_party_api_capture.py
+      - name: BSE API probe
+        if: always()
+        run: python scripts/bse_api_probe.py
+      - name: BSE evidence validation
+        if: always()
+        run: python scripts/bse_validate.py
+      - name: Upload BSE complete evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bse-only-90d
+          name: bse-only-90d-complete
           path: artifacts/
           if-no-files-found: warn
