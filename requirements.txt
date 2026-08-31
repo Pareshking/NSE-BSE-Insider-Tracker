@@ -1,4 +1,6 @@
 boto3>=1.35,<2
 requests>=2.32,<3
 pandas>=2.2,<3
-bseindia>=0.0.5,<1
+bseindia>=1.0,<2
+bse>=3.3,<4
+nse[server]>=3.2,<4
