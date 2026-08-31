@@ -1,120 +1,14 @@
+"""Orchestrator only: NSE and BSE acquisition engines are intentionally separate."""
 from __future__ import annotations
-import json, os, time
-from datetime import date, datetime, timedelta
-from io import StringIO
-from typing import Any
-import pandas as pd, requests
-TARGET_DATE=os.getenv('TARGET_DATE','2026-08-31'); D=date.fromisoformat(TARGET_DATE); DD=D.strftime('%d-%m-%Y'); YMD=D.strftime('%Y%m%d')
-UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139.0 Safari/537.36'
-def result(source,dataset,method,**kw): return {'source':source,'dataset':dataset,'method':method,**kw}
-def keys(x): return sorted(x[0].keys()) if isinstance(x,list) and x and isinstance(x[0],dict) else []
-def get(s,url,**kw):
-    t=time.perf_counter(); r=s.get(url,timeout=30,**kw); return r,round(time.perf_counter()-t,3)
-def parse_nse_csv(text):
-    try:
-        df=pd.read_csv(StringIO(text),dtype=str,keep_default_na=False)
-        df.columns=[str(c).strip() for c in df.columns]
-        if len(df)==0:return df, None
-        return df, None
-    except Exception as e:return pd.DataFrame(),str(e)
-def nse_insider_probe(s):
-    out=[]
-    # NSE exposes 1D/1W/1M/3M/6M/1Y/Custom and an Archive Data surface.
-    # Test several windows because a transaction date is not necessarily its broadcast/disclosure date.
-    windows=[('target_day',D,D),('five_days',D-timedelta(days=5),D),('thirty_days',D-timedelta(days=30),D),('one_year',D-timedelta(days=365),D)]
-    for label,fr,to in windows:
-        url=f'https://www.nseindia.com/api/corporates-pit?index=equities&from_date={fr:%d-%m-%Y}&to_date={to:%d-%m-%Y}&csv=true'
-        try:
-            r,elapsed=get(s,url); rec=result('NSE','insider_trading',f'direct_csv_{label}',status_code=r.status_code,elapsed_s=elapsed,bytes=len(r.content),content_type=r.headers.get('content-type',''))
-            if r.ok and 'text/csv' in r.headers.get('content-type','').lower():
-                df,err=parse_nse_csv(r.text); rec.update(raw_count=len(df),columns=list(df.columns),parse_error=err)
-                if len(df):
-                    rec['sample']=df.head(3).to_dict('records')
-                    # Keep both transaction/acquisition and broadcast date columns visible for later validation.
-                    date_cols=[c for c in df.columns if 'DATE' in c.upper() or 'BROADCAST' in c.upper()]
-                    rec['date_columns']=date_cols
-                    for c in date_cols:
-                        vals=sorted(set(df[c].astype(str).str.strip()))
-                        rec[f'dates_{c}']=vals[:20]
-            else: rec['body_prefix']=r.text[:300]
-            out.append(rec)
-        except Exception as e: out.append(result('NSE','insider_trading',f'direct_csv_{label}',status='error',error=str(e)))
-    return out
-def nse_direct():
-    s=requests.Session(); s.headers.update({'User-Agent':UA,'Accept':'text/csv,application/json,text/plain,*/*','Accept-Language':'en-US,en;q=0.9','Referer':'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading','Connection':'keep-alive'})
-    out=[]
-    try: r,_=get(s,'https://www.nseindia.com/'); out.append(result('NSE','homepage','direct',status_code=r.status_code))
-    except Exception as e: return [result('NSE','homepage','direct',status='error',error=str(e))]
-    out += nse_insider_probe(s)
-    eps={'bulk_deals':f'https://www.nseindia.com/api/historical/bulk-deals?from={DD}&to={DD}','block_deals':f'https://www.nseindia.com/api/historical/block-deals?from={DD}&to={DD}'}
-    for name,url in eps.items():
-        try:
-            r,elapsed=get(s,url); rec=result('NSE',name,'direct_api',status_code=r.status_code,elapsed_s=elapsed,bytes=len(r.content),content_type=r.headers.get('content-type',''))
-            if r.ok: rec['body_prefix']=r.text[:250]; rec['payload_keys']=keys(r.json()) if 'json' in r.headers.get('content-type','').lower() else []
-            out.append(rec)
-        except Exception as e: out.append(result('NSE',name,'direct_api',status='error',error=str(e)))
-    return out
-def nse_package():
-    out=[]
-    try:
-        from nse import NSE
-        with NSE(download_folder='artifacts/nse',server=True,timeout=30) as nse:
-            for kind in ('bulk_deals','block_deals'):
-                try:
-                    rows=nse.bulkdeals(kind,datetime.combine(D,datetime.min.time()),datetime.combine(D,datetime.min.time())); out.append(result('NSE',kind,'nse_package_server',status='success',count=len(rows),sample_keys=keys(rows)))
-                except Exception as e: out.append(result('NSE',kind,'nse_package_server',status='error',error=str(e)))
-    except Exception as e: out.append(result('NSE','library_import','nse_package_server',status='error',error=str(e)))
-    return out
-def bse_session():
-    s=requests.Session(); s.headers.update({'User-Agent':UA,'Referer':'https://www.bseindia.com/','Accept':'application/json, text/plain, */*','Accept-Language':'en-US,en;q=0.9'}); s.get('https://www.bseindia.com/',timeout=20); return s
-def bse_api(term):
-    s=bse_session(); url='https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w'; params={'pageno':'1','strCat':'-1','strPrevDate':YMD,'strScrip':'','strSearch':term,'strToDate':YMD,'strType':'C'}
-    r,elapsed=get(s,url,params=params); rec=result('BSE','announcements_'+term.lower().replace(' ','_'),'official_api',status_code=r.status_code,elapsed_s=elapsed,bytes=len(r.content),url=r.url)
-    if r.ok:
-        try:
-            p=r.json(); rows=p.get('Table',[]) if isinstance(p,dict) else []; rec.update(count=len(rows),sample_keys=keys(rows),sample=rows[:3])
-        except Exception as e: rec['parse_error']=str(e)
-    return rec
-def bse_bulk_block_api():
-    out=[]
-    for dataset in ('bulk_deals','block_deals'):
-        try:
-            s=bse_session(); params={'pageno':'1','strCat':'-1','strPrevDate':YMD,'strScrip':'','strSearch':dataset.replace('_',' '),'strToDate':YMD,'strType':'C'}; r,elapsed=get(s,'https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w',params=params); rec=result('BSE',dataset,'official_api_probe',status_code=r.status_code,elapsed_s=elapsed,bytes=len(r.content),url=r.url)
-            if r.ok:
-                try: p=r.json(); rows=p.get('Table',[]) if isinstance(p,dict) else []; rec.update(count=len(rows),sample_keys=keys(rows))
-                except Exception as e: rec['parse_error']=str(e)
-            out.append(rec)
-        except Exception as e: out.append(result('BSE',dataset,'official_api_probe',status='error',error=str(e)))
-    return out
-def bse_html():
-    out=[]
-    for dataset,url in {'bulk_deals':'https://www.bseindia.com/markets/equity/EQReports/bulk_deals.aspx','block_deals':'https://www.bseindia.com/markets/equity/EQReports/block_deals.aspx'}.items():
-        try:
-            s=bse_session(); r,elapsed=get(s,url); tables=pd.read_html(StringIO(r.text)) if r.ok else []; out.append(result('BSE',dataset,'official_html',status_code=r.status_code,table_count=len(tables),row_counts=[len(x) for x in tables],elapsed_s=elapsed,body_prefix=r.text[:150]))
-        except Exception as e: out.append(result('BSE',dataset,'official_html',status='error',error=str(e)))
-    return out
-def bse_browser():
-    out=[]
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options
-        o=Options(); [o.add_argument(x) for x in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu',f'--user-agent={UA}')]
-        d=webdriver.Chrome(options=o)
-        pages={'bulk_deals':'https://www.bseindia.com/markets/equity/EQReports/bulk_deals.aspx','block_deals':'https://www.bseindia.com/markets/equity/EQReports/block_deals.aspx','insider_trading':'https://www.bseindia.com/corporates/insider_trading_new?expandable=2','rights_issue':'https://www.bseindia.com/markets/publicissues/furtherissuesummary_ri','preferential_issue':'https://www.bseindia.com/markets/publicissues/furtherissuesummary_pref','corporate_announcements':'https://www.bseindia.com/corporates/ann.html'}
-        target_tokens={TARGET_DATE,D.strftime('%d/%m/%Y'),D.strftime('%d-%m-%Y'),D.strftime('%d %b %Y'),D.strftime('%d %b %y'),D.strftime('%d/%b/%Y'),D.strftime('%d-%b-%Y')}
-        for dataset,url in pages.items():
-            try:
-                d.get(url); time.sleep(4); body=d.find_element('tag name','body').text
-                tables=d.execute_script("return Array.from(document.querySelectorAll('table')).map(t=>Array.from(t.querySelectorAll('tbody tr')).map(r=>Array.from(r.cells).map(c=>c.innerText.trim())).filter(x=>x.length)).filter(x=>x.length)")
-                links=d.execute_script("return Array.from(document.querySelectorAll('a')).map(a=>({text:(a.innerText||'').trim(),href:a.href})).filter(x=>x.text||x.href).slice(0,80)")
-                out.append(result('BSE',dataset,'selenium_render',status='success',row_count=sum(map(len,tables)),table_count=len(tables),sample=tables[:3],title=d.title,current_url=d.current_url,body_chars=len(body),contains_target_date=any(token in body for token in target_tokens),target_tokens=sorted(target_tokens),links=links[:30]))
-            except Exception as e: out.append(result('BSE',dataset,'selenium_render',status='error',error=str(e)))
-        d.quit()
-    except Exception as e: out.append(result('BSE','browser_import','selenium_render',status='error',error=str(e)))
-    return out
+import json,os
+from datetime import datetime
+from nse_acquisition import acquire as acquire_nse
+from bse_acquisition import acquire as acquire_bse
+
 def main():
-    os.makedirs('artifacts',exist_ok=True); os.makedirs('artifacts/nse',exist_ok=True); os.makedirs('artifacts/bse',exist_ok=True)
-    results=nse_direct()+nse_package()+bse_html()+bse_bulk_block_api()+[bse_api(x) for x in ('Insider','Preferential','Rights Issue','Allotment')]+bse_browser()
-    report={'target_date':TARGET_DATE,'phase':'NSE+BSE acquisition and date-validation probe','generated_at_utc':datetime.utcnow().isoformat(),'results':results}
-    open('artifacts/acquisition_probe.json','w',encoding='utf-8').write(json.dumps(report,indent=2,default=str)); print(json.dumps(report,indent=2,default=str))
-if __name__=='__main__': main()
+    os.makedirs('artifacts',exist_ok=True)
+    nse=acquire_nse(); bse=acquire_bse(max_pages=5)
+    report={'target_date':os.getenv('TARGET_DATE','2026-08-31'),'phase':'separate NSE/BSE acquisition probe','generated_at_utc':datetime.utcnow().isoformat(),'NSE':nse,'BSE':bse,'architecture':{'NSE':'scripts/nse_acquisition.py','BSE':'scripts/bse_acquisition.py','pagination_test_cap':5,'production_backfill':False}}
+    with open('artifacts/acquisition_probe.json','w',encoding='utf-8') as f: json.dump(report,f,indent=2,default=str)
+    print(json.dumps(report,indent=2,default=str))
+if __name__=='__main__':main()
