@@ -1,0 +1,38 @@
+[
+  {
+    "source": "BSE",
+    "dataset": "insider_trading",
+    "raw": {
+      "col_0": "533316",
+      "col_1": "STEL Holdings Ltd",
+      "col_2": "SOFREAL MERCANTRADE PRIVATE LTD",
+      "col_3": "Promoter Group",
+      "col_4": "2,60,373(1.41)",
+      "col_5": "Equity",
+      "col_6": "1,353",
+      "col_7": "8,39,768.00",
+      "col_8": "Acquisition",
+      "col_9": "2,61,726(1.42)",
+      "col_10": "26/08/2026\n26/08/2026",
+      "col_11": "Market Purchase",
+      "col_12": "",
+      "col_13": "",
+      "col_14": "",
+      "col_15": "31/08/2026"
+    },
+    "event_date": "",
+    "symbol": "",
+    "company": "",
+    "person": "",
+    "side": "",
+    "quantity": "",
+    "price": "",
+    "date_iso": "",
+    "symbol_norm": "",
+    "company_norm": "",
+    "person_norm": "",
+    "side_norm": "",
+    "quantity_num": null,
+    "price_num": null
+  }
+]
