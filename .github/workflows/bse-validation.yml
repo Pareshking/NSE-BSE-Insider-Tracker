@@ -20,6 +20,7 @@ on:
 jobs:
   validate-bse:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
       TARGET_DATE: ${{ inputs.target_date || '' }}
