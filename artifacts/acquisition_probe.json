@@ -1,47 +1,46 @@
 {
   "target_date": "2026-08-31",
-  "phase": "1+2 acquisition probe",
-  "generated_at_utc": "2026-08-31T19:51:36.423493",
+  "phase": "BSE hardened acquisition probe",
+  "generated_at_utc": "2026-08-31T19:55:33.269896",
   "results": [
     {
       "source": "NSE",
       "dataset": "homepage",
-      "method": "direct_api",
-      "status_code": 403,
-      "bytes": 370
+      "method": "direct",
+      "status_code": 403
     },
     {
       "source": "NSE",
       "dataset": "insider_trading",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 0.417,
+      "elapsed_s": 0.465,
       "bytes": 819,
       "content_type": "text/csv",
-      "url": "https://www.nseindia.com/api/corporates-pit?index=equities&from_date=31-08-2026&to_date=31-08-2026&csv=true",
-      "body_prefix": "\u00ef\u00bb\u00bf\"SYMBOL \n\",\"COMPANY \n\",\"REGULATION \n\",\"NAME OF THE ACQUIRER/DISPOSER \n\",\"CATEGORY OF PERSON \n\",\"TYPE OF SECURITY (PRIOR) \n\",\"NO. OF SECURITY (PRIOR) \n\",\"% SHAREHOLDING (PRIOR) \n\",\"TYPE OF SECURITY (ACQUIRED/DISPLOSED) \n\",\"NO. OF SECURITIES (ACQUIRED/DISPLOSED) \n\",\"VALUE OF SECURITY (ACQUIRED/DISPLOSED) \n\",\"ACQUISITION/DISPOSAL TRANSACTION TYPE \n\",\"TYPE OF SECURITY (POST) \n\",\"NO. OF SECURITY (POST) \n\",\"% POST \n\",\"DATE OF ALLOTMENT/ACQUISITION FROM \n\",\"DATE OF ALLOTMENT/ACQUISITION TO \n\",\"DATE "
+      "body_prefix": "\u00ef\u00bb\u00bf\"SYMBOL \n\",\"COMPANY \n\",\"REGULATION \n\",\"NAME OF THE ACQUIRER/DISPOSER \n\",\"CATEGORY OF PERSON \n\",\"TYPE OF SECURITY (PRIOR) \n\",\"NO. OF SECURITY (PRIOR) \n\",\"% SHAREHOLDING (PRIOR) \n\",\"TYPE OF SECURITY (ACQUIRED/DISPLOSED) \n\",\"NO. OF SECURITIES (ACQUIR",
+      "payload_keys": []
     },
     {
       "source": "NSE",
       "dataset": "bulk_deals",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 1.106,
+      "elapsed_s": 0.26,
       "bytes": 22082,
       "content_type": "text/html",
-      "url": "https://www.nseindia.com/api/historical/bulk-deals?from=31-08-2026&to=31-08-2026",
-      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
+      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #f",
+      "payload_keys": []
     },
     {
       "source": "NSE",
       "dataset": "block_deals",
       "method": "direct_api",
       "status_code": 200,
-      "elapsed_s": 0.525,
+      "elapsed_s": 0.263,
       "bytes": 22082,
       "content_type": "text/html",
-      "url": "https://www.nseindia.com/api/historical/block-deals?from=31-08-2026&to=31-08-2026",
-      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #ffffff;\n            margin: 0;\n            padding: 0;\n            color: #000000;\n        }\n        .header {\n            display: flex;\n            align-items: center;\n            padding: 20px 20px 0px 50px;\n        }\n        .logo {\n            w"
+      "body_prefix": "\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta content=\"noindex, nofollow\" name=\"robots\"/>\n    <meta charset=\"UTF-8\">\n    <title>NSE India</title>\n    <style>\n        body {\n            font-family: Arial, sans-serif;\n            background-color: #f",
+      "payload_keys": []
     },
     {
       "source": "NSE",
@@ -49,7 +48,6 @@
       "method": "nse_package_server",
       "status": "success",
       "count": 70,
-      "elapsed_s": 0.285,
       "sample_keys": [
         "BD_BUY_SELL",
         "BD_CLIENT_NAME",
@@ -68,7 +66,6 @@
       "method": "nse_package_server",
       "status": "success",
       "count": 11,
-      "elapsed_s": 0.404,
       "sample_keys": [
         "BD_BUY_SELL",
         "BD_CLIENT_NAME",
@@ -82,215 +79,2757 @@
       ]
     },
     {
-      "source": "NSE",
-      "dataset": "insider_trading",
-      "method": "selenium_browser_fetch",
-      "status": "error",
-      "error": "TimeoutException: Message: script timeout\n  (Session info: chrome=151.0.7922.173)\nStacktrace:\n#0 0x55928100b36a <unknown>\n#1 0x55928097ed00 <unknown>\n#2 0x559280a1e83e <unknown>\n#3 0x559280a1d0c3 <unknown>\n#4 0x5592809c7c92 <unknown>\n#5 0x5592809c8b11 <unknown>\n#6 0x559280fd08d0 <unknown>\n#7 0x559280fcef3a <unknown>\n#8 0x559280fb99b5 <unknown>\n#9 0x559280fcfc0a <unknown>\n#10 0x559280fa1740 <unknown>\n#11 0x559280ff69a8 <unknown>\n#12 0x559280ff6b45 <unknown>\n#13 0x559281009f1e <unknown>\n#14 0x7f379729cb84 <unknown>\n#15 0x7f3797329d6c <unknown>\n"
-    },
-    {
-      "source": "NSE",
-      "dataset": "preferential_issue",
-      "method": "selenium_rendered_page",
-      "status": "success",
-      "http_status": 200,
-      "row_count": 121,
-      "sample_rows": [
-        [
-          "SHIVALIK",
-          "Shivalik Rasayan Limited",
-          "INE788J01021",
-          "In-Principle",
-          "31-AUG-2026",
-          "(600.74 KB)",
-          "(18.53 KB)"
-        ],
-        [
-          "SPECTRUM",
-          "Spectrum Electrical Industries Limited",
-          "INE01EO01010",
-          "In-Principle",
-          "31-AUG-2026",
-          "(49.34 MB)",
-          "(16.00 KB)"
-        ],
-        [
-          "VIPCLOTHNG",
-          "VIP Clothing Limited",
-          "INE450G01024",
-          "In-Principle",
-          "28-AUG-2026",
-          "(1.38 MB)",
-          "(25.96 KB)"
-        ]
-      ],
-      "api_resources": [
-        "https://www.nseindia.com/api/holiday-master?type=trading",
-        "https://www.nseindia.com/api/corporates-furtherIssues-pref_ip_company",
-        "https://www.nseindia.com/api/corporates-furtherIssues-pref_ip_isin",
-        "https://www.nseindia.com/api/corporates-furtherIssues-pref_ls_company",
-        "https://www.nseindia.com/api/corporates-furtherIssues-pref_ls_isin",
-        "https://www.nseindia.com/api/regulatorymodulestatus",
-        "https://www.nseindia.com/api/marketStatus",
-        "https://www.nseindia.com/api/regulatorymodulestatus",
-        "https://www.nseindia.com/api/eventnotification",
-        "https://www.nseindia.com/api/getNotes20?url=/companies-listing/corporate-filings-PREF",
-        "https://www.nseindia.com/api/corporate-further-issues-pref?index=FIPREFLS",
-        "https://www.nseindia.com/api/corporate-further-issues-pref?index=FIPREFIP"
-      ],
-      "contains_download_csv": true,
-      "contains_xbrl": true,
-      "elapsed_s": 7.499,
-      "current_url": "https://www.nseindia.com/companies-listing/corporate-filings-PREF"
-    },
-    {
-      "source": "NSE",
-      "dataset": "right_issue",
-      "method": "selenium_rendered_page",
-      "status": "success",
-      "http_status": 200,
-      "row_count": 127,
-      "sample_rows": [
-        [
-          "JAYKAY",
-          "500306",
-          "INE903A01025",
-          "In-Principle",
-          "17-AUG-2026",
-          "(4.74 KB)"
-        ],
-        [
-          "KSHITIJPOL",
-          "KSHITIJ POLYLINE LIMITED",
-          "INE013801027",
-          "In-Principle",
-          "12-AUG-2026",
-          "(5.50 KB)"
-        ],
-        [
-          "VHLTD",
-          "Viceroy Hotels Limited",
-          "INE048C01025",
-          "In-Principle",
-          "11-AUG-2026",
-          "(7.15 KB)"
-        ]
-      ],
-      "api_resources": [
-        "https://www.nseindia.com/api/holiday-master?type=trading",
-        "https://www.nseindia.com/api/corporates-furtherIssues-ri_ls_company",
-        "https://www.nseindia.com/api/corporates-furtherIssues-ri_ls_isin",
-        "https://www.nseindia.com/api/corporates-furtherIssues-ri_ip_company",
-        "https://www.nseindia.com/api/corporates-furtherIssues-ri_ip_isin",
-        "https://www.nseindia.com/api/regulatorymodulestatus",
-        "https://www.nseindia.com/api/marketStatus",
-        "https://www.nseindia.com/api/regulatorymodulestatus",
-        "https://www.nseindia.com/api/eventnotification",
-        "https://www.nseindia.com/api/getNotes20?url=/companies-listing/corporate-filings-RI",
-        "https://www.nseindia.com/api/corporate-further-issues-ri?index=FIRILS",
-        "https://www.nseindia.com/api/corporate-further-issues-ri?index=FIRIIP"
-      ],
-      "contains_download_csv": true,
-      "contains_xbrl": true,
-      "elapsed_s": 6.783,
-      "current_url": "https://www.nseindia.com/companies-listing/corporate-filings-RI"
-    },
-    {
       "source": "BSE",
       "dataset": "bulk_deals",
       "method": "official_html",
       "status": "error",
-      "error": "ValueError: No tables found"
+      "error": "No tables found"
     },
     {
       "source": "BSE",
       "dataset": "block_deals",
       "method": "official_html",
       "status": "error",
-      "error": "ValueError: No tables found"
+      "error": "No tables found"
     },
     {
       "source": "BSE",
-      "dataset": "corporate_announcements_preferential",
-      "method": "official_api",
-      "status": "success",
+      "dataset": "bulk_deals",
+      "method": "official_api_probe",
       "status_code": 200,
+      "elapsed_s": 0.362,
       "bytes": 18,
-      "content_type": "application/json; charset=utf-8",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=bulk+deals&strToDate=20260831&strType=C",
+      "count": 0,
+      "sample_keys": []
+    },
+    {
+      "source": "BSE",
+      "dataset": "block_deals",
+      "method": "official_api_probe",
+      "status_code": 200,
+      "elapsed_s": 0.397,
+      "bytes": 18,
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=block+deals&strToDate=20260831&strType=C",
+      "count": 0,
+      "sample_keys": []
+    },
+    {
+      "source": "BSE",
+      "dataset": "announcements_insider",
+      "method": "official_api",
+      "status_code": 200,
+      "elapsed_s": 0.336,
+      "bytes": 18,
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=Insider&strToDate=20260831&strType=C",
+      "count": 0,
+      "sample_keys": [],
+      "sample": []
+    },
+    {
+      "source": "BSE",
+      "dataset": "announcements_preferential",
+      "method": "official_api",
+      "status_code": 200,
+      "elapsed_s": 0.359,
+      "bytes": 18,
       "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=Preferential&strToDate=20260831&strType=C",
-      "total_records": 0,
+      "count": 0,
+      "sample_keys": [],
       "sample": []
     },
     {
       "source": "BSE",
-      "dataset": "corporate_announcements_rights_issue",
+      "dataset": "announcements_rights_issue",
       "method": "official_api",
-      "status": "success",
       "status_code": 200,
+      "elapsed_s": 0.322,
       "bytes": 18,
-      "content_type": "application/json; charset=utf-8",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=Rights+Issue&strToDate=20260831&strType=C",
-      "total_records": 0,
+      "count": 0,
+      "sample_keys": [],
       "sample": []
     },
     {
       "source": "BSE",
-      "dataset": "corporate_announcements_allotment",
+      "dataset": "announcements_allotment",
       "method": "official_api",
-      "status": "success",
       "status_code": 200,
+      "elapsed_s": 0.37,
       "bytes": 18,
-      "content_type": "application/json; charset=utf-8",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w?pageno=1&strCat=-1&strPrevDate=20260831&strScrip=&strSearch=Allotment&strToDate=20260831&strType=C",
-      "total_records": 0,
+      "count": 0,
+      "sample_keys": [],
       "sample": []
     },
     {
       "source": "BSE",
-      "dataset": "right_issue_public_issues",
-      "method": "official_html",
-      "status": "error",
-      "error": "ValueError: No tables found"
+      "dataset": "bulk_deals",
+      "method": "selenium_render",
+      "status": "success",
+      "row_count": 73,
+      "table_count": 1,
+      "sample": [
+        [
+          [
+            "31/08/2026",
+            "544445",
+            "APL",
+            "PRAKRUTI R PALI",
+            "B",
+            "1,00,000",
+            "123.88"
+          ],
+          [
+            "31/08/2026",
+            "544445",
+            "APL",
+            "SNEHLATA MANOJ KATHOTIA",
+            "B",
+            "43,000",
+            "119.10"
+          ],
+          [
+            "31/08/2026",
+            "520121",
+            "ARCEEIN",
+            "RAMESH CHANDER GUPTA",
+            "S",
+            "1,86,002",
+            "14.25"
+          ],
+          [
+            "31/08/2026",
+            "520121",
+            "ARCEEIN",
+            "SADRAVYA MONEY MANAGEMENT PVT LTD",
+            "B",
+            "1,86,003",
+            "14.25"
+          ],
+          [
+            "31/08/2026",
+            "538576",
+            "BHANDERI",
+            "PRAVINBHAI LABHUBHAI VAGHASIYA",
+            "S",
+            "21,600",
+            "128.00"
+          ],
+          [
+            "31/08/2026",
+            "538576",
+            "BHANDERI",
+            "PLENITUDE ENTERPRISES PRIVATE LIMITED",
+            "B",
+            "31,200",
+            "128.00"
+          ],
+          [
+            "31/08/2026",
+            "539335",
+            "CALLISTA",
+            "ESPS CAPITAL ADVISORS PVT LTD",
+            "S",
+            "30,900",
+            "143.65"
+          ],
+          [
+            "31/08/2026",
+            "539335",
+            "CALLISTA",
+            "KETAN RASHIKLAL DOSHI",
+            "B",
+            "20,000",
+            "143.65"
+          ],
+          [
+            "31/08/2026",
+            "526546",
+            "CHOKSILA",
+            "NEXUS GLOBAL OPPORTUNITIES FUND",
+            "B",
+            "1,61,273",
+            "144.25"
+          ],
+          [
+            "31/08/2026",
+            "526546",
+            "CHOKSILA",
+            "ASC CONSULTING PRIVATE LIMITED",
+            "S",
+            "43,273",
+            "144.25"
+          ],
+          [
+            "31/08/2026",
+            "526546",
+            "CHOKSILA",
+            "EMKAY COMMERCIAL COMPANY LIMITED",
+            "S",
+            "1,18,000",
+            "144.25"
+          ],
+          [
+            "31/08/2026",
+            "543960",
+            "CONCORDBIO",
+            "DSP MUTUAL FUND",
+            "B",
+            "12,88,114",
+            "1,404.10"
+          ],
+          [
+            "31/08/2026",
+            "543960",
+            "CONCORDBIO",
+            "1575773 ONTARIO INC",
+            "S",
+            "20,92,325",
+            "1,404.10"
+          ],
+          [
+            "31/08/2026",
+            "544807",
+            "CRAZY",
+            "ARIHANT CAPITAL MARKETS LIMITED",
+            "B",
+            "3,00,000",
+            "57.00"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "NYD GROUP AND CO",
+            "B",
+            "4,96,921",
+            "12.07"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "RAJKUMAR JAIN",
+            "S",
+            "1,91,862",
+            "12.11"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "RAJKUMAR M JAIN HUF",
+            "S",
+            "1,22,500",
+            "12.08"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "VANDANA JAIN",
+            "S",
+            "2,32,500",
+            "12.00"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "MSB E TRADE SECURITIES LIMITED",
+            "S",
+            "4,77,000",
+            "12.08"
+          ],
+          [
+            "31/08/2026",
+            "531502",
+            "ESARIND",
+            "MSB E TRADE SECURITIES LIMITED",
+            "B",
+            "5,80,600",
+            "12.04"
+          ],
+          [
+            "31/08/2026",
+            "531486",
+            "FILME",
+            "VISAGAR FINANCIAL SERVICES LIMITED",
+            "S",
+            "3,50,000",
+            "1.10"
+          ],
+          [
+            "31/08/2026",
+            "531723",
+            "GATECH",
+            "RATHOD DIGVIJAYSINH RAJENDRASINH",
+            "B",
+            "1,02,35,631",
+            "1.12"
+          ],
+          [
+            "31/08/2026",
+            "531592",
+            "GENPHARMA",
+            "RAJESH MIRCHUMAL SADHWANI",
+            "B",
+            "40,00,000",
+            "1.05"
+          ],
+          [
+            "31/08/2026",
+            "544759",
+            "GLPL",
+            "AMOL LAXMIKANT MUJUMDAR",
+            "B",
+            "60,000",
+            "41.00"
+          ],
+          [
+            "31/08/2026",
+            "544759",
+            "GLPL",
+            "VEER SINGH THAKUR",
+            "S",
+            "60,000",
+            "41.00"
+          ],
+          [
+            "31/08/2026",
+            "513059",
+            "GSAUTO",
+            "BINDU GARG",
+            "S",
+            "82,599",
+            "22.64"
+          ],
+          [
+            "31/08/2026",
+            "544675",
+            "GTIL",
+            "KAMAL KUMAR DUGAR AND CO ( PROP : KAMAL KUMAR DUGAR)",
+            "B",
+            "73,600",
+            "102.98"
+          ],
+          [
+            "31/08/2026",
+            "524238",
+            "GUJINJEC",
+            "RAJNIKANT KISHORKUMAR SHAH",
+            "B",
+            "9,00,000",
+            "11.45"
+          ],
+          [
+            "31/08/2026",
+            "524238",
+            "GUJINJEC",
+            "PATADIYA CHIRAGKUMAR RAJESHKUMAR",
+            "S",
+            "9,00,030",
+            "11.45"
+          ],
+          [
+            "31/08/2026",
+            "544630",
+            "HELLOJI",
+            "MAHABIR TRADEVENTURES LLP",
+            "S",
+            "26,400",
+            "118.75"
+          ],
+          [
+            "31/08/2026",
+            "542446",
+            "JONJUA",
+            "GUNVIT GUPTA",
+            "S",
+            "2,55,513",
+            "4.10"
+          ],
+          [
+            "31/08/2026",
+            "542446",
+            "JONJUA",
+            "DEEPINDERSINGHSINGH",
+            "S",
+            "1,59,093",
+            "4.10"
+          ],
+          [
+            "31/08/2026",
+            "536073",
+            "JULIEN",
+            "SHAH DIPAK KANAYALAL",
+            "B",
+            "6,05,000",
+            "1.18"
+          ],
+          [
+            "31/08/2026",
+            "531778",
+            "KACHCHH",
+            "TUSHAR SHAMJIBHAI PATEL",
+            "S",
+            "27,991",
+            "28.65"
+          ],
+          [
+            "31/08/2026",
+            "526935",
+            "KALIND",
+            "ABHISHEK ASHVINBHAI KAMDAR",
+            "S",
+            "49,41,753",
+            "4.25"
+          ],
+          [
+            "31/08/2026",
+            "526935",
+            "KALIND",
+            "ONIX RENEWABLE LIMITED",
+            "S",
+            "47,99,067",
+            "4.30"
+          ],
+          [
+            "31/08/2026",
+            "526935",
+            "KALIND",
+            "JASANI DHARMENDRA BHAI BECHARBHAI",
+            "B",
+            "48,45,001",
+            "4.24"
+          ],
+          [
+            "31/08/2026",
+            "539408",
+            "KUBERJI",
+            "NEO APEX SHARE BROKING SERVICES LLP",
+            "B",
+            "19,104",
+            "56.22"
+          ],
+          [
+            "31/08/2026",
+            "539408",
+            "KUBERJI",
+            "GREEN PEAKS ENTERPRISES LLP",
+            "B",
+            "20,000",
+            "56.22"
+          ],
+          [
+            "31/08/2026",
+            "544554",
+            "KVSCASTING",
+            "VASUNDHARA PRAKASH SHINDE",
+            "S",
+            "1,02,000",
+            "90.96"
+          ],
+          [
+            "31/08/2026",
+            "517320",
+            "MAGNUS",
+            "NEEL DAMJI BHANUSHALI",
+            "S",
+            "19,000",
+            "26.29"
+          ],
+          [
+            "31/08/2026",
+            "517320",
+            "MAGNUS",
+            "RAJESH KUMAR RATHORE",
+            "S",
+            "70,000",
+            "23.96"
+          ],
+          [
+            "31/08/2026",
+            "517320",
+            "MAGNUS",
+            "JAGID VANITABEN RAJENDRAPRASAD",
+            "B",
+            "1,04,339",
+            "24.85"
+          ],
+          [
+            "31/08/2026",
+            "517320",
+            "MAGNUS",
+            "JAGID VANITABEN RAJENDRAPRASAD",
+            "S",
+            "27,674",
+            "26.30"
+          ],
+          [
+            "31/08/2026",
+            "531281",
+            "MARBLE",
+            "RIDDISIDDHI BULLIONS LIMITED",
+            "B",
+            "2,81,315",
+            "120.00"
+          ],
+          [
+            "31/08/2026",
+            "531281",
+            "MARBLE",
+            "PSH CONSTRUCTIONS PRIVATE LIMITED",
+            "S",
+            "2,80,000",
+            "120.00"
+          ],
+          [
+            "31/08/2026",
+            "526143",
+            "MPL",
+            "SHAH DIPAK KANAYALAL",
+            "B",
+            "61,000",
+            "7.49"
+          ],
+          [
+            "31/08/2026",
+            "544851",
+            "MVELECTRO",
+            "IRAGE BROKING SERVICES LLP",
+            "S",
+            "1,97,674",
+            "748.04"
+          ],
+          [
+            "31/08/2026",
+            "544851",
+            "MVELECTRO",
+            "IRAGE BROKING SERVICES LLP",
+            "B",
+            "2,15,740",
+            "746.67"
+          ],
+          [
+            "31/08/2026",
+            "544851",
+            "MVELECTRO",
+            "HRTI PRIVATE LIMITED",
+            "B",
+            "1,59,055",
+            "746.81"
+          ],
+          [
+            "31/08/2026",
+            "544851",
+            "MVELECTRO",
+            "HRTI PRIVATE LIMITED",
+            "S",
+            "1,63,224",
+            "747.07"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "NEO PRIME FUND",
+            "B",
+            "9,00,000",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "SOCIETE GENERALE",
+            "B",
+            "10,59,166",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "36,67,000",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "40,49,000",
+            "279.90"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "AUGUSTA INVESTMENTS II PTE LTD",
+            "S",
+            "23,38,129",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "PLUTUS WEALTH MANAGEMENT LLP",
+            "B",
+            "38,66,906",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "544260",
+            "NORTHARC",
+            "COHESION MK BEST IDEAS SUB-TRUST",
+            "B",
+            "24,28,057",
+            "278.00"
+          ],
+          [
+            "31/08/2026",
+            "513119",
+            "ONIXSOLAR",
+            "ABHISHEK ASHVINBHAI KAMDAR",
+            "S",
+            "1,85,514",
+            "331.30"
+          ],
+          [
+            "31/08/2026",
+            "538647",
+            "PURSHOTTAM",
+            "SATABDI TRACOM PRIVATE LIMITED",
+            "S",
+            "1,72,660",
+            "33.76"
+          ],
+          [
+            "31/08/2026",
+            "538647",
+            "PURSHOTTAM",
+            "MANMAL MARKETING LIMITED",
+            "S",
+            "1,82,512",
+            "33.80"
+          ],
+          [
+            "31/08/2026",
+            "538647",
+            "PURSHOTTAM",
+            "ARSTU TRADELINKS LIMITED",
+            "S",
+            "2,18,000",
+            "34.00"
+          ],
+          [
+            "31/08/2026",
+            "538647",
+            "PURSHOTTAM",
+            "PRANIDHI VENTURES PRIVATE LIMITED",
+            "B",
+            "5,72,563",
+            "33.90"
+          ],
+          [
+            "31/08/2026",
+            "511116",
+            "QUADRANT",
+            "FINDOC INVESTMART PVT LTD",
+            "B",
+            "44,64,319",
+            "0.57"
+          ],
+          [
+            "31/08/2026",
+            "532915",
+            "RELIGARE",
+            "ASHISH DHAWAN",
+            "B",
+            "19,01,448",
+            "237.00"
+          ],
+          [
+            "31/08/2026",
+            "539669",
+            "RGF",
+            "PUSPJEET KUMAR",
+            "S",
+            "44,57,445",
+            "1.55"
+          ],
+          [
+            "31/08/2026",
+            "539669",
+            "RGF",
+            "QAPLA INVESTMENTS",
+            "B",
+            "44,83,504",
+            "1.53"
+          ],
+          [
+            "31/08/2026",
+            "542145",
+            "RONI",
+            "SHAILESH SURESH BAJAJ",
+            "B",
+            "3,600",
+            "23.97"
+          ],
+          [
+            "31/08/2026",
+            "542145",
+            "RONI",
+            "SHAILESH SURESH BAJAJ",
+            "S",
+            "66,600",
+            "21.66"
+          ],
+          [
+            "31/08/2026",
+            "544490",
+            "SHREEJISPG",
+            "JAINAM BROKING LIMITED",
+            "B",
+            "10,62,000",
+            "645.30"
+          ],
+          [
+            "31/08/2026",
+            "538897",
+            "SHRINIWAS",
+            "GLASTON MARIO MENEZES",
+            "S",
+            "27,250",
+            "17.14"
+          ],
+          [
+            "31/08/2026",
+            "531499",
+            "SYBLY",
+            "MERCY ABRAHAM",
+            "S",
+            "2,50,003",
+            "1.20"
+          ],
+          [
+            "31/08/2026",
+            "531499",
+            "SYBLY",
+            "AMIT JUGRAJ JAIN",
+            "B",
+            "1,90,000",
+            "1.20"
+          ]
+        ]
+      ],
+      "title": "Bulk Deals",
+      "current_url": "https://www.bseindia.com/markets/equity/eqreports/bulk_deals",
+      "contains_target_date": true
     },
     {
       "source": "BSE",
-      "dataset": "issue_summary",
-      "method": "official_html",
-      "status": "error",
-      "error": "ValueError: No tables found"
+      "dataset": "block_deals",
+      "method": "selenium_render",
+      "status": "success",
+      "row_count": 41,
+      "table_count": 2,
+      "sample": [
+        [
+          [
+            "Deal Date\tSecurity Code\tSecurity Name\tClient Name\tDeal Type *\tQuantity\tTrade Price\n31 Aug 26\t544260\tNORTHARC\tSOCIETE GENERALE\tB\t1,059,166\t278.00\n31 Aug 26\t544260\tNORTHARC\tPLUTUS WEALTH MANAGEMENT LLP\tB\t1,528,777\t278.00\n31 Aug 26\t544260\tNORTHARC\tPLUTUS WEALTH MANAGEMENT LLP\tB\t2,338,129\t278.00\n31 Aug 26\t544260\tNORTHARC\tCOHESION MK BEST IDEAS SUB-TRUST\tB\t1,079,057\t278.00\n31 Aug 26\t544260\tNORTHARC\tCOHESION MK BEST IDEAS SUB-TRUST\tB\t1,349,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tNEO PRIME FUND\tB\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tASHOKA INDIA EQUITY INVESTMENT TRUST PLC\tB\t621,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tINDIA ACORN FUND LTD\tB\t279,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,059,166\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,079,057\t278.00\n31 Aug 26\t544260\tNORTHARC\tLEAPFROG FINANCIAL INCLUSION INDIA (II) LTD\tS\t1,528,777\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t900,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tEIGHT ROADS INVESTMENTS MAURITIUS II LIMITED\tS\t1,349,000\t278.00\n31 Aug 26\t544260\tNORTHARC\tAUGUSTA INVESTMENTS II PTE LTD\tS\t2,338,129\t278.00\n31 Aug 26\t544490\tSHREEJISPG\tJAINAM BROKING LIMITED\tB\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tJAINAM BROKING LIMITED\tB\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tASHOKKUMAR HARIDAS LAL\tS\t531,000\t645.30\n31 Aug 26\t544490\tSHREEJISPG\tLAL JITENDRA HARIDAS\tS\t531,000\t645.30"
+          ],
+          [
+            "Deal Date",
+            "Security Code",
+            "Security Name",
+            "Client Name",
+            "Deal Type *",
+            "Quantity",
+            "Trade Price"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "SOCIETE GENERALE",
+            "B",
+            "1,059,166",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "PLUTUS WEALTH MANAGEMENT LLP",
+            "B",
+            "1,528,777",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "PLUTUS WEALTH MANAGEMENT LLP",
+            "B",
+            "2,338,129",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "COHESION MK BEST IDEAS SUB-TRUST",
+            "B",
+            "1,079,057",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "COHESION MK BEST IDEAS SUB-TRUST",
+            "B",
+            "1,349,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "NEO PRIME FUND",
+            "B",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "ASHOKA INDIA EQUITY INVESTMENT TRUST PLC",
+            "B",
+            "621,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "INDIA ACORN FUND LTD",
+            "B",
+            "279,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,059,166",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,079,057",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,528,777",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "1,349,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "AUGUSTA INVESTMENTS II PTE LTD",
+            "S",
+            "2,338,129",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "JAINAM BROKING LIMITED",
+            "B",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "JAINAM BROKING LIMITED",
+            "B",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "ASHOKKUMAR HARIDAS LAL",
+            "S",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "LAL JITENDRA HARIDAS",
+            "S",
+            "531,000",
+            "645.30"
+          ]
+        ],
+        [
+          [
+            "Deal Date",
+            "Security Code",
+            "Security Name",
+            "Client Name",
+            "Deal Type *",
+            "Quantity",
+            "Trade Price"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "SOCIETE GENERALE",
+            "B",
+            "1,059,166",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "PLUTUS WEALTH MANAGEMENT LLP",
+            "B",
+            "1,528,777",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "PLUTUS WEALTH MANAGEMENT LLP",
+            "B",
+            "2,338,129",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "COHESION MK BEST IDEAS SUB-TRUST",
+            "B",
+            "1,079,057",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "COHESION MK BEST IDEAS SUB-TRUST",
+            "B",
+            "1,349,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "NEO PRIME FUND",
+            "B",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "ASHOKA INDIA EQUITY INVESTMENT TRUST PLC",
+            "B",
+            "621,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "INDIA ACORN FUND LTD",
+            "B",
+            "279,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,059,166",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,079,057",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "LEAPFROG FINANCIAL INCLUSION INDIA (II) LTD",
+            "S",
+            "1,528,777",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "900,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "EIGHT ROADS INVESTMENTS MAURITIUS II LIMITED",
+            "S",
+            "1,349,000",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544260",
+            "NORTHARC",
+            "AUGUSTA INVESTMENTS II PTE LTD",
+            "S",
+            "2,338,129",
+            "278.00"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "JAINAM BROKING LIMITED",
+            "B",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "JAINAM BROKING LIMITED",
+            "B",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "ASHOKKUMAR HARIDAS LAL",
+            "S",
+            "531,000",
+            "645.30"
+          ],
+          [
+            "31 Aug 26",
+            "544490",
+            "SHREEJISPG",
+            "LAL JITENDRA HARIDAS",
+            "S",
+            "531,000",
+            "645.30"
+          ]
+        ]
+      ],
+      "title": "Block Deals",
+      "current_url": "https://www.bseindia.com/markets/equity/eqreports/block_deals",
+      "contains_target_date": false
     },
     {
       "source": "BSE",
       "dataset": "corporate_announcements",
-      "method": "official_html",
+      "method": "selenium_render",
       "status": "success",
-      "status_code": 200,
-      "table_count": 14,
-      "row_counts": [
-        3,
-        1,
-        1,
-        1,
-        10,
-        1,
-        6,
-        1,
-        6,
-        1
+      "row_count": 800,
+      "table_count": 4,
+      "sample": [
+        [
+          [
+            "Pecos Hotels and Pubs Ltd - 539273 - Notice 21St Annual General Meeting.",
+            "Company Update",
+            "",
+            "0.98 MB",
+            ""
+          ],
+          [
+            "Notice convening 21st Annual General Meeting to be scheduled on Friday ,25th September,2026 at 11:00 A.M."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:54:13 Exchange Disseminated Time 31-08-2026 23:54:13 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Business Responsibility and Sustainability Reporting (BRSR)",
+            "Others",
+            "",
+            "0.63 MB",
+            ""
+          ],
+          [
+            "Intimation of BRSR is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:50:21 Exchange Disseminated Time 31-08-2026 23:50:21 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Pecos Hotels and Pubs Ltd - 539273 - Notice Convening 21St Annual General Meeting Of The Company",
+            "AGM/EGM",
+            "",
+            "0.98 MB",
+            ""
+          ],
+          [
+            "Notice of 21st Annual General Meeting to be scheduled on Friday, 25th September,2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:50:07 Exchange Disseminated Time 31-08-2026 23:50:07 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "10.62 MB",
+            ""
+          ],
+          [
+            "Intimation for Annual Report is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:48:05 Exchange Disseminated Time 31-08-2026 23:48:05 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "This is to inform you that the members of the Company have approved Re-appointment of Mr. Ranjit Pandit as an Independent Director of the Company for a second term."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:44:55 Exchange Disseminated Time 31-08-2026 23:44:55 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Scrutinizer''s Report",
+            "AGM/EGM",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "Disclosure of Voting Results in respect of the Thirty-Second AGM of the Company."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:43:58 Exchange Disseminated Time 31-08-2026 23:43:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Notice Of 54Th Annual General Meeting Of General Insurance Corporation Of India To Be Held On 22Nd September 2026",
+            "AGM/EGM",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Intimation of AGM Notice is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:40:54 Exchange Disseminated Time 31-08-2026 23:40:54 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Muthoot Finance Ltd - 533398 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "0.34 MB",
+            ""
+          ],
+          [
+            "Outcome of AGM"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:39:47 Exchange Disseminated Time 31-08-2026 23:39:47 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "Disclosure of Voting Results in respect of the Thirty-Second Annual General Meeting of the Company."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:36:35 Exchange Disseminated Time 31-08-2026 23:36:35 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Prima Innovation Ltd - 544855 - Notice Of 2Nd Annual General Meeting Of The Company",
+            "AGM/EGM",
+            "",
+            "25.64 MB",
+            ""
+          ],
+          [
+            "Enclosed herewith Notice of 2nd AGM and Annual Report of the Company for the Financial Year 2025-26"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:36:30 Exchange Disseminated Time 31-08-2026 23:36:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "E2E Networks Ltd - 544783 - Announcement under Regulation 30 (LODR)-Press Release / Media Release",
+            "Company Update",
+            "",
+            "0.29 MB",
+            ""
+          ],
+          [
+            "E2E Networks Limited has informed the Exchange Regarding a Press Release dated August 31, 2026, titled \" E2E Networks Sign Binding Term Sheet worth approximately Rs. 1000 Crore with Sovereign ....Read More.."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:34:03 Exchange Disseminated Time 31-08-2026 23:34:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "3i Infotech Ltd - 532628 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.43 MB",
+            ""
+          ],
+          [
+            "Please find attached the letter of Change in Directors"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:33:58 Exchange Disseminated Time 31-08-2026 23:33:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Welspun Living Ltd - 514162 - Update On Acquisition Of 26% Equity Stake In Clean Max Dhyuthi Private Limited",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Please find attached herewith the intimation regarding update on acquisition of 26% equity stake in Clean Max Dhyuthi Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:33:53 Exchange Disseminated Time 31-08-2026 23:33:53 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Welspun Living Ltd - 514162 - Announcement under Regulation 30 (LODR)-Updates on Acquisition",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Please find attached herewith the intimation regarding Update on Acquisition of 26% stake in Clean Max Dhyuthi Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:31:00 Exchange Disseminated Time 31-08-2026 23:31:00 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Announcement under Regulation 30 (LODR)-Newspaper Publication",
+            "Company Update",
+            "",
+            "10.75 MB",
+            ""
+          ],
+          [
+            "Intimation of newspaper notice prior to dispatch of Annual Report is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:29:39 Exchange Disseminated Time 31-08-2026 23:29:39 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Prima Innovation Ltd - 544855 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "25.64 MB",
+            ""
+          ],
+          [
+            "Pursuant to Regulation 34(1) of SEBI LODR Regulation, 2015, we enclose herewith the Annual Report of the Company along with the Notice of 2nd AGM for the Financial Year 2025-26"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:25:19 Exchange Disseminated Time 31-08-2026 23:25:19 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Mach Travel Solutions Ltd - 544248 - Announcement under Regulation 30 (LODR)-Press Release / Media Release",
+            "Company Update",
+            "",
+            "1.15 MB",
+            ""
+          ],
+          [
+            "Enclosed"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:15:29 Exchange Disseminated Time 31-08-2026 23:15:29 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "NIIT Learning Systems Ltd - 543952 - Disclosure/ Intimation Pursuant To Regulation 30 Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.25 MB",
+            ""
+          ],
+          [
+            "Update of the MST Holding GmbH Germany, a step down wholly owned subsidiary (\"WoS\") of the Company for the voluntary dissolution and winding up of its Wos - MST Shanghai Co. Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:14:23 Exchange Disseminated Time 31-08-2026 23:14:23 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Neogen Chemicals Ltd - 542665 - Disclosure Pursuant To Regulation 30 (9) Read With Schedule III Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015 ('Listing Regulations').",
+            "Company Update",
+            "",
+            "0.82 MB",
+            ""
+          ],
+          [
+            "Approval for execution of Business Transfer Agreement between NIL and NML for sale/ transfer of undertaking/ assets as mentioned in detail in BTA by NIL to NML."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:06:26 Exchange Disseminated Time 31-08-2026 23:06:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Explicit Finance Ltd - 530571 - Announcement under Regulation 30 (LODR)-Resignation of Director",
+            "Company Update",
+            "",
+            "0.65 MB",
+            ""
+          ],
+          [
+            "Dear Sir/Madam, Kindly find enclosed here with resignation letter tendered by Ms. Vandana Kalokhe DIN : 11757001,"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:04:26 Exchange Disseminated Time 31-08-2026 23:04:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "3i Infotech Ltd - 532628 - Shareholder Meeting / Postal Ballot-Scrutinizer''s Report",
+            "AGM/EGM",
+            "",
+            "1.44 MB",
+            ""
+          ],
+          [
+            "Please find attached Scrutinizers report"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:03:30 Exchange Disseminated Time 31-08-2026 23:03:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Britannia Industries Ltd - 500825 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Pursuant to Regulation 30 read with Clause 7 of Para A of Part A of Schedule III of the SEBI Regulations, 2015, this is to inform you that Mr. Susheel Navanale, Chief Information Officer ....Read More.."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:00:06 Exchange Disseminated Time 31-08-2026 23:00:06 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Mach Travel Solutions Ltd - 544248 - Intimation Regarding Commencement Of Public Beta Testing Of Machtravel.Com And Mach Travel App",
+            "Company Update",
+            "",
+            "0.60 MB",
+            ""
+          ],
+          [
+            "Enclosed"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:00:03 Exchange Disseminated Time 31-08-2026 23:00:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "LIC Housing Finance Ltd - 500253 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.16 MB",
+            ""
+          ],
+          [
+            "Intimation of change in senior Management -Cessation of Shri I Sreedhar"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:59:30 Exchange Disseminated Time 31-08-2026 22:59:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Persistent Systems Ltd - 533179 - Receipt Of ESG Rating That Has Been Voluntarily Issued By M/S. SES ESG Research Private Limited",
+            "Company Update",
+            "",
+            "0.20 MB",
+            ""
+          ],
+          [
+            "An intimation regarding the receipt of ESG Rating by Persistent Systems Limited which was voluntarily issued by SES ESG Research Private Limited, is as enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:58:03 Exchange Disseminated Time 31-08-2026 22:58:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Swelect Energy Systems Ltd-$ - 532051 - Transfer Of 26% Equity Shares Held In ESG Solar Energy Private Limited",
+            "Company Update",
+            "",
+            "0.49 MB",
+            ""
+          ],
+          [
+            "SWELECT Energy Systems Limited has informed the Exchange about Transfer of 26% equity shares held in ESG Solar Energy Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:57:15 Exchange Disseminated Time 31-08-2026 22:57:15 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "0.52 MB",
+            ""
+          ],
+          [
+            "Appointment of Directors"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:50:20 Exchange Disseminated Time 31-08-2026 22:50:20 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Issue of Securities",
+            "Company Update",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Issue of Fully Convertible Warrants"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:47:30 Exchange Disseminated Time 31-08-2026 22:47:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Bajel Projects Ltd - 544042 - Announcement under Regulation 30 (LODR)-Retirement",
+            "Company Update",
+            "",
+            "0.21 MB",
+            ""
+          ],
+          [
+            "Revised - Announcement under Regulation 30 (LODR)-Retirement"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:46:16 Exchange Disseminated Time 31-08-2026 22:46:16 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Hexagon Nutrition Ltd - 544785 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "15.66 MB",
+            ""
+          ],
+          [
+            "The Annual Report for the financial year ended 31st March 2026 (Annual Report 2025-26) containing the Notice of the 33rd Annual General Meeting ( 33rd AGM)"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:46:01 Exchange Disseminated Time 31-08-2026 22:46:01 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Nazara Technologies Ltd - 543280 - Shareholder Meeting / Postal Ballot-Scrutinizer\"s Report",
+            "AGM/EGM",
+            "",
+            "1.42 MB",
+            ""
+          ],
+          [
+            "Nazara Technologies Limited informs the Exchange regarding Scrutinizer''s report and voting results of Extraordinary General Meeting held on August 30, 2026."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:40:17 Exchange Disseminated Time 31-08-2026 22:40:17 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Garg Furnace Ltd - 530615 - Clarification Letter Price Movement",
+            "Company Update",
+            "",
+            "0.23 MB",
+            ""
+          ],
+          [
+            "Clarification letter price movement"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:39:58 Exchange Disseminated Time 31-08-2026 22:39:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Espire Hospitality Limited - 532016 - RECORD DATE FIXED FOR THE 35TH ANNUAL GENERAL MEETING",
+            "Corp. Action",
+            "",
+            "0.68 MB",
+            ""
+          ],
+          [
+            "AS PER INTIMATION"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:37:29 Exchange Disseminated Time 31-08-2026 22:37:29 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Amendments to Memorandum & Articles of Association",
+            "Company Update",
+            "",
+            "0.48 MB",
+            ""
+          ],
+          [
+            "Increased in Authorised Capital"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:36:43 Exchange Disseminated Time 31-08-2026 22:36:43 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Texmaco Rail & Engineering Ltd - 533326 - Announcement under Regulation 30 (LODR)-Resignation of Chief Financial Officer (CFO)",
+            "Company Update",
+            "",
+            "0.60 MB",
+            ""
+          ],
+          [
+            "Intimation of resignation of Chief Financial Officer of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:36:40 Exchange Disseminated Time 31-08-2026 22:36:40 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Board Meeting Outcome for Outcome Of The Board Meeting Held On 31St August, 2026",
+            "Board Meeting",
+            "",
+            "0.67 MB",
+            ""
+          ],
+          [
+            "Outcome of the Board Meeting held on 31st August, 2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:33:47 Exchange Disseminated Time 31-08-2026 22:33:48 Time Taken 00:00:01"
+          ],
+          [
+            ""
+          ],
+          [
+            "Tata Steel Ltd - 500470 - Announcement under Regulation 30 (LODR)-Diversification / Disinvestment",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Divestment of entire stake held in Jamshedpur Football and Sporting Private Limited, wholly owned subsidiary"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:32:50 Exchange Disseminated Time 31-08-2026 22:32:50 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.46 MB",
+            ""
+          ],
+          [
+            "Appointment of M/s K.N. Chaubey & Associates as the Cost Auditor of thee Company for the Financial Year ended 2026-27"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:32:31 Exchange Disseminated Time 31-08-2026 22:32:31 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "HT Media Ltd - 532662 - Letter To The Shareholders Under Regulations 36(1)(B) Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.74 MB",
+            ""
+          ],
+          [
+            "Enclosed is the copy of the letter to the shareholders under Regulation 36(1)(b) of the SEBI (Listing Obligations and Disclosure Requirements) Regulations, 2015"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:28:38 Exchange Disseminated Time 31-08-2026 22:28:38 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Embassy Developments Ltd - 532832 - Intimation Under Regulation 30 Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.53 MB",
+            ""
+          ],
+          [
+            "For further information, please refer attachment."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:24:24 Exchange Disseminated Time 31-08-2026 22:24:24 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under Regulations 30 SEBI (LODR) Regulations 2015, for the Resignation of Director & Change in Chairperson of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:51 Exchange Disseminated Time 31-08-2026 22:22:51 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Exato Technologies Ltd - 544626 - Disclosure Pursuant To Regulation 30 Of The Securities And Exchange Board Of India (LODR) Regulations, 2015 ('Listing Regulations'): Consolidated Disclosure Of Receipt Of Work Orders During The Months Of July And August 2026.",
+            "Company Update",
+            "",
+            "0.63 MB",
+            ""
+          ],
+          [
+            "Disclosure pursuant to Regulation 30 of the SEBI (LODR) Regulations, 2015: Consolidated Disclosure of Receipt of Work Orders during the months of July and August 2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:41 Exchange Disseminated Time 31-08-2026 22:22:41 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "AXIS Bank Ltd - 532215 - Announcement under Regulation 30 (LODR)-Analyst / Investor Meet - Intimation",
+            "Company Update",
+            "",
+            "0.16 MB",
+            ""
+          ],
+          [
+            "Schedule of analysts/institutional investors meet"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:12 Exchange Disseminated Time 31-08-2026 22:22:12 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Aster DM Quality Care Ltd - 540975 - Regulation 30 Read With Part B Of Schedule III To The SEBI Listing Regulations - Capacity Expansion At The Facility Of A Material Subsidiary Of The Company",
+            "Company Update",
+            "",
+            "0.61 MB",
+            ""
+          ],
+          [
+            "Intimation regarding capacity expansion at facility of a material subsidiary of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:18:21 Exchange Disseminated Time 31-08-2026 22:18:21 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Resignation of Chairman",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure as per SEBI (LODR) Regulations, 2015, Resignation of Mr. Manish Kumar from the post of Chairman & Non- Executive Director w.e.f. 31.08.2026."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:17:26 Exchange Disseminated Time 31-08-2026 22:17:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Exato Technologies Ltd - 544626 - Intimation Of Product Launch - 'Exafone' Under Regulation 30 Of SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015 ('SEBI Listing Regulations')",
+            "Company Update",
+            "",
+            "0.50 MB",
+            ""
+          ],
+          [
+            "Intimation of Product Launch - \"Exafone\" under Regulation 30 of SEBI (LODR) Regulations, 2015"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:16:09 Exchange Disseminated Time 31-08-2026 22:16:09 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "0.23 MB",
+            ""
+          ],
+          [
+            "Gist of the proceedings of the Thirty-Second Annual General Meeting of the Company held today, i.e. Monday, August 31, 2026 is attached."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:14:43 Exchange Disseminated Time 31-08-2026 22:14:43 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Resignation of Director",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under SEBI (LODR) Regulations, 2015, for the Resignation of Mr. Manish Kumar (DIN: 10379153) from the post of Non- Executive & Non Independent Director."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:11:52 Exchange Disseminated Time 31-08-2026 22:11:52 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Lodha Developers Ltd - 543287 - Announcement under Regulation 30 (LODR)-Updates on Acquisition",
+            "Company Update",
+            "",
+            "0.27 MB",
+            ""
+          ],
+          [
+            "Acquisition of balance stake in Bellissimo Infratech Private Limited (Formerly known as Solidrise Realty Private Limited)"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:07:24 Exchange Disseminated Time 31-08-2026 22:07:24 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under Regulation 30 of SEBI (LODR) Regulations, 2015, -Resignation of Director & Change in Chairperson"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:06:09 Exchange Disseminated Time 31-08-2026 22:06:09 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ]
+        ],
+        [
+          [
+            "Pecos Hotels and Pubs Ltd - 539273 - Notice 21St Annual General Meeting.",
+            "Company Update",
+            "",
+            "0.98 MB",
+            ""
+          ],
+          [
+            "Notice convening 21st Annual General Meeting to be scheduled on Friday ,25th September,2026 at 11:00 A.M."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:54:13 Exchange Disseminated Time 31-08-2026 23:54:13 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Business Responsibility and Sustainability Reporting (BRSR)",
+            "Others",
+            "",
+            "0.63 MB",
+            ""
+          ],
+          [
+            "Intimation of BRSR is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:50:21 Exchange Disseminated Time 31-08-2026 23:50:21 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Pecos Hotels and Pubs Ltd - 539273 - Notice Convening 21St Annual General Meeting Of The Company",
+            "AGM/EGM",
+            "",
+            "0.98 MB",
+            ""
+          ],
+          [
+            "Notice of 21st Annual General Meeting to be scheduled on Friday, 25th September,2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:50:07 Exchange Disseminated Time 31-08-2026 23:50:07 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "10.62 MB",
+            ""
+          ],
+          [
+            "Intimation for Annual Report is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:48:05 Exchange Disseminated Time 31-08-2026 23:48:05 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "This is to inform you that the members of the Company have approved Re-appointment of Mr. Ranjit Pandit as an Independent Director of the Company for a second term."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:44:55 Exchange Disseminated Time 31-08-2026 23:44:55 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Scrutinizer''s Report",
+            "AGM/EGM",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "Disclosure of Voting Results in respect of the Thirty-Second AGM of the Company."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:43:58 Exchange Disseminated Time 31-08-2026 23:43:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Notice Of 54Th Annual General Meeting Of General Insurance Corporation Of India To Be Held On 22Nd September 2026",
+            "AGM/EGM",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Intimation of AGM Notice is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:40:54 Exchange Disseminated Time 31-08-2026 23:40:54 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Muthoot Finance Ltd - 533398 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "0.34 MB",
+            ""
+          ],
+          [
+            "Outcome of AGM"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:39:47 Exchange Disseminated Time 31-08-2026 23:39:47 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "2.01 MB",
+            ""
+          ],
+          [
+            "Disclosure of Voting Results in respect of the Thirty-Second Annual General Meeting of the Company."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:36:35 Exchange Disseminated Time 31-08-2026 23:36:35 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Prima Innovation Ltd - 544855 - Notice Of 2Nd Annual General Meeting Of The Company",
+            "AGM/EGM",
+            "",
+            "25.64 MB",
+            ""
+          ],
+          [
+            "Enclosed herewith Notice of 2nd AGM and Annual Report of the Company for the Financial Year 2025-26"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:36:30 Exchange Disseminated Time 31-08-2026 23:36:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "E2E Networks Ltd - 544783 - Announcement under Regulation 30 (LODR)-Press Release / Media Release",
+            "Company Update",
+            "",
+            "0.29 MB",
+            ""
+          ],
+          [
+            "E2E Networks Limited has informed the Exchange Regarding a Press Release dated August 31, 2026, titled \" E2E Networks Sign Binding Term Sheet worth approximately Rs. 1000 Crore with Sovereign ....Read More.."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:34:03 Exchange Disseminated Time 31-08-2026 23:34:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "3i Infotech Ltd - 532628 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.43 MB",
+            ""
+          ],
+          [
+            "Please find attached the letter of Change in Directors"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:33:58 Exchange Disseminated Time 31-08-2026 23:33:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Welspun Living Ltd - 514162 - Update On Acquisition Of 26% Equity Stake In Clean Max Dhyuthi Private Limited",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Please find attached herewith the intimation regarding update on acquisition of 26% equity stake in Clean Max Dhyuthi Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:33:53 Exchange Disseminated Time 31-08-2026 23:33:53 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Welspun Living Ltd - 514162 - Announcement under Regulation 30 (LODR)-Updates on Acquisition",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Please find attached herewith the intimation regarding Update on Acquisition of 26% stake in Clean Max Dhyuthi Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:31:00 Exchange Disseminated Time 31-08-2026 23:31:00 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "General Insurance Corporation of India - 540755 - Announcement under Regulation 30 (LODR)-Newspaper Publication",
+            "Company Update",
+            "",
+            "10.75 MB",
+            ""
+          ],
+          [
+            "Intimation of newspaper notice prior to dispatch of Annual Report is enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:29:39 Exchange Disseminated Time 31-08-2026 23:29:39 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Prima Innovation Ltd - 544855 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "25.64 MB",
+            ""
+          ],
+          [
+            "Pursuant to Regulation 34(1) of SEBI LODR Regulation, 2015, we enclose herewith the Annual Report of the Company along with the Notice of 2nd AGM for the Financial Year 2025-26"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:25:19 Exchange Disseminated Time 31-08-2026 23:25:19 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Mach Travel Solutions Ltd - 544248 - Announcement under Regulation 30 (LODR)-Press Release / Media Release",
+            "Company Update",
+            "",
+            "1.15 MB",
+            ""
+          ],
+          [
+            "Enclosed"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:15:29 Exchange Disseminated Time 31-08-2026 23:15:29 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "NIIT Learning Systems Ltd - 543952 - Disclosure/ Intimation Pursuant To Regulation 30 Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.25 MB",
+            ""
+          ],
+          [
+            "Update of the MST Holding GmbH Germany, a step down wholly owned subsidiary (\"WoS\") of the Company for the voluntary dissolution and winding up of its Wos - MST Shanghai Co. Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:14:23 Exchange Disseminated Time 31-08-2026 23:14:23 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Neogen Chemicals Ltd - 542665 - Disclosure Pursuant To Regulation 30 (9) Read With Schedule III Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015 ('Listing Regulations').",
+            "Company Update",
+            "",
+            "0.82 MB",
+            ""
+          ],
+          [
+            "Approval for execution of Business Transfer Agreement between NIL and NML for sale/ transfer of undertaking/ assets as mentioned in detail in BTA by NIL to NML."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:06:26 Exchange Disseminated Time 31-08-2026 23:06:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Explicit Finance Ltd - 530571 - Announcement under Regulation 30 (LODR)-Resignation of Director",
+            "Company Update",
+            "",
+            "0.65 MB",
+            ""
+          ],
+          [
+            "Dear Sir/Madam, Kindly find enclosed here with resignation letter tendered by Ms. Vandana Kalokhe DIN : 11757001,"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:04:26 Exchange Disseminated Time 31-08-2026 23:04:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "3i Infotech Ltd - 532628 - Shareholder Meeting / Postal Ballot-Scrutinizer''s Report",
+            "AGM/EGM",
+            "",
+            "1.44 MB",
+            ""
+          ],
+          [
+            "Please find attached Scrutinizers report"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:03:30 Exchange Disseminated Time 31-08-2026 23:03:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Britannia Industries Ltd - 500825 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Pursuant to Regulation 30 read with Clause 7 of Para A of Part A of Schedule III of the SEBI Regulations, 2015, this is to inform you that Mr. Susheel Navanale, Chief Information Officer ....Read More.."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:00:06 Exchange Disseminated Time 31-08-2026 23:00:06 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Mach Travel Solutions Ltd - 544248 - Intimation Regarding Commencement Of Public Beta Testing Of Machtravel.Com And Mach Travel App",
+            "Company Update",
+            "",
+            "0.60 MB",
+            ""
+          ],
+          [
+            "Enclosed"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 23:00:03 Exchange Disseminated Time 31-08-2026 23:00:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "LIC Housing Finance Ltd - 500253 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.16 MB",
+            ""
+          ],
+          [
+            "Intimation of change in senior Management -Cessation of Shri I Sreedhar"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:59:30 Exchange Disseminated Time 31-08-2026 22:59:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Persistent Systems Ltd - 533179 - Receipt Of ESG Rating That Has Been Voluntarily Issued By M/S. SES ESG Research Private Limited",
+            "Company Update",
+            "",
+            "0.20 MB",
+            ""
+          ],
+          [
+            "An intimation regarding the receipt of ESG Rating by Persistent Systems Limited which was voluntarily issued by SES ESG Research Private Limited, is as enclosed."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:58:03 Exchange Disseminated Time 31-08-2026 22:58:03 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Swelect Energy Systems Ltd-$ - 532051 - Transfer Of 26% Equity Shares Held In ESG Solar Energy Private Limited",
+            "Company Update",
+            "",
+            "0.49 MB",
+            ""
+          ],
+          [
+            "SWELECT Energy Systems Limited has informed the Exchange about Transfer of 26% equity shares held in ESG Solar Energy Private Limited."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:57:15 Exchange Disseminated Time 31-08-2026 22:57:15 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "0.52 MB",
+            ""
+          ],
+          [
+            "Appointment of Directors"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:50:20 Exchange Disseminated Time 31-08-2026 22:50:20 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Issue of Securities",
+            "Company Update",
+            "",
+            "0.54 MB",
+            ""
+          ],
+          [
+            "Issue of Fully Convertible Warrants"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:47:30 Exchange Disseminated Time 31-08-2026 22:47:30 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Bajel Projects Ltd - 544042 - Announcement under Regulation 30 (LODR)-Retirement",
+            "Company Update",
+            "",
+            "0.21 MB",
+            ""
+          ],
+          [
+            "Revised - Announcement under Regulation 30 (LODR)-Retirement"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:46:16 Exchange Disseminated Time 31-08-2026 22:46:16 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Hexagon Nutrition Ltd - 544785 - Reg. 34 (1) Annual Report.",
+            "Others",
+            "",
+            "15.66 MB",
+            ""
+          ],
+          [
+            "The Annual Report for the financial year ended 31st March 2026 (Annual Report 2025-26) containing the Notice of the 33rd Annual General Meeting ( 33rd AGM)"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:46:01 Exchange Disseminated Time 31-08-2026 22:46:01 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Nazara Technologies Ltd - 543280 - Shareholder Meeting / Postal Ballot-Scrutinizer\"s Report",
+            "AGM/EGM",
+            "",
+            "1.42 MB",
+            ""
+          ],
+          [
+            "Nazara Technologies Limited informs the Exchange regarding Scrutinizer''s report and voting results of Extraordinary General Meeting held on August 30, 2026."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:40:17 Exchange Disseminated Time 31-08-2026 22:40:17 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Garg Furnace Ltd - 530615 - Clarification Letter Price Movement",
+            "Company Update",
+            "",
+            "0.23 MB",
+            ""
+          ],
+          [
+            "Clarification letter price movement"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:39:58 Exchange Disseminated Time 31-08-2026 22:39:58 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Espire Hospitality Limited - 532016 - RECORD DATE FIXED FOR THE 35TH ANNUAL GENERAL MEETING",
+            "Corp. Action",
+            "",
+            "0.68 MB",
+            ""
+          ],
+          [
+            "AS PER INTIMATION"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:37:29 Exchange Disseminated Time 31-08-2026 22:37:29 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Announcement under Regulation 30 (LODR)-Amendments to Memorandum & Articles of Association",
+            "Company Update",
+            "",
+            "0.48 MB",
+            ""
+          ],
+          [
+            "Increased in Authorised Capital"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:36:43 Exchange Disseminated Time 31-08-2026 22:36:43 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Texmaco Rail & Engineering Ltd - 533326 - Announcement under Regulation 30 (LODR)-Resignation of Chief Financial Officer (CFO)",
+            "Company Update",
+            "",
+            "0.60 MB",
+            ""
+          ],
+          [
+            "Intimation of resignation of Chief Financial Officer of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:36:40 Exchange Disseminated Time 31-08-2026 22:36:40 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Wardwizard Healthcare Ltd - 512063 - Board Meeting Outcome for Outcome Of The Board Meeting Held On 31St August, 2026",
+            "Board Meeting",
+            "",
+            "0.67 MB",
+            ""
+          ],
+          [
+            "Outcome of the Board Meeting held on 31st August, 2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:33:47 Exchange Disseminated Time 31-08-2026 22:33:48 Time Taken 00:00:01"
+          ],
+          [
+            ""
+          ],
+          [
+            "Tata Steel Ltd - 500470 - Announcement under Regulation 30 (LODR)-Diversification / Disinvestment",
+            "Company Update",
+            "",
+            "0.38 MB",
+            ""
+          ],
+          [
+            "Divestment of entire stake held in Jamshedpur Football and Sporting Private Limited, wholly owned subsidiary"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:32:50 Exchange Disseminated Time 31-08-2026 22:32:50 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "0.46 MB",
+            ""
+          ],
+          [
+            "Appointment of M/s K.N. Chaubey & Associates as the Cost Auditor of thee Company for the Financial Year ended 2026-27"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:32:31 Exchange Disseminated Time 31-08-2026 22:32:31 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "HT Media Ltd - 532662 - Letter To The Shareholders Under Regulations 36(1)(B) Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.74 MB",
+            ""
+          ],
+          [
+            "Enclosed is the copy of the letter to the shareholders under Regulation 36(1)(b) of the SEBI (Listing Obligations and Disclosure Requirements) Regulations, 2015"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:28:38 Exchange Disseminated Time 31-08-2026 22:28:38 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Embassy Developments Ltd - 532832 - Intimation Under Regulation 30 Of The SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015",
+            "Company Update",
+            "",
+            "0.53 MB",
+            ""
+          ],
+          [
+            "For further information, please refer attachment."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:24:24 Exchange Disseminated Time 31-08-2026 22:24:24 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Directorate",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under Regulations 30 SEBI (LODR) Regulations 2015, for the Resignation of Director & Change in Chairperson of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:51 Exchange Disseminated Time 31-08-2026 22:22:51 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Exato Technologies Ltd - 544626 - Disclosure Pursuant To Regulation 30 Of The Securities And Exchange Board Of India (LODR) Regulations, 2015 ('Listing Regulations'): Consolidated Disclosure Of Receipt Of Work Orders During The Months Of July And August 2026.",
+            "Company Update",
+            "",
+            "0.63 MB",
+            ""
+          ],
+          [
+            "Disclosure pursuant to Regulation 30 of the SEBI (LODR) Regulations, 2015: Consolidated Disclosure of Receipt of Work Orders during the months of July and August 2026"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:41 Exchange Disseminated Time 31-08-2026 22:22:41 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "AXIS Bank Ltd - 532215 - Announcement under Regulation 30 (LODR)-Analyst / Investor Meet - Intimation",
+            "Company Update",
+            "",
+            "0.16 MB",
+            ""
+          ],
+          [
+            "Schedule of analysts/institutional investors meet"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:22:12 Exchange Disseminated Time 31-08-2026 22:22:12 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Aster DM Quality Care Ltd - 540975 - Regulation 30 Read With Part B Of Schedule III To The SEBI Listing Regulations - Capacity Expansion At The Facility Of A Material Subsidiary Of The Company",
+            "Company Update",
+            "",
+            "0.61 MB",
+            ""
+          ],
+          [
+            "Intimation regarding capacity expansion at facility of a material subsidiary of the Company"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:18:21 Exchange Disseminated Time 31-08-2026 22:18:21 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Resignation of Chairman",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure as per SEBI (LODR) Regulations, 2015, Resignation of Mr. Manish Kumar from the post of Chairman & Non- Executive Director w.e.f. 31.08.2026."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:17:26 Exchange Disseminated Time 31-08-2026 22:17:26 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Exato Technologies Ltd - 544626 - Intimation Of Product Launch - 'Exafone' Under Regulation 30 Of SEBI (Listing Obligations And Disclosure Requirements) Regulations, 2015 ('SEBI Listing Regulations')",
+            "Company Update",
+            "",
+            "0.50 MB",
+            ""
+          ],
+          [
+            "Intimation of Product Launch - \"Exafone\" under Regulation 30 of SEBI (LODR) Regulations, 2015"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:16:09 Exchange Disseminated Time 31-08-2026 22:16:09 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Just Dial Ltd - 535648 - Shareholder Meeting / Postal Ballot-Outcome of AGM",
+            "AGM/EGM",
+            "",
+            "0.23 MB",
+            ""
+          ],
+          [
+            "Gist of the proceedings of the Thirty-Second Annual General Meeting of the Company held today, i.e. Monday, August 31, 2026 is attached."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:14:43 Exchange Disseminated Time 31-08-2026 22:14:43 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Resignation of Director",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under SEBI (LODR) Regulations, 2015, for the Resignation of Mr. Manish Kumar (DIN: 10379153) from the post of Non- Executive & Non Independent Director."
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:11:52 Exchange Disseminated Time 31-08-2026 22:11:52 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Lodha Developers Ltd - 543287 - Announcement under Regulation 30 (LODR)-Updates on Acquisition",
+            "Company Update",
+            "",
+            "0.27 MB",
+            ""
+          ],
+          [
+            "Acquisition of balance stake in Bellissimo Infratech Private Limited (Formerly known as Solidrise Realty Private Limited)"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:07:24 Exchange Disseminated Time 31-08-2026 22:07:24 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ],
+          [
+            "Ganga Papers India Ltd - 531813 - Announcement under Regulation 30 (LODR)-Change in Management",
+            "Company Update",
+            "",
+            "1.52 MB",
+            ""
+          ],
+          [
+            "Disclosure under Regulation 30 of SEBI (LODR) Regulations, 2015, -Resignation of Director & Change in Chairperson"
+          ],
+          [
+            "Exchange Received Time 31-08-2026 22:06:09 Exchange Disseminated Time 31-08-2026 22:06:09 Time Taken 00:00:00"
+          ],
+          [
+            ""
+          ]
+        ]
       ],
-      "contains_right_issue": true,
-      "contains_preferential": false,
-      "contains_allotment": false,
-      "bytes": 39612,
-      "elapsed_s": 0.348
-    },
-    {
-      "source": "BSE",
-      "dataset": "api_reachability",
-      "method": "BseIndiaApi",
-      "status": "success",
-      "tcs_code": "532540",
-      "elapsed_s": 0.267
+      "title": "Latest Corporate Announcements",
+      "current_url": "https://www.bseindia.com/corporates/ann",
+      "contains_target_date": false
     }
   ]
 }
