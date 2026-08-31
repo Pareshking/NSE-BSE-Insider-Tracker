@@ -46,7 +46,6 @@ def bse_api(term):
     return rec
 def bse_bulk_block_api():
     out=[]
-    # Probe several known BSE API shapes; do not treat an empty response as success.
     candidates={'bulk_deals':['https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w'],'block_deals':['https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w']}
     for dataset,urls in candidates.items():
         for url in urls:
@@ -72,10 +71,23 @@ def bse_browser():
         from selenium.webdriver.chrome.options import Options
         o=Options(); [o.add_argument(x) for x in ('--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu',f'--user-agent={UA}')]
         d=webdriver.Chrome(options=o)
-        pages={'bulk_deals':'https://www.bseindia.com/markets/equity/EQReports/bulk_deals.aspx','block_deals':'https://www.bseindia.com/markets/equity/EQReports/block_deals.aspx','corporate_announcements':'https://www.bseindia.com/corporates/ann.html'}
+        pages={
+            'bulk_deals':'https://www.bseindia.com/markets/equity/EQReports/bulk_deals.aspx',
+            'block_deals':'https://www.bseindia.com/markets/equity/EQReports/block_deals.aspx',
+            'insider_trading':'https://www.bseindia.com/corporates/insider_trading_new?expandable=2',
+            'rights_issue':'https://www.bseindia.com/markets/publicissues/furtherissuesummary_ri',
+            'preferential_issue':'https://www.bseindia.com/markets/publicissues/furtherissuesummary_pref',
+            'corporate_announcements':'https://www.bseindia.com/corporates/ann.html'
+        }
+        target_tokens={TARGET_DATE,D.strftime('%d/%m/%Y'),D.strftime('%d-%m-%Y'),D.strftime('%d %b %Y'),D.strftime('%d %b %y'),D.strftime('%d/%b/%Y'),D.strftime('%d-%b-%Y')}
         for dataset,url in pages.items():
             try:
-                d.get(url); time.sleep(4); body=d.find_element('tag name','body').text; tables=d.execute_script("return Array.from(document.querySelectorAll('table')).map(t=>Array.from(t.querySelectorAll('tbody tr')).map(r=>Array.from(r.cells).map(c=>c.innerText.trim())).filter(x=>x.length)).filter(x=>x.length)"); out.append(result('BSE',dataset,'selenium_render',status='success',row_count=sum(map(len,tables)),table_count=len(tables),sample=tables[:2],title=d.title,current_url=d.current_url,contains_target_date=TARGET_DATE in body or D.strftime('%d/%m/%Y') in body))
+                d.get(url); time.sleep(4)
+                body=d.find_element('tag name','body').text
+                tables=d.execute_script("return Array.from(document.querySelectorAll('table')).map(t=>Array.from(t.querySelectorAll('tbody tr')).map(r=>Array.from(r.cells).map(c=>c.innerText.trim())).filter(x=>x.length)).filter(x=>x.length)")
+                links=d.execute_script("return Array.from(document.querySelectorAll('a')).map(a=>({text:(a.innerText||'').trim(),href:a.href})).filter(x=>x.text||x.href).slice(0,80)")
+                contains_target=any(token in body for token in target_tokens)
+                out.append(result('BSE',dataset,'selenium_render',status='success',row_count=sum(map(len,tables)),table_count=len(tables),sample=tables[:3],title=d.title,current_url=d.current_url,body_chars=len(body),contains_target_date=contains_target,target_tokens=sorted(target_tokens),links=links[:30]))
             except Exception as e: out.append(result('BSE',dataset,'selenium_render',status='error',error=str(e)))
         d.quit()
     except Exception as e: out.append(result('BSE','browser_import','selenium_render',status='error',error=str(e)))
