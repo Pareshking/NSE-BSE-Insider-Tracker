@@ -8,83 +8,125 @@ No one-year R2 backfill and no production-schema freeze until all pipeline valid
 
 ## Current execution order
 
-**Finish NSE completely before starting BSE.** NSE categories are: **Insider Trading → Bulk Deals → Block Deals → Rights Issues → Preferential Issues → NSE-only validation/documentation**. Each category uses independent acquisition logic where useful and must pass real-output/date/completeness/dedup validation before the next category is accepted. Do not omit Rights or Preferential Issues.
+NSE and BSE acquisition/validation are **strictly separate**. The earlier combined workflow is legacy/diagnostic only. The active pipeline may proceed exchange-by-exchange without allowing one broken category to stop usable categories.
+
+NSE categories: **Insider Trading → Bulk Deals → Block Deals → Rights Issues → Preferential Issues → NSE certification**.
+BSE categories: **Insider Trading → Bulk Deals → Block Deals → Rights Issues → Preferential Issues → BSE certification**.
+
+For every category: preserve working acquisition, record unresolved defects as TODO, and continue to the next independent category when the current category's usable scope is validated. Do not declare full exchange certification until all required categories and date/completeness/dedup gates pass.
 
 ## Acquisition architecture
 
 NSE and BSE acquisition engines are separate. NSE categories are isolated where their source mechanics differ:
 
-- `scripts/nse_insider.py` — NSE Insider Trading only; official corporate-filings PIT endpoint; independent date-window testing.
+- `scripts/nse_insider.py` — NSE Insider Trading only; independent date-window testing.
 - `scripts/nse_bulk.py` — NSE Bulk Deals only.
 - `scripts/nse_block.py` — NSE Block Deals only.
-- `scripts/nse_rights.py` — NSE Rights Issue extraction/validation using the official JS-rendered RI page.
-- `scripts/nse_preferential.py` — NSE Preferential Issue extraction/validation using the official JS-rendered PREF page.
+- `scripts/nse_rights.py` — NSE Rights Issue extraction/validation.
+- `scripts/nse_preferential.py` — NSE Preferential Issue extraction/validation.
 - `scripts/nse_acquisition.py` — shared NSE helper/legacy engine retained for compatibility; not the category certification path.
 - `scripts/bse_acquisition.py` — BSE-specific acquisition engine.
-- `scripts/acquisition_probe.py` — orchestration/legacy evidence only; it must not define the correctness of an exchange/category.
+- `scripts/acquisition_probe.py` — legacy/diagnostic orchestration only.
 
 ### Dedicated workflow rule
 
-`/.github/workflows/nse-validation.yml` is the dedicated **NSE-only** validation workflow. It must not acquire BSE data. The older `data-validation.yml` remains a combined/legacy workflow and is **not** an NSE certification workflow. A green combined workflow must never be interpreted as NSE certification.
+`/.github/workflows/nse-validation.yml` is the dedicated **NSE-only** validation workflow. It must not acquire BSE data.
 
-Rights/Preferential must be explicitly investigated on **both NSE and BSE**. They are issue/lifecycle data, not merely another deal table.
+`/.github/workflows/data-validation.yml` is the older **combined NSE+BSE diagnostic workflow**. It is not an exchange certification workflow and must not be used for NSE or BSE certification.
+
+**Never repeat the mistake of using the combined workflow as an NSE/BSE certification run.** New validation work must use the appropriate exchange-specific workflow.
+
+## Date/completeness rule
 
 Page count is never a completeness criterion. Pagination is only a transport mechanism. Completion is determined by verified date coverage and source semantics.
 
-## NSE gates
+A one-day result is not historical certification. Where practical, use a 90-day test to establish date-range behavior and inspect the actual distinct source dates returned.
 
-### Insider Trading — IN PROGRESS / BLOCKED until fresh isolated run
+## NSE status
 
-Previous isolated probe returned a real 1-year NSE dataset (9,347 records) but short windows returned zero. That discrepancy means date-window semantics are not yet certified. The official NSE page exposes date windows and archive data. The isolated `scripts/nse_insider.py` records response mode, native columns and counts for 1-day, 5-day, 30-day and 1-year windows.
+### Insider Trading — WORKING ACQUISITION / PENDING CERTIFICATION
 
-PASS requires a real non-empty dataset or documented proof of zero records, correct date semantics, complete requested window, native columns, and duplicate behavior.
+A previous isolated probe returned a real 1-year NSE dataset (9,347 records), with native fields including `personCategory`, `acqName`, `buyQuantity`, `sellquantity`, `buyValue`, `sellValue`, `date`, `exchange`, etc. Short-window behavior returned zero and therefore requires date-semantic validation.
 
-### Bulk Deals — GREEN FOR ACQUISITION / CERTIFICATION PENDING
+**TODO:** certify 90-day date behavior, promoter/person-category classification, BUY/SELL semantics, completeness and intra-NSE dedup.
 
-The isolated NSE engine produced **70 real records for 31-Aug-2026** in the previous validation run. Native NSE fields were observed, including `BD_DT_DATE`, `BD_SYMBOL`, `BD_CLIENT_NAME`, `BD_BUY_SELL`, `BD_QTY_TRD`, and `BD_TP_WATP`. Acquisition is therefore green, but historical date-window completeness and final dedup certification remain open.
+### Bulk Deals — WORKING ACQUISITION / PENDING CERTIFICATION
 
-### Block Deals — GREEN FOR ACQUISITION / CERTIFICATION PENDING
+Previous isolated capture returned 70 real records for 31-Aug-2026 with native NSE fields including `BD_DT_DATE`, `BD_SYMBOL`, `BD_CLIENT_NAME`, `BD_BUY_SELL`, `BD_QTY_TRD`, and `BD_TP_WATP`.
 
-The isolated NSE engine produced **11 real records for 31-Aug-2026** in the previous validation run. Native NSE fields were observed. Acquisition is therefore green, but historical date-window completeness and final dedup certification remain open.
+**TODO:** certify 90-day historical coverage, termination/completeness and intra-NSE dedup.
 
-### Rights Issues — EXTRACTION IMPLEMENTED / RETEST REQUIRED
+### Block Deals — WORKING ACQUISITION / PENDING CERTIFICATION
+
+Previous isolated capture returned 11 real records for 31-Aug-2026 with native NSE fields.
+
+**TODO:** certify 90-day historical coverage, termination/completeness and intra-NSE dedup.
+
+### Rights Issues — EXTRACTION NOT YET CERTIFIED
 
 Official NSE source: `https://www.nseindia.com/companies-listing/corporate-filings-RI`.
 
-The native page is JavaScript-rendered and exposes Company Details plus a lifecycle table containing Record Date, Rights Ratio, Offer Price, Issue Opening/Closing, Entitlement Opening/Closing, Date of Allotment, Number of Shares Allotted, Amount Raised, Number of Shares Listed, Date of Listing, Date of Trading Approval, Revised Flag and Date of Submission. The previous requests-only probe captured the page shell instead of the populated records. The implementation now uses Selenium to render the official page and extracts the actual DOM tables for 1D/5D/30D/1Y windows. This is **not certified until a fresh run proves real rows and date coverage**.
+The page is JavaScript-rendered and exposes lifecycle information such as Record Date, Rights Ratio, Offer Price, Issue Opening/Closing, Entitlement dates, Allotment, Shares Allotted, Amount Raised, Listing, Trading Approval and Submission Date.
 
-### Preferential Issues — EXTRACTION IMPLEMENTED / RETEST REQUIRED
+The prior requests-only approach captured the page shell. Browser-rendered extraction was implemented, but the dedicated validation artifact showed no usable Rights tables. **Keep as pending; do not mark green merely because code exists.**
+
+**TODO:** identify the real underlying data/API or reliable browser extraction, validate 90-day output, native fields and date semantics.
+
+### Preferential Issues — EXTRACTION FAILED / PENDING FIX
 
 Official NSE source: `https://www.nseindia.com/companies-listing/corporate-filings-PREF`.
 
-The native page is JavaScript-rendered and exposes Company Details and lifecycle sections containing Symbol, Company Name, ISIN, CIN, Board Resolution Date, Allottee Category, Consideration, Offer Price, Date of Allotment, Total Number of Shares Allotted, Amount Raised, Date of Listing, Date of Trading Approval, Date of Submission and lock-in details. The previous requests-only probe captured the page shell instead of the populated records. The implementation now uses Selenium to render the official page and extracts the actual DOM tables for 1D/5D/30D/1Y windows. This is **not certified until a fresh run proves real rows and date coverage**.
+The native page is JavaScript-rendered and exposes company, board resolution, allottee category, consideration, offer price, allotment, shares, amount raised, listing, trading approval, submission and lock-in information.
 
-## BSE gates
+The dedicated NSE run failed at Preferential acquisition and produced no certified real dataset.
 
-BSE validation does not begin as a production gate until all NSE gates are green.
+**TODO:** identify the real underlying data/API or reliable browser extraction, validate 90-day output, native fields and date semantics.
 
-Prior diagnostic baseline: Insider 154 raw / 146 unique; Bulk 73 / 73; Block 19 / 17; Rights and Preferential were capped at five pages only. Those figures are not full-day completeness certification.
+## BSE status
 
-## Critical date rule
+BSE is now allowed to proceed independently; it must not wait for unresolved NSE items. Existing BSE diagnostic evidence showed:
 
-Dates are source-specific and semantic. Do not collapse them into one `event_date` prematurely. Preserve transaction/deal date, acquisition/allotment date, disclosure/filing date, broadcast date and retrieval timestamp where available. BSE Insider already demonstrated that a 31-Aug broadcast can contain an earlier acquisition date.
+- Insider: 154 raw / 146 unique
+- Bulk: 73
+- Block: 19 raw / 17 unique
+- Rights: 50
+- Preferential: 125
 
-For Rights/Preferential, distinguish issue/announcement date, approval date, allotment date, listing/commencement date and filing/publication date wherever supplied.
+These are acquisition evidence, not historical certification.
+
+### BSE 90-day test
+
+A fresh 90-day diagnostic run was started, but it used the legacy combined `data-validation.yml` workflow. **Do not use that run as exchange certification.**
+
+**TODO:** run BSE 90-day testing through a BSE-only workflow for Insider, Bulk and Block; inspect actual distinct dates, row counts, native columns, completeness and dedup. Rights/Preferential remain pending-detail validation.
+
+### BSE data semantics
+
+BSE Insider demonstrated promoter-group/category and acquisition information, including acquisition date and broadcast date. Bulk/Block records contain native B/S deal direction. Preserve these source semantics rather than prematurely collapsing them.
+
+## Promoter transaction rule
+
+Promoter buying must be identified from source semantics, not merely `buyQuantity > 0`. Preserve person/category, transaction/acquisition date, buy/sell quantities and values, mode/type and disclosure/broadcast date. Validate promoter/PAC classification independently for NSE and BSE.
 
 ## Deduplication rule
 
-1. Deduplicate within NSE using fields appropriate to the category.
+1. Deduplicate within NSE using category-appropriate keys.
 2. Deduplicate within BSE independently.
-3. Cross-match NSE↔BSE only after both sources are independently certified.
+3. Cross-match NSE↔BSE only after both exchanges are independently certified.
 4. Insider disclosures may represent the same underlying disclosure across exchanges; Bulk/Block executions remain exchange-aware and must not be automatically collapsed.
-5. Rights/Preferential records are issue/lifecycle observations; repeated lifecycle rows must not inflate the underlying issue count.
+5. Rights/Preferential are issue/lifecycle observations; repeated lifecycle rows must not inflate underlying issue counts.
 
-## Mandatory loop
+## Mandatory engineering loop
 
-For each category: **test → inspect real output → identify defect → fix → retest → verify → update documents → move to next category only after validation is complete.**
+**test → inspect real output → identify defect → fix → retest → verify → update documents → continue**.
 
-A green GitHub workflow is not data-quality certification. Actual records, native columns, relevant date fields, completeness, pagination/termination behavior and duplicate behavior must be inspected.
+Do not stop the overall pipeline because one category fails. Keep verified/working categories and record failed categories as explicit TODO/pending gates. Do not call a green GitHub workflow data-quality certification without inspecting records, dates, native columns, completeness and duplicates.
 
 ## Current decision
 
-NSE remains the active exchange. Bulk and Block acquisition are green; Insider remains blocked on date semantics; Rights and Preferential have corrected browser-based extraction code awaiting fresh real-output validation. Do not start BSE until every NSE category is independently certified. Do not build production R2 data or freeze the production schema before explicit authorization.
+- NSE: Insider/Bulk/Block acquisition working but not fully certified; Rights pending; Preferential pending/failing.
+- BSE: acquisition baseline available; 90-day historical validation pending; Rights/Preferential detail validation pending.
+- Combined workflow: legacy diagnostic only; **never use it as the certification path again**.
+- Cross-exchange matching: blocked until independent exchange certification.
+- R2 backfill: blocked.
+- Production schema freeze: blocked.
