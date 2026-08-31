@@ -4,85 +4,60 @@ Last updated: 2026-09-01
 
 ## Operating rule
 
-No one-year R2 backfill and no production-schema freeze until the pipeline phases are cleared and the user explicitly authorizes the next stage.
+No one-year R2 backfill and no production-schema freeze until all pipeline validation gates are cleared and the user explicitly authorizes the next stage.
+
+## Current execution order
+
+Finish NSE completely before starting BSE. Within NSE: Insider → Bulk → Block → NSE-only validation/documentation. Each category uses its own acquisition code and must pass real-output/date/completeness/dedup validation before the next category is accepted.
 
 ## Acquisition architecture
 
-NSE and BSE acquisition engines are intentionally separate:
+NSE and BSE acquisition engines are separate. NSE categories are now also isolated:
 
-- `scripts/nse_acquisition.py` — NSE transport, CSV parsing, date-window tests and NSE package acquisition.
-- `scripts/bse_acquisition.py` — BSE browser rendering, BSE-specific tables and pagination.
-- `scripts/acquisition_probe.py` — orchestration/reporting only; it must not contain exchange-specific acquisition logic.
+- `scripts/nse_insider.py` — NSE Insider Trading only; official corporate-filings PIT endpoint; independent date-window testing.
+- `scripts/nse_bulk.py` — NSE Bulk Deals only.
+- `scripts/nse_block.py` — NSE Block Deals only.
+- `scripts/nse_acquisition.py` — shared NSE helper/legacy engine retained for compatibility; not the category certification path.
+- `scripts/bse_acquisition.py` — BSE-specific acquisition engine.
+- `scripts/acquisition_probe.py` — orchestration/legacy evidence only; it must not define the correctness of an exchange/category.
 
-The 5-page limit is a diagnostic cap only. It is not evidence of full-day completeness.
+Page count is never a completeness criterion. Pagination is only a transport mechanism. Completion is determined by verified date coverage and source semantics.
 
-## Latest verified baseline
+## NSE gates
 
-Target date: `2026-08-31`
+### Insider Trading — IN PROGRESS / BLOCKED until fresh run
 
-### NSE
+Previous probe returned HTTP 200 with a header-only CSV and zero parsed rows. That was not evidence that NSE had no insider records. The official NSE page exposes date windows and archive data. A new isolated `scripts/nse_insider.py` now establishes an NSE session and queries the native JSON response for 1-day, 5-day, 30-day and 1-year windows, recording status, response mode, columns and counts. Commit introducing the isolated engine: `90624a5241c1bce6c98352763f3dda131fb4c633`.
 
-| Dataset | Raw | Unique | Native date observed | Status |
-|---|---:|---:|---|---|
-| Insider | 0 parsed in prior probe | 0 | unresolved | **BLOCKED / unresolved** |
-| Bulk | 70 | 70 | `31-AUG-2026` | acquisition proven |
-| Block | 11 | 11 | `31-AUG-2026` | acquisition proven |
+PASS requires a real non-empty dataset or documented proof of zero records, correct date semantics, complete requested window, native columns, and duplicate behavior.
 
-NSE Insider is **not** considered empty. The official NSE page exposes multiple windows and Archive Data. A valid CSV header was previously returned but no records parsed for the tested request; the corrected NSE engine now tests native JSON first and multiple windows. This remains blocked until a real non-empty result and its date semantics are verified.
+### Bulk Deals — IN PROGRESS
 
-### BSE
+Previously observed: 70 unique records for 31-Aug-2026 through the NSE package. It is now isolated in `scripts/nse_bulk.py`. Fresh real-output and date-completeness verification is required before PASS.
 
-| Dataset | Raw | Unique | Date interpretation | Status |
-|---|---:|---:|---|---|
-| Insider | 154 | 146 | broadcast `31/08/2026`; acquisition dates earlier | acquisition + dedup proven for tested page; completeness unresolved |
-| Bulk | 73 | 73 | deal date `31/08/2026` | acquisition proven; completeness unresolved |
-| Block | 19 | 17 | deal date `31 Aug 26` | acquisition proven; duplicate classification unresolved |
-| Rights | 50 in 5-page test | 50 | issue-stage/company rows | incomplete; actual termination unresolved |
-| Preferential | 5-page test | not production-certified | issue-stage/company rows | incomplete; actual termination unresolved |
+### Block Deals — IN PROGRESS
 
-## Latest infrastructure defect found
+Previously observed: 11 unique records for 31-Aug-2026 through the NSE package. It is now isolated in `scripts/nse_block.py`. Fresh real-output and date-completeness verification is required before PASS.
 
-The standalone `NSE-BSE Data Validation` workflow previously ran `data_validation_v4.py` without first creating the required BSE raw capture file. Run `33441200777` failed with `FileNotFoundError: artifacts/data_validation_v4/bse_raw.json`; this was a workflow orchestration defect, not a source-data conclusion. The workflow has been corrected to acquire fresh BSE and NSE evidence before validation. The correction is commit `86bd2ee28b7039fa61333c48fd32de383763281b` and is awaiting fresh-run verification.
+## BSE gates
+
+BSE validation does not begin as a production gate until all NSE gates are green.
+
+Prior diagnostic baseline: Insider 154 raw / 146 unique; Bulk 73 / 73; Block 19 / 17; Rights and Preferential were capped at five pages only. Those figures are not full-day completeness certification.
 
 ## Critical date rule
 
-Dates are source-specific and semantic. Do not collapse them into one `event_date`.
-
-Potential fields include:
-
-- transaction/deal date
-- acquisition/allotment date
-- disclosure/filing date
-- broadcast date
-- retrieval timestamp
-
-BSE Insider already demonstrates that a disclosure broadcast on 31-Aug can report an acquisition occurring several days earlier. NSE and BSE also use different textual date formats. Each source must be parsed with its own date rules before canonical normalization.
+Dates are source-specific and semantic. Do not collapse them into one `event_date` prematurely. Preserve transaction/deal date, acquisition/allotment date, disclosure/filing date, broadcast date and retrieval timestamp where available. BSE Insider already demonstrated that a 31-Aug broadcast can contain an earlier acquisition date.
 
 ## Deduplication rule
 
-Perform deduplication in three distinct stages:
+1. Deduplicate within NSE using fields appropriate to the category.
+2. Deduplicate within BSE independently.
+3. Cross-match NSE↔BSE only after both sources are independently certified.
+4. Insider disclosures may represent the same underlying disclosure across exchanges; Bulk/Block executions remain exchange-aware and must not be automatically collapsed.
 
-1. within NSE;
-2. within BSE;
-3. across NSE↔BSE only where evidence supports the same underlying disclosure/event.
+## Mandatory loop
 
-Bulk/Block rows must remain exchange-aware. A visually similar NSE and BSE execution is not automatically one transaction.
+For each category: **test → inspect real output → identify defect → fix → retest → verify → update documents → move to next category only after validation is complete.**
 
-## Mandatory validation loop
-
-1. Test NSE and BSE independently.
-2. Inspect real raw records and native columns.
-3. Verify every relevant date field and date-window behavior.
-4. Identify defects and incomplete pagination.
-5. Fix the source-specific acquisition/parser.
-6. Retest.
-7. Inspect actual output, not only workflow status.
-8. Deduplicate within each exchange and classify duplicates.
-9. Cross-match exchanges with evidence-based rules.
-10. Update this document and the AI handover/task document.
-11. Repeat until all acquisition/data-quality gates pass.
-12. Only then propose production schema/backfill; wait for explicit authorization.
-
-## Hard rule
-
-A green GitHub workflow means the code path completed. It is **not** data-quality certification. A dataset is PASS only after records, dates, native schema, completeness/pagination and duplicate behavior have been inspected.
+A green GitHub workflow is not data-quality certification. Actual records, native columns, relevant date fields, completeness, pagination/termination behavior and duplicate behavior must be inspected.
