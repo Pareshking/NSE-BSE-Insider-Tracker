@@ -1,0 +1,38 @@
+name: BSE Only 90-Day Validation
+on:
+  push:
+    paths:
+      - '.github/workflows/bse-only-trigger.yml'
+      - 'scripts/bse_*.py'
+      - 'scripts/bse*'
+      - 'requirements.txt'
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        required: false
+        default: '90'
+      target_date:
+        required: false
+        default: ''
+jobs:
+  bse-only:
+    runs-on: ubuntu-latest
+    env:
+      LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
+      TARGET_DATE: ${{ inputs.target_date || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -r requirements.txt
+      - name: BSE historical window
+        run: python scripts/bse_90d_validation.py
+      - name: BSE acquisition
+        run: python scripts/bse_raw_capture_v2.py
+      - name: Upload BSE evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bse-only-90d
+          path: artifacts/
+          if-no-files-found: warn
