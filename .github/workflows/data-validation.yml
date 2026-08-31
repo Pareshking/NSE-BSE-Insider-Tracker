@@ -15,26 +15,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Run schema-aware NSE + BSE validation
         env:
           TARGET_DATE: '2026-08-31'
           SECOND_DATE: '2026-08-28'
-        run: python scripts/data_validation_v3.py
-
+        run: python scripts/data_validation_v4.py
+      - name: Probe BSE insider historical date selection
+        run: |
+          mkdir -p artifacts/insider_historical_probe
+          python scripts/bse_insider_historical_probe.py | tee artifacts/insider_historical_probe/result.json
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nse-bse-data-validation-v3
-          path: artifacts/data_validation_v3
+          name: nse-bse-data-validation-v4
+          path: |
+            artifacts/data_validation_v4
+            artifacts/insider_historical_probe
           retention-days: 14
