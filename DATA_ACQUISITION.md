@@ -177,7 +177,50 @@ consistent column name per category regardless of exchange:
 - `rights_issue`/`preferential_issue`: `canonical_company`/`symbol`/`stage`/
   `event_date`, plus `canonical_company_unreliable` (`true` when the source
   company-name field was purely numeric and was nulled out rather than
-  surfaced as a fake name — this is the scrip-code bug above)
+  surfaced as a fake name — this is the scrip-code bug above),
+  `canonical_allottee_category` (Preferential only — exact-mapped to
+  `PROMOTER`/`NON_PROMOTER`/`MIXED`; the raw values `"Non Promoter"` and
+  `"Promoter & Non Promoter"` both contain the substring `PROMOTER`, so this
+  must never be a substring check), and `canonical_amount_raised` /
+  `canonical_amount_raised_unreliable` (NSE's `totalAmntRaised`/
+  `totalAmtRaised` has been observed as scientific-notation garbage like
+  `"3.64E+16"` — ~36 quadrillion rupees — alongside a ~50% null rate;
+  anything ≤0 or >10 trillion INR is rejected rather than shown as currency)
+
+### Known gaps not yet fixed (need a design decision or touch certified code)
+
+- **BSE rights/preferential lose real fields at acquisition time.** BSE's
+  underlying API for these categories actually returns `InPrincipleStatus`,
+  `InPrinciple_date`, `ListingStatus`, `Listing_stage_date` (confirmed in
+  `bse_raw.json`), but `bse_raw_capture_v2.py`'s row-reduction step discards
+  all of them, and `bse_validate.py`'s `normalize()` then labels what's left
+  as meaningless `stage_1`/`stage_2`/`stage_3` (one of which is literally an
+  XML file path). Fixing this properly means editing the acquisition +
+  validation scripts that are currently fully certified for BSE — real risk
+  of destabilizing a green status for a labeling improvement, so left alone
+  pending a deliberate decision to do it with re-verification.
+- **No shared NSE/BSE identifier space.** NSE uses alpha tickers (`RELIANCE`),
+  BSE uses 6-digit numeric scrip codes (`500325`) — they never overlap, so
+  `find_cross_exchange_matches()` can only go through fuzzy company-name
+  matching (see above), which is inherently weaker than an exact-ID join.
+  NSE's Rights/Preferential rows do carry `isin` (the actual
+  exchange-agnostic global security identifier), but BSE's captured data
+  never includes it, and NSE Insider/Bulk/Block don't either. The real fix
+  is ingesting NSE's and BSE's public security-master files (which map
+  symbol ↔ scrip code ↔ ISIN ↔ company name) as a new reference-data source
+  — a genuinely separate piece of work, not a quick patch.
+- **NSE Insider's single `date` column silently collapses a range.** ~19%
+  of captured rows (88/465 on 2026-09-01) have `acqfromDt != acqtoDt` — the
+  disclosed transaction is an aggregate over a multi-day window, not a
+  single date. `canonical_transaction_date` currently uses the disclosure/
+  intimation date, not this range.
+- **Revision/amendment tracking is unused.** NSE's insider schema carries
+  `prevAppId`/`revisionRemark` fields meant to mark a filing as amending an
+  earlier one (0 occurrences in the 2026-09-01 sample, but expected to
+  recur). `canonical_event_id` currently treats a revised filing as a brand
+  new, unrelated row rather than a new version of the original — this is
+  exactly the "amended/re-filed disclosure" identity case
+  `PROJECT_PLAN.md` section 8 calls out as a requirement, not yet built.
 
 ### Cross-exchange same-event matching: flagged, never merged
 
