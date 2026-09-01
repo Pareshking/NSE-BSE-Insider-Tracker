@@ -74,10 +74,20 @@ def normalize(ds, r):
                 'buy_value': text(r[13]), 'sell_value': text(r[14]),
                 'broadcast_date': text(r[15]), 'raw': r}
     if ds in ('rights_issue', 'preferential_issue') and r:
+        # stage_1/2/3 kept as-is (backward compatible with anything already
+        # reading them); the named fields below are the same positions
+        # 4-8 added to ri_pref_row() in bse_raw_capture_v2.py -- pending
+        # live re-verification since bulk/block/rights/preferential have
+        # been Akamai-BLOCKED for every run since that mapping was written.
         return {'company': text(r[0]),
                 'stage_1': text(r[1]) if len(r) > 1 else '',
                 'stage_2': text(r[2]) if len(r) > 2 else '',
                 'stage_3': text(r[3]) if len(r) > 3 else '',
+                'in_principle_status': text(r[4]) if len(r) > 4 else '',
+                'in_principle_date': text(r[5]) if len(r) > 5 else '',
+                'listing_status': text(r[6]) if len(r) > 6 else '',
+                'listing_stage_date': text(r[7]) if len(r) > 7 else '',
+                'bse_company_code': text(r[8]) if len(r) > 8 else '',
                 'raw': r}
     return {'raw': r}
 

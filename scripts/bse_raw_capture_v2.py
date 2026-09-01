@@ -203,6 +203,20 @@ def ri_pref_row(r):
         gf(r, 'Listing_Stage'),
         gf(r, 'Recordid', 'recordid'),
         gf(r, 'scripcode', 'ScripCode', 'SCRIP_CODE'),
+        # Positions 4-8 appended (never touch 0-3 above -- bse_validate.py's
+        # existing rights_issue/preferential_issue field extraction reads
+        # those first four positionally, so this stays backward compatible).
+        # Field names confirmed from a real captured API response's column
+        # list (2026-09-01), but NOT yet re-verified end-to-end against a
+        # live run since bulk/block/rights/preferential were Akamai-BLOCKED
+        # for every run after this mapping was written -- gf() degrades to
+        # '' on a miss rather than raising, so a name mismatch here fails
+        # safe (empty field) rather than breaking acquisition.
+        gf(r, 'InPrincipleStatus'),                       # r[4] in_principle_status
+        gf(r, 'InPrinciple_date'),                        # r[5] in_principle_date
+        gf(r, 'ListingStatus'),                           # r[6] listing_status
+        gf(r, 'Listing_stage_date'),                      # r[7] listing_stage_date
+        gf(r, 'COMPANY_CODE'),                            # r[8] bse_company_code
     ]
 
 

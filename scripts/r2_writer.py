@@ -88,7 +88,7 @@ def resolve_isin(exchange, category, row):
             return isin
         return _prefix_match_symbol(symbol, isin_by_nse_symbol)
     else:
-        code = _pick(row, 'security_code', 'stage_3')
+        code = _pick(row, 'security_code', 'bse_company_code', 'stage_3')
         return isin_by_bse_code.get(str(code).strip()) if code else None
 
 
@@ -187,6 +187,18 @@ def canonicalize(exchange, category, row):
         else:
             qty = row.get('quantity')
             val = row.get('transaction_value')
+
+        # NSE discloses the actual trade over a from/to window (acqfromDt..
+        # acqtoDt), which differs from the disclosure/intimation date ('date')
+        # for ~19% of real captured rows (2026-09-01) -- an aggregated
+        # multi-day disclosure, not a single-day transaction. Surface the
+        # real range instead of silently collapsing it to one day. BSE's
+        # normalized schema has no separate from/to fields (its
+        # 'transaction_date' is already a single day), so from==to there.
+        txn_from = _pick(row, 'acqfromDt', 'transaction_date')
+        txn_to = _pick(row, 'acqtoDt', 'transaction_date')
+        is_range = bool(txn_from and txn_to and txn_from != txn_to)
+
         result = {
             'canonical_company': _pick(row, 'companyName', 'company', 'nameOfTheCompany'),
             'canonical_symbol': _pick(row, 'symbol', 'security_code'),
@@ -198,8 +210,24 @@ def canonicalize(exchange, category, row):
             'canonical_holding_before': _pick(row, 'beforeSharesNo', 'holding_before'),
             'canonical_holding_after': _pick(row, 'afterSharesNo', 'holding_after'),
             'canonical_transaction_date': _pick(row, 'date', 'transaction_date'),
+            'canonical_transaction_date_from': txn_from,
+            'canonical_transaction_date_to': txn_to,
+            'canonical_transaction_date_is_range': is_range,
             'canonical_mode': _pick(row, 'modeOfAcquisition', 'mode'),
             'canonical_broadcast_date': _pick(row, 'broadcastDt', 'broadcast_date'),
+            # NSE's schema carries appId/prevAppId to mark a filing as
+            # amending an earlier one (0 occurrences in the 2026-09-01
+            # sample, but expected to recur -- see PROJECT_PLAN.md section 8
+            # "amended/re-filed disclosure" identity requirement).
+            # canonical_event_id is a content hash and correctly differs
+            # between the original and its revision; appId is NSE's own
+            # stable filing identifier, so exposing the appId/prevAppId
+            # chain (rather than trying to recompute a historical hash) is
+            # what actually lets a consumer trace a revision to its
+            # original across runs.
+            'canonical_app_id': row.get('appId'),
+            'canonical_prev_app_id': row.get('prevAppId'),
+            'canonical_is_revision': bool(row.get('prevAppId')),
         }
     if category in ('bulk_deals', 'block_deals'):
         if exchange == 'nse':
@@ -268,7 +296,16 @@ def canonicalize(exchange, category, row):
             'canonical_company_unreliable': company_unreliable,
             'canonical_symbol': _pick(row, 'nseSymbol', 'security_code', 'symbol'),
             'canonical_stage': _pick(row, 'stage', 'issueType'),
-            'canonical_event_date': _pick(row, 'dateOfSubmission', 'boardResolutionDt', 'event_date'),
+            # listing_stage_date/in_principle_date are BSE fields added
+            # 2026-09-01 (see bse_raw_capture_v2.py's ri_pref_row(), pending
+            # live re-verification) -- previously BSE rights/preferential had
+            # NO date field at all here, which meant find_cross_exchange_matches()
+            # could never confirm a match for these categories (a match
+            # requires a date on both sides when there's no quantity to
+            # compare). This is what actually closes that gap, not just the
+            # ISIN crosswalk alone.
+            'canonical_event_date': _pick(row, 'dateOfSubmission', 'boardResolutionDt',
+                                           'listing_stage_date', 'in_principle_date', 'event_date'),
             'canonical_allottee_category': canonical_allottee_category,
             'canonical_amount_raised': None if amount_unreliable else amount,
             'canonical_amount_raised_unreliable': amount_unreliable,
