@@ -1,0 +1,45 @@
+name: NSE Bulk Deals Diagnostic (one-off)
+
+# Not part of the regular pipeline. Investigates whether NSE Bulk/Block
+# Deals being blocked on every run is a wrong-endpoint bug in nse_bulk.py
+# (like the dead /api/corporates-pit endpoint was for Insider Trading) or a
+# blanket block on this runner's IP -- by visiting several candidate NSE
+# report pages and endpoint variants in one browser session and reporting
+# exactly what each one returns. See scripts/nse_bulk_diagnose.py.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'End date (YYYY-MM-DD)'
+        required: false
+        default: '2026-08-31'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Diagnose NSE bulk/block endpoints
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+        run: python scripts/nse_bulk_diagnose.py
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-bulk-diagnose
+          path: artifacts/nse_bulk_diagnose
+          retention-days: 14
