@@ -145,10 +145,28 @@ covered by `PROJECT_PLAN.md`/`FRONTEND_PRODUCT_SPEC.md`/
 | Investment-signal alerts/notifications | **Not specified** |
 | Market-cap materiality | **Not specified anywhere** (confirmed zero mentions) -- this is genuinely new, not something we lost track of |
 
-Decision needed: peer/sector comparison, price-correlation overlay, and
-investment-signal alerts are real ideas but unscoped and not blocking
-anything currently in flight. Default position: keep them as named future
-phases (not built now) unless the user wants one pulled forward.
+**Discussed and decided (2026-09-01):** effort ordering is Phase 6 <
+Phase 8 < Phase 7, not the order originally listed:
+
+- **Phase 6 (peer/sector comparison)** is cheapest -- rides entirely on
+  Phase 0.5's market-cap data plus the VR sheet's Sector/Industry columns
+  (already have both, no new external source). E.g. sector median net-buy
+  vs. one company's net-buy, as a percentile/rank.
+- **Phase 8 (investment-signal alerts)** is medium -- architecturally
+  different from the other two (a background pipeline step, not a page):
+  evaluate a committed watchlist/rule config at the end of the existing
+  daily GitHub Actions run, deliver to one channel (email/Telegram).
+  Single-user scope is correct here -- no accounts/auth exists or is
+  worth building for one user.
+- **Phase 7 (price-correlation overlay)** is heaviest -- needs a data
+  source we don't have at all (daily OHLC price history, not deal-level
+  data; candidate `jugaad-data` bhavcopy, NSE-only, same BSE gap pattern
+  as market cap) plus real historical backfill, which `PROJECT_PLAN.md`
+  §12 already lists as unfinished for every dataset, not just this one.
+
+Decision: keep all three deferred/unscoped for now. Stay focused on
+Phase 0.5 -> Phase 2 -> Phase 3 first; revisit 6/8/7 (in that effort
+order) after.
 
 ## Page structure
 
