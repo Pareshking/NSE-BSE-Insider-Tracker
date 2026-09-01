@@ -359,6 +359,24 @@ twice as real data came in:
    `r2-storage.yml`, BSE before NSE per explicit ordering preference.
 9. Wired both NSE and BSE market cap into the daily pipeline as their own
    steps in `r2-storage.yml`.
+10. **User asked directly: does the combined market cap now resolve
+    everything? Checked rather than assumed -- no.** 163 of 638 real
+    NSE-transacting symbols (that day's insider+bulk data) still had no
+    market cap: NSE's PR zip only covers ~2,301 EQ-series symbols, missing
+    SME/micro-cap-board names. But checking further found real, free
+    upside: 41 of those 163 (436 in the full universe) ARE cross-listed
+    on BSE with a resolvable BSE market cap -- previously wasted because
+    the merge only matched a symbol against its OWN exchange's rows, not
+    the other exchange's, even though the ISIN crosswalk to make that
+    match already existed (`load_security_master()`, already used for
+    cross-exchange transaction matching). Added
+    `cross_exchange_alias_rows()` to `r2_writer.py`: for a symbol missing
+    from its own exchange's file, emit an alias row under its own
+    symbol/code pointing at the other exchange's market cap value, tagged
+    `source: cross_exchange_alias`, never overwriting a row that already
+    resolved directly. Result: NSE-side real coverage 475/638 (74.4%) ->
+    516/638 (80.9%), zero new fetches. Genuine remaining gap: 122 of 638
+    have no market cap on either exchange -- a real limit, not a bug.
 
 **Also fixed this round, found while working the above:**
 
