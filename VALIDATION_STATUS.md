@@ -9,13 +9,21 @@ No one-year R2 backfill and no production-schema freeze until all validation gat
 NSE and BSE remain strictly separate. `.github/workflows/nse-validation.yml` and `.github/workflows/bse-validation.yml` are the certification paths. `data-validation.yml` is legacy diagnostic only.
 
 ## Frontend product direction
-A production frontend specification is now documented in `FRONTEND_PRODUCT_SPEC.md`. The website is required to be a world-class quantitative research interface, not a raw scraper-output viewer. The planned flow is:
+A production frontend specification is documented in `FRONTEND_PRODUCT_SPEC.md`. The website is required to be a world-class quantitative research interface, not a raw scraper-output viewer. The planned flow is:
 
 **Overview → Insider → Bulk → Block → Rights → Preferential → Data Quality/Validation → evidence drill-down**
 
 The frontend must expose source provenance, extraction time, requested versus actual date coverage, certification state, native exchange fields, transaction semantics, lifecycle status and duplicate/match status. NSE and BSE remain visually separated until cross-exchange matching is independently certified. The UI must never manufacture a green/trusted state from workflow success alone.
 
-Frontend acceptance includes responsive/mobile research UX, dense but readable tables, sticky headers, filtering/search, exports, row-level evidence, loading/error/empty states, accessibility, performance targets and explicit warnings for incomplete/uncertified data. This is a product specification; it does not itself certify backend data.
+### Visual reference concepts
+Two frontend visual concept references are now stored in `docs/frontend-concepts/`:
+
+- `frontend-concept-a.svg` — conservative institutional research-terminal direction with dominant research table, provenance, coverage and evidence panels.
+- `frontend-concept-b.svg` — analytics-heavy terminal direction with persistent search, category tabs, top-company analytics and validation/evidence center.
+
+The recommended direction is **Concept B as the starting visual benchmark combined with Concept A's stronger provenance/evidence treatment**. These are design references only; their illustrative KPI values/statuses must never be copied into production as factual data.
+
+Frontend acceptance includes responsive/mobile research UX, dense but readable tables, sticky headers, filtering/search, exports, row-level evidence, loading/error/empty states, accessibility, performance targets and explicit warnings for incomplete/uncertified data.
 
 ## Latest engineering loop
 
