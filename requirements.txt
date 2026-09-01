@@ -1,6 +1,7 @@
 boto3>=1.35,<2
 requests>=2.32,<3
 pandas>=2.2,<3
+pyarrow>=17,<19
 html5lib>=1.1,<2
 lxml>=5,<7
 beautifulsoup4>=4.12,<5

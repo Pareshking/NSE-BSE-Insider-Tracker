@@ -1,0 +1,90 @@
+name: R2 Storage Write (NSE + BSE)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Target date (YYYY-MM-DD) for both exchanges'
+        required: false
+        default: '2026-08-31'
+      lookback_days:
+        description: 'Historical lookback window'
+        required: false
+        default: '90'
+  schedule:
+    # 18:00 UTC = after both NSE and BSE end-of-day disclosures are published.
+    - cron: '0 18 * * 1-5'
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-validate-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+      LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # --- NSE acquisition (5 categories) ---
+      - name: NSE Insider
+        if: always()
+        run: python scripts/nse_insider.py
+      - name: NSE Bulk
+        if: always()
+        run: python scripts/nse_bulk.py
+      - name: NSE Block
+        if: always()
+        run: python scripts/nse_block.py
+      - name: NSE Rights
+        if: always()
+        run: python scripts/nse_rights.py
+      - name: NSE Preferential
+        if: always()
+        run: python scripts/nse_preferential.py
+      - name: NSE evidence validation
+        if: always()
+        run: python scripts/nse_validate.py
+
+      # --- BSE acquisition (5 categories) ---
+      - name: BSE raw acquisition
+        if: always()
+        run: python scripts/bse_raw_capture_v2.py
+      - name: BSE evidence validation
+        if: always()
+        run: python scripts/bse_validate.py
+
+      # --- Write only VERIFIED categories to R2 ---
+      - name: Write validated datasets to R2
+        if: always()
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/r2_writer.py
+
+      - name: Upload run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-storage-run-evidence
+          path: |
+            artifacts/nse_insider
+            artifacts/nse_bulk
+            artifacts/nse_block
+            artifacts/nse_validation
+            artifacts/bse_validation
+            artifacts/data_validation_v5
+          retention-days: 14
+          if-no-files-found: warn
