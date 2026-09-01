@@ -33,9 +33,20 @@ in the pipeline computed that until now.
    not covered by this file)" as a real, accepted limit rather than a gap
    to patch with individual lookups. Dropped the fallback and the
    per-run symbol-collection step -- this script now just dumps the whole
-   PR zip's EQ-series universe every run, independent of any other
-   acquisition step having completed first (same shape as
-   scripts/bse_market_cap.py).
+   PR zip's universe every run, independent of any other acquisition step
+   having completed first (same shape as scripts/bse_market_cap.py).
+5. User then flagged that the mcap*.csv file wasn't being read fully: it
+   was filtered to `Series == 'EQ'` only, on the (untested) assumption
+   that other series might duplicate a symbol under a different paid-up
+   value. Checked real data: the file has 3,171 rows across EQ (2,301),
+   SM/ST (SME, 448+116), and BE/BZ/IV/RR/SZ/IT (870 total non-EQ) --
+   exactly one Symbol value repeats across rows, and it's a "TOTAL"
+   grand-total footer row, not a real security. So the EQ filter was
+   discarding 870 legitimate rows for a collision risk that doesn't
+   exist in practice. Removed the series filter (excluding "TOTAL" by
+   name instead). Real coverage against that day's 638 actual
+   NSE-transacting symbols: 475 (74.4%) with EQ-only -> 632 (99.1%)
+   without it.
 """
 from __future__ import annotations
 import io, json, os, zipfile
@@ -89,9 +100,20 @@ def fetch_pr_zip_market_caps(target_date: date) -> dict:
         print(f'  PR zip for {target_date}: missing symbol/market-cap column, got {list(df.columns)}')
         return {}
 
-    if col_series is not None:
-        df = df[df[col_series].astype(str).str.strip().str.upper() == 'EQ']
+    # NOT filtered to Series == 'EQ' -- checked real data (2026-09-01) and
+    # that filter was silently discarding 870 of 3,171 rows: SM (448, SME
+    # mainboard) and ST (116) are the user-flagged SME series, plus BE/BZ/IV/
+    # RR/SZ/IT (real listed instruments too, not just noise). Real-data
+    # coverage check against that day's 638 actual NSE-transacting symbols:
+    # EQ-only found 475 (74.4%); no series filter found 632 (99.1%). The
+    # user's own earlier concern that mixed series would cause one symbol's
+    # row to overwrite another's under a different (possibly stale) paid-up
+    # value turned out to be a non-issue in practice: exactly one Symbol
+    # value repeats across rows in a real file, and it's a "TOTAL" grand-total
+    # footer row, not a real security -- excluded by name below, not by
+    # series, so no genuine duplicate-collision risk remains.
     df[col_sym] = df[col_sym].astype(str).str.strip().str.upper()
+    df = df[df[col_sym] != 'TOTAL']
     df[col_mcap] = pd.to_numeric(df[col_mcap].astype(str).str.replace(',', ''), errors='coerce')
     df = df[df[col_mcap].notna() & (df[col_mcap] > 0)]
 
@@ -101,10 +123,11 @@ def fetch_pr_zip_market_caps(target_date: date) -> dict:
             'symbol': row[col_sym],
             'isin': row[col_isin] if col_isin else None,
             'market_cap': float(row[col_mcap]),
+            'series': row[col_series] if col_series else None,
             'source': 'pr_zip',
             'pr_zip_date': str(target_date),
         }
-    print(f'  PR zip for {target_date}: {len(result)} EQ-series symbols with market cap')
+    print(f'  PR zip for {target_date}: {len(result)} symbols with market cap (all series)')
     return result
 
 
@@ -128,17 +151,18 @@ def main():
     print(f'Fetching whole-market NSE PR bhavcopy zip for {TARGET}...')
     caps, pr_date = fetch_pr_zip_recent(TARGET)
     rows = list(caps.values())
-    print(f'Total NSE EQ-series symbols with market cap: {len(rows)}')
+    print(f'Total NSE symbols with market cap (all series): {len(rows)}')
 
     report = {
         'source': 'NSE', 'dataset': 'market_cap',
         'target_date': str(TARGET),
-        'method': 'NSE PR bhavcopy zip (whole-market mcap*.csv, official Market Cap(Rs.) column) -- '
-                  'no per-symbol lookups; a stock not in this file (BSE-only, or otherwise uncovered) '
-                  'is a real, accepted limit, not patched with individual searches',
+        'method': 'NSE PR bhavcopy zip (whole-market mcap*.csv, official Market Cap(Rs.) column, all '
+                  'series -- EQ, SME (SM/ST), and others -- not filtered to EQ only) -- no per-symbol '
+                  'lookups; a stock not in this file (BSE-only, or otherwise uncovered) is a real, '
+                  'accepted limit, not patched with individual searches',
         'pr_zip_date_used': pr_date,
         'symbols_resolved': len(rows),
-        'columns': ['symbol', 'isin', 'market_cap', 'source'],
+        'columns': ['symbol', 'isin', 'market_cap', 'series', 'source'],
         'rows': rows,
     }
     Path(OUT / 'report.json').write_text(json.dumps(report, indent=2, default=str))

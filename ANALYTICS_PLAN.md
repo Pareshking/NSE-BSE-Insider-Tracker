@@ -375,8 +375,27 @@ twice as real data came in:
     symbol/code pointing at the other exchange's market cap value, tagged
     `source: cross_exchange_alias`, never overwriting a row that already
     resolved directly. Result: NSE-side real coverage 475/638 (74.4%) ->
-    516/638 (80.9%), zero new fetches. Genuine remaining gap: 122 of 638
-    have no market cap on either exchange -- a real limit, not a bug.
+    516/638 (80.9%), zero new fetches.
+11. **User then found the real remaining cause: the PR zip was being
+    filtered to `Series == 'EQ'` only.** That filter existed on an
+    untested assumption (a symbol appearing under multiple series might
+    overwrite its own row with a different paid-up value). Checked real
+    data: the file has 3,171 rows -- EQ (2,301), SM/ST (SME, 448+116,
+    exactly the series the user named), and BE/BZ/IV/RR/SZ/IT (real
+    listed instruments, not noise). Exactly one Symbol value repeats
+    across rows in practice, and it's a `TOTAL` grand-total footer row,
+    not a real security -- so the assumed collision risk was never real.
+    Removed the series filter (excluding `TOTAL` by name instead). Real
+    coverage against that day's 638 actual NSE-transacting symbols: 475
+    (74.4%, EQ-only) -> **632 (99.1%), no series filter** -- the single
+    biggest jump in this whole phase, and it needed zero new
+    infrastructure, just reading the file NSE already gives us properly.
+    Combined with the cross-exchange alias, the 6 still-missing symbols
+    are explainable, not mysterious: `GANGAFO-RE`/`GENESYS-RE`/
+    `SUMEET-RE` are NSE "Rights Entitlement" temporary trading
+    instruments and `GVPTECHPP`/`KRISHPP` are partly-paid rights shares
+    -- neither has an independent capital structure to report a market
+    cap against. Only `AURIGROW` is a genuinely unexplained gap.
 
 **Also fixed this round, found while working the above:**
 
