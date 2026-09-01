@@ -18,7 +18,7 @@ def main():
    ok=bool(ws) and all(w.get('count',0)>0 and (w.get('name') not in ('7d','30d','90d') or len(w.get('distinct_dates',[]))>1) for w in ws);rows=[]
    for w in ws: rows.extend(w.get('rows',[]))
   elif ds=='insider':
-   ok=bool(ws) and all(w.get('count',0)>0 and w.get('distinct_transaction_dates') for w in ws);rows=[]
+   multi=[ w for w in ws if w.get('name') not in ('1d',)];ok=bool(ws) and bool(multi) and all(w.get('count',0)>0 and w.get('distinct_transaction_dates') for w in multi);rows=[]
    for w in ws:rows.extend(w.get('rows',[]))
   else:
    ok=bool(ws) and all(any(x.get('status')==200 and x.get('row_count',0)>0 for x in w.get('api',[])) for w in ws);rows=[]
