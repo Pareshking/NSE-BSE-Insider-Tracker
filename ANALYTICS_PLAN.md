@@ -209,22 +209,24 @@ now decided:
   security-master snapshot info, but none of the blueprint's `Runs |
   Source Comparison | API Evidence | Schema | Duplicates | Coverage |
   Errors` tabs, and no `Discovered -> Integrated -> Tested -> Validated`
-  state distinction for endpoints. **Open question, not yet resolved:**
-  the "Runs" tab needs workflow/run-ID/commit/status/artifact-link data --
-  we don't currently plumb GitHub Actions run history into the frontend,
-  and doing so from a public Streamlit app raises a credentials question
-  (a GitHub token embedded in a public app is a real exposure -- needs a
-  read-only, scoped approach, e.g. the pipeline writing its own run
-  summary to R2 at the end of each run instead of the frontend calling the
-  GitHub API directly). Needs a design decision before implementation.
+  state distinction for endpoints. **Decided (2026-09-01):** the pipeline
+  writes its own run-summary JSON to R2 at the end of each GitHub Actions
+  run (workflow name, commit, status, timing, artifact links) -- the
+  frontend reads it the same way it reads everything else, no GitHub
+  token in the public Streamlit app. Implementation needs: (1) a new step
+  at the end of the acquisition/validation/r2-storage workflows writing
+  e.g. `runs/{date}/{workflow}.json`, (2) a new "Runs" tab reading it.
+  Not yet built.
+
+**Deferred, pulled back out (open question, no answer yet):**
+
 - **API Documentation / external API** (blueprint §4 sidebar item) --
-  implies exposing our certified canonical data externally. **Open
-  question, not yet resolved:** this is a product decision, not a UI task
-  -- who is the consumer? (Just the repo owner via scripts, in which case
-  R2 read access already IS the API and this is a documentation-only
-  task; or genuinely external third parties, in which case it needs auth,
-  rate-limiting, and a hosting decision this project has never discussed.)
-  Do not start building until that's answered.
+  implies exposing our certified canonical data externally. User doesn't
+  yet know who the consumer would be (just themselves via scripts, in
+  which case R2 read access already is the API and this is a
+  documentation-only task; or real external third parties, which needs
+  auth/rate-limiting/hosting never discussed). **Decision: defer entirely
+  until there's an actual answer** -- do not sequence, do not build.
 
 **Noted, deliberately not pulled forward:**
 
@@ -258,14 +260,14 @@ pulled forward this round are marked **NEW**.
 | Phase 2: Bulk & Block Concentration | Not started | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
 | **NEW** Phase 2.5: Trends & Charts | Not started | Whole-market daily/weekly/monthly event count, buy vs. sell, category mix across all 5 categories. No new data source. |
 | Phase 3: Rights & Preferential Pipeline | Not started | **NEW: upgraded design** -- explicit lifecycle timeline (Announcement -> Record Date -> Ratio/Price -> Issue Open/Close -> Entitlement -> Allotment -> Listing) with full stage-history detail drawer, per blueprint §11-12, not just a status field. BSE `in_principle_status`/`listing_stage_date` still need live re-verification before trusting in UI. |
-| **NEW** Validation & Evidence upgrade | Not started, **blocked on a design decision** | Expand Data Quality into blueprint §15's audit centre (Runs/Source Comparison/API Evidence/Schema/Duplicates/Coverage/Errors tabs). Blocked until we decide how "Runs" data (workflow/commit/status) reaches the frontend without embedding GitHub credentials in a public app -- likely answer: pipeline writes its own run summary to R2. |
+| Validation & Evidence upgrade | Not started | Expand Data Quality into blueprint §15's audit centre (Runs/Source Comparison/API Evidence/Schema/Duplicates/Coverage/Errors tabs). "Runs" data source decided (2026-09-01): pipeline writes its own run-summary JSON to R2, no GitHub credentials in the public app -- see decision above. |
 | Phase 4: Signals (home) | Not started | Ranked cross-page front door, pulls top items from Phases 1-3 -- also intended to cover the blueprint's "Top Companies" cross-category ranking (insider + bulk/block blended). Replaces Overview as default landing page once it exists. |
 | **NEW** Global search | Not started, sequence after Phase 4 | Cmd/Ctrl+K across companies/persons/ISIN, grouped results. Needs the page set to stabilize first since results link into pages; Streamlit has no native command-palette primitive, implementation approach not yet investigated. |
 | Cross-exchange correlated signals | Deferred (Phase 5) | Depends on the still-partial cross-exchange matcher -- already helped by the existing `security_master` ISIN crosswalk. |
 | Peer / sector comparison | Deferred (Phase 6, unscoped) | Rides on Phase 0.5 + existing Sector/Industry columns once scoped. |
 | Price-correlation overlay | Deferred (Phase 7, unscoped) | Needs a price-history source (candidate: `jugaad-data` bhavcopy, NSE-only) plus historical backfill. |
 | Investment-signal alerts/notifications | Deferred (Phase 8, unscoped) | Distinct from the existing data-quality "Alerts" nav item. |
-| **NEW** API Documentation / external API | **Blocked on a product decision** | Who is the consumer -- just the repo owner (then this is a docs-only task, R2 read access already is the API) or genuine external third parties (then needs auth/rate-limiting/hosting, never discussed)? Do not sequence until answered. |
+| API Documentation / external API | **Deferred -- pulled back out (2026-09-01)** | No answer yet on who the consumer is. Not sequenced, not built, until there's an actual answer. |
 | Evidence & Drill-down | Live, renamed from "Transactions" | Raw per-transaction view with source fields -- kept, demoted from top-level signal page to drill-down destination. |
 | Data Quality | Live, unchanged | Kept as-is. |
 
