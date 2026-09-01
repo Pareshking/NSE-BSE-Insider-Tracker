@@ -6,6 +6,26 @@ The web application is a quantitative research interface, not merely a scraper-o
 
 The target is a **world-class, production-grade financial data frontend**: fast, clean, information-dense without being cluttered, mobile-friendly, keyboard-accessible, and explicit about what is verified versus merely acquired.
 
+## Design decision — primary visual benchmark
+
+The preferred default is now a **pure-white/light institutional research-terminal design**.
+
+Use:
+
+- white main canvas
+- very light neutral/blue-grey panels
+- dark navy/charcoal typography
+- blue primary actions
+- thin borders
+- subtle shadows
+- restrained green/amber/red semantic status colours
+- compact research tables
+- minimal decorative graphics
+
+The earlier dark concepts remain useful references but are not the default direction.
+
+The complete implementation-level specification is maintained in `FRONTEND_UI_BLUEPRINT.md`. That document contains the shell, exact navigation, page layouts, tabs, filter structures, table columns, evidence drawer internals, lifecycle views, responsive behaviour, status model, trust model and implementation order.
+
 ## Product principles
 
 1. **Trust before decoration.** Every important number should have a source, timestamp and validation state.
@@ -16,6 +36,8 @@ The target is a **world-class, production-grade financial data frontend**: fast,
 6. **Native data preservation.** Advanced users must be able to inspect original exchange fields alongside normalized fields.
 7. **Reproducibility.** Every result view should expose the effective date range, refresh timestamp and source/extraction status.
 8. **Responsive by default.** Desktop gets dense research tables; mobile gets cards/compact rows with drill-down details rather than horizontal-table overload.
+9. **Table-first analytics.** Charts support research; they do not replace the underlying records.
+10. **Acquisition ≠ validation ≠ certification.** The UI must represent these as separate states.
 
 ## Primary navigation
 
@@ -336,18 +358,21 @@ On mobile:
 
 The product should look like a professional institutional research terminal rather than a generic Streamlit demo.
 
+The preferred visual benchmark is now the **pure-white/light concept**.
+
 Characteristics:
 
-- restrained visual language
-- strong typographic hierarchy
-- generous spacing around major sections
+- white background
+- restrained blue primary accent
+- dark navy/charcoal text
+- subtle grey/blue borders
+- modest card shadows
+- semantic green/red/amber status accents
+- compact, high-quality typography
 - dense but readable data tables
-- subtle borders/dividers
-- consistent number/date formatting
-- restrained use of colour only for semantic status
-- no excessive gradients, oversized cards or decorative illustrations
+- minimal decoration
 
-The visual system should remain consistent across Overview, Insider, Bulk, Block, Rights, Preferential and Data Quality.
+The detailed page-by-page blueprint is in `FRONTEND_UI_BLUEPRINT.md`.
 
 ## Security and trust
 
@@ -383,20 +408,12 @@ Before calling the website production-ready:
 [ ] no secrets are exposed
 [ ] performance targets are measured
 [ ] frontend displays warnings for uncertified/incomplete data
-
-## Relationship to backend certification
-
-The frontend must consume backend validation metadata rather than inventing trust states.
-
-Backend certification remains the authority.
-
-The frontend is responsible for making that evidence understandable and auditable.
-
-No UI polish can upgrade a backend category from yellow/red to green.
+[ ] white-theme visual benchmark is implemented
+[ ] detailed layout/tabs/internals match `FRONTEND_UI_BLUEPRINT.md`
 
 ## Visual reference concepts
 
-Two visual concepts have been saved in the repository as design references. They are **directional mockups, not screenshots of the implemented application and not evidence of backend certification**.
+Two earlier visual concepts are saved in the repository as design references. They are **directional mockups, not screenshots of the implemented application and not evidence of backend certification**.
 
 ### Concept A — Research Terminal
 
@@ -430,30 +447,8 @@ Design intent:
 
 This is the more analytics-heavy direction.
 
-### Recommended product direction
+### Preferred final direction
 
-Use **Concept B as the starting visual benchmark**, while adopting Concept A's strongest evidence/provenance treatment.
+Use the **pure-white/light design as the primary benchmark**, combining Concept B's stronger analytics and navigation with Concept A's evidence/provenance discipline.
 
-The final implementation should not copy either mockup literally. It should combine their best properties into a coherent product system:
-
-**institutional research-terminal discipline + modern analytics UX + first-class source evidence.**
-
-The final UI should remain restrained. Avoid turning the product into a decorative dashboard. The primary interaction is research: find an event, understand it, verify it, and export it.
-
-## Visual QA gates
-
-Before frontend implementation is considered complete:
-
-[ ] desktop layout reviewed at 1440px+ width
-[ ] tablet layout reviewed
-[ ] mobile layout reviewed
-[ ] table density is readable at normal zoom
-[ ] primary actions are visually obvious
-[ ] source/certification status is impossible to confuse
-[ ] warnings are visible without being alarmist
-[ ] evidence drawer is usable without losing table context
-[ ] charts never obscure the underlying data
-[ ] no invented sample numbers are shown in production
-[ ] loading/empty/error states follow the same design system
-[ ] all colors have semantic meaning and are not the sole status signal
-[ ] final UI matches the documented visual benchmark
+The implementation should follow `FRONTEND_UI_BLUEPRINT.md` rather than copying a mockup literally.
