@@ -218,15 +218,15 @@ now decided:
   e.g. `runs/{date}/{workflow}.json`, (2) a new "Runs" tab reading it.
   Not yet built.
 
-**Deferred, pulled back out (open question, no answer yet):**
+**Removed entirely (2026-09-01):**
 
 - **API Documentation / external API** (blueprint §4 sidebar item) --
-  implies exposing our certified canonical data externally. User doesn't
-  yet know who the consumer would be (just themselves via scripts, in
-  which case R2 read access already is the API and this is a
-  documentation-only task; or real external third parties, which needs
-  auth/rate-limiting/hosting never discussed). **Decision: defer entirely
-  until there's an actual answer** -- do not sequence, do not build.
+  decided out of scope, not just deferred: there are no external
+  consumers of this data and none are planned. If the frontend itself
+  ever needs a documented internal contract, that's covered by the
+  existing `lib/r2_data.py` module + `PROJECT_PLAN.md`'s
+  backend-to-frontend contract fields, not a separate API/docs product.
+  Not on the roadmap in any form.
 
 **Noted, deliberately not pulled forward:**
 
@@ -267,16 +267,27 @@ pulled forward this round are marked **NEW**.
 | Peer / sector comparison | Deferred (Phase 6, unscoped) | Rides on Phase 0.5 + existing Sector/Industry columns once scoped. |
 | Price-correlation overlay | Deferred (Phase 7, unscoped) | Needs a price-history source (candidate: `jugaad-data` bhavcopy, NSE-only) plus historical backfill. |
 | Investment-signal alerts/notifications | Deferred (Phase 8, unscoped) | Distinct from the existing data-quality "Alerts" nav item. |
-| API Documentation / external API | **Deferred -- pulled back out (2026-09-01)** | No answer yet on who the consumer is. Not sequenced, not built, until there's an actual answer. |
 | Evidence & Drill-down | Live, renamed from "Transactions" | Raw per-transaction view with source fields -- kept, demoted from top-level signal page to drill-down destination. |
 | Data Quality | Live, unchanged | Kept as-is. |
 
 ## Immediate next steps
 
-1. Commit + push current Promoter Activity page, plotly dependency, and
-   this plan doc.
-2. Scope Phase 0.5 (market cap reference data) as its own small
-   investigation -- verify real NSE/BSE endpoints via live diagnostic
-   (same method used for the bulk-deals fix), not assumed endpoint shapes.
-3. Do not start Phase 2/3 build until Phase 0.5's data source is confirmed
-   real and Phase 1's formatting pass is done.
+**In progress (2026-09-01): Phase 0.5, market cap join.** Plan:
+
+1. Try `jugaad-data`'s `NSELive().stock_quote(symbol)` live against a
+   handful of real NSE symbols from `security_master_20260901.csv` --
+   confirm `securityInfo.issuedCap` and `priceInfo.lastPrice` actually
+   come back as expected before building anything on top of an assumption.
+2. Write a small acquisition step that: loads `security_master`, takes
+   the distinct `nse_symbol` values actually appearing in that run's
+   insider/bulk/block canonical rows (not all 3,116 -- only what's needed
+   that day), fetches market cap per symbol, and writes a
+   `reference/market_cap/{date}.json` (or similar) to R2.
+3. Certification question to resolve as part of this: what does
+   "VERIFIED" mean for a reference dataset that isn't a transaction list?
+   Needs its own gate definition, not a copy of the transaction-data one.
+4. Join market cap onto Promoter Activity's rollups (both grains), add
+   the % of market cap column and make it sortable, using the coarse
+   `mcap_category` fallback for BSE-only names with no NSE symbol.
+5. Do not start Phase 2/2.5/3 build until this lands and Phase 1's
+   formatting pass is done.
