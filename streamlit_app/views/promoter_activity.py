@@ -66,6 +66,27 @@ win_df = df[(df["_date"] >= cutoff) & (df["_date"] <= run_date)]
 if unrecognized:
     st.caption(f"⚠️ {unrecognized} row(s) had a transaction type that wasn't recognized as ACQUISITION or DISPOSAL and are excluded from the net calculation (shown but not summed).")
 
+# Materiality (Phase 0.5): NSE-only market cap, keyed by symbol -- see
+# scripts/nse_market_cap.py. A given rupee/share number means something
+# completely different for a small-cap vs a large-cap company; this is the
+# normalizer for that. No BSE-listed-only names covered here yet.
+mcap_df = r2_data.load_market_cap(client, selected_date)
+mcap_available = not mcap_df.empty
+if mcap_available:
+    mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"]
+    win_df = win_df.copy()
+    win_df["_market_cap"] = win_df["canonical_symbol"].astype(str).str.upper().map(mcap_lookup)
+else:
+    win_df = win_df.copy()
+    win_df["_market_cap"] = pd.NA
+    st.caption("⚠️ Market cap reference data isn't available for this run date -- showing absolute ₹/shares only, no % of market cap.")
+
+sort_basis = st.radio(
+    "Sort by", ["% of market cap", "Absolute ₹ value"], horizontal=True,
+    disabled=not mcap_available,
+    help="% of market cap needs Phase 0.5 reference data for this run date." if not mcap_available else None,
+)
+
 
 def fmt_signed_inr(v: float) -> str:
     sign = "-" if v < 0 else ""
@@ -93,18 +114,35 @@ def sparkline(daily: pd.Series) -> go.Figure:
     return fig
 
 
+def apply_sort(grouped: pd.DataFrame) -> pd.DataFrame:
+    if sort_basis == "% of market cap" and mcap_available:
+        key = grouped["pct_mcap"].abs().fillna(-1)
+    else:
+        key = grouped["net_val"].abs()
+    return grouped.reindex(key.sort_values(ascending=False).index)
+
+
+def pct_mcap_html(pct: float) -> str:
+    if pd.isna(pct):
+        return f'<span style="color:{style.COLORS["text_3"]};font-size:11px;">n/a</span>'
+    return f'<span class="mono">{pct:+.2f}%</span> <span style="color:{style.COLORS["text_3"]};font-size:11px;">of mcap</span>'
+
+
 grain = st.tabs(["By Person", "By Company"])
 
 with grain[0]:
     grouped = (
         win_df.groupby(["canonical_company", "canonical_person"], dropna=False)
-        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"))
+        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"),
+             market_cap=("_market_cap", "first"))
         .reset_index()
     )
-    grouped = grouped.reindex(grouped["net_val"].abs().sort_values(ascending=False).index)
-    st.caption(f"{len(grouped)} promoter/company pairs, {window_label} window ending {run_date.date() if pd.notna(run_date) else '—'} -- sorted by size of net position, largest first.")
+    grouped["pct_mcap"] = 100 * grouped["net_val"] / grouped["market_cap"]
+    grouped = apply_sort(grouped)
+    sort_desc = "sorted by size of net position relative to company market cap, largest first" if sort_basis == "% of market cap" and mcap_available else "sorted by size of net position, largest first"
+    st.caption(f"{len(grouped)} promoter/company pairs, {window_label} window ending {style.fmt_date(run_date)} -- {sort_desc}.")
     for _, row in grouped.head(20).iterrows():
-        c1, c2, c3, c4 = st.columns([2.5, 1.2, 1.2, 1.6])
+        c1, c2, c3, c4, c5 = st.columns([2.3, 1.1, 1.1, 1.3, 1.4])
         with c1:
             sub_color = style.COLORS["text_2"]
             st.markdown(f"**{row['canonical_company']}**  \n<span style='color:{sub_color};font-size:12px;'>{row['canonical_person']}</span>", unsafe_allow_html=True)
@@ -113,6 +151,8 @@ with grain[0]:
         with c3:
             st.markdown(f'<span class="mono">{fmt_signed_inr(row["net_val"])}</span>', unsafe_allow_html=True)
         with c4:
+            st.markdown(pct_mcap_html(row["pct_mcap"]), unsafe_allow_html=True)
+        with c5:
             st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
         person_rows = win_df[(win_df["canonical_company"] == row["canonical_company"]) & (win_df["canonical_person"] == row["canonical_person"])].sort_values("_date")
         if len(person_rows) > 1:
@@ -122,20 +162,23 @@ with grain[0]:
     if len(grouped) > 20:
         st.caption(f"{len(grouped) - 20} more pairs not shown as charts -- full list below.")
         st.dataframe(
-            grouped.iloc[20:].rename(columns={"canonical_company": "Company", "canonical_person": "Person", "net_qty": "Net Qty", "net_val": "Net Value", "trades": "Trades"}),
+            grouped.iloc[20:].rename(columns={"canonical_company": "Company", "canonical_person": "Person", "net_qty": "Net Qty", "net_val": "Net Value", "pct_mcap": "% of Mcap", "trades": "Trades"}),
             hide_index=True, use_container_width=True,
         )
 
 with grain[1]:
     grouped_c = (
         win_df.groupby("canonical_company", dropna=False)
-        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"), promoters=("canonical_person", "nunique"))
+        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"),
+             promoters=("canonical_person", "nunique"), market_cap=("_market_cap", "first"))
         .reset_index()
     )
-    grouped_c = grouped_c.reindex(grouped_c["net_val"].abs().sort_values(ascending=False).index)
-    st.caption(f"{len(grouped_c)} companies, {window_label} window -- all promoters/insiders combined per company, sorted by size of net position.")
+    grouped_c["pct_mcap"] = 100 * grouped_c["net_val"] / grouped_c["market_cap"]
+    grouped_c = apply_sort(grouped_c)
+    sort_desc = "sorted by size of net position relative to company market cap, largest first" if sort_basis == "% of market cap" and mcap_available else "sorted by size of net position, largest first"
+    st.caption(f"{len(grouped_c)} companies, {window_label} window -- all promoters/insiders combined per company, {sort_desc}.")
     for _, row in grouped_c.head(20).iterrows():
-        c1, c2, c3, c4 = st.columns([2.5, 1.2, 1.2, 1.6])
+        c1, c2, c3, c4, c5 = st.columns([2.3, 1.1, 1.1, 1.3, 1.4])
         with c1:
             sub_color = style.COLORS["text_2"]
             st.markdown(f"**{row['canonical_company']}**  \n<span style='color:{sub_color};font-size:12px;'>{int(row['promoters'])} distinct promoter(s)/insider(s)</span>", unsafe_allow_html=True)
@@ -144,6 +187,8 @@ with grain[1]:
         with c3:
             st.markdown(f'<span class="mono">{fmt_signed_inr(row["net_val"])}</span>', unsafe_allow_html=True)
         with c4:
+            st.markdown(pct_mcap_html(row["pct_mcap"]), unsafe_allow_html=True)
+        with c5:
             st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
         company_rows = win_df[win_df["canonical_company"] == row["canonical_company"]].sort_values("_date")
         if len(company_rows) > 1:
@@ -153,6 +198,6 @@ with grain[1]:
     if len(grouped_c) > 20:
         st.caption(f"{len(grouped_c) - 20} more companies not shown as charts -- full list below.")
         st.dataframe(
-            grouped_c.iloc[20:].rename(columns={"canonical_company": "Company", "net_qty": "Net Qty", "net_val": "Net Value", "trades": "Trades", "promoters": "Promoters"}),
+            grouped_c.iloc[20:].rename(columns={"canonical_company": "Company", "net_qty": "Net Qty", "net_val": "Net Value", "pct_mcap": "% of Mcap", "trades": "Trades", "promoters": "Promoters"}),
             hide_index=True, use_container_width=True,
         )

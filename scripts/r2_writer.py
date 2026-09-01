@@ -519,6 +519,55 @@ def write_dataset(client, exchange, category, rows, status, match_annotations=No
     return entry
 
 
+NSE_MARKET_CAP_PATH = 'artifacts/nse_market_cap/report.json'
+BSE_MARKET_CAP_PATH = 'artifacts/bse_market_cap/report.json'
+
+
+def write_market_cap(client):
+    """Reference data, not a transaction dataset -- deliberately kept OUT of
+    manifest['datasets'] and its VERIFIED/BLOCKED vocabulary. That list drives
+    the Overview page's "NSE certified" badge via `all(status == VERIFIED for
+    entries where exchange == nse)`; a reference dataset with any other status
+    string in the same list would silently flip that badge to "partial" for a
+    reason that has nothing to do with transaction-data certification. Market
+    cap coverage is reported separately, under its own key.
+
+    Merges NSE (scripts/nse_market_cap.py) and BSE (scripts/bse_market_cap.py)
+    into one combined list -- safe because NSE symbols are alpha tickers and
+    BSE scrip codes are pure numeric strings, so they never collide, and the
+    frontend's join is a single case-insensitive lookup by canonical_symbol
+    regardless of which exchange a row came from."""
+    nse_report = load_json(NSE_MARKET_CAP_PATH)
+    bse_report = load_json(BSE_MARKET_CAP_PATH)
+    nse_rows = (nse_report or {}).get('rows', [])
+    bse_rows = (bse_report or {}).get('rows', [])
+    rows = nse_rows + bse_rows
+
+    entry = {'dataset': 'market_cap', 'target_date': TARGET_DATE}
+    if not rows:
+        entry['written'] = False
+        entry['reason'] = 'no NSE or BSE market cap report found, or zero rows resolved'
+        print(f'  SKIP market_cap: {entry["reason"]}')
+        return entry
+
+    raw_bytes = json.dumps(rows, indent=2, default=str, ensure_ascii=False).encode('utf-8')
+    key = f'reference/market_cap/{TARGET_DATE}/data.json'
+    client.put_object(Bucket=BUCKET, Key=key, Body=raw_bytes, ContentType='application/json')
+    entry.update({
+        'written': True,
+        'key': key,
+        'symbols_resolved': len(rows),
+        'nse_symbols_resolved': len(nse_rows),
+        'nse_symbols_requested': (nse_report or {}).get('symbols_requested'),
+        'nse_symbols_from_pr_zip': (nse_report or {}).get('symbols_from_pr_zip'),
+        'nse_symbols_from_fallback': (nse_report or {}).get('symbols_from_fallback'),
+        'nse_pr_zip_date_used': (nse_report or {}).get('pr_zip_date_used'),
+        'bse_symbols_resolved': len(bse_rows),
+    })
+    print(f'  WRITE market_cap: {len(rows)} symbols ({len(nse_rows)} NSE + {len(bse_rows)} BSE) -> {key}')
+    return entry
+
+
 def main():
     nse_cert = load_json(NSE_CERT_PATH)
     bse_cert = load_json(BSE_CERT_PATH)
@@ -554,6 +603,8 @@ def main():
 
         manifest['datasets'].append(write_dataset(client, 'nse', category, nse_rows, nse_status, nse_matches))
         manifest['datasets'].append(write_dataset(client, 'bse', category, bse_rows, bse_status, bse_matches))
+
+    manifest['reference_data'] = [write_market_cap(client)]
 
     written = sum(1 for d in manifest['datasets'] if d.get('written'))
     manifest['written_count'] = written

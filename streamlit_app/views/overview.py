@@ -39,6 +39,14 @@ entries = manifest.get("datasets", manifest if isinstance(manifest, list) else [
 if isinstance(entries, dict):
     entries = list(entries.values())
 
+if manifest.get("backfilled"):
+    st.info(
+        f"This date's data was backfilled by the {style.fmt_date(manifest.get('backfilled_from_run_date'))} run "
+        "-- the scheduled run for this day didn't produce a manifest (a failed run, most likely), so this is a "
+        "catch-up write from a later day's already-fetched data, not a same-day capture.",
+        icon="↻",
+    )
+
 nse_ok = any(e.get("exchange") == "nse" and e.get("status") == "VERIFIED" for e in entries)
 bse_ok = any(e.get("exchange") == "bse" and e.get("status") == "VERIFIED" for e in entries)
 nse_all = all(e.get("status") == "VERIFIED" for e in entries if e.get("exchange") == "nse") and nse_ok
@@ -104,7 +112,7 @@ with left:
         recent = insider_df.sort_values("canonical_transaction_date", ascending=False).head(8)
         rows_html = []
         for _, r in recent.iterrows():
-            date_ = str(r.get("canonical_transaction_date") or "—")
+            date_ = style.fmt_date(r.get("canonical_transaction_date"))
             company = str(r.get("canonical_company") or "—")
             person = str(r.get("canonical_person") or "—")
             cat = str(r.get("canonical_person_category") or "—")
@@ -134,7 +142,7 @@ with right:
     if not insider_df.empty and "canonical_transaction_date" in insider_df.columns:
         n_dates = insider_df["canonical_transaction_date"].nunique()
         coverage_pct = min(100, round(100 * n_dates / 90))
-        freshness = manifest.get("generated_at", "—")
+        freshness = style.fmt_date(manifest.get("generated_at"))
         st.markdown(
             f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">Requested</span><span class="mono">90D</span></div>'
             f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">Actual (Insider)</span><span class="mono">{n_dates} dates</span></div>'

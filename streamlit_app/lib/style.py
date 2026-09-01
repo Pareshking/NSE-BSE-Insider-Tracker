@@ -7,6 +7,7 @@ every element (slide-in drawer, custom dropdowns) natively.
 """
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 COLORS = {
@@ -155,6 +156,26 @@ def fmt_inr(value) -> str:
     if abs(v) >= 1e3:
         return f"₹{v/1e3:.1f}K"
     return f"₹{v:,.0f}"
+
+
+def fmt_date(value) -> str:
+    """Clean 'DD Mon YYYY' date, no time component -- NSE/BSE source dates
+    arrive in inconsistent formats (plain date strings, full ISO timestamps,
+    parquet round-trips that pick up a spurious 00:00:00) and Streamlit's
+    default rendering shows whatever it gets verbatim. Falls back to the
+    original string, never blanks a value it can't parse -- this project
+    doesn't hide data it can't explain, just don't show it worse than raw."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "—"
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return str(value)
+    return parsed.strftime("%d %b %Y")
+
+
+def fmt_date_col(series: "pd.Series") -> "pd.Series":
+    """Same formatting as fmt_date, applied to a whole column for st.dataframe."""
+    return series.map(fmt_date)
 
 
 def badge(text: str, fg_key: str, bg_key: str, dot: bool = True) -> str:

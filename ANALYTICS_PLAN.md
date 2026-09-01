@@ -254,8 +254,8 @@ pulled forward this round are marked **NEW**.
 | Page / deliverable | Status | Notes |
 |---|---|---|
 | Overview | Live, redesigned | Certification/status home -- KPIs, latest activity, coverage. Not a signal page. |
-| **Promoter Activity** | **Built, smoke-tested** | Net-position rollup, both grains (per person+company, per company), no threshold, sorted by \|net value\|. Needs: market-cap materiality column (Phase 0.5), column/date formatting pass. |
-| Phase 0.5: Market cap join | Not started | Numeric market cap via `jugaad-data` (NSE) joined onto existing `security_master` crosswalk (already built, see correction above); coarse `mcap_category` fallback for BSE-only names. |
+| **Promoter Activity** | **Built, smoke-tested, market cap joined** | Net-position rollup, both grains (per person+company, per company), no threshold, sortable by \|net value\| or by \|% of market cap\|. Still needs: full column/date-format audit pass. |
+| Phase 0.5: Market cap join | **Shipped, both exchanges** | NSE: PR bhavcopy zip (whole market, one request) primary, parallelized `jugaad-data` per-symbol fallback for the ~26% it misses (mostly SME board). BSE: `bse.BSE().listSecurities()` across all 24 groups, official pre-computed `Mktcap` field, ~4,685 scrips in ~15-20s. Combined into one `reference/market_cap` write. |
 | **NEW** Downloads / export | Not started, cross-cutting | CSV/JSON export + metadata, applies to every table page. Cheap, no new data source -- do this early, right after Phase 0.5, since every later page benefits from it existing. |
 | Phase 2: Bulk & Block Concentration | Not started | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
 | **NEW** Phase 2.5: Trends & Charts | Not started | Whole-market daily/weekly/monthly event count, buy vs. sell, category mix across all 5 categories. No new data source. |
@@ -272,22 +272,99 @@ pulled forward this round are marked **NEW**.
 
 ## Immediate next steps
 
-**In progress (2026-09-01): Phase 0.5, market cap join.** Plan:
+**Phase 0.5 shipped (2026-09-01): market cap join, real numbers, both grains.**
 
-1. Try `jugaad-data`'s `NSELive().stock_quote(symbol)` live against a
-   handful of real NSE symbols from `security_master_20260901.csv` --
-   confirm `securityInfo.issuedCap` and `priceInfo.lastPrice` actually
-   come back as expected before building anything on top of an assumption.
-2. Write a small acquisition step that: loads `security_master`, takes
-   the distinct `nse_symbol` values actually appearing in that run's
-   insider/bulk/block canonical rows (not all 3,116 -- only what's needed
-   that day), fetches market cap per symbol, and writes a
-   `reference/market_cap/{date}.json` (or similar) to R2.
-3. Certification question to resolve as part of this: what does
-   "VERIFIED" mean for a reference dataset that isn't a transaction list?
-   Needs its own gate definition, not a copy of the transaction-data one.
-4. Join market cap onto Promoter Activity's rollups (both grains), add
-   the % of market cap column and make it sortable, using the coarse
-   `mcap_category` fallback for BSE-only names with no NSE symbol.
-5. Do not start Phase 2/2.5/3 build until this lands and Phase 1's
-   formatting pass is done.
+What actually got built, in the order it was found, since the plan changed
+twice as real data came in:
+
+1. First version called `jugaad-data`'s `NSELive().stock_quote()` once per
+   NSE symbol -- worked (verified live against RELIANCE/ZYDUSLIFE/
+   20MICRONS), but ~638 individual calls for one day's activity (~18 min),
+   more anti-bot exposure than necessary.
+2. User pointed at `github.com/Pareshking/Paresh` (a sibling project),
+   which already solves this with NSE's Bhavcopy "PR" zip -- a different,
+   older report format than the sec_bhavdata_full/UDIFF bhavcopy variants
+   (confirmed those do NOT carry market cap by inspecting both directly).
+   One request covers ~2,300-3,100 EQ-series stocks with an official,
+   pre-computed `Market Cap(Rs.)` column. That project's own history
+   documents months of believing NSE blocks this fetch from CI, which
+   turned out to be a logging bug silently discarding a successful parse
+   -- the same shape of mistake as this project's own bulk-deals
+   "IP block" theory. Treat any future "NSE is blocking us" claim with
+   the same suspicion.
+3. Real coverage check against this run's actual 638 needed symbols: the
+   PR zip covered 475 (74%) -- the gap is SME/micro-cap-board names that
+   bulk deals frequently include and NSE's mainboard archive doesn't
+   track. No SME-equivalent bulk file was found (two guessed URLs both
+   404'd, not chased further -- this project's own rule against trusting
+   a guessed endpoint shape). Final design: PR zip first (whole market,
+   one request), `jugaad-data` per-symbol fallback only for the ~163
+   symbols the zip doesn't cover. `scripts/nse_market_cap.py`.
+4. Certification question resolved: rather than force a reference dataset
+   through the transaction-data VERIFIED/BLOCKED gate (which would have
+   silently corrupted the Overview page's "NSE certified" badge -- that
+   badge's `all(status == VERIFIED for nse entries)` logic doesn't know
+   the difference between a certification failure and an unrelated
+   reference dataset), market cap gets its own `manifest['reference_data']`
+   list, entirely separate from `manifest['datasets']`. See
+   `write_market_cap()` in `scripts/r2_writer.py`.
+5. Joined onto Promoter Activity (both grains): `% of market cap` column,
+   plus a sort-basis toggle (`% of market cap` / `Absolute ₹ value`) --
+   verified against realistic test data that a small company's smaller
+   absolute move (STEL's Rs.8.40L) correctly outranks a large company's
+   bigger absolute move (Zydus's Rs.6.83Cr) when sorting by materiality,
+   which is the entire point of this phase.
+6. **BSE gap closed same day.** User pointed at BSE's own "List of Listed
+   Companies" utility as a workaround (bhavcopy price x a shares-outstanding
+   master). Before building that two-step join, checked what the `bse`
+   package (already a dependency) exposes: `BSE().listSecurities(group=...)`
+   already returns an official, pre-computed `Mktcap` field (Rs. Crore) --
+   same shape of finding as NSE's PR zip. No two-step join needed. One call
+   per BSE group (24 groups, no bulk "all" endpoint) resolved ~4,685 scrips
+   in ~15-20s. `scripts/bse_market_cap.py`, merged into the same
+   `reference/market_cap` write as NSE's (safe: NSE alpha tickers and BSE
+   numeric scrip codes never collide in one lookup keyed by symbol).
+7. **Fixed a real performance bug while at it.** The NSE per-symbol
+   fallback (step 3) ran sequentially with a 0.5s sleep between calls --
+   ~6 minutes for ~163 symbols. Flagged by the user as suspiciously slow
+   compared to the reference project's "super fast" NSE path; the actual
+   cause was never comparing against the reference repo's own fallback
+   design, which runs 8 concurrent workers (`ThreadPoolExecutor`) for the
+   exact same kind of one-request-per-symbol problem. Parallelized to
+   match.
+8. Wired both NSE and BSE market cap into the daily pipeline as their own
+   steps in `r2-storage.yml`.
+
+**Also fixed this round, found while working the above:**
+
+- **The daily schedule was silently broken.** `r2-storage.yml` has had a
+  `schedule: cron: '0 18 * * 1-5'` (weekdays) the whole time, but
+  `TARGET_DATE` defaulted to a hardcoded `'2026-08-31'` whenever
+  `inputs.target_date` was empty -- which it always is on a schedule
+  trigger (no `inputs` context exists for `schedule` events). The
+  "automatic daily update" has been re-fetching the same fixed date on
+  every scheduled run, never advancing. Fixed with a `Determine target
+  date` step that computes `date -u +%F` when no manual date was given.
+- **Gap detection + backfill.** New `scripts/backfill_gaps.py`, run as a
+  step after every write: checks the last 10 weekdays for a missing
+  `manifests/{date}.json` (a prior run that failed outright before
+  writing one) and, if found, re-invokes `r2_writer.py` for that date
+  reusing the CURRENT run's already-fetched 90-day data -- no new
+  NSE/BSE calls needed, since every acquisition script already pulls 90
+  days every run. Backfilled manifests are stamped `backfilled: true` +
+  `backfilled_from_run_date`, and the Overview page shows an explicit
+  banner when viewing one, so a catch-up write is never confused with a
+  same-day capture.
+- **Date formatting.** `generated_at` (a full ISO timestamp with
+  microseconds and a UTC offset) was rendered raw in Overview's
+  "Freshness" field, and `st.dataframe`'s default rendering can show a
+  parquet date column with a spurious `00:00:00` even when the
+  underlying value is a pure date. Added `style.fmt_date()` /
+  `fmt_date_col()` (clean `DD Mon YYYY`, falls back to the original
+  string rather than blanking anything unparseable) and applied it
+  everywhere a date renders: Overview's freshness + latest-activity
+  table, Promoter Activity's window caption, and Evidence & Drill-down's
+  table + evidence-drawer date fields.
+
+Next: Phase 2 (Bulk & Block Concentration), shipping with materiality
+from day one now that the market-cap join exists.

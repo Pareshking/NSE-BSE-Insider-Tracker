@@ -23,7 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
       LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
     steps:
       - name: Checkout
@@ -36,43 +35,98 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # A scheduled (cron) trigger has no `inputs` context at all, so
+      # `inputs.target_date` is always empty there -- a hardcoded fallback
+      # date here meant the 18:00 UTC weekday schedule fetched the SAME
+      # fixed date forever instead of advancing daily. Manual dispatch still
+      # honors an explicit target_date; the schedule now correctly targets
+      # "today" (UTC) every time it fires.
+      - name: Determine target date
+        id: target
+        run: |
+          if [ -n "${{ inputs.target_date }}" ]; then
+            echo "date=${{ inputs.target_date }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          fi
+
       # --- NSE acquisition (5 categories) ---
       - name: NSE Insider
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_insider.py
       - name: NSE Bulk
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_bulk.py
       - name: NSE Block
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_block.py
       - name: NSE Rights
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_rights.py
       - name: NSE Preferential
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_preferential.py
+      - name: NSE market cap
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+        run: python scripts/nse_market_cap.py
       - name: NSE evidence validation
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_validate.py
 
       # --- BSE acquisition (5 categories) ---
       - name: BSE raw acquisition
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/bse_raw_capture_v2.py
       - name: BSE evidence validation
         if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/bse_validate.py
+      - name: BSE market cap
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+        run: python scripts/bse_market_cap.py
 
       # --- Write only VERIFIED categories to R2 ---
       - name: Write validated datasets to R2
         if: always()
         env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python scripts/r2_writer.py
+
+      # --- Backfill any recent weekday that never got a manifest (a prior
+      # run that failed outright before reaching r2_writer.py) -- reuses
+      # this run's already-fetched 90-day data, no new NSE/BSE calls. ---
+      - name: Backfill missing recent manifests
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/backfill_gaps.py
 
       - name: Upload run evidence
         if: always()

@@ -141,6 +141,24 @@ def load_raw(_client, exchange: str, category: str, date: str) -> list[dict]:
         return []
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_market_cap(_client, date: str) -> pd.DataFrame:
+    """reference/market_cap/{date}/data.json -- NSE symbol -> market cap
+    reference data (see scripts/nse_market_cap.py). NSE-only and only for
+    symbols with activity that day; not a transaction dataset, so it isn't
+    part of the certification manifest['datasets'] list. Empty DataFrame
+    (not an error) if this run didn't produce one."""
+    if _client is None:
+        return pd.DataFrame()
+    key = f"reference/market_cap/{date}/data.json"
+    try:
+        obj = _client.get_object(Bucket=_bucket(), Key=key)
+        rows = json.loads(obj["Body"].read())
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
+    except _client.exceptions.NoSuchKey:
+        return pd.DataFrame()
+
+
 def load_all_canonical(_client, date: str) -> dict[tuple[str, str], pd.DataFrame]:
     """{(exchange, category): DataFrame} for every combination that has data
     on this date. Skips (returns no key) whatever load_canonical returns empty

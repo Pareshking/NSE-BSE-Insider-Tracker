@@ -105,9 +105,14 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
 
         show_cols = [c for c in DISPLAY_COLUMNS[cat] if c in filtered.columns]
         display_df = filtered[show_cols + ["canonical_event_id"]] if "canonical_event_id" in filtered.columns else filtered[show_cols]
+        display_df = display_df.drop(columns=["canonical_event_id"], errors="ignore")
+        date_col = "canonical_transaction_date" if "canonical_transaction_date" in display_df.columns else "canonical_event_date"
+        if date_col in display_df.columns:
+            display_df = display_df.copy()
+            display_df[date_col] = style.fmt_date_col(display_df[date_col])
 
         event = st.dataframe(
-            display_df.drop(columns=["canonical_event_id"], errors="ignore"),
+            display_df,
             hide_index=True,
             use_container_width=True,
             on_select="rerun",
@@ -132,8 +137,9 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
                 for col in DISPLAY_COLUMNS[cat]:
                     if col in row.index and pd.notna(row[col]):
                         label = col.replace("canonical_", "").replace("_", " ").title()
+                        value = style.fmt_date(row[col]) if col.endswith("_date") else row[col]
                         st.markdown(
-                            f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">{label}</span><span class="mono">{row[col]}</span></div>',
+                            f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">{label}</span><span class="mono">{value}</span></div>',
                             unsafe_allow_html=True,
                         )
                 if has_match:
