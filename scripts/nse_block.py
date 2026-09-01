@@ -1,10 +1,18 @@
 """NSE Block Deals acquisition using browser-native fetch.
 
-The NSE /api/historical/block-deals endpoint is protected by Akamai Bot Manager.
-A requests.Session with copied cookies receives an HTML bot-detection page (~22 KB)
-instead of JSON. This script keeps the Selenium browser open and executes the
-fetch from within the browser context so Akamai's TLS fingerprint and JS integrity
-checks are satisfied.
+2026-09-01 finding: /api/historical/block-deals -- the endpoint this script
+used to call -- is dead: it returns the same ~22KB Akamai bot-detection page
+on every request regardless of parameters, retries, or session warmup (same
+signature as the dead /api/corporates-pit endpoint that blocked Insider
+Trading before nse_insider.py was rewritten). A live-network diagnostic
+(scripts/nse_bulk_diagnose.py) captured what NSE's own "Bulk Deals/ Block
+Deals/ Short Selling Archives" page (report-detail/display-bulk-and-block-deals)
+actually calls: /api/historicalOR/bulk-block-short-deals?optionType=block_deals
+-- from the SAME runner IP, in the SAME run, this endpoint returned real JSON
+while /api/historical/block-deals returned the fake page. So this was a wrong
+(retired) endpoint, not an IP block -- confirmed by getting real data back
+from the very first live run after switching (see nse_bulk.py, fixed the
+same way).
 """
 from __future__ import annotations
 import json, os, time
@@ -14,7 +22,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
 BASE    = 'https://www.nseindia.com'
-PAGE    = f'{BASE}/market-data/large-deals'
+PAGE    = f'{BASE}/report-detail/display-bulk-and-block-deals'
 TARGET  = date.fromisoformat(os.getenv('TARGET_DATE', '2026-08-31'))
 LOOKBACK = int(os.getenv('LOOKBACK_DAYS', '90'))
 OUT     = Path('artifacts/nse_block')
@@ -28,7 +36,7 @@ fetch(url, {
   headers: {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nseindia.com/market-data/large-deals'
+    'Referer': 'https://www.nseindia.com/report-detail/display-bulk-and-block-deals'
   }
 }).then(async r => {
   const t = await r.text();
@@ -54,7 +62,7 @@ def js_fetch(d, url):
     return raw
 
 def fetch_window(d, name, start, end, retries=3):
-    url = f'{BASE}/api/historical/block-deals?from={start:%d-%m-%Y}&to={end:%d-%m-%Y}'
+    url = f'{BASE}/api/historicalOR/bulk-block-short-deals?optionType=block_deals&from={start:%d-%m-%Y}&to={end:%d-%m-%Y}'
     raw = js_fetch(d, url)
     for attempt in range(retries):
         if raw.get('json') is not None:
@@ -107,7 +115,7 @@ def main():
         report = {
             'dataset': 'block_deals', 'source': 'NSE',
             'target_date': str(TARGET), 'lookback_days': LOOKBACK,
-            'method': 'NSE first-party historical API (browser-native fetch, Akamai-safe)',
+            'method': 'NSE historicalOR/bulk-block-short-deals API (browser-native fetch, same one the live report page uses)',
             'windows': windows,
             'count': len(all_rows),
             'unique_observations': len({json.dumps(r, sort_keys=True, default=str) for r in all_rows}),
