@@ -60,7 +60,7 @@ def js_fetch(d, url):
         raw['parse_error'] = str(exc)
     return raw
 
-CHUNK = 7  # max days per call -- see fetch_all() docstring below
+CHUNK = 1  # max days per call -- see fetch_all() docstring below
 
 def fetch_range(d, start, end, retries=3):
     """Single API call for one [start, end] sub-range. Returns (url, raw, rows, chunk_diag)."""
@@ -88,14 +88,23 @@ def fetch_range(d, start, end, retries=3):
     return url, rows, diag
 
 def fetch_all(d, earliest, latest):
-    """A single call to /api/historicalOR/bulk-block-short-deals appears to cap
-    results at 70 rows sorted most-recent-first, regardless of the from/to
-    range requested -- confirmed 2026-09-01: a 90-day request and a 1-day
-    request both returned the exact same 70 rows, all from the single most
-    recent trading day (a busy day alone can exceed 70 bulk deals). Chunking
-    into CHUNK-day sub-ranges and combining -- same fix shape as the old
-    nse_insider.py 7-day-chunk workaround for a similar per-call cap -- makes
-    each sub-range's own top-70 available instead of only the newest day's.
+    """A single call to /api/historicalOR/bulk-block-short-deals caps results
+    at 70 rows, sorted ASCENDING by date within the requested range -- NOT
+    most-recent-first as first assumed. Confirmed 2026-09-01 with CHUNK=7:
+    every 7-day chunk returned exactly 70 rows, ALL from that chunk's FIRST
+    (oldest) day -- e.g. requesting 26-Aug..31-Aug returned only 26-Aug's
+    deals, silently dropping 27-31 Aug entirely, because 26-Aug alone had
+    >=70 deals and ascending sort never got past it within the 70-row cap.
+    That meant the 1d window (which needs the single most RECENT date) came
+    back empty even though the 90d window had 910 real rows spanning 13
+    dates -- all of them chunk-start dates, none of them the target date.
+
+    CHUNK=1 (one calendar day per call) is the only size that's actually
+    safe against this: it guarantees each call's date range IS a single day,
+    so the ascending-sort-plus-cap can never cause an earlier day to crowd
+    out a later one -- the worst case is a single day itself having >70
+    deals and losing its own tail, which is a real but much smaller and
+    unavoidable limitation of a paginated endpoint we don't control.
 
     Fetches the FULL lookback range exactly once (chunked), rather than each
     named window (1d/7d/30d/90d) re-fetching its own overlapping range from
