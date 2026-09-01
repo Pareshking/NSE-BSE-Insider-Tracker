@@ -13,7 +13,7 @@ NSE and BSE remain strictly separate. `.github/workflows/nse-validation.yml` and
 ### NSE fixes
 The prior dedicated NSE artifact was inspected at record level. It exposed three concrete defects:
 1. Insider PIT responses could contain non-JSON framing bytes and the parser converted all 1D/7D/30D/90D windows to zero rows.
-2. The `nse.bulkdeals()` helper returned a single anchor date for multi-day requests in the observed run, so page/helper success was not accepted as historical coverage.
+2. The `nse.bulkdeals()` helper returned a single anchor date for multi-day requests in the observed run, so helper success was not accepted as historical coverage.
 3. Rights/Preferential browser tables were populated but the real first-party APIs were not being consumed as the authoritative data layer.
 
 Fixes now on `main`:
@@ -23,8 +23,6 @@ Fixes now on `main`:
 - Preferential uses `corporate-further-issues-pref?index=FIPREFIP` and `FIPREFLS`.
 - Dedicated NSE workflow now marks every category `if: always()` so one failure cannot suppress subsequent categories.
 - `scripts/nse_validate.py` now produces an evidence certification report and explicitly tests promoter-category transaction semantics from real insider rows.
-
-The official NSE Rights and Preferential pages expose the lifecycle fields required by this project, including Rights record date/ratio/offer price/open-close/allotment/amount/listing/trading approval/submission and Preferential board resolution/allottee/consideration/offer price/allotment/shares/amount/listing/trading approval/lock-in fields. citeturn0search5turn0search1
 
 ### BSE first-party API integration
 The following first-party services are incorporated into the BSE evidence loop:
