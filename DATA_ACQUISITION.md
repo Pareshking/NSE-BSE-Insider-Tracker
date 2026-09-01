@@ -199,16 +199,19 @@ consistent column name per category regardless of exchange:
   validation scripts that are currently fully certified for BSE — real risk
   of destabilizing a green status for a labeling improvement, so left alone
   pending a deliberate decision to do it with re-verification.
-- **No shared NSE/BSE identifier space.** NSE uses alpha tickers (`RELIANCE`),
-  BSE uses 6-digit numeric scrip codes (`500325`) — they never overlap, so
-  `find_cross_exchange_matches()` can only go through fuzzy company-name
-  matching (see above), which is inherently weaker than an exact-ID join.
-  NSE's Rights/Preferential rows do carry `isin` (the actual
-  exchange-agnostic global security identifier), but BSE's captured data
-  never includes it, and NSE Insider/Bulk/Block don't either. The real fix
-  is ingesting NSE's and BSE's public security-master files (which map
-  symbol ↔ scrip code ↔ ISIN ↔ company name) as a new reference-data source
-  — a genuinely separate piece of work, not a quick patch.
+- ~~**No shared NSE/BSE identifier space.**~~ **Resolved 2026-09-01.**
+  `reference_data/security_master_20260901.csv` (see
+  `reference_data/README.md`) provides the ISIN ↔ NSE symbol ↔ BSE scrip
+  code crosswalk that was missing. `find_cross_exchange_matches()` now
+  joins on ISIN when resolvable (via `resolve_isin()`) and only falls back
+  to fuzzy company-name matching when a security isn't in the crosswalk.
+  Verified this actually fixes real cases fuzzy matching would miss — e.g.
+  an NSE row labeled `"RIL"` and a BSE row labeled a completely unrelated
+  string both resolve to `INE002A01018` (Reliance's real ISIN) via
+  symbol/scrip-code lookup and are correctly matched, tagged
+  `match_basis: 'isin'`. 98% of real captured NSE insider rows (2026-09-01)
+  resolved an ISIN through this crosswalk. It's a point-in-time snapshot,
+  not a live feed — see the reference file's README for staleness handling.
 - **NSE Insider's single `date` column silently collapses a range.** ~19%
   of captured rows (88/465 on 2026-09-01) have `acqfromDt != acqtoDt` — the
   disclosed transaction is an aggregate over a multi-day window, not a

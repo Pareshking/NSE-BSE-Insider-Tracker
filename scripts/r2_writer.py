@@ -28,6 +28,63 @@ import pandas as pd
 TARGET_DATE = os.environ.get('TARGET_DATE', datetime.now(timezone.utc).date().isoformat())
 BUCKET = os.environ.get('R2_BUCKET_NAME', '')
 
+# Security-master crosswalk (ISIN <-> NSE symbol <-> BSE scrip code): the only
+# reliable cross-exchange join key, since NSE (alpha tickers) and BSE (numeric
+# scrip codes) otherwise share no identifier space at all. Snapshot from
+# Value Research, 2026-09-01 -- see reference_data/README.md for provenance
+# and staleness caveats. Missing gracefully: if the file isn't present,
+# cross-exchange matching just falls back to fuzzy company-name matching.
+SECURITY_MASTER_PATH = os.environ.get(
+    'SECURITY_MASTER_PATH', 'reference_data/security_master_20260901.csv')
+
+_isin_by_nse_symbol = None
+_isin_by_bse_code = None
+
+
+def load_security_master():
+    """Build {NSE_SYMBOL: ISIN} and {BSE_SCRIP_CODE: ISIN} lookups, cached
+    for the life of the process. Returns (empty, empty) dicts if the
+    reference file isn't available -- callers degrade gracefully."""
+    global _isin_by_nse_symbol, _isin_by_bse_code
+    if _isin_by_nse_symbol is not None:
+        return _isin_by_nse_symbol, _isin_by_bse_code
+    _isin_by_nse_symbol, _isin_by_bse_code = {}, {}
+    p = Path(SECURITY_MASTER_PATH)
+    if not p.exists():
+        print(f'  (no security master at {SECURITY_MASTER_PATH} -- cross-exchange '
+              f'matching will use fuzzy company-name only)')
+        return _isin_by_nse_symbol, _isin_by_bse_code
+    df = pd.read_csv(p, dtype=str, keep_default_na=False)
+    for _, row in df.iterrows():
+        isin = (row.get('isin') or '').strip()
+        if not isin:
+            continue
+        sym = (row.get('nse_symbol') or '').strip().upper()
+        if sym:
+            _isin_by_nse_symbol[sym] = isin
+        code = (row.get('bse_scrip_code') or '').strip()
+        if code:
+            _isin_by_bse_code[code] = isin
+    print(f'  loaded security master: {len(_isin_by_nse_symbol)} NSE symbols, '
+          f'{len(_isin_by_bse_code)} BSE scrip codes -> ISIN')
+    return _isin_by_nse_symbol, _isin_by_bse_code
+
+
+def resolve_isin(exchange, category, row):
+    """Best-effort ISIN for a row, using its own native field when the
+    source already provides one (NSE rights/preferential), otherwise via
+    the security-master symbol/scrip-code crosswalk."""
+    direct = row.get('isin')
+    if direct:
+        return str(direct).strip() or None
+    isin_by_nse_symbol, isin_by_bse_code = load_security_master()
+    if exchange == 'nse':
+        symbol = _pick(row, 'symbol', 'BD_SYMBOL', 'nseSymbol')
+        return isin_by_nse_symbol.get(str(symbol).strip().upper()) if symbol else None
+    else:
+        code = _pick(row, 'security_code', 'stage_3')
+        return isin_by_bse_code.get(str(code).strip()) if code else None
+
 # canonical category name -> (NSE cert-report dataset key, NSE rows artifact path,
 #                              BSE cert-report dataset key, BSE normalized artifact path)
 CATEGORIES = {
@@ -97,6 +154,7 @@ def canonicalize(exchange, category, row):
     recognized is left None rather than guessed. Never touches the native
     columns, which stay available for drill-down/audit alongside these.
     """
+    result = None
     if category == 'insider_trading':
         if exchange == 'nse':
             qty = row.get('buyQuantity') or row.get('sellquantity')
@@ -104,7 +162,7 @@ def canonicalize(exchange, category, row):
         else:
             qty = row.get('quantity')
             val = row.get('transaction_value')
-        return {
+        result = {
             'canonical_company': _pick(row, 'companyName', 'company', 'nameOfTheCompany'),
             'canonical_symbol': _pick(row, 'symbol', 'security_code'),
             'canonical_person': _pick(row, 'acqName', 'person'),
@@ -141,7 +199,7 @@ def canonicalize(exchange, category, row):
             price = _pick(row, 'price')
             event_date = _pick(row, 'event_date')
         side = 'BUY' if side_raw in ('B', 'BUY') else ('SELL' if side_raw in ('S', 'SELL') else None)
-        return {
+        result = {
             'canonical_company': company,
             'canonical_symbol': symbol,
             'canonical_client': client,
@@ -180,7 +238,7 @@ def canonicalize(exchange, category, row):
         amount_unreliable = raw_amount not in (None, '') and (
             amount is None or amount <= 0 or amount > 1e13)
 
-        return {
+        result = {
             'canonical_company': None if company_unreliable else raw_company,
             'canonical_company_unreliable': company_unreliable,
             'canonical_symbol': _pick(row, 'nseSymbol', 'security_code', 'symbol'),
@@ -190,7 +248,11 @@ def canonicalize(exchange, category, row):
             'canonical_amount_raised': None if amount_unreliable else amount,
             'canonical_amount_raised_unreliable': amount_unreliable,
         }
-    return {}
+
+    if result is None:
+        return {}
+    result['canonical_isin'] = resolve_isin(exchange, category, row)
+    return result
 
 
 _CORP_SUFFIX_RE = re.compile(
@@ -247,24 +309,36 @@ def find_cross_exchange_matches(category, nse_canons, bse_canons):
     qty_field = 'canonical_quantity' if category in (
         'insider_trading', 'bulk_deals', 'block_deals') else None
 
-    def index_by_company(canons):
+    def join_key(c):
+        """Prefer the exact ISIN join key (from the security-master crosswalk
+        or a native isin field) over fuzzy company-name matching -- NSE
+        (alpha tickers) and BSE (numeric scrip codes) share no identifier
+        space of their own, so ISIN is the only hard link between them."""
+        isin = c.get('canonical_isin')
+        if isin:
+            return ('isin', isin)
+        name = normalize_company(c.get('canonical_company'))
+        return ('name', name) if name else None
+
+    def index_by_key(canons):
         idx = {}
         for i, c in enumerate(canons):
-            key = normalize_company(c.get('canonical_company'))
+            key = join_key(c)
             if key:
                 idx.setdefault(key, []).append(i)
         return idx
 
-    bse_by_company = index_by_company(bse_canons)
+    bse_by_key = index_by_key(bse_canons)
     nse_matches, bse_matches = {}, {}
 
     for i, nse_c in enumerate(nse_canons):
-        key = normalize_company(nse_c.get('canonical_company'))
-        if not key or key not in bse_by_company:
+        key = join_key(nse_c)
+        if not key or key not in bse_by_key:
             continue
+        match_basis = key[0]
         nse_date = parse_loose_date(nse_c.get(date_field))
         candidates = []
-        for j in bse_by_company[key]:
+        for j in bse_by_key[key]:
             bse_c = bse_canons[j]
             bse_date = parse_loose_date(bse_c.get(date_field))
             dates_close = bool(nse_date and bse_date and abs((nse_date - bse_date).days) <= 2)
@@ -293,9 +367,9 @@ def find_cross_exchange_matches(category, nse_canons, bse_canons):
         if len(candidates) == 1:
             j, confidence = candidates[0]
             nse_matches[i] = {'possible_duplicate_of': bse_canons[j]['_event_id'],
-                               'match_confidence': confidence}
+                               'match_confidence': confidence, 'match_basis': match_basis}
             bse_matches[j] = {'possible_duplicate_of': nse_c['_event_id'],
-                               'match_confidence': confidence}
+                               'match_confidence': confidence, 'match_basis': match_basis}
         # 0 or >1 candidates: ambiguous or no match -- leave unflagged rather than guess
 
     return nse_matches, bse_matches
@@ -308,6 +382,8 @@ def rows_to_parquet_bytes(exchange, category, rows, match_annotations=None):
     for col in canon.columns:
         df[col] = canon[col].values
     ids = [canonical_event_id(exchange, category, r) for r in rows]
+    df.insert(0, 'cross_exchange_match_basis',
+              [match_annotations.get(i, {}).get('match_basis') for i in range(len(rows))])
     df.insert(0, 'cross_exchange_match_confidence',
               [match_annotations.get(i, {}).get('match_confidence') for i in range(len(rows))])
     df.insert(0, 'cross_exchange_possible_match_id',
