@@ -187,18 +187,25 @@ consistent column name per category regardless of exchange:
   `"3.64E+16"` — ~36 quadrillion rupees — alongside a ~50% null rate;
   anything ≤0 or >10 trillion INR is rejected rather than shown as currency)
 
-### Known gaps not yet fixed (need a design decision or touch certified code)
+### Findings implemented 2026-09-01 (with no live NSE/BSE access available)
 
-- **BSE rights/preferential lose real fields at acquisition time.** BSE's
-  underlying API for these categories actually returns `InPrincipleStatus`,
-  `InPrinciple_date`, `ListingStatus`, `Listing_stage_date` (confirmed in
-  `bse_raw.json`), but `bse_raw_capture_v2.py`'s row-reduction step discards
-  all of them, and `bse_validate.py`'s `normalize()` then labels what's left
-  as meaningless `stage_1`/`stage_2`/`stage_3` (one of which is literally an
-  XML file path). Fixing this properly means editing the acquisition +
-  validation scripts that are currently fully certified for BSE — real risk
-  of destabilizing a green status for a labeling improvement, so left alone
-  pending a deliberate decision to do it with re-verification.
+- ~~**BSE rights/preferential lose real fields at acquisition time.**~~
+  **Code fixed, live-unverified.** `bse_raw_capture_v2.py`'s `ri_pref_row()`
+  now appends `in_principle_status`/`in_principle_date`/`listing_status`/
+  `listing_stage_date`/`bse_company_code` at positions 4-8 (purely additive
+  — positions 0-3 are byte-for-byte unchanged, so this cannot regress the
+  currently-certified 4-field output even if a field name turns out wrong;
+  `gf()` degrades to `''` on a miss rather than raising). `bse_validate.py`'s
+  `normalize()` surfaces them with proper names while keeping the legacy
+  `stage_1/2/3` fields as-is. `canonicalize()`'s `canonical_event_date` now
+  also checks `listing_stage_date`/`in_principle_date` — this is what
+  actually closes the "BSE rights had zero cross-exchange matches" gap
+  below, since BSE rights previously had no date field at all. Tested with
+  synthetic rows shaped like the real confirmed API column list (both
+  fully-populated and degraded/missing-field cases); **not yet tested
+  against a live BSE capture** since the richer per-row values were only
+  ever observed as column-name metadata, not full sample data. Needs
+  confirmation on the next successful BSE run.
 - ~~**No shared NSE/BSE identifier space.**~~ **Resolved 2026-09-01.**
   `reference_data/security_master_20260901.csv` (see
   `reference_data/README.md`) provides the ISIN ↔ NSE symbol ↔ BSE scrip
@@ -212,18 +219,32 @@ consistent column name per category regardless of exchange:
   `match_basis: 'isin'`. 98% of real captured NSE insider rows (2026-09-01)
   resolved an ISIN through this crosswalk. It's a point-in-time snapshot,
   not a live feed — see the reference file's README for staleness handling.
-- **NSE Insider's single `date` column silently collapses a range.** ~19%
-  of captured rows (88/465 on 2026-09-01) have `acqfromDt != acqtoDt` — the
-  disclosed transaction is an aggregate over a multi-day window, not a
-  single date. `canonical_transaction_date` currently uses the disclosure/
-  intimation date, not this range.
-- **Revision/amendment tracking is unused.** NSE's insider schema carries
-  `prevAppId`/`revisionRemark` fields meant to mark a filing as amending an
-  earlier one (0 occurrences in the 2026-09-01 sample, but expected to
-  recur). `canonical_event_id` currently treats a revised filing as a brand
-  new, unrelated row rather than a new version of the original — this is
-  exactly the "amended/re-filed disclosure" identity case
-  `PROJECT_PLAN.md` section 8 calls out as a requirement, not yet built.
+- ~~**NSE Insider's single `date` column silently collapses a range.**~~
+  **Resolved.** Added `canonical_transaction_date_from`/`_to`/`_is_range`.
+  ~19% of captured rows (88/465 on 2026-09-01) have `acqfromDt != acqtoDt`
+  — the disclosed transaction is an aggregate over a multi-day window, not
+  a single date; the range is now surfaced instead of silently collapsed.
+  BSE's schema has no separate from/to (already single-day), so from==to
+  there by construction. Verified against the real range and single-day
+  cases from captured data.
+- ~~**Revision/amendment tracking is unused.**~~ **Resolved.** Added
+  `canonical_app_id`/`canonical_prev_app_id`/`canonical_is_revision`.
+  `canonical_event_id` is a content hash and correctly differs between a
+  filing and its revision; NSE's own `appId`/`prevAppId` chain (not a
+  recomputed historical hash, which isn't feasible without a persistent
+  cross-run store) is what actually lets a consumer trace a revision to its
+  original. 0 real revisions in the 2026-09-01 sample, so only verified
+  with a synthetic revision case — will only be exercised for real once NSE
+  actually publishes one.
+- **Still ISIN-unresolvable: ~1.3% of NSE symbols** (`CCAVENUE`, `AQYLON`
+  in the 2026-09-01 sample) — confirmed genuinely absent from
+  `security_master_20260901.csv` under every plausible name variant, not a
+  matching bug. A unique-prefix fallback (`_prefix_match_symbol()`) already
+  recovers the fixable case of this kind (NSE disclosure feeds sometimes
+  use a longer/older symbol variant than the current live ticker, e.g.
+  `ATHERENERG` vs `ATHER` for Ather Energy) — pushed resolution from 98.0%
+  to 98.7%. Closing the rest needs a more complete security-master file,
+  not more matching cleverness.
 
 ### Cross-exchange same-event matching: flagged, never merged
 
