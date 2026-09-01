@@ -32,16 +32,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: NSE Insider
+        if: always()
         env:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_insider.py
       - name: NSE Bulk
+        if: always()
         env:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_bulk.py
       - name: NSE Block
+        if: always()
         env:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
@@ -58,6 +61,12 @@ jobs:
           TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
           LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
         run: python scripts/nse_preferential.py
+      - name: NSE evidence validation
+        if: always()
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+          LOOKBACK_DAYS: ${{ inputs.lookback_days || '90' }}
+        run: python scripts/nse_validate.py
       - name: Upload NSE evidence
         if: always()
         uses: actions/upload-artifact@v4
