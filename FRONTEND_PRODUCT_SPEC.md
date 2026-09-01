@@ -393,3 +393,67 @@ Backend certification remains the authority.
 The frontend is responsible for making that evidence understandable and auditable.
 
 No UI polish can upgrade a backend category from yellow/red to green.
+
+## Visual reference concepts
+
+Two visual concepts have been saved in the repository as design references. They are **directional mockups, not screenshots of the implemented application and not evidence of backend certification**.
+
+### Concept A — Research Terminal
+
+`docs/frontend-concepts/frontend-concept-a.svg`
+
+Design intent:
+- strong left navigation
+- exchange/date controls at the top
+- KPI strip
+- dominant research table
+- right-side date coverage and quality panel
+- trend chart
+- source/evidence panel
+- explicit provenance and certification language
+
+This is the more conservative institutional-terminal direction.
+
+### Concept B — Analytics Terminal
+
+`docs/frontend-concepts/frontend-concept-b.svg`
+
+Design intent:
+- faster visual scanning
+- persistent search
+- transaction/category tabs
+- top-company analytics
+- validation/evidence center
+- date-coverage panel
+- stronger separation between research data and analytics
+- explicit pending/verified states
+
+This is the more analytics-heavy direction.
+
+### Recommended product direction
+
+Use **Concept B as the starting visual benchmark**, while adopting Concept A's strongest evidence/provenance treatment.
+
+The final implementation should not copy either mockup literally. It should combine their best properties into a coherent product system:
+
+**institutional research-terminal discipline + modern analytics UX + first-class source evidence.**
+
+The final UI should remain restrained. Avoid turning the product into a decorative dashboard. The primary interaction is research: find an event, understand it, verify it, and export it.
+
+## Visual QA gates
+
+Before frontend implementation is considered complete:
+
+[ ] desktop layout reviewed at 1440px+ width
+[ ] tablet layout reviewed
+[ ] mobile layout reviewed
+[ ] table density is readable at normal zoom
+[ ] primary actions are visually obvious
+[ ] source/certification status is impossible to confuse
+[ ] warnings are visible without being alarmist
+[ ] evidence drawer is usable without losing table context
+[ ] charts never obscure the underlying data
+[ ] no invented sample numbers are shown in production
+[ ] loading/empty/error states follow the same design system
+[ ] all colors have semantic meaning and are not the sole status signal
+[ ] final UI matches the documented visual benchmark
