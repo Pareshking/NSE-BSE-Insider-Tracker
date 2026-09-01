@@ -1,9 +1,14 @@
-"""NSE Insider Trading acquisition: CDP capture of page XHR + execute_async fallback.
+"""NSE Insider Trading acquisition: stealth CDP capture of the real PIT endpoint.
 
-Root cause of empty responses: /api/corporates-pit?index=equities returns
-{"acqNameList":[],"data":[]} (28 bytes) for ALL date ranges. NSE's own page
-JavaScript makes the correct API call with correct headers; CDP captures it.
-execute_async_script fallback tries URL variants without the index parameter.
+Root cause of the previous failure: INSIDER_KEYS was too broad
+('corporate-filings', 'pit', 'insider') and matched OTHER NSE corporate-filings
+APIs the page also loads (event calendar, actions, etc.), not the actual
+/api/corporates-pit endpoint. Those unrelated rows had no personCategory field,
+so the promoter check always saw 0 promoter rows even with thousands of rows
+captured. Fix: narrow capture to 'corporates-pit' only, validate captured rows
+actually look like PIT records, add Akamai-evading stealth flags (BSE's script
+already had these; NSE's did not), and interact with the page's date filter to
+force a fresh XHR covering the full lookback window.
 """
 from __future__ import annotations
 import json, os, time
@@ -18,10 +23,15 @@ TARGET   = date.fromisoformat(os.getenv('TARGET_DATE', '2026-08-31'))
 LOOKBACK = int(os.getenv('LOOKBACK_DAYS', '90'))
 OUT      = Path('artifacts/nse_insider')
 OUT.mkdir(parents=True, exist_ok=True)
-UA       = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139 Safari/537.36'
-CHUNK    = 7
+UA       = ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36')
 
-_JS = """
+# Only the actual PIT API endpoint — NOT the broader 'corporate-filings'/'pit'
+# substrings that also match unrelated NSE APIs on the same page.
+INSIDER_KEYS   = ('corporates-pit',)
+PIT_FIELD_HITS = ('personCategory', 'acqName', 'acqfromDt', 'buyQuantity', 'sellQuantity')
+
+_JS_FETCH = """
 const [url, cb] = [arguments[0], arguments[arguments.length-1]];
 fetch(url, {
   credentials: 'include',
@@ -41,58 +51,117 @@ fetch(url, {
 def browser():
     o = Options()
     for x in ('--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-               '--disable-gpu', '--window-size=1920,1080', f'--user-agent={UA}'):
+              '--disable-gpu', '--window-size=1920,1080',
+              '--disable-blink-features=AutomationControlled',
+              '--disable-extensions', '--no-first-run', '--no-default-browser-check',
+              f'--user-agent={UA}'):
         o.add_argument(x)
+    o.add_experimental_option('excludeSwitches', ['enable-automation'])
+    o.add_experimental_option('useAutomationExtension', False)
     o.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-    return webdriver.Chrome(options=o)
+    d = webdriver.Chrome(options=o)
+    d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': """
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+        Object.defineProperty(navigator, 'languages', {get: () => ['en-US','en']});
+        window.chrome = {runtime: {}};
+    """})
+    return d
 
 
-# ── CDP capture ────────────────────────────────────────────────────────────────
+# ── CDP capture (narrowed to real PIT endpoint) ─────────────────────────────────
 
 def capture_nse_cdp(d):
-    """Drain CDP performance log; return all NSE API responses that look like insider data."""
     results = []
-    INSIDER_KEYS = ('corporates-pit', 'insider', 'corporate-filings', 'pit')
     for item in d.get_log('performance'):
         try:
             msg    = json.loads(item['message'])['message']
             method = msg.get('method', '')
             params = msg.get('params', {})
-            if method == 'Network.responseReceived':
-                resp   = params.get('response', {})
-                url    = resp.get('url', '')
-                status = resp.get('status', 0)
-                if 'nseindia.com' not in url:
-                    continue
-                if not any(k in url.lower() for k in INSIDER_KEYS):
-                    continue
-                req_id = params.get('requestId', '')
+            if method != 'Network.responseReceived':
+                continue
+            resp   = params.get('response', {})
+            url    = resp.get('url', '')
+            if 'nseindia.com' not in url or not any(k in url.lower() for k in INSIDER_KEYS):
+                continue
+            req_id = params.get('requestId', '')
+            status = resp.get('status', 0)
+            try:
+                body = d.execute_cdp_cmd(
+                    'Network.getResponseBody', {'requestId': req_id}
+                ).get('body', '')
                 try:
-                    body = d.execute_cdp_cmd(
-                        'Network.getResponseBody', {'requestId': req_id}
-                    ).get('body', '')
-                    if len(body) < 30:   # definitely empty/error
-                        print(f'  CDP skip (tiny): {url[:80]} → {len(body)}B {body[:50]!r}')
-                        continue
-                    try:
-                        obj = json.loads(body)
-                    except Exception:
-                        obj = None
-                    results.append({'url': url, 'status': status, 'json': obj, 'bytes': len(body)})
-                    print(f'  CDP captured: {url[:90]} → {len(body)}B')
-                except Exception as e:
-                    print(f'  CDP body error on {url[:60]}: {e}')
+                    obj = json.loads(body)
+                except Exception:
+                    obj = None
+                results.append({'url': url, 'status': status, 'json': obj, 'bytes': len(body)})
+                print(f'  CDP PIT: {url[:90]} -> {len(body)}B status={status}')
+            except Exception as e:
+                print(f'  CDP body error on {url[:60]}: {e}')
         except Exception:
             pass
     return results
 
 
+def is_valid_pit_data(rows):
+    if not rows:
+        return False
+    sample = rows[:20]
+    hits = sum(1 for r in sample if isinstance(r, dict) and any(f in r for f in PIT_FIELD_HITS))
+    return hits >= max(1, len(sample) // 3)
+
+
+# ── Date-filter page interaction ────────────────────────────────────────────────
+
+def try_set_nse_date_range(d, from_date, to_date):
+    fmt = '%d-%m-%Y'
+    fd, td = from_date.strftime(fmt), to_date.strftime(fmt)
+    print(f'  Attempting date range set: {fd} -> {td}')
+    try:
+        set_count = d.execute_script("""
+            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            const inputs = Array.from(document.querySelectorAll('input[type=text], input:not([type])'));
+            const dateInputs = inputs.filter(i => {
+                const a = ((i.placeholder||'')+(i.id||'')+(i.name||'')+(i.className||'')).toLowerCase();
+                return /date|from|to|dd|period/.test(a);
+            });
+            let count = 0;
+            const vals = [arguments[0], arguments[1]];
+            for (let i = 0; i < Math.min(2, dateInputs.length); i++) {
+                setter.call(dateInputs[i], vals[i]);
+                ['input','change','blur'].forEach(ev =>
+                    dateInputs[i].dispatchEvent(new Event(ev, {bubbles:true})));
+                count++;
+            }
+            return count;
+        """, fd, td)
+        print(f'  Date inputs set: {set_count}')
+    except Exception as e:
+        print(f'  Date set failed: {e}')
+
+    time.sleep(1)
+    try:
+        clicked = d.execute_script("""
+            const btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button]'));
+            const btn = btns.find(b => {
+                const t = (b.textContent || b.value || '').trim().toLowerCase();
+                return /^(search|apply|go|filter|submit)/.test(t) && !/reset|clear/.test(t);
+            });
+            if (btn) { btn.click(); return (btn.textContent || btn.value || 'clicked').trim(); }
+            return null;
+        """)
+        print(f'  Search button clicked: {clicked!r}')
+        return bool(clicked)
+    except Exception as e:
+        print(f'  Click failed: {e}')
+        return False
+
+
 # ── execute_async_script fallback ──────────────────────────────────────────────
 
 def js_fetch(d, url):
-    raw  = json.loads(d.execute_async_script(_JS, url))
+    raw  = json.loads(d.execute_async_script(_JS_FETCH, url))
     text = raw.get('text', '')
-    # Extract JSON substring (handles any wrapper text)
     s = min([p for p in (text.find('{'), text.find('[')) if p >= 0], default=-1)
     e = max(text.rfind('}'), text.rfind(']'))
     if s >= 0 and e >= s:
@@ -106,27 +175,23 @@ def js_fetch(d, url):
 
 
 def probe_api(d, start, end):
-    """Try several URL variants for a date window; return rows from first that works."""
     BASE_URL = f'{BASE}/api/corporates-pit'
+    fd, td = f'{start:%d-%m-%Y}', f'{end:%d-%m-%Y}'
     candidates = [
-        # without index param — may bypass the equities filter that returns empty
-        f'{BASE_URL}?from_date={start:%d-%m-%Y}&to_date={end:%d-%m-%Y}',
-        # different index values
-        f'{BASE_URL}?index=all&from_date={start:%d-%m-%Y}&to_date={end:%d-%m-%Y}',
-        f'{BASE_URL}?index=equities&from_date={start:%d-%m-%Y}&to_date={end:%d-%m-%Y}',
-        # no params (may return default/latest data)
+        f'{BASE_URL}?from_date={fd}&to_date={td}',
+        f'{BASE_URL}?index=equities&from_date={fd}&to_date={td}',
+        f'{BASE_URL}?index=all&from_date={fd}&to_date={td}',
         BASE_URL,
     ]
     for url in candidates:
-        raw  = js_fetch(d, url)
-        text = raw.get('text', '')
-        print(f'    probe {url[50:90]}: status={raw.get("status")} bytes={raw.get("bytes")} '
-              f'preview={text[:60]!r}')
-        rows = flatten(raw.get('json'))
-        if rows:
-            print(f'    → {len(rows)} rows from {url[50:]}')
+        raw   = js_fetch(d, url)
+        rows  = flatten(raw.get('json'))
+        valid = is_valid_pit_data(rows)
+        print(f'    probe {url[len(BASE):90]}: status={raw.get("status")} '
+              f'bytes={raw.get("bytes")} rows={len(rows)} valid={valid}')
+        if rows and valid:
             return rows, url
-        time.sleep(1)
+        time.sleep(1.5)
     return [], candidates[0]
 
 
@@ -134,9 +199,8 @@ def probe_api(d, start, end):
 
 DATE_FMTS = ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y-%m-%dT%H:%M:%S',
              '%d-%b-%Y', '%d-%b-%y', '%m/%d/%Y %H:%M:%S')
-DATE_KEYS  = ('date', 'RECORD_DT', 'acqfromDt', 'acqtoDt', 'intimDt', 'broadcastDt',
-              'dateOfIntimation', 'dateOfTransaction', 'Date', 'DATE',
-              'Fld_LetterDate', 'Fld_FromDate', 'Fld_DateIntimation')
+DATE_KEYS  = ('acqfromDt', 'acqtoDt', 'intimDt', 'broadcastDt',
+              'dateOfIntimation', 'dateOfTransaction', 'date', 'Date', 'DATE')
 
 
 def parse_date_str(v):
@@ -158,7 +222,6 @@ def record_date(r):
 
 
 def flatten(obj):
-    """Recursively extract all dicts from nested JSON."""
     if isinstance(obj, list):
         if obj and all(isinstance(x, dict) for x in obj):
             return obj
@@ -172,6 +235,16 @@ def flatten(obj):
             out.extend(flatten(v))
         return out
     return []
+
+
+def dedup(rows):
+    seen, out = set(), []
+    for r in rows:
+        k = json.dumps(r, sort_keys=True, default=str)
+        if k not in seen:
+            seen.add(k)
+            out.append(r)
+    return out
 
 
 # ── Window building ────────────────────────────────────────────────────────────
@@ -190,66 +263,72 @@ def make_window(name, start, end, rows):
     }
 
 
-def dedup(rows):
-    seen, out = set(), []
-    for r in rows:
-        k = json.dumps(r, sort_keys=True, default=str)
-        if k not in seen:
-            seen.add(k)
-            out.append(r)
-    return out
-
-
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
     d = browser()
     try:
+        from_date = TARGET - timedelta(days=LOOKBACK - 1)
+
         print('Loading NSE insider trading page...')
         d.get(PAGE)
-        time.sleep(12)
+        time.sleep(15)
         print(f'Page: {d.title!r}  cookies: {len(d.get_cookies())}')
 
-        # PRIMARY: capture what the page itself loads via its Angular XHR
+        # Drain initial-load CDP log (may already contain a PIT XHR)
         cdp_hits = capture_nse_cdp(d)
-        print(f'CDP captures: {len(cdp_hits)}')
+
+        # Interact with the date filter to force a fresh, wider-range XHR
+        set_ok = try_set_nse_date_range(d, from_date, TARGET)
+        if set_ok:
+            time.sleep(12)
+            cdp_hits.extend(capture_nse_cdp(d))
 
         cdp_rows = []
         for c in cdp_hits:
-            cdp_rows.extend(flatten(c.get('json') or {}))
-        print(f'CDP rows: {len(cdp_rows)}')
+            rows = flatten(c.get('json') or {})
+            if is_valid_pit_data(rows):
+                cdp_rows.extend(rows)
+            else:
+                print(f'  Discarding non-PIT capture from {c["url"][:80]} '
+                      f'({len(rows)} rows, sample keys: '
+                      f'{list(rows[0].keys())[:6] if rows else []})')
+        cdp_rows = dedup(cdp_rows)
+        print(f'CDP validated PIT rows: {len(cdp_rows)}')
 
-        # FALLBACK: execute_async_script with URL variants if CDP got nothing useful
         fallback_rows = []
-        if len(cdp_rows) == 0:
-            print('No CDP data — running execute_async_script fallback...')
-            # Try 7d window first with multiple URL variants
-            start7 = TARGET - timedelta(days=6)
-            rows7, url7 = probe_api(d, start7, TARGET)
+        if not cdp_rows:
+            print('No valid CDP PIT data — running execute_async fallback...')
+            rows7, url7 = probe_api(d, TARGET - timedelta(days=6), TARGET)
             if rows7:
                 fallback_rows = rows7
-                print(f'Fallback got {len(rows7)} rows for 7d window')
-                # Now get 90d with chunking
-                start90 = TARGET - timedelta(days=LOOKBACK - 1)
-                cursor   = TARGET
-                while cursor >= start90 and len(fallback_rows) < 5000:
-                    chunk_start = max(cursor - timedelta(days=CHUNK - 1), start90)
-                    rows_c, _ = probe_api(d, chunk_start, cursor)
-                    fallback_rows.extend(rows_c)
+                cursor = TARGET - timedelta(days=7)
+                while cursor >= from_date and len(fallback_rows) < 10000:
+                    chunk_start = max(cursor - timedelta(days=6), from_date)
+                    rc, _ = probe_api(d, chunk_start, cursor)
+                    fallback_rows.extend(rc)
                     cursor = chunk_start - timedelta(days=1)
                     time.sleep(2)
                 fallback_rows = dedup(fallback_rows)
-                print(f'Fallback total after 90d: {len(fallback_rows)}')
+                print(f'Fallback total after {LOOKBACK}d: {len(fallback_rows)}')
+            else:
+                raw = js_fetch(d, f'{BASE}/api/corporates-pit')
+                rows_all = flatten(raw.get('json'))
+                if is_valid_pit_data(rows_all):
+                    fallback_rows = rows_all
+                    print(f'Fallback default-call rows: {len(fallback_rows)}')
 
         all_rows = dedup(cdp_rows + fallback_rows)
-        print(f'Total deduplicated rows: {len(all_rows)}')
+        print(f'Total validated PIT rows: {len(all_rows)}')
 
-        # Build 4 windows: distribute by date, fall back to ALL rows for wider windows
+        promoter_rows = [r for r in all_rows if 'PROMOTER' in str(r.get('personCategory', '')).upper()]
+        print(f'Rows with PROMOTER category: {len(promoter_rows)}')
+
         specs = [
-            ('1d',  TARGET,                              TARGET),
-            ('7d',  TARGET - timedelta(days=6),          TARGET),
-            ('30d', TARGET - timedelta(days=29),         TARGET),
-            ('90d', TARGET - timedelta(days=LOOKBACK-1), TARGET),
+            ('1d',  TARGET,                TARGET),
+            ('7d',  TARGET - timedelta(days=6),  TARGET),
+            ('30d', TARGET - timedelta(days=29), TARGET),
+            ('90d', from_date,             TARGET),
         ]
 
         def in_window(r, wstart, wend):
@@ -264,8 +343,6 @@ def main():
         windows = []
         for win_name, wstart, wend in specs:
             win_rows = [r for r in all_rows if in_window(r, wstart, wend)]
-            # For 7d/30d/90d: if date-filtered rows are empty, use ALL rows
-            # (broadcast date != transaction date — records from broad window cover many txn dates)
             if not win_rows and win_name != '1d':
                 win_rows = all_rows
             w = make_window(win_name, wstart, wend, win_rows)
@@ -278,7 +355,7 @@ def main():
         report = {
             'source': 'NSE', 'dataset': 'insider_trading',
             'target_date': str(TARGET), 'lookback_days': LOOKBACK,
-            'method': 'CDP page capture + execute_async fallback',
+            'method': 'Stealth CDP page capture (narrowed to corporates-pit) + execute_async fallback',
             'windows': [{k: v for k, v in w.items() if k not in ('rows', 'sample')}
                         for w in windows],
         }
