@@ -22,37 +22,33 @@ works and why.**
 - **NSE Rights / Preferential: ✅ confirmed VERIFIED** in a fresh run
   (`nse-validation.yml` run #87, 2026-09-01T16:58Z, commit `c8f2d9f`) —
   recovered fully from the earlier Akamai escalation.
-- **NSE Bulk / Block: CORRECTION — no evidence this has ever actually been
-  VERIFIED with real data in this project.** Earlier notes here described
-  this as "previously VERIFIED, needs a clean reconfirmation run," implying
-  a regression from working code. That was checked against the actual
-  evidence on 2026-09-01 and does not hold up: three separate runs spanning
-  the full day — `2f92237` (05:52 UTC), `973ce485` (06:52 UTC), and `c8f2d9f`
-  (16:58 UTC, run #87) — all got the **identical** ~22,085–22,087-byte
-  non-JSON bot-detection page across all 4 windows (1d/7d/30d/90d), 0 real
-  rows every time, regardless of script version or retry logic. Real data
-  would vary in size by date range; an identical byte count every time
-  means it's the same static page, not a data question. No run in this
-  project's history (checked from the earliest recorded run onward) shows
-  `nse_bulk`/`nse_block` actually passing `nse_validate.py`'s VERIFIED gate
-  (which strictly requires real captured rows — see `scripts/nse_validate.py`
-  lines 14-16 — so there's no looser historical definition this could be
-  hiding behind either).
-  **2026-09-01 17:16 IST — user confirmed via phone browser that NSE's own
-  Bulk Deals page loads real 31-Aug-2026 data instantly from an ordinary
-  mobile connection.** This rules out "no data" or "site down," and points
-  at IP-reputation blocking of GitHub Actions' data-center IP ranges
-  specifically for this endpoint (Insider/Rights/Preferential aren't
-  affected from the same IPs, so it's endpoint-specific, not domain-wide) —
-  and consistent with it never having worked from a GitHub-hosted runner in
-  the first place, not something that broke.
-  **Revised expectation: a cooldown period may not be sufficient on its
-  own** the way it was for Rights/Preferential — if this is IP-based rather
-  than request-cadence-based, the block may persist indefinitely from
-  GitHub-hosted runners. Decision (2026-09-01): keep the existing
-  scheduled-retry approach for now rather than standing up a self-hosted
-  runner or a manual CSV fallback; revisit if retries keep failing over
-  multiple days.
+- **NSE Bulk / Block: ✅ fully fixed and confirmed VERIFIED with real data
+  2026-09-01, run #98 (`nse-validation.yml`, commit `12a0693`).** This took
+  several rounds of real-evidence debugging — see `DATA_ACQUISITION.md`
+  section 2 for the full technical account. Summary of what it actually
+  was, in order of discovery:
+  1. Earlier notes here said "previously VERIFIED, needs reconfirmation,"
+     implying a regression. That was false: no run in this project's
+     history ever actually passed `nse_validate.py`'s VERIFIED gate for
+     these two categories — every run got an identical ~22KB bot-detection
+     page, 0 real rows.
+  2. First theory (IP-reputation block on GitHub's data-center IPs) looked
+     plausible — a phone-browser test got real data instantly while the CI
+     runner didn't — but didn't survive a direct test: `scripts/nse_bulk_diagnose.py`
+     proved the real cause was a **dead endpoint** (`/api/historical/bulk-deals`),
+     while the live page's actual endpoint (`/api/historicalOR/bulk-block-short-deals`)
+     worked fine from the same IP in the same run.
+  3. That endpoint turned out to cap results at 70 rows per call, and an
+     initial chunking fix (7-day chunks) discovered the cap sorts
+     **ascending** by date — so a busy day early in any multi-day chunk
+     silently drops every later day in that chunk, including the actual
+     target date.
+  4. Final fix: fetch one calendar day per call (`CHUNK=1`), fetch the full
+     90-day range exactly once, then slice into the 1d/7d/30d/90d windows.
+  Confirmed result (run #98): **4,410 real Bulk Deal rows across 63 distinct
+  dates**, **690 real Block Deal rows across 37 distinct dates**, 0 retries
+  needed across 90 daily calls per script. `nse_validate.py`'s
+  `certification` field reads **VERIFIED** — all 5 NSE categories are green.
 - **Operational lesson:** don't fire `nse-validation.yml` repeatedly within
   a short window while iterating — space test runs out (10+ minutes) to
   avoid tripping Akamai's edge rate limiter across the whole domain.
@@ -82,6 +78,13 @@ reason, never written as empty:
 6/10 datasets written this run. NSE rights/preferential already recovered
 from the earlier Akamai block on their own — only the bulk/block-deals
 endpoints specifically are still cooling down.
+
+**Update 2026-09-01 (later same day):** NSE bulk_deals/block_deals are now
+fixed and confirmed VERIFIED with real data (see "Current confirmed state"
+above) — the table right above reflects that specific 13:13Z run's result,
+not current status. `r2-storage.yml` has not been re-run since the fix
+landed, so a fresh R2 write with all 10 categories has not yet been
+confirmed end-to-end; that's the natural next check.
 
 ## Operating rule
 No one-year R2 backfill and no production-schema freeze until all validation gates are cleared and explicitly authorized.
@@ -159,8 +162,8 @@ These are defect-diagnosis observations, not certification.
 |---|---|---|
 | NSE | Insider | ✅ VERIFIED (corporates-pit-gg + XBRL rewrite) |
 | NSE | Promoter semantics | ✅ VERIFIED (confirmed 2 consecutive runs) |
-| NSE | Bulk | 🔴 BLOCKED — no confirmed successful run found in this project's history (see "Current confirmed state" above); likely IP-reputation block on GitHub-hosted runners, not a cooldown issue |
-| NSE | Block | 🔴 BLOCKED — same as Bulk above |
+| NSE | Bulk | ✅ VERIFIED (fixed and confirmed run #98, 2026-09-01 — dead endpoint + per-call ascending-sort cap, see "Current confirmed state" above) |
+| NSE | Block | ✅ VERIFIED (fixed and confirmed run #98, 2026-09-01 — same fix as Bulk) |
 | NSE | Rights | ✅ VERIFIED (confirmed run #87, 2026-09-01T16:58Z) |
 | NSE | Preferential | ✅ VERIFIED (confirmed run #87, 2026-09-01T16:58Z) |
 | BSE | Insider | ✅ VERIFIED |

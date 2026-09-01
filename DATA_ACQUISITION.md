@@ -65,37 +65,71 @@ it. Do the same before changing any of this.
 
 ### 2. Bulk Deals (`scripts/nse_bulk.py`)
 
-**Method: Selenium, browser-native `fetch()` from within the page context.**
+**Method: Selenium, browser-native `fetch()` from within the page context,
+against `/api/historicalOR/bulk-block-short-deals`, one calendar day per
+call.**
 
-- Endpoint: `https://www.nseindia.com/api/historical/bulk-deals?from=DD-MM-YYYY&to=DD-MM-YYYY`.
-- A plain `requests.Session` (even with copied cookies) gets Akamai's ~22KB
-  HTML bot-detection page instead of JSON. Calling `fetch()` via
-  `execute_async_script` from inside a live Chrome tab that has already
-  loaded `nseindia.com/market-data/large-deals` satisfies Akamai's TLS/JS
-  integrity checks and returns real JSON.
-- **Known flakiness:** even through the browser, Akamai occasionally still
-  serves the bot-detection HTML for one window (status 200, `bytes≈22085`,
-  JSON-parse fails on line 2). `fetch_window()` now retries up to 3 times per
-  window, reloading the page between attempts to refresh the session state.
-- **2026-09-01 finding — likely IP-reputation, not just request-pattern
-  flakiness:** a run confirmed all 4 windows (1d/7d/30d/90d) got the
-  identical bot-detection page (same 22,087 bytes every time, regardless of
-  date range — real data would vary in size by range) despite the 3x retry.
-  In the same session, manually loading NSE's Bulk Deals page from an
-  ordinary residential/mobile connection returned real 31-Aug-2026 rows
-  instantly — confirming the site and the data are fine, and the block is
-  specific to this endpoint being called from a GitHub Actions runner's
-  data-center IP range. This means the existing retry-with-reload logic may
-  not be sufficient on its own; a durable fix likely needs the request to
-  originate from a non-data-center IP (e.g. a self-hosted runner) rather
-  than more retries against the same IP.
+This category went through several rounds of real-evidence debugging on
+2026-09-01 before landing on a fully working method — worth reading in full
+since each earlier theory looked reasonable until tested against a live run.
+
+- **Was calling a dead endpoint.** The original implementation called
+  `/api/historical/bulk-deals?from=DD-MM-YYYY&to=DD-MM-YYYY`, which returns
+  the same ~22KB Akamai bot-detection HTML page on every single request —
+  every commit, every run, at every point checked across this project's
+  history (see `VALIDATION_STATUS.md` for the audit). This looked like
+  IP-reputation blocking of GitHub Actions' data-center IPs at first (a
+  manual phone-browser test loaded real data instantly while the CI runner
+  got the fake page), but that theory didn't survive a direct test.
+- **The real endpoint**, found by running `scripts/nse_bulk_diagnose.py` —
+  which visits NSE's own "Bulk Deals/ Block Deals/ Short Selling Archives"
+  page (`report-detail/display-bulk-and-block-deals`) with full CDP network
+  capture and also tries several endpoint variants directly, all from the
+  same GitHub runner in one run — is
+  `/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from=DD-MM-YYYY&to=DD-MM-YYYY`
+  (note the extra "OR"). From the exact same IP, in the exact same run, this
+  endpoint returned real JSON while `/api/historical/bulk-deals` returned
+  the fake page — ruling out a blanket IP block and confirming a dead/retired
+  endpoint, the same root-cause shape as `/api/corporates-pit` vs
+  `/api/corporates-pit-gg` for Insider Trading.
+- **The endpoint caps results at 70 rows per call, sorted ASCENDING by date
+  within the requested range** — not most-recent-first as first assumed.
+  Confirmed by inspecting real returned rows: a 7-day-chunked request for
+  `26-Aug..31-Aug` returned exactly 70 rows, *all from 26-Aug* — the oldest
+  day in that range alone had enough deals to exhaust the cap, so 27–31 Aug
+  (including the actual target date) were silently dropped. A single
+  90-day-wide request behaves the same way at day-1 of the whole range.
+- **The fix: fetch each calendar day separately (`CHUNK=1`), once, then slice
+  the combined rows into the 1d/7d/30d/90d windows.** One-day-per-call is the
+  only chunk size where the ascending-sort-plus-cap can't cause an earlier
+  day to crowd out a later one — the remaining limitation is that a single
+  day with more than 70 bulk deals loses its own tail, which is real but far
+  smaller and is NSE's own pagination limit, not something this script
+  controls. Fetching the full lookback range once and slicing per window
+  (rather than each of the 4 named windows independently re-fetching its own
+  overlapping range from scratch) also roughly halves the total call count
+  and removes all overlap — an intermediate version that re-fetched per
+  window made ~20 heavily-overlapping calls and Bulk failed outright in that
+  run (all retries exhausted) while Block, in a fresh session right after,
+  succeeded; call-volume/pattern was the suspected cause, though the
+  ascending-sort bug above turned out to be the deciding factor.
+- **Confirmed working end-to-end 2026-09-01** (`nse-validation.yml` run #98):
+  90/90 daily calls succeeded with zero retries; 4,410 real rows across 63
+  distinct dates in the 90-day window; 1-day window shows 70 real rows for
+  the target date (capped, since 31-Aug alone hit the per-day limit — a real
+  data characteristic, not a bug).
+- `chunk_diagnostics` in `report.json` records status/bytes/mode/attempts
+  per daily call for future debugging, since a stripped-down version of this
+  file previously made a real regression hard to diagnose from the artifact
+  alone.
 
 ### 3. Block Deals (`scripts/nse_block.py`)
 
-Same method and same retry logic as Bulk Deals, against
-`https://www.nseindia.com/api/historical/block-deals`. Same 2026-09-01
-finding applies — this endpoint gets the identical bot-detection page from
-the same runner IP range at the same time as Bulk Deals.
+Same method, same endpoint (`optionType=block_deals`), same `CHUNK=1`
+fix, same reasoning as Bulk Deals above. Confirmed working in the same
+2026-09-01 run: 690 real rows across 37 distinct dates in the 90-day
+window, 11 real rows for the 1-day target-date window, 0 retries needed
+across 90 daily calls.
 
 ### 4. Rights Issues (`scripts/nse_rights.py`)
 
