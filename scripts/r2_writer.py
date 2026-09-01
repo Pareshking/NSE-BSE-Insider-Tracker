@@ -157,12 +157,38 @@ def canonicalize(exchange, category, row):
         # a purely-numeric value as a company name; flag it instead.
         raw_company = _pick(row, 'nameOfTheCompany', 'companyName', 'company')
         company_unreliable = bool(raw_company) and str(raw_company).strip().isdigit()
+
+        # categoryOfAllottee (Preferential only) has observed values 'Promoter',
+        # 'Non Promoter', and 'Promoter & Non Promoter' -- the latter two both
+        # contain the substring 'PROMOTER', so this MUST be an exact-value
+        # mapping, never a substring/'in' check, or 'Non Promoter' allotments
+        # would be misclassified as promoter allotments.
+        allottee_raw = str(_pick(row, 'categoryOfAllottee') or '').strip()
+        allottee_map = {
+            'Promoter': 'PROMOTER',
+            'Non Promoter': 'NON_PROMOTER',
+            'Promoter & Non Promoter': 'MIXED',
+        }
+        canonical_allottee_category = allottee_map.get(allottee_raw)
+
+        # totalAmntRaised/totalAmtRaised has been observed as scientific-notation
+        # garbage (e.g. "3.64E+16" -- 36 quadrillion rupees, not a real issue
+        # size) alongside a ~50% null/zero rate. Reject anything outside a sane
+        # bound (10 trillion INR) rather than surfacing it as currency.
+        raw_amount = _pick(row, 'totalAmntRaised', 'totalAmtRaised')
+        amount = _num(raw_amount)
+        amount_unreliable = raw_amount not in (None, '') and (
+            amount is None or amount <= 0 or amount > 1e13)
+
         return {
             'canonical_company': None if company_unreliable else raw_company,
             'canonical_company_unreliable': company_unreliable,
             'canonical_symbol': _pick(row, 'nseSymbol', 'security_code', 'symbol'),
             'canonical_stage': _pick(row, 'stage', 'issueType'),
             'canonical_event_date': _pick(row, 'dateOfSubmission', 'boardResolutionDt', 'event_date'),
+            'canonical_allottee_category': canonical_allottee_category,
+            'canonical_amount_raised': None if amount_unreliable else amount,
+            'canonical_amount_raised_unreliable': amount_unreliable,
         }
     return {}
 
