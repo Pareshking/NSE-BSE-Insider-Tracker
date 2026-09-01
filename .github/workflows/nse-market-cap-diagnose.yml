@@ -1,0 +1,47 @@
+name: NSE Market Cap Diagnostic (one-off)
+
+# Not part of the regular pipeline yet. ANALYTICS_PLAN.md Phase 0.5 needs
+# real market cap so "1 lakh shares sold" can be normalized against
+# company size. scripts/nse_market_cap.py uses jugaad-data's
+# NSELive().stock_quote() -- confirmed working from a local sandbox
+# (2026-09-01), but this project has already been burned once by
+# assuming a sandbox result holds on a GitHub Actions runner IP (see
+# nse_bulk.py's docstring) -- so this verifies it for real here before
+# wiring it into r2-storage.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Target date (YYYY-MM-DD), controls which symbol files are read'
+        required: false
+        default: '2026-08-31'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Fetch NSE market cap for symbols in checked-in artifacts
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '2026-08-31' }}
+        run: python scripts/nse_market_cap.py
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nse-market-cap-diagnose
+          path: artifacts/nse_market_cap
+          retention-days: 14
