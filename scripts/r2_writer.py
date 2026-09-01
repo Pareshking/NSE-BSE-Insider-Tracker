@@ -80,10 +80,35 @@ def resolve_isin(exchange, category, row):
     isin_by_nse_symbol, isin_by_bse_code = load_security_master()
     if exchange == 'nse':
         symbol = _pick(row, 'symbol', 'BD_SYMBOL', 'nseSymbol')
-        return isin_by_nse_symbol.get(str(symbol).strip().upper()) if symbol else None
+        if not symbol:
+            return None
+        symbol = str(symbol).strip().upper()
+        isin = isin_by_nse_symbol.get(symbol)
+        if isin:
+            return isin
+        return _prefix_match_symbol(symbol, isin_by_nse_symbol)
     else:
         code = _pick(row, 'security_code', 'stage_3')
         return isin_by_bse_code.get(str(code).strip()) if code else None
+
+
+def _prefix_match_symbol(query_symbol, isin_by_nse_symbol):
+    """Fallback when an exact NSE symbol lookup misses: some NSE disclosure
+    feeds use a different symbol variant than the current live ticker (e.g.
+    'ATHERENERG' in insider-trading XBRL filings vs 'ATHER' as the live
+    trading symbol -- confirmed on real captured data, 2026-09-01). Only
+    accept a prefix match when it is UNIQUE: a short/generic query like
+    'TATA' would prefix-match nine different Tata group tickers
+    (TATASTEEL, TATAMOTORS, ...) and must be left unresolved rather than
+    guessed, exactly like the ambiguous-candidate rule in
+    find_cross_exchange_matches()."""
+    if len(query_symbol) < 4:
+        return None
+    candidates = {s for s in isin_by_nse_symbol
+                  if s and (s.startswith(query_symbol) or query_symbol.startswith(s))}
+    if len(candidates) == 1:
+        return isin_by_nse_symbol[next(iter(candidates))]
+    return None
 
 # canonical category name -> (NSE cert-report dataset key, NSE rows artifact path,
 #                              BSE cert-report dataset key, BSE normalized artifact path)
