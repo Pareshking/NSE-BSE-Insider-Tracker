@@ -6,80 +6,49 @@ in the pipeline computed that until now.
 
 2026-09-01 finding, in order:
 
-1. First version of this script called jugaad-data's NSELive().stock_quote()
-   once per symbol -- worked, but ~638 individual live calls for one day's
-   insider+bulk+block activity, ~1.7s each (~18 minutes), and needlessly
-   exposed to NSE's anti-bot sensitivity that has already broken other parts
-   of this pipeline (see nse_bulk.py's docstring).
-2. User pointed at github.com/Pareshking/Paresh (a sibling quant project)
-   which already solves this exact problem with a single whole-market file:
-   NSE's Bhavcopy "PR" zip (a DIFFERENT, older report format from the
-   sec_bhavdata_full/UDIFF bhavcopy variants, which do NOT carry market cap
-   -- confirmed by inspecting both directly) at
+1. First version called jugaad-data's NSELive().stock_quote() once per
+   symbol -- worked, but ~638 individual live calls for one day's
+   insider+bulk+block activity (~18 minutes), needlessly exposed to NSE's
+   anti-bot sensitivity that has already broken other parts of this
+   pipeline (see nse_bulk.py's docstring).
+2. User pointed at github.com/Pareshking/Paresh (a sibling quant project),
+   which solves this with a single whole-market file: NSE's Bhavcopy "PR"
+   zip (a DIFFERENT, older report format from the sec_bhavdata_full/UDIFF
+   bhavcopy variants, which do NOT carry market cap -- confirmed by
+   inspecting both directly) at
    https://archives.nseindia.com/archives/equities/bhavcopy/pr/PR{DDMMYY}.zip,
    containing a `mcap{DDMMYYYY}.csv` member with an official, pre-computed
-   `Market Cap(Rs.)` column for ~2,300-3,100 EQ-series stocks in ONE request.
-   Verified live from this environment: the RELIANCE figure in this file
-   matches jugaad-data's live NSELive() figure exactly (Rs.17,714,093,187,098).
-   That sibling project also documents a months-long false belief that NSE
-   blocks this fetch from CI -- it turned out to be a logging bug silently
-   discarding a successful parse, the same shape of mistake this project's
-   own bulk-deals "IP block" theory turned out to be. Treat any future
-   "NSE is blocking us" claim here with the same suspicion until proven.
-3. Real coverage check against this run's actual needed symbols (638, from
-   insider+bulk+block's 90-day window): the PR zip covers 475/638 (74%) --
-   the gap is SME/micro-cap-board names that bulk deals frequently include
-   and NSE's mainboard PR archive does not track. No SME-equivalent bulk
-   file was found (two guessed URL patterns both 404'd -- not chased further
-   per this project's own rule against trusting a guessed endpoint shape).
-   So: PR zip first (fast, official, most of the universe), then the
-   original per-symbol NSELive() approach as a fallback ONLY for whatever
-   the PR zip didn't cover -- typically under 200 symbols, not 638.
-
-BSE-only symbols (no NSE listing at all) are NOT covered by either path --
-see ANALYTICS_PLAN.md's Phase 0.5 section for the coarse `mcap_category`
-fallback used for those.
+   `Market Cap(Rs.)` column for ~2,300-3,100 EQ-series stocks in ONE
+   request. Verified live: the RELIANCE figure matches jugaad-data's live
+   NSELive() figure exactly (Rs.17,714,093,187,098).
+3. First version then added a per-symbol jugaad-data fallback for the
+   ~26% of that day's needed symbols the PR zip didn't cover. Measured
+   real cost/benefit: 160 of 163 fallback attempts failed outright
+   (deterministic per symbol, not transient), rescuing only 3 net new
+   symbols for several minutes of runtime and a hard dependency on
+   nse_insider/nse_bulk/nse_block already having run first.
+4. User's direction, matching that data: stop searching per-symbol
+   entirely. Download the full file, use it for whatever symbols it
+   covers, and treat "this stock is only listed on the other exchange (or
+   not covered by this file)" as a real, accepted limit rather than a gap
+   to patch with individual lookups. Dropped the fallback and the
+   per-run symbol-collection step -- this script now just dumps the whole
+   PR zip's EQ-series universe every run, independent of any other
+   acquisition step having completed first (same shape as
+   scripts/bse_market_cap.py).
 """
 from __future__ import annotations
-import io, json, os, time, zipfile
+import io, json, os, zipfile
 from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import requests
 
 TARGET = date.fromisoformat(os.getenv('TARGET_DATE', str(date.today())))
 OUT = Path('artifacts/nse_market_cap')
 OUT.mkdir(parents=True, exist_ok=True)
 HTTP_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-
-# Each entry: (artifact path, key holding the row list, field name for the
-# NSE symbol within each row). insider_trading's full-row file is the 90d
-# window file (report.json strips rows), bulk/block keep rows in report.json.
-SYMBOL_SOURCES = [
-    ('artifacts/nse_insider/90d.json', 'rows', 'symbol'),
-    ('artifacts/nse_bulk/report.json', 'rows', 'BD_SYMBOL'),
-    ('artifacts/nse_block/report.json', 'rows', 'BD_SYMBOL'),
-]
-
-
-def collect_symbols() -> list[str]:
-    symbols = set()
-    for path, rows_key, field in SYMBOL_SOURCES:
-        p = Path(path)
-        if not p.exists():
-            print(f'  (skip, not found) {path}')
-            continue
-        try:
-            obj = json.loads(p.read_text())
-        except Exception as exc:
-            print(f'  (skip, unreadable) {path}: {exc}')
-            continue
-        rows = obj.get(rows_key, []) if isinstance(obj, dict) else []
-        found = {str(r.get(field, '')).strip().upper() for r in rows if r.get(field)}
-        print(f'  {path}: {len(found)} distinct symbols')
-        symbols |= found
-    symbols.discard('')
-    return sorted(symbols)
 
 
 class NSEBlocked(Exception):
@@ -109,7 +78,6 @@ def fetch_pr_zip_market_caps(target_date: date) -> dict:
         if not mcap_name:
             print(f'  PR zip for {target_date}: no mcap*.csv member found')
             return {}
-        import pandas as pd
         with zf.open(mcap_name) as f:
             df = pd.read_csv(f)
     df.columns = df.columns.str.strip()
@@ -156,97 +124,20 @@ def fetch_pr_zip_recent(latest: date, lookback_days: int = 6) -> tuple[dict, str
     return {}, None
 
 
-def fetch_single_via_nselive(symbol: str, retries: int = 0) -> dict:
-    """Fallback for symbols the PR zip doesn't cover (mostly SME board).
-
-    Real-data finding (2026-09-01): of 163 fallback symbols in one run, only
-    3 actually resolved -- 160 failed, split between an 'equityResponse'
-    KeyError raised inside jugaad-data itself and a plain "no market cap
-    field in the response" for symbols NSE's quote API returns incomplete
-    data for. Both are deterministic per symbol, not transient network
-    blips -- retrying either just re-runs the same failure and burns a 2s
-    sleep each time for no benefit. Default is now 0 retries; the ~30% of
-    calls that fail for a genuinely transient reason (timeout, connection
-    reset) are rare enough not to be worth doubling every deterministic
-    failure's cost to catch. A symbol that fails here shows "n/a" in the
-    frontend rather than a fabricated number, and gets tried again on the
-    next daily run."""
-    from jugaad_data.nse import NSELive
-    last_exc = None
-    for attempt in range(retries + 1):
-        try:
-            q = NSELive().stock_quote(symbol)
-            trade = q.get('tradeInfo', {}) or {}
-            meta = q.get('metaData', {}) or {}
-            market_cap = trade.get('totalMarketCap')
-            if market_cap is None:
-                issued, last = trade.get('issuedSize'), trade.get('lastPrice')
-                if issued and last:
-                    market_cap = float(issued) * float(last)
-            if market_cap is None:
-                raise ValueError('no totalMarketCap/issuedSize+lastPrice in response')
-            return {
-                'symbol': symbol, 'isin': meta.get('isinCode'), 'market_cap': market_cap,
-                'source': 'nselive_fallback', 'status': 'ok',
-            }
-        except Exception as exc:
-            last_exc = exc
-            if attempt < retries:
-                time.sleep(2)
-    return {'symbol': symbol, 'status': 'failed', 'error': str(last_exc), 'source': 'nselive_fallback'}
-
-
 def main():
-    print(f'Collecting NSE symbols with activity on {TARGET}...')
-    symbols = collect_symbols()
-    print(f'Total distinct symbols needing market cap: {len(symbols)}')
-
-    print('Fetching whole-market NSE PR bhavcopy zip (primary source)...')
-    pr_caps, pr_date = fetch_pr_zip_recent(TARGET)
-
-    rows, failures = [], []
-    missing = []
-    for symbol in symbols:
-        if symbol in pr_caps:
-            rows.append(pr_caps[symbol])
-        else:
-            missing.append(symbol)
-
-    print(f'Covered by PR zip: {len(rows)}/{len(symbols)}; falling back per-symbol for {len(missing)}...')
-    # Sequential-with-sleep took ~6 minutes for ~163 symbols -- the sibling
-    # Paresh project's own yfinance fallback (same shape of problem: no bulk
-    # endpoint, one request per name) runs 8 concurrent workers instead.
-    # NSELive() sessions aren't shared across threads (each call makes its
-    # own instance), so this parallelizes safely the same way.
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    done = 0
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(fetch_single_via_nselive, s): s for s in missing}
-        for fut in as_completed(futures):
-            result = fut.result()
-            if result.get('status') == 'ok' or 'market_cap' in result:
-                rows.append(result)
-            else:
-                failures.append(result)
-            done += 1
-            if done % 25 == 0:
-                print(f'  ...{done}/{len(missing)} fallback done')
-
-    print(f'Resolved: {len(rows)}/{len(symbols)} ({len(failures)} failed)')
+    print(f'Fetching whole-market NSE PR bhavcopy zip for {TARGET}...')
+    caps, pr_date = fetch_pr_zip_recent(TARGET)
+    rows = list(caps.values())
+    print(f'Total NSE EQ-series symbols with market cap: {len(rows)}')
 
     report = {
         'source': 'NSE', 'dataset': 'market_cap',
         'target_date': str(TARGET),
-        'method': 'NSE PR bhavcopy zip (whole-market mcap*.csv, official Market Cap(Rs.) column) '
-                  'as primary source, jugaad_data.nse.NSELive().stock_quote() per-symbol fallback '
-                  'for names the PR zip does not cover (mostly SME board)',
+        'method': 'NSE PR bhavcopy zip (whole-market mcap*.csv, official Market Cap(Rs.) column) -- '
+                  'no per-symbol lookups; a stock not in this file (BSE-only, or otherwise uncovered) '
+                  'is a real, accepted limit, not patched with individual searches',
         'pr_zip_date_used': pr_date,
-        'symbols_requested': len(symbols),
-        'symbols_from_pr_zip': sum(1 for r in rows if r.get('source') == 'pr_zip'),
-        'symbols_from_fallback': sum(1 for r in rows if r.get('source') == 'nselive_fallback'),
         'symbols_resolved': len(rows),
-        'symbols_failed': len(failures),
-        'failures': failures,
         'columns': ['symbol', 'isin', 'market_cap', 'source'],
         'rows': rows,
     }

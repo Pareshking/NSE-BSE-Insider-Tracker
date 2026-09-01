@@ -9,4 +9,3 @@ selenium>=4.35,<5
 bseindia>=1.1,<2
 bse>=3.3,<4
 nse[server]>=3.2,<4
-jugaad-data>=0.31,<1

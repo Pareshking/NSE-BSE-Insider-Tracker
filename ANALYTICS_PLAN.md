@@ -255,7 +255,7 @@ pulled forward this round are marked **NEW**.
 |---|---|---|
 | Overview | Live, redesigned | Certification/status home -- KPIs, latest activity, coverage. Not a signal page. |
 | **Promoter Activity** | **Built, smoke-tested, market cap joined** | Net-position rollup, both grains (per person+company, per company), no threshold, sortable by \|net value\| or by \|% of market cap\|. Still needs: full column/date-format audit pass. |
-| Phase 0.5: Market cap join | **Shipped, both exchanges** | NSE: PR bhavcopy zip (whole market, one request) primary, parallelized `jugaad-data` per-symbol fallback for the ~26% it misses (mostly SME board). BSE: `bse.BSE().listSecurities()` across all 24 groups, official pre-computed `Mktcap` field, ~4,685 scrips in ~15-20s. Combined into one `reference/market_cap` write. |
+| Phase 0.5: Market cap join | **Shipped, both exchanges** | NSE: PR bhavcopy zip, whole market, one request, ~2,301 EQ-series symbols in ~1.8s. BSE: `bse.BSE().listSecurities()` across all 24 groups, official pre-computed `Mktcap` field, ~4,685 scrips in ~15-20s. No per-symbol lookups on either side (see correction below) -- combined into one `reference/market_cap` write. |
 | **NEW** Downloads / export | Not started, cross-cutting | CSV/JSON export + metadata, applies to every table page. Cheap, no new data source -- do this early, right after Phase 0.5, since every later page benefits from it existing. |
 | Phase 2: Bulk & Block Concentration | Not started | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
 | **NEW** Phase 2.5: Trends & Charts | Not started | Whole-market daily/weekly/monthly event count, buy vs. sell, category mix across all 5 categories. No new data source. |
@@ -343,7 +343,21 @@ twice as real data came in:
    **37.6s** for the identical 478/638 resolved -- same correctness, ~5.6x
    faster than the parallelized-with-retries version, ~10x faster than
    the original sequential-with-sleep version.
-8. Wired both NSE and BSE market cap into the daily pipeline as their own
+8. **User's final correction, same day: drop the per-symbol fallback
+   entirely, not just its retries.** Given the fallback rescued only 3
+   symbols out of 163 attempts, and given "a stock is only listed on the
+   other exchange" is a real, acceptable limit rather than something to
+   patch with individual searches, `scripts/nse_market_cap.py` now just
+   dumps the whole PR zip's EQ-series universe every run (same shape as
+   `bse_market_cap.py`) -- no `collect_symbols()`, no per-run dependency
+   on `nse_insider`/`nse_bulk`/`nse_block` having already run, no
+   `jugaad-data` dependency at all (removed from `requirements.txt`).
+   Result: **1.8 seconds**, and broader coverage too (the full ~2,301-symbol
+   universe, not just the ~638 symbols a given day happened to need).
+   Both `*_market_cap.py` scripts are now fully independent of every
+   other acquisition step and of each other -- moved to the front of
+   `r2-storage.yml`, BSE before NSE per explicit ordering preference.
+9. Wired both NSE and BSE market cap into the daily pipeline as their own
    steps in `r2-storage.yml`.
 
 **Also fixed this round, found while working the above:**

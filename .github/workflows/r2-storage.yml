@@ -50,6 +50,21 @@ jobs:
             echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
           fi
 
+      # --- Market cap reference data, both exchanges, whole-file downloads
+      # only (no per-symbol lookups -- see scripts/*_market_cap.py). Neither
+      # depends on any transaction data having been fetched first, so both
+      # run up front. BSE before NSE per explicit ordering preference. ---
+      - name: BSE market cap
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+        run: python scripts/bse_market_cap.py
+      - name: NSE market cap
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+        run: python scripts/nse_market_cap.py
+
       # --- NSE acquisition (5 categories) ---
       - name: NSE Insider
         if: always()
@@ -76,11 +91,6 @@ jobs:
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/nse_preferential.py
-      - name: NSE market cap
-        if: always()
-        env:
-          TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/nse_market_cap.py
       - name: NSE evidence validation
         if: always()
         env:
@@ -98,11 +108,6 @@ jobs:
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/bse_validate.py
-      - name: BSE market cap
-        if: always()
-        env:
-          TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/bse_market_cap.py
 
       # --- Write only VERIFIED categories to R2 ---
       - name: Write validated datasets to R2

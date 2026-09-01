@@ -558,11 +558,9 @@ def write_market_cap(client):
         'key': key,
         'symbols_resolved': len(rows),
         'nse_symbols_resolved': len(nse_rows),
-        'nse_symbols_requested': (nse_report or {}).get('symbols_requested'),
-        'nse_symbols_from_pr_zip': (nse_report or {}).get('symbols_from_pr_zip'),
-        'nse_symbols_from_fallback': (nse_report or {}).get('symbols_from_fallback'),
         'nse_pr_zip_date_used': (nse_report or {}).get('pr_zip_date_used'),
         'bse_symbols_resolved': len(bse_rows),
+        'bse_groups_fetched': (bse_report or {}).get('groups_fetched'),
     })
     print(f'  WRITE market_cap: {len(rows)} symbols ({len(nse_rows)} NSE + {len(bse_rows)} BSE) -> {key}')
     return entry
