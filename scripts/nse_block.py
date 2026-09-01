@@ -53,9 +53,18 @@ def js_fetch(d, url):
         raw['parse_error'] = str(exc)
     return raw
 
-def fetch_window(d, name, start, end):
+def fetch_window(d, name, start, end, retries=3):
     url = f'{BASE}/api/historical/block-deals?from={start:%d-%m-%Y}&to={end:%d-%m-%Y}'
-    raw  = js_fetch(d, url)
+    raw = js_fetch(d, url)
+    for attempt in range(retries):
+        if raw.get('json') is not None:
+            break
+        # Akamai bot-detection HTML page instead of JSON -- reload the page to
+        # refresh the session/challenge state, then retry.
+        print(f'  [{name}] non-JSON response (attempt {attempt+1}/{retries}), reloading page and retrying...')
+        d.get(PAGE)
+        time.sleep(6)
+        raw = js_fetch(d, url)
     obj  = raw.get('json') or {}
     rows = obj.get('data', []) if isinstance(obj, dict) else (obj if isinstance(obj, list) else [])
     dates = sorted({
