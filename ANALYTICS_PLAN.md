@@ -324,14 +324,25 @@ twice as real data came in:
    in ~15-20s. `scripts/bse_market_cap.py`, merged into the same
    `reference/market_cap` write as NSE's (safe: NSE alpha tickers and BSE
    numeric scrip codes never collide in one lookup keyed by symbol).
-7. **Fixed a real performance bug while at it.** The NSE per-symbol
-   fallback (step 3) ran sequentially with a 0.5s sleep between calls --
-   ~6 minutes for ~163 symbols. Flagged by the user as suspiciously slow
-   compared to the reference project's "super fast" NSE path; the actual
-   cause was never comparing against the reference repo's own fallback
-   design, which runs 8 concurrent workers (`ThreadPoolExecutor`) for the
-   exact same kind of one-request-per-symbol problem. Parallelized to
-   match.
+7. **Fixed a real performance bug, confirmed with timed before/after runs.**
+   The NSE per-symbol fallback (step 3) ran sequentially with a 0.5s sleep
+   between calls. Flagged by the user as suspiciously slow compared to the
+   reference project's "super fast" NSE path; the actual cause was never
+   comparing against the reference repo's own fallback design, which runs
+   8 concurrent workers (`ThreadPoolExecutor`) for the exact same kind of
+   one-request-per-symbol problem. Parallelizing alone brought a full run
+   from timed-out-at-300s down to ~3.5 minutes -- better, but still slow
+   for 163 symbols at 8-way concurrency. Looking at the actual failures
+   explained why: **160 of 163 fallback symbols failed** (only 3 net new
+   beyond the PR zip's 475), split between an `'equityResponse'` KeyError
+   raised inside jugaad-data itself and a plain "no market cap field in
+   the response" -- both deterministic per symbol, not transient network
+   blips, so the 2-retry-with-2s-backoff default was purely paying a
+   repeat-failure tax with zero chance of succeeding on retry. Dropped to
+   0 retries (kept as a parameter, not removed as a concept): timed at
+   **37.6s** for the identical 478/638 resolved -- same correctness, ~5.6x
+   faster than the parallelized-with-retries version, ~10x faster than
+   the original sequential-with-sleep version.
 8. Wired both NSE and BSE market cap into the daily pipeline as their own
    steps in `r2-storage.yml`.
 

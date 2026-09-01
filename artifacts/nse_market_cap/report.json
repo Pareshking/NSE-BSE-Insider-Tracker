@@ -1,0 +1,4328 @@
+{
+  "source": "NSE",
+  "dataset": "market_cap",
+  "target_date": "2026-08-31",
+  "method": "NSE PR bhavcopy zip (whole-market mcap*.csv, official Market Cap(Rs.) column) as primary source, jugaad_data.nse.NSELive().stock_quote() per-symbol fallback for names the PR zip does not cover (mostly SME board)",
+  "pr_zip_date_used": "2026-08-31",
+  "symbols_requested": 638,
+  "symbols_from_pr_zip": 475,
+  "symbols_from_fallback": 3,
+  "symbols_resolved": 478,
+  "symbols_failed": 160,
+  "failures": [
+    {
+      "symbol": "ACCENTMIC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ACSTECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AARTECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ACETEC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ABINFRA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ADDICTIVE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ACCORD",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AARNAV",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AHIMSA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ADISOFT",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AMANTA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AGARWALTUF",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AIMTRON",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AMBAAUTO",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AISL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ANAWIL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ARHAM",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ARUNAYA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ARSHIYA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ASHIKAG",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ARROWGREEN",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ASHWINI",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ASPIRE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BAFNAPH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BALAJIPHOS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AVG",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BGLOBAL",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BHARATGEAR",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BI",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "AVIENCE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BABAFP",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BIOPOL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BHADORA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BIRDYS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BIKEWO",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BLISSGVS",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BMLL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "BLUEWATER",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "C2C",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CEDAAR",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CGRAPHICS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CHAVDA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CHEMCON",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CLSL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CKKRETAIL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CONNPLEX",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "COMMITTED",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "COUNCODOS",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CREDENT",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DBSTOCKBRO",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DENEERS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "CUDML",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DHANLAXMI",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DHTL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DHARAN",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DIGIKORE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DOLLEX",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DPEL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DPWIRES",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DURLAX",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "E2ERAIL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ECOLINE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "EEPL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "DPSCLTD",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "EMAPARTNER",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "EMBASSY",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ETML",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ESCONET",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ENCOMPAS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "EXCELLENT",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FAIRCHEMOR",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "EXIMROUTES",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FALCONTECH",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FASCINATE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FELIX",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FLYSBS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FLEXITUFF",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FOCE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FORCAS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FOCUS",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "FWSTC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GANESHIN",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GANESHBE",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GANGAFO-RE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GATECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GATECHDVR",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GCHOTELS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GENESYS-RE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GENXAI",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GJL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GOLDTECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GSMFOILS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GREENLEAF",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GTECJAINX",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "GVPTECHPP",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "HAPPY",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "IEML",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ICELCO",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "HEXAGON",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "INTEGRITY",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "INNOMET",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "INVICTA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ISHAN",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "IPHL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "JALAN",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "IVP",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "JAYESH",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "JEYYAM",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KARNIKA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KCK",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KAUSHALYA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KANDARP",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "K2INFRA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KLL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KODYTECH",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KONSTELEC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KONTOR",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KOTYARK",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KSHITIJ-RE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "KRONOX",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "LAMOSAIC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MADHUSUDAN",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MACOBSTECH",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MAGSON",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MASON",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MAZDA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MICEL",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MILTON",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MOS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MOLDTECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MHLXMIRU",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MOTOGENFIN",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MPEL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MUNISH",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MTARTECH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NECCLTD",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NDRINVIT",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "MYMUDRA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NIRMAN",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NOVAAGRI",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NURECA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "NRVANDANA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ONDOOR",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "PARSVNATH",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "PATINTLOG",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "ONYX",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "PPAP",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "PRESSTONIC",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "PROPSHOP",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "RFBL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "QUESTLAB",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "RICHA",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SAJHOTELS",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "RTL",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SANGINITA",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SIGIND",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SUMEET-RE",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SUPERSPIN",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "SWARAJ",
+      "status": "failed",
+      "error": "'equityResponse'",
+      "source": "nselive_fallback"
+    },
+    {
+      "symbol": "UMAEXPORTS",
+      "status": "failed",
+      "error": "no totalMarketCap/issuedSize+lastPrice in response",
+      "source": "nselive_fallback"
+    }
+  ],
+  "columns": [
+    "symbol",
+    "isin",
+    "market_cap",
+    "source"
+  ],
+  "rows": [
+    {
+      "symbol": "20MICRONS",
+      "isin": null,
+      "market_cap": 7693516031.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "360ONE",
+      "isin": null,
+      "market_cap": 477621750300.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "63MOONS",
+      "isin": null,
+      "market_cap": 35888268542.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AAREYDRUGS",
+      "isin": null,
+      "market_cap": 2501133067.65,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AARTIPHARM",
+      "isin": null,
+      "market_cap": 76642062695.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AASTHA",
+      "isin": null,
+      "market_cap": 3690728505.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ABCOTS",
+      "isin": null,
+      "market_cap": 4716028486.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADANIGREEN",
+      "isin": null,
+      "market_cap": 2001154310709.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADANIPOWER",
+      "isin": null,
+      "market_cap": 3818369551590.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADFFOODS",
+      "isin": null,
+      "market_cap": 29685143369.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADSL",
+      "isin": null,
+      "market_cap": 5950443460.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADVAIT",
+      "isin": null,
+      "market_cap": 23753993977.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ADVENTHTL",
+      "isin": null,
+      "market_cap": 7495364148.65,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AEROENTER",
+      "isin": null,
+      "market_cap": 15656618250.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AFFLE",
+      "isin": null,
+      "market_cap": 224978541993.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AFIL",
+      "isin": null,
+      "market_cap": 4041322121.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AGARIND",
+      "isin": null,
+      "market_cap": 6853658919.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AGARWALEYE",
+      "isin": null,
+      "market_cap": 162675689969.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AGIIL",
+      "isin": null,
+      "market_cap": 35624255580.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AGRITECH",
+      "isin": null,
+      "market_cap": 603207000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AHCL",
+      "isin": null,
+      "market_cap": 8429827900.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AIAENG",
+      "isin": null,
+      "market_cap": 397311475275.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AJANTPHARM",
+      "isin": null,
+      "market_cap": 450005624085.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AKG",
+      "isin": null,
+      "market_cap": 286624715.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ALICON",
+      "isin": null,
+      "market_cap": 10920438336.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ALLCARGO",
+      "isin": null,
+      "market_cap": 17898452704.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ALMONDZ",
+      "isin": null,
+      "market_cap": 3065992722.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ALOKINDS",
+      "isin": null,
+      "market_cap": 42204543408.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ALPINETEX",
+      "isin": null,
+      "market_cap": 2050804140.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AMAGI",
+      "isin": null,
+      "market_cap": 122772350720.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AMBER",
+      "isin": null,
+      "market_cap": 268740384540.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AMRUTANJAN",
+      "isin": null,
+      "market_cap": 14725629390.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ANDHRSUGAR",
+      "isin": null,
+      "market_cap": 13504746259.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ANMOL",
+      "isin": null,
+      "market_cap": 574263773.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ANNAPURNA",
+      "isin": null,
+      "market_cap": 3240270000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ANTHEM",
+      "isin": null,
+      "market_cap": 502961384948.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "APEX",
+      "isin": null,
+      "market_cap": 11875000000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "APLLTD",
+      "isin": null,
+      "market_cap": 164110552227.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "APOLLO",
+      "isin": null,
+      "market_cap": 137955630384.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "APOLLOPIPE",
+      "isin": null,
+      "market_cap": 27620427572.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "APOLLOTYRE",
+      "isin": null,
+      "market_cap": 278777560246.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AQYLON",
+      "isin": null,
+      "market_cap": 5330879065.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARDEE",
+      "isin": null,
+      "market_cap": 18347847299.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARENTERP",
+      "isin": null,
+      "market_cap": 114913851.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARIS",
+      "isin": null,
+      "market_cap": 11632172468.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARSSBL",
+      "isin": null,
+      "market_cap": 32064630125.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARVINDFASN",
+      "isin": null,
+      "market_cap": 60467661880.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ARVSMART",
+      "isin": null,
+      "market_cap": 30526767873.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASHAPURMIN",
+      "isin": null,
+      "market_cap": 53919706016.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASHOKA",
+      "isin": null,
+      "market_cap": 33768195772.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASIANTILES",
+      "isin": null,
+      "market_cap": 11505136906.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASKAUTOLTD",
+      "isin": null,
+      "market_cap": 130094401740.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASTERDM",
+      "isin": null,
+      "market_cap": 658984363884.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASTRAL",
+      "isin": null,
+      "market_cap": 408939278118.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ASTRAMICRO",
+      "isin": null,
+      "market_cap": 158178383328.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ATALREAL",
+      "isin": null,
+      "market_cap": 4126984087.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ATHERENERG",
+      "isin": null,
+      "market_cap": 658086890169.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AUGMONT",
+      "isin": null,
+      "market_cap": 82980848565.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AURUM",
+      "isin": null,
+      "market_cap": 17656484868.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AUTOIND",
+      "isin": null,
+      "market_cap": 3955373705.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AVADHSUGAR",
+      "isin": null,
+      "market_cap": 17121754626.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AVONMORE",
+      "isin": null,
+      "market_cap": 3891327578.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AXISBANK",
+      "isin": null,
+      "market_cap": 4043519576200.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AXISCADES",
+      "isin": null,
+      "market_cap": 71077788816.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AYE",
+      "isin": null,
+      "market_cap": 44302711432.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BAJAJELEC",
+      "isin": null,
+      "market_cap": 37479571371.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BAJAJHCARE",
+      "isin": null,
+      "market_cap": 11233229975.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BAJFINANCE",
+      "isin": null,
+      "market_cap": 6580833699328.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BALKRISIND",
+      "isin": null,
+      "market_cap": 440608539448.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BALPHARMA",
+      "isin": null,
+      "market_cap": 1353274120.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BALRAMCHIN",
+      "isin": null,
+      "market_cap": 140052627366.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BALUFORGE",
+      "isin": null,
+      "market_cap": 75471406140.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BANDHANBNK",
+      "isin": null,
+      "market_cap": 263401435806.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BANG",
+      "isin": null,
+      "market_cap": 472701600.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BANSALWIRE",
+      "isin": null,
+      "market_cap": 49573442200.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BAYERCROP",
+      "isin": null,
+      "market_cap": 178460553122.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BBTC",
+      "isin": null,
+      "market_cap": 104860188510.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BCLIND",
+      "isin": null,
+      "market_cap": 10805929877.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BCONCEPTS",
+      "isin": null,
+      "market_cap": 2055390685.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BECTORFOOD",
+      "isin": null,
+      "market_cap": 69659235911.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BEPL",
+      "isin": null,
+      "market_cap": 30134270921.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BERGEPAINT",
+      "isin": null,
+      "market_cap": 580377899673.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BESTAGRO",
+      "isin": null,
+      "market_cap": 6086156076.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BFINVEST",
+      "isin": null,
+      "market_cap": 16624607617.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BHARATSE",
+      "isin": null,
+      "market_cap": 14082900000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BHARATWIRE",
+      "isin": null,
+      "market_cap": 12462516388.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BIL",
+      "isin": null,
+      "market_cap": 11428352254.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BIOCON",
+      "isin": null,
+      "market_cap": 667814002476.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BIOFILCHEM",
+      "isin": null,
+      "market_cap": 530363142.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BLBLIMITED",
+      "isin": null,
+      "market_cap": 850602001.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BLEL",
+      "isin": null,
+      "market_cap": 18642703817.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BLSE",
+      "isin": null,
+      "market_cap": 29791841431.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BLUESTONE",
+      "isin": null,
+      "market_cap": 124573215789.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BLUSPRING",
+      "isin": null,
+      "market_cap": 18889339872.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BORANA",
+      "isin": null,
+      "market_cap": 8220073507.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BOROLTD",
+      "isin": null,
+      "market_cap": 29401814465.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BOSCH-HCIL",
+      "isin": null,
+      "market_cap": 47105487441.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BOSCHLTD",
+      "isin": null,
+      "market_cap": 1474682000000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BTML",
+      "isin": null,
+      "market_cap": 1533529237.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BURNPUR",
+      "isin": null,
+      "market_cap": 305913744.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "BVCL",
+      "isin": null,
+      "market_cap": 993654400.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CALSOFT",
+      "isin": null,
+      "market_cap": 1305766003.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CAMPUS",
+      "isin": null,
+      "market_cap": 69135820807.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CANTABIL",
+      "isin": null,
+      "market_cap": 20274697276.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CAPILLARY",
+      "isin": null,
+      "market_cap": 39251212403.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CAPITALSFB",
+      "isin": null,
+      "market_cap": 12866224872.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CARTRADE",
+      "isin": null,
+      "market_cap": 143660909202.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CCAVENUE",
+      "isin": null,
+      "market_cap": 52428090136.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CDSL",
+      "isin": null,
+      "market_cap": 293122500000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CELLO",
+      "isin": null,
+      "market_cap": 77817797478.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CENTENKA",
+      "isin": null,
+      "market_cap": 11947902065.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CENTEXT",
+      "isin": null,
+      "market_cap": 1776800000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CENTUM",
+      "isin": null,
+      "market_cap": 50852189628.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CERA",
+      "isin": null,
+      "market_cap": 73909358700.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CGCL",
+      "isin": null,
+      "market_cap": 246754005094.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CLSEL",
+      "isin": null,
+      "market_cap": 14950007653.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CMLL",
+      "isin": null,
+      "market_cap": 32972277164.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CMRGREEN",
+      "isin": null,
+      "market_cap": 50553625751.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CNL",
+      "isin": null,
+      "market_cap": 19215337330.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "COMSYN",
+      "isin": null,
+      "market_cap": 11984776320.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CONFIPET",
+      "isin": null,
+      "market_cap": 27034453668.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CONTROLPR",
+      "isin": null,
+      "market_cap": 9616519965.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CORALFINAC",
+      "isin": null,
+      "market_cap": 1330376447.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CORDSCABLE",
+      "isin": null,
+      "market_cap": 3651968572.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CORONA",
+      "isin": null,
+      "market_cap": 125396528426.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CPCAP",
+      "isin": null,
+      "market_cap": 2133667885.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CRAFTSMAN",
+      "isin": null,
+      "market_cap": 292890417950.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CRAMC",
+      "isin": null,
+      "market_cap": 51708939080.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CREDITACC",
+      "isin": null,
+      "market_cap": 218497991197.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CREST",
+      "isin": null,
+      "market_cap": 10358563077.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CSM",
+      "isin": null,
+      "market_cap": 4994700054.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CYIENT",
+      "isin": null,
+      "market_cap": 123063811477.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "CYIENTDLM",
+      "isin": null,
+      "market_cap": 66904185828.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DALBHARAT",
+      "isin": null,
+      "market_cap": 348159921958.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DALMIASUG",
+      "isin": null,
+      "market_cap": 39186763547.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DAVANGERE",
+      "isin": null,
+      "market_cap": 2974380859.85,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DBOL",
+      "isin": null,
+      "market_cap": 8447156951.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DCBBANK",
+      "isin": null,
+      "market_cap": 70277294571.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DCI",
+      "isin": null,
+      "market_cap": 6110640000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DELHIVERY",
+      "isin": null,
+      "market_cap": 341624514168.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DELTACORP",
+      "isin": null,
+      "market_cap": 15656576041.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DENTA",
+      "isin": null,
+      "market_cap": 7286430000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DHAMPURSUG",
+      "isin": null,
+      "market_cap": 11523083347.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DHOOTTRANS",
+      "isin": null,
+      "market_cap": 301626564852.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DIAMONDYD",
+      "isin": null,
+      "market_cap": 27427765521.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DIFFNKG",
+      "isin": null,
+      "market_cap": 18170448744.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DIGITIDE",
+      "isin": null,
+      "market_cap": 14508481521.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DIVGIITTS",
+      "isin": null,
+      "market_cap": 36292759470.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DIVISLAB",
+      "isin": null,
+      "market_cap": 2513191046860.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DJML",
+      "isin": null,
+      "market_cap": 2462485467.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DLINKINDIA",
+      "isin": null,
+      "market_cap": 15678941760.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DMART",
+      "isin": null,
+      "market_cap": 2543697612300.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DOLLAR",
+      "isin": null,
+      "market_cap": 15253800474.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DOLPHIN",
+      "isin": null,
+      "market_cap": 23332671285.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DOMS",
+      "isin": null,
+      "market_cap": 135486710120.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DWARKESH",
+      "isin": null,
+      "market_cap": 9713503057.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "DYCL",
+      "isin": null,
+      "market_cap": 23899800261.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EASEMYTRIP",
+      "isin": null,
+      "market_cap": 24306376376.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EBGNG",
+      "isin": null,
+      "market_cap": 69832054162.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ECLERX",
+      "isin": null,
+      "market_cap": 185928864414.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EFCIL",
+      "isin": null,
+      "market_cap": 30299373977.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EIDPARRY",
+      "isin": null,
+      "market_cap": 142234077974.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EIMCOELECO",
+      "isin": null,
+      "market_cap": 12663912429.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ELECTHERM",
+      "isin": null,
+      "market_cap": 12623031548.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ELIN",
+      "isin": null,
+      "market_cap": 4977384198.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EMCURE",
+      "isin": null,
+      "market_cap": 351875357549.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EMIL",
+      "isin": null,
+      "market_cap": 69489473904.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EMPOWER",
+      "isin": null,
+      "market_cap": 2455614961.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EMSLIMITED",
+      "isin": null,
+      "market_cap": 20810169923.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ENRIN",
+      "isin": null,
+      "market_cap": 1150126782948.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EPACK",
+      "isin": null,
+      "market_cap": 18028405165.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EPACKPEB",
+      "isin": null,
+      "market_cap": 22309415823.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ESCORTS",
+      "isin": null,
+      "market_cap": 335073873230.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ESSENTIA",
+      "isin": null,
+      "market_cap": 1807941751.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ETERNAL",
+      "isin": null,
+      "market_cap": 3166280047280.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ETHOSLTD",
+      "isin": null,
+      "market_cap": 77562524699.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EVEREADY",
+      "isin": null,
+      "market_cap": 23972258348.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EXCELSOFT",
+      "isin": null,
+      "market_cap": 8047835588.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EXICOM",
+      "isin": null,
+      "market_cap": 23085851188.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EXPLEOSOL",
+      "isin": null,
+      "market_cap": 13301192309.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "EXXARO",
+      "isin": null,
+      "market_cap": 3190038291.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FABTECH",
+      "isin": null,
+      "market_cap": 6596942337.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FEDDERSHOL",
+      "isin": null,
+      "market_cap": 9001279699.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FERMENTA",
+      "isin": null,
+      "market_cap": 14718436598.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FIBERWEB",
+      "isin": null,
+      "market_cap": 758661558.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FILATFASH",
+      "isin": null,
+      "market_cap": 1500133090.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FINCABLES",
+      "isin": null,
+      "market_cap": 190738304116.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FINOPB",
+      "isin": null,
+      "market_cap": 11598980870.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FINPIPE",
+      "isin": null,
+      "market_cap": 97861617456.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FMGOETZE",
+      "isin": null,
+      "market_cap": 34761736430.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FOSECOIND",
+      "isin": null,
+      "market_cap": 48479649888.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "FSL",
+      "isin": null,
+      "market_cap": 184563170724.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GAJA",
+      "isin": null,
+      "market_cap": 21288314423.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GALAPREC",
+      "isin": null,
+      "market_cap": 13122607770.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GANDHAR",
+      "isin": null,
+      "market_cap": 25225512471.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GANESHCP",
+      "isin": null,
+      "market_cap": 6916675707.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GANGAFORGE",
+      "isin": null,
+      "market_cap": 569539421.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GARUDA",
+      "isin": null,
+      "market_cap": 15966893344.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GAYAPROJ",
+      "isin": null,
+      "market_cap": 10042787370.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GCSL",
+      "isin": null,
+      "market_cap": 13445884016.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GEMAROMA",
+      "isin": null,
+      "market_cap": 8789420839.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GENESYS",
+      "isin": null,
+      "market_cap": 15201667492.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GENUSPOWER",
+      "isin": null,
+      "market_cap": 101982124548.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GHCLTEXTIL",
+      "isin": null,
+      "market_cap": 12882096379.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GICL",
+      "isin": null,
+      "market_cap": 2668997377.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GICRE",
+      "isin": null,
+      "market_cap": 622373400000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GKSL",
+      "isin": null,
+      "market_cap": 12468271555.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GMRAIRPORT",
+      "isin": null,
+      "market_cap": 988636918385.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GNA",
+      "isin": null,
+      "market_cap": 23176192380.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GNRL",
+      "isin": null,
+      "market_cap": 12258599277.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GOCOLORS",
+      "isin": null,
+      "market_cap": 17706845404.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GODAVARIB",
+      "isin": null,
+      "market_cap": 11993090209.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GODIGIT",
+      "isin": null,
+      "market_cap": 237985753262.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GOKEX",
+      "isin": null,
+      "market_cap": 57219376105.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GOKUL",
+      "isin": null,
+      "market_cap": 4123141750.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GOODLUCK",
+      "isin": null,
+      "market_cap": 46307890738.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GRADIENTE",
+      "isin": null,
+      "market_cap": 860916000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GRAVITA",
+      "isin": null,
+      "market_cap": 132869973490.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GREENPANEL",
+      "isin": null,
+      "market_cap": 19200997509.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GRMOVER",
+      "isin": null,
+      "market_cap": 17917448700.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GRPLTD",
+      "isin": null,
+      "market_cap": 10482664046.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GSLSU",
+      "isin": null,
+      "market_cap": 1090484177.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "GSPCROP",
+      "isin": null,
+      "market_cap": 29748740625.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HAPPSTMNDS",
+      "isin": null,
+      "market_cap": 61968234336.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HAPPYFORGE",
+      "isin": null,
+      "market_cap": 227573311932.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HARIOMPIPE",
+      "isin": null,
+      "market_cap": 10693004891.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HATSUN",
+      "isin": null,
+      "market_cap": 265170675640.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HCLTECH",
+      "isin": null,
+      "market_cap": 3560871338971.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HEADSUP",
+      "isin": null,
+      "market_cap": 151707523.85,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HGS",
+      "isin": null,
+      "market_cap": 18633700156.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HINDCON",
+      "isin": null,
+      "market_cap": 1206563031.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HINDCOPPER",
+      "isin": null,
+      "market_cap": 508026068907.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HINDWAREAP",
+      "isin": null,
+      "market_cap": 15640195831.85,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HIRECT",
+      "isin": null,
+      "market_cap": 41999438834.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HLEGLAS",
+      "isin": null,
+      "market_cap": 21850460889.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "HONASA",
+      "isin": null,
+      "market_cap": 156785045474.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ICIL",
+      "isin": null,
+      "market_cap": 92976609913.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IFCI",
+      "isin": null,
+      "market_cap": 241679995490.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IGARASHI",
+      "isin": null,
+      "market_cap": 13217946407.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IIFL",
+      "isin": null,
+      "market_cap": 275078935342.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IKIO",
+      "isin": null,
+      "market_cap": 16652445451.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INA",
+      "isin": null,
+      "market_cap": 20183739757.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDGN",
+      "isin": null,
+      "market_cap": 147379700653.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDIANHUME",
+      "isin": null,
+      "market_cap": 20066486193.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDIGOPNTS",
+      "isin": null,
+      "market_cap": 54965270719.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDIQUBE",
+      "isin": null,
+      "market_cap": 40661146201.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOBORAX",
+      "isin": null,
+      "market_cap": 16316160500.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOCO",
+      "isin": null,
+      "market_cap": 22461159240.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOFARM",
+      "isin": null,
+      "market_cap": 6566251140.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOMIM",
+      "isin": null,
+      "market_cap": 432893310033.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOTECH",
+      "isin": null,
+      "market_cap": 39329046000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOTHAI",
+      "isin": null,
+      "market_cap": 5643766177.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INDOWIND",
+      "isin": null,
+      "market_cap": 1487660050.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INFOBEAN",
+      "isin": null,
+      "market_cap": 15656040776.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INFY",
+      "isin": null,
+      "market_cap": 4600116745089.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INOXINDIA",
+      "isin": null,
+      "market_cap": 193707461700.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INOXWIND",
+      "isin": null,
+      "market_cap": 121616095534.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "INTENTECH",
+      "isin": null,
+      "market_cap": 1934369884.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IOLCP",
+      "isin": null,
+      "market_cap": 56853343411.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IRIS",
+      "isin": null,
+      "market_cap": 5120876455.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IRISDOREME",
+      "isin": null,
+      "market_cap": 11130584365.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ITDC",
+      "isin": null,
+      "market_cap": 54909569880.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "IVALUE",
+      "isin": null,
+      "market_cap": 13531945126.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JAGSNPHARM",
+      "isin": null,
+      "market_cap": 15855814594.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JAIPURKURT",
+      "isin": null,
+      "market_cap": 498267635.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JARO",
+      "isin": null,
+      "market_cap": 10234356345.85,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JETFREIGHT",
+      "isin": null,
+      "market_cap": 1018099020.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JGCHEM",
+      "isin": null,
+      "market_cap": 24816533697.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JINDALSAW",
+      "isin": null,
+      "market_cap": 198023724658.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JINDALSTEL",
+      "isin": null,
+      "market_cap": 1216863090911.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JINDRILL",
+      "isin": null,
+      "market_cap": 17979876921.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JINDWORLD",
+      "isin": null,
+      "market_cap": 38409682620.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JISLDVREQS",
+      "isin": null,
+      "market_cap": 396305004.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JMA",
+      "isin": null,
+      "market_cap": 2116680474.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JNKINDIA",
+      "isin": null,
+      "market_cap": 24270010631.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JSFB",
+      "isin": null,
+      "market_cap": 56620812225.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JSLL",
+      "isin": null,
+      "market_cap": 63523888066.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JSWENERGY",
+      "isin": null,
+      "market_cap": 954144415814.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JSWSTEEL",
+      "isin": null,
+      "market_cap": 3197920151338.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "JUSTDIAL",
+      "isin": null,
+      "market_cap": 60401822526.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KABRAEXTRU",
+      "isin": null,
+      "market_cap": 20994193450.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KALYANKJIL",
+      "isin": null,
+      "market_cap": 620676864407.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KARURVYSYA",
+      "isin": null,
+      "market_cap": 335953300148.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KAYNES",
+      "isin": null,
+      "market_cap": 247022699990.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KCP",
+      "isin": null,
+      "market_cap": 21518230815.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KELLTONTEC",
+      "isin": null,
+      "market_cap": 7426211706.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KERNEX",
+      "isin": null,
+      "market_cap": 29167324349.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KIRLOSENG",
+      "isin": null,
+      "market_cap": 305210654433.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KIRLPNU",
+      "isin": null,
+      "market_cap": 92838245148.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KITEX",
+      "isin": null,
+      "market_cap": 25380390000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KMEW",
+      "isin": null,
+      "market_cap": 71484349435.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KNACK",
+      "isin": null,
+      "market_cap": 23292208967.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KPIGREEN",
+      "isin": null,
+      "market_cap": 60210881452.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KPITTECH",
+      "isin": null,
+      "market_cap": 160374127680.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KRISHNADEF",
+      "isin": null,
+      "market_cap": 15005068262.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KRN",
+      "isin": null,
+      "market_cap": 101663574606.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KRYSTAL",
+      "isin": null,
+      "market_cap": 8756920916.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KSCL",
+      "isin": null,
+      "market_cap": 39376608850.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KSHITIJPOL",
+      "isin": null,
+      "market_cap": 645669043.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KSOLVES",
+      "isin": null,
+      "market_cap": 6364183320.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KSR",
+      "isin": null,
+      "market_cap": 525437941.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "KUSUMGAR",
+      "isin": null,
+      "market_cap": 61047233249.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LAL",
+      "isin": null,
+      "market_cap": 1577084710.65,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LALPATHLAB",
+      "isin": null,
+      "market_cap": 324312029842.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LAMBODHARA",
+      "isin": null,
+      "market_cap": 1467185088.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LANDMARK",
+      "isin": null,
+      "market_cap": 21456017679.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LASERPOWER",
+      "isin": null,
+      "market_cap": 44117769890.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LCCINFOTEC",
+      "isin": null,
+      "market_cap": 598506392.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LEAPIND",
+      "isin": null,
+      "market_cap": 73930828381.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LEMERITE",
+      "isin": null,
+      "market_cap": 2658568320.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LENSKART",
+      "isin": null,
+      "market_cap": 1151728530076.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LIBAS",
+      "isin": null,
+      "market_cap": 277671873.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LINC",
+      "isin": null,
+      "market_cap": 5628269806.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LODHA",
+      "isin": null,
+      "market_cap": 1197473387916.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "LXCHEM",
+      "isin": null,
+      "market_cap": 46175130715.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MAGNUM",
+      "isin": null,
+      "market_cap": 1297762683.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MAHSEAMLES",
+      "isin": null,
+      "market_cap": 88868303926.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MANCREDIT",
+      "isin": null,
+      "market_cap": 5125208961.65,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MANORG",
+      "isin": null,
+      "market_cap": 4449226580.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MANYAVAR",
+      "isin": null,
+      "market_cap": 132483342836.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MAPMYINDIA",
+      "isin": null,
+      "market_cap": 55494854150.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MARKOLINES",
+      "isin": null,
+      "market_cap": 3858118387.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MARKSANS",
+      "isin": null,
+      "market_cap": 145777561660.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MARSONS",
+      "isin": null,
+      "market_cap": 22417746000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MASTERTR",
+      "isin": null,
+      "market_cap": 10120526320.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MBEL",
+      "isin": null,
+      "market_cap": 15272860458.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MCLOUD",
+      "isin": null,
+      "market_cap": 15698638748.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MCX",
+      "isin": null,
+      "market_cap": 866972273000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MEDIASSIST",
+      "isin": null,
+      "market_cap": 24591846386.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MEDICO",
+      "isin": null,
+      "market_cap": 3514372400.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MEESHO",
+      "isin": null,
+      "market_cap": 944445176098.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "METROPOLIS",
+      "isin": null,
+      "market_cap": 120737325694.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MIDHANI",
+      "isin": null,
+      "market_cap": 77586861000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MOBIKWIK",
+      "isin": null,
+      "market_cap": 14935918004.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MODIS",
+      "isin": null,
+      "market_cap": 7438778640.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MOHITIND",
+      "isin": null,
+      "market_cap": 340914406.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MOLBIO",
+      "isin": null,
+      "market_cap": 125185207654.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MOREPENLAB",
+      "isin": null,
+      "market_cap": 58718718384.85,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MOTISONS",
+      "isin": null,
+      "market_cap": 18473107184.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MRPL",
+      "isin": null,
+      "market_cap": 298590253637.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MSPL",
+      "isin": null,
+      "market_cap": 20109944964.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MSTCLTD",
+      "isin": null,
+      "market_cap": 52877440000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MUNJALAU",
+      "isin": null,
+      "market_cap": 11579000000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "MVELECTRO",
+      "isin": null,
+      "market_cap": 20747150507.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NAGREEKCAP",
+      "isin": null,
+      "market_cap": 281951955.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NAGREEKEXP",
+      "isin": null,
+      "market_cap": 688108485.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NAM-INDIA",
+      "isin": null,
+      "market_cap": 748841989774.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NARMADA",
+      "isin": null,
+      "market_cap": 1049320796.35,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NATCAPSUQ",
+      "isin": null,
+      "market_cap": 2211120886.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NAUKRI",
+      "isin": null,
+      "market_cap": 851376247800.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NAVA",
+      "isin": null,
+      "market_cap": 160773024895.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NCC",
+      "isin": null,
+      "market_cap": 93153598261.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NCLIND",
+      "isin": null,
+      "market_cap": 7858292606.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NDLVENTURE",
+      "isin": null,
+      "market_cap": 4106590897.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NELCO",
+      "isin": null,
+      "market_cap": 21711707600.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NEOGEN",
+      "isin": null,
+      "market_cap": 60272540808.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NEWGEN",
+      "isin": null,
+      "market_cap": 75366414557.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NGIL",
+      "isin": null,
+      "market_cap": 718358609.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NIITLTD",
+      "isin": null,
+      "market_cap": 13862157718.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NILASPACES",
+      "isin": null,
+      "market_cap": 4943309460.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NILKAMAL",
+      "isin": null,
+      "market_cap": 29937569655.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NIMBSPROJ",
+      "isin": null,
+      "market_cap": 3325140668.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NINSYS",
+      "isin": null,
+      "market_cap": 13263264000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NLCINDIA",
+      "isin": null,
+      "market_cap": 370786629246.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "NRBBEARING",
+      "isin": null,
+      "market_cap": 45926774010.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "OBCL",
+      "isin": null,
+      "market_cap": 1155758547.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ONEPOINT",
+      "isin": null,
+      "market_cap": 14403676589.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ONIXSOLAR",
+      "isin": null,
+      "market_cap": 12232777846.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ONWARDTEC",
+      "isin": null,
+      "market_cap": 6435895127.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ORIENTHOT",
+      "isin": null,
+      "market_cap": 24828858003.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ORTINGLOBE",
+      "isin": null,
+      "market_cap": 124410297.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "OSWALSEEDS",
+      "isin": null,
+      "market_cap": 1074772500.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PACEDIGITK",
+      "isin": null,
+      "market_cap": 37048721766.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PAISALO",
+      "isin": null,
+      "market_cap": 61219917338.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PANACEABIO",
+      "isin": null,
+      "market_cap": 23710163776.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PANAMAPET",
+      "isin": null,
+      "market_cap": 28513657417.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PANSARI",
+      "isin": null,
+      "market_cap": 5283763380.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PARAS",
+      "isin": null,
+      "market_cap": 115473585157.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PAYTM",
+      "isin": null,
+      "market_cap": 1099522673002.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PCJEWELLER",
+      "isin": null,
+      "market_cap": 106718778056.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PENIND",
+      "isin": null,
+      "market_cap": 22418617356.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PETRONET",
+      "isin": null,
+      "market_cap": 450900026452.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PGEL",
+      "isin": null,
+      "market_cap": 165784084298.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PGHH",
+      "isin": null,
+      "market_cap": 259020442912.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PINELABS",
+      "isin": null,
+      "market_cap": 188351774119.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PIXTRANS",
+      "isin": null,
+      "market_cap": 24778788720.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PLASTIBLEN",
+      "isin": null,
+      "market_cap": 4820476816.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PNGSREVA",
+      "isin": null,
+      "market_cap": 17007776520.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PONNIERODE",
+      "isin": null,
+      "market_cap": 3467741979.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "POONAWALLA",
+      "isin": null,
+      "market_cap": 408366619825.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PREMIERPOL",
+      "isin": null,
+      "market_cap": 9487573385.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "PRUDENT",
+      "isin": null,
+      "market_cap": 152144704992.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "QUESS",
+      "isin": null,
+      "market_cap": 57018122355.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RACE",
+      "isin": null,
+      "market_cap": 1742977200.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RADHIKAJWE",
+      "isin": null,
+      "market_cap": 7959100000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RAJMET",
+      "isin": null,
+      "market_cap": 857088000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RAMBHAJO",
+      "isin": null,
+      "market_cap": 11009059200.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RAMCOIND",
+      "isin": null,
+      "market_cap": 28488373758.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RAMCOSYS",
+      "isin": null,
+      "market_cap": 21620183344.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RATNAVEER",
+      "isin": null,
+      "market_cap": 25683141627.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RELTD",
+      "isin": null,
+      "market_cap": 31603108634.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "REMSONSIND",
+      "isin": null,
+      "market_cap": 3434862746.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RGL",
+      "isin": null,
+      "market_cap": 14513687388.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RHETAN",
+      "isin": null,
+      "market_cap": 15228281250.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RICOAUTO",
+      "isin": null,
+      "market_cap": 17535641700.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RISHABH",
+      "isin": null,
+      "market_cap": 27246916329.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RITES",
+      "isin": null,
+      "market_cap": 104983088392.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RKFORGE",
+      "isin": null,
+      "market_cap": 135212518641.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ROSSELLIND",
+      "isin": null,
+      "market_cap": 3649556664.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ROTO",
+      "isin": null,
+      "market_cap": 11843809731.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RPPINFRA",
+      "isin": null,
+      "market_cap": 2757968759.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RUBICON",
+      "isin": null,
+      "market_cap": 300930451900.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "RUCHIRA",
+      "isin": null,
+      "market_cap": 3060006312.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SAFARI",
+      "isin": null,
+      "market_cap": 74032277561.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SAKAR",
+      "isin": null,
+      "market_cap": 19209459798.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SAKSOFT",
+      "isin": null,
+      "market_cap": 20591836687.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SALASAR",
+      "isin": null,
+      "market_cap": 10330386213.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SANGAMIND",
+      "isin": null,
+      "market_cap": 30157984711.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SANSERA",
+      "isin": null,
+      "market_cap": 250450168864.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SASKEN",
+      "isin": null,
+      "market_cap": 28846701664.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SENCO",
+      "isin": null,
+      "market_cap": 57114153041.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SESHAPAPER",
+      "isin": null,
+      "market_cap": 14464047227.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SGIL",
+      "isin": null,
+      "market_cap": 9372429000.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHAH",
+      "isin": null,
+      "market_cap": 3565521208.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHAILY",
+      "isin": null,
+      "market_cap": 150510250030.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHANKARA",
+      "isin": null,
+      "market_cap": 3543796501.65,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHANTIGOLD",
+      "isin": null,
+      "market_cap": 18929325311.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHAREINDIA",
+      "isin": null,
+      "market_cap": 37563051955.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHIVAUM",
+      "isin": null,
+      "market_cap": 6065778400.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHRADHA",
+      "isin": null,
+      "market_cap": 2578962565.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SHYAMMETL",
+      "isin": null,
+      "market_cap": 305230681255.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SILVERTUC",
+      "isin": null,
+      "market_cap": 21845558700.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SINCLAIR",
+      "isin": null,
+      "market_cap": 4222798800.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SIYSIL",
+      "isin": null,
+      "market_cap": 25568313092.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SOTL",
+      "isin": null,
+      "market_cap": 47203845727.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SOUTHWEST",
+      "isin": null,
+      "market_cap": 6112765854.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SPAL",
+      "isin": null,
+      "market_cap": 26402111870.75,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SPORTKING",
+      "isin": null,
+      "market_cap": 30123411120.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SRHHYPOLTD",
+      "isin": null,
+      "market_cap": 8609015972.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "STARCEMENT",
+      "isin": null,
+      "market_cap": 76200381485.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "STEL",
+      "isin": null,
+      "market_cap": 12202713786.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "STYLAMIND",
+      "isin": null,
+      "market_cap": 58716553870.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SURAJEST",
+      "isin": null,
+      "market_cap": 9125194841.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SUVIDHAA",
+      "isin": null,
+      "market_cap": 459476651.1,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "SWANCORP",
+      "isin": null,
+      "market_cap": 91936904663.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TAINWALCHM",
+      "isin": null,
+      "market_cap": 1965849398.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TARC",
+      "isin": null,
+      "market_cap": 34951209917.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TATACONSUM",
+      "isin": null,
+      "market_cap": 1026756965550.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "THOMASCOOK",
+      "isin": null,
+      "market_cap": 50763470251.05,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "THYROCARE",
+      "isin": null,
+      "market_cap": 96215432917.5,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TIGERLOGS",
+      "isin": null,
+      "market_cap": 2987788500.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TINNARUBR",
+      "isin": null,
+      "market_cap": 17963511304.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TITAN",
+      "isin": null,
+      "market_cap": 4529840102784.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TRENT",
+      "isin": null,
+      "market_cap": 1535712380081.9,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TTL",
+      "isin": null,
+      "market_cap": 1715184668.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "TURTLEMINT",
+      "isin": null,
+      "market_cap": 42440299932.7,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "UNIECOM",
+      "isin": null,
+      "market_cap": 10042202899.3,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "USHAMART",
+      "isin": null,
+      "market_cap": 152050911131.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "VASCONEQ",
+      "isin": null,
+      "market_cap": 7038958232.2,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "VISAKAIND",
+      "isin": null,
+      "market_cap": 7649413402.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "VMSTMT",
+      "isin": null,
+      "market_cap": 2260205303.4,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "VPRPL",
+      "isin": null,
+      "market_cap": 4169341800.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "VSTL",
+      "isin": null,
+      "market_cap": 2120949249.55,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WABAG",
+      "isin": null,
+      "market_cap": 123335160209.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WCIL",
+      "isin": null,
+      "market_cap": 8565257444.15,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WEIZMANIND",
+      "isin": null,
+      "market_cap": 1132910458.25,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WELSPUNLIV",
+      "isin": null,
+      "market_cap": 188195314771.95,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WESTLIFE",
+      "isin": null,
+      "market_cap": 89070737448.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WEWORK",
+      "isin": null,
+      "market_cap": 94885816031.8,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WIPRO",
+      "isin": null,
+      "market_cap": 1827313569855.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "WSI",
+      "isin": null,
+      "market_cap": 4665285197.45,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "XPROINDIA",
+      "isin": null,
+      "market_cap": 26948688019.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ZEEL",
+      "isin": null,
+      "market_cap": 89885407323.6,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ZYDUSLIFE",
+      "isin": null,
+      "market_cap": 1168539532587.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "ZYDUSWELL",
+      "isin": null,
+      "market_cap": 168752445888.0,
+      "source": "pr_zip",
+      "pr_zip_date": "2026-08-31"
+    },
+    {
+      "symbol": "AURIGROW",
+      "isin": "INE925Y01036",
+      "market_cap": 0,
+      "source": "nselive_fallback",
+      "status": "ok"
+    },
+    {
+      "symbol": "KRISHPP",
+      "isin": "IN90GGO01013",
+      "market_cap": 0,
+      "source": "nselive_fallback",
+      "status": "ok"
+    },
+    {
+      "symbol": "VIVIANA",
+      "isin": "INE0MEG01014",
+      "market_cap": 0,
+      "source": "nselive_fallback",
+      "status": "ok"
+    }
+  ]
+}

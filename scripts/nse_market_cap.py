@@ -156,8 +156,21 @@ def fetch_pr_zip_recent(latest: date, lookback_days: int = 6) -> tuple[dict, str
     return {}, None
 
 
-def fetch_single_via_nselive(symbol: str, retries: int = 2) -> dict:
-    """Fallback for symbols the PR zip doesn't cover (mostly SME board)."""
+def fetch_single_via_nselive(symbol: str, retries: int = 0) -> dict:
+    """Fallback for symbols the PR zip doesn't cover (mostly SME board).
+
+    Real-data finding (2026-09-01): of 163 fallback symbols in one run, only
+    3 actually resolved -- 160 failed, split between an 'equityResponse'
+    KeyError raised inside jugaad-data itself and a plain "no market cap
+    field in the response" for symbols NSE's quote API returns incomplete
+    data for. Both are deterministic per symbol, not transient network
+    blips -- retrying either just re-runs the same failure and burns a 2s
+    sleep each time for no benefit. Default is now 0 retries; the ~30% of
+    calls that fail for a genuinely transient reason (timeout, connection
+    reset) are rare enough not to be worth doubling every deterministic
+    failure's cost to catch. A symbol that fails here shows "n/a" in the
+    frontend rather than a fabricated number, and gets tried again on the
+    next daily run."""
     from jugaad_data.nse import NSELive
     last_exc = None
     for attempt in range(retries + 1):
