@@ -1,206 +1,150 @@
-"""NSE Insider Trading acquisition: stealth CDP capture of the real PIT endpoint.
+"""NSE Insider Trading acquisition via the real PIT filings API + XBRL detail parsing.
 
-Root cause of the previous failure: INSIDER_KEYS was too broad
-('corporate-filings', 'pit', 'insider') and matched OTHER NSE corporate-filings
-APIs the page also loads (event calendar, actions, etc.), not the actual
-/api/corporates-pit endpoint. Those unrelated rows had no personCategory field,
-so the promoter check always saw 0 promoter rows even with thousands of rows
-captured. Fix: narrow capture to 'corporates-pit' only, validate captured rows
-actually look like PIT records, add Akamai-evading stealth flags (BSE's script
-already had these; NSE's did not), and interact with the page's date filter to
-force a fresh XHR covering the full lookback window.
+Two prior root causes, now both fixed:
+
+1. The endpoint being called was /api/corporates-pit (returns empty 28-byte JSON
+   for every date range). The ACTUAL endpoint the live page uses is
+   /api/corporates-pit-gg?index=equities, which works with a plain HTTP GET and
+   a normal User-Agent -- no Selenium, no cookies, no Akamai session needed at
+   all. Verified directly: this endpoint consistently returns ~2000+ real
+   filing records.
+
+2. That list endpoint only returns filing-level metadata (company, symbol,
+   broadcast time, and a link to the disclosure's XBRL XML) -- it does NOT
+   contain the actual transaction fields (person, category, quantities). The
+   real insider-trading data (CategoryOfPerson, NameOfThePerson,
+   SecuritiesAcquiredOrDisposedTransactionType, quantities, dates) lives inside
+   each filing's per-disclosure XBRL XML file (linked via `xmlFileName`), under
+   the `in-bse-co:` namespace (NSE and BSE share the same SEBI PIT XBRL
+   taxonomy). Each filing can contain multiple disclosure blocks (one per
+   insider named in that filing).
+
+This script fetches the filing list, filters to the lookback window, then
+fetches+parses each filing's XML concurrently to build real per-transaction
+rows with a personCategory field (Promoter / Promoter Group / KMP / Designated
+Person / Director / Trust / etc.), matching what nse_validate.py expects.
 """
 from __future__ import annotations
-import json, os, time
+import json, os, re, time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta, datetime
 from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+import requests
 
 BASE     = 'https://www.nseindia.com'
-PAGE     = f'{BASE}/companies-listing/corporate-filings-insider-trading'
+LIST_URL = f'{BASE}/api/corporates-pit-gg?index=equities'
 TARGET   = date.fromisoformat(os.getenv('TARGET_DATE', '2026-08-31'))
 LOOKBACK = int(os.getenv('LOOKBACK_DAYS', '90'))
 OUT      = Path('artifacts/nse_insider')
 OUT.mkdir(parents=True, exist_ok=True)
-UA       = ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-            '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36')
+UA       = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+MAX_WORKERS  = 8
+MAX_FILINGS  = 3000  # safety cap
+FETCH_RETRIES = 2
 
-# Only the actual PIT API endpoint — NOT the broader 'corporate-filings'/'pit'
-# substrings that also match unrelated NSE APIs on the same page.
-INSIDER_KEYS   = ('corporates-pit',)
-PIT_FIELD_HITS = ('personCategory', 'acqName', 'acqfromDt', 'buyQuantity', 'sellQuantity')
+TAG_RE = re.compile(r'<in-bse-co:([A-Za-z0-9]+)[^>]*>([^<]*)</in-bse-co:\1>')
 
-_JS_FETCH = """
-const [url, cb] = [arguments[0], arguments[arguments.length-1]];
-fetch(url, {
-  credentials: 'include',
-  headers: {
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',
-    'X-Requested-With': 'XMLHttpRequest'
-  }
-}).then(async r => {
-  const t = await r.text();
-  cb(JSON.stringify({status: r.status, url: r.url, bytes: t.length, text: t}));
-}).catch(e => cb(JSON.stringify({status: 0, error: String(e), bytes: 0, text: ''})));
-"""
+session = requests.Session()
+session.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plain, */*'})
 
 
-def browser():
-    o = Options()
-    for x in ('--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-              '--disable-gpu', '--window-size=1920,1080',
-              '--disable-blink-features=AutomationControlled',
-              '--disable-extensions', '--no-first-run', '--no-default-browser-check',
-              f'--user-agent={UA}'):
-        o.add_argument(x)
-    o.add_experimental_option('excludeSwitches', ['enable-automation'])
-    o.add_experimental_option('useAutomationExtension', False)
-    o.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-    d = webdriver.Chrome(options=o)
-    d.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': """
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
-        Object.defineProperty(navigator, 'languages', {get: () => ['en-US','en']});
-        window.chrome = {runtime: {}};
-    """})
-    return d
+def fetch_filing_list():
+    r = session.get(LIST_URL, timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    rows = data.get('data', []) if isinstance(data, dict) else []
+    print(f'Filing list: {len(rows)} rows, status={r.status_code}')
+    return rows
 
 
-# ── CDP capture (narrowed to real PIT endpoint) ─────────────────────────────────
-
-def capture_nse_cdp(d):
-    results = []
-    for item in d.get_log('performance'):
+def parse_broadcast_date(v):
+    for fmt in ('%d-%b-%Y %H:%M:%S', '%d-%b-%Y'):
         try:
-            msg    = json.loads(item['message'])['message']
-            method = msg.get('method', '')
-            params = msg.get('params', {})
-            if method != 'Network.responseReceived':
-                continue
-            resp   = params.get('response', {})
-            url    = resp.get('url', '')
-            if 'nseindia.com' not in url or not any(k in url.lower() for k in INSIDER_KEYS):
-                continue
-            req_id = params.get('requestId', '')
-            status = resp.get('status', 0)
-            try:
-                body = d.execute_cdp_cmd(
-                    'Network.getResponseBody', {'requestId': req_id}
-                ).get('body', '')
-                try:
-                    obj = json.loads(body)
-                except Exception:
-                    obj = None
-                results.append({'url': url, 'status': status, 'json': obj, 'bytes': len(body)})
-                print(f'  CDP PIT: {url[:90]} -> {len(body)}B status={status}')
-            except Exception as e:
-                print(f'  CDP body error on {url[:60]}: {e}')
+            return datetime.strptime(str(v)[:20].strip(), fmt).date()
         except Exception:
             pass
-    return results
+    return None
 
 
-def is_valid_pit_data(rows):
-    if not rows:
-        return False
-    sample = rows[:20]
-    hits = sum(1 for r in sample if isinstance(r, dict) and any(f in r for f in PIT_FIELD_HITS))
-    return hits >= max(1, len(sample) // 3)
+def parse_disclosures(xml_text):
+    """Split a filing's flat XBRL tag stream into per-person disclosure records."""
+    tags = TAG_RE.findall(xml_text)
+    company = filing_date = None
+    records, current = [], None
+    for name, val in tags:
+        val = val.strip()
+        if name == 'NameOfTheCompany' and company is None:
+            company = val
+        elif name == 'DateOfFiling' and filing_date is None:
+            filing_date = val
+        elif name == 'TypeOfInstrument':
+            if current:
+                records.append(current)
+            current = {'securityType': val, 'company': company, 'filingDate': filing_date}
+        elif current is not None:
+            current[name] = val
+    if current:
+        records.append(current)
+    return records
 
 
-# ── Date-filter page interaction ────────────────────────────────────────────────
+def to_row(rec, filing):
+    txn_raw = rec.get('SecuritiesAcquiredOrDisposedTransactionType', '').upper()
+    if 'BUY' in txn_raw or 'ACQUI' in txn_raw or 'ALLOT' in txn_raw or 'SUBSCRI' in txn_raw:
+        txn_type = 'Acquisition'
+    elif 'SELL' in txn_raw or 'SALE' in txn_raw or 'DISPOS' in txn_raw:
+        txn_type = 'Disposal'
+    else:
+        txn_type = txn_raw.title() or 'Acquisition'
 
-def try_set_nse_date_range(d, from_date, to_date):
-    fmt = '%d-%m-%Y'
-    fd, td = from_date.strftime(fmt), to_date.strftime(fmt)
-    print(f'  Attempting date range set: {fd} -> {td}')
-    try:
-        set_count = d.execute_script("""
-            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-            const inputs = Array.from(document.querySelectorAll('input[type=text], input:not([type])'));
-            const dateInputs = inputs.filter(i => {
-                const a = ((i.placeholder||'')+(i.id||'')+(i.name||'')+(i.className||'')).toLowerCase();
-                return /date|from|to|dd|period/.test(a);
-            });
-            let count = 0;
-            const vals = [arguments[0], arguments[1]];
-            for (let i = 0; i < Math.min(2, dateInputs.length); i++) {
-                setter.call(dateInputs[i], vals[i]);
-                ['input','change','blur'].forEach(ev =>
-                    dateInputs[i].dispatchEvent(new Event(ev, {bubbles:true})));
-                count++;
-            }
-            return count;
-        """, fd, td)
-        print(f'  Date inputs set: {set_count}')
-    except Exception as e:
-        print(f'  Date set failed: {e}')
+    qty = rec.get('SecuritiesAcquiredOrDisposedNumberOfSecurity', '')
+    val = rec.get('SecuritiesAcquiredOrDisposedValueOfSecurity', '')
 
-    time.sleep(1)
-    try:
-        clicked = d.execute_script("""
-            const btns = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button]'));
-            const btn = btns.find(b => {
-                const t = (b.textContent || b.value || '').trim().toLowerCase();
-                return /^(search|apply|go|filter|submit)/.test(t) && !/reset|clear/.test(t);
-            });
-            if (btn) { btn.click(); return (btn.textContent || btn.value || 'clicked').trim(); }
-            return null;
-        """)
-        print(f'  Search button clicked: {clicked!r}')
-        return bool(clicked)
-    except Exception as e:
-        print(f'  Click failed: {e}')
-        return False
+    return {
+        'symbol':          filing.get('symbol', ''),
+        'companyName':     rec.get('company') or filing.get('companyName', ''),
+        'acqName':         rec.get('NameOfThePerson', ''),
+        'personCategory':  rec.get('CategoryOfPerson', ''),
+        'secType':         rec.get('securityType', ''),
+        'transactionType': txn_type,
+        'buyQuantity':     qty if txn_type == 'Acquisition' else '',
+        'sellquantity':    qty if txn_type == 'Disposal' else '',
+        'buyValue':        val if txn_type == 'Acquisition' else '',
+        'sellValue':       val if txn_type == 'Disposal' else '',
+        'beforeSharesNo':  rec.get('SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity', ''),
+        'afterSharesNo':   rec.get('SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity', ''),
+        'modeOfAcquisition': rec.get('ModeOfAcquisitionOrDisposal', ''),
+        'acqfromDt':       rec.get('DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyFromDate', ''),
+        'acqtoDt':         rec.get('DateOfAllotmentAdviceOrAcquisitionOfSharesOrSaleOfSharesSpecifyToDate', ''),
+        'date':            (rec.get('DateOfIntimationToCompany') or rec.get('filingDate')
+                             or filing.get('_broadcast_date', '')),
+        'intimDt':         rec.get('DateOfIntimationToCompany', ''),
+        'broadcastDt':     filing.get('broadcastDateTime', ''),
+        'appId':           filing.get('appId', ''),
+    }
 
 
-# ── execute_async_script fallback ──────────────────────────────────────────────
-
-def js_fetch(d, url):
-    raw  = json.loads(d.execute_async_script(_JS_FETCH, url))
-    text = raw.get('text', '')
-    s = min([p for p in (text.find('{'), text.find('[')) if p >= 0], default=-1)
-    e = max(text.rfind('}'), text.rfind(']'))
-    if s >= 0 and e >= s:
-        text = text[s:e+1]
-    try:
-        raw['json'] = json.loads(text)
-    except Exception as exc:
-        raw['json'] = None
-        raw['parse_error'] = str(exc)
-    return raw
-
-
-def probe_api(d, start, end):
-    BASE_URL = f'{BASE}/api/corporates-pit'
-    fd, td = f'{start:%d-%m-%Y}', f'{end:%d-%m-%Y}'
-    candidates = [
-        f'{BASE_URL}?from_date={fd}&to_date={td}',
-        f'{BASE_URL}?index=equities&from_date={fd}&to_date={td}',
-        f'{BASE_URL}?index=all&from_date={fd}&to_date={td}',
-        BASE_URL,
-    ]
-    for url in candidates:
-        raw   = js_fetch(d, url)
-        rows  = flatten(raw.get('json'))
-        valid = is_valid_pit_data(rows)
-        print(f'    probe {url[len(BASE):90]}: status={raw.get("status")} '
-              f'bytes={raw.get("bytes")} rows={len(rows)} valid={valid}')
-        if rows and valid:
-            return rows, url
-        time.sleep(1.5)
-    return [], candidates[0]
+def fetch_and_parse(filing):
+    url = filing.get('xmlFileName')
+    if not url:
+        return []
+    for attempt in range(FETCH_RETRIES):
+        try:
+            r = session.get(url, timeout=12)
+            if r.status_code == 200 and r.text:
+                recs = parse_disclosures(r.text)
+                return [to_row(rec, filing) for rec in recs]
+            return []
+        except Exception:
+            if attempt + 1 < FETCH_RETRIES:
+                time.sleep(0.8)
+    return []
 
 
-# ── Parsing helpers ────────────────────────────────────────────────────────────
+# ── Window building ────────────────────────────────────────────────────────────
 
-DATE_FMTS = ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y-%m-%dT%H:%M:%S',
-             '%d-%b-%Y', '%d-%b-%y', '%m/%d/%Y %H:%M:%S')
-DATE_KEYS  = ('acqfromDt', 'acqtoDt', 'intimDt', 'broadcastDt',
-              'dateOfIntimation', 'dateOfTransaction', 'date', 'Date', 'DATE')
+DATE_FMTS = ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d-%b-%Y')
 
 
 def parse_date_str(v):
@@ -214,27 +158,11 @@ def parse_date_str(v):
 
 
 def record_date(r):
-    for k in DATE_KEYS:
+    for k in ('date', 'intimDt', 'acqfromDt', 'acqtoDt'):
         d = parse_date_str(r.get(k))
         if d:
             return d
     return None
-
-
-def flatten(obj):
-    if isinstance(obj, list):
-        if obj and all(isinstance(x, dict) for x in obj):
-            return obj
-        out = []
-        for x in obj:
-            out.extend(flatten(x))
-        return out
-    if isinstance(obj, dict):
-        out = []
-        for v in obj.values():
-            out.extend(flatten(v))
-        return out
-    return []
 
 
 def dedup(rows):
@@ -246,8 +174,6 @@ def dedup(rows):
             out.append(r)
     return out
 
-
-# ── Window building ────────────────────────────────────────────────────────────
 
 def make_window(name, start, end, rows):
     dates = sorted({record_date(r) for r in rows if record_date(r)})
@@ -263,108 +189,79 @@ def make_window(name, start, end, rows):
     }
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
-
 def main():
-    d = browser()
-    try:
-        from_date = TARGET - timedelta(days=LOOKBACK - 1)
+    from_date = TARGET - timedelta(days=LOOKBACK - 1)
 
-        print('Loading NSE insider trading page...')
-        d.get(PAGE)
-        time.sleep(15)
-        print(f'Page: {d.title!r}  cookies: {len(d.get_cookies())}')
+    filings = fetch_filing_list()
 
-        # Drain initial-load CDP log (may already contain a PIT XHR)
-        cdp_hits = capture_nse_cdp(d)
+    in_window = []
+    for f in filings:
+        bd = parse_broadcast_date(f.get('broadcastDateTime'))
+        if bd is None:
+            continue
+        f['_broadcast_date'] = bd.isoformat()
+        if from_date <= bd <= TARGET:
+            in_window.append(f)
 
-        # Interact with the date filter to force a fresh, wider-range XHR
-        set_ok = try_set_nse_date_range(d, from_date, TARGET)
-        if set_ok:
-            time.sleep(12)
-            cdp_hits.extend(capture_nse_cdp(d))
+    in_window = in_window[:MAX_FILINGS]
+    print(f'Filings in {LOOKBACK}d window ({from_date} to {TARGET}): {len(in_window)}')
 
-        cdp_rows = []
-        for c in cdp_hits:
-            rows = flatten(c.get('json') or {})
-            if is_valid_pit_data(rows):
-                cdp_rows.extend(rows)
+    all_rows, ok, failed = [], 0, 0
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = {ex.submit(fetch_and_parse, f): f for f in in_window}
+        for fut in as_completed(futures):
+            rows = fut.result()
+            if rows:
+                ok += 1
+                all_rows.extend(rows)
             else:
-                print(f'  Discarding non-PIT capture from {c["url"][:80]} '
-                      f'({len(rows)} rows, sample keys: '
-                      f'{list(rows[0].keys())[:6] if rows else []})')
-        cdp_rows = dedup(cdp_rows)
-        print(f'CDP validated PIT rows: {len(cdp_rows)}')
+                failed += 1
 
-        fallback_rows = []
-        if not cdp_rows:
-            print('No valid CDP PIT data — running execute_async fallback...')
-            rows7, url7 = probe_api(d, TARGET - timedelta(days=6), TARGET)
-            if rows7:
-                fallback_rows = rows7
-                cursor = TARGET - timedelta(days=7)
-                while cursor >= from_date and len(fallback_rows) < 10000:
-                    chunk_start = max(cursor - timedelta(days=6), from_date)
-                    rc, _ = probe_api(d, chunk_start, cursor)
-                    fallback_rows.extend(rc)
-                    cursor = chunk_start - timedelta(days=1)
-                    time.sleep(2)
-                fallback_rows = dedup(fallback_rows)
-                print(f'Fallback total after {LOOKBACK}d: {len(fallback_rows)}')
-            else:
-                raw = js_fetch(d, f'{BASE}/api/corporates-pit')
-                rows_all = flatten(raw.get('json'))
-                if is_valid_pit_data(rows_all):
-                    fallback_rows = rows_all
-                    print(f'Fallback default-call rows: {len(fallback_rows)}')
+    print(f'XML filings fetched OK: {ok}, failed/empty: {failed}')
+    all_rows = dedup(all_rows)
+    print(f'Total disclosure rows parsed: {len(all_rows)}')
 
-        all_rows = dedup(cdp_rows + fallback_rows)
-        print(f'Total validated PIT rows: {len(all_rows)}')
+    promoter_rows = [r for r in all_rows if 'PROMOTER' in str(r.get('personCategory', '')).upper()]
+    print(f'Rows with PROMOTER category: {len(promoter_rows)}')
 
-        promoter_rows = [r for r in all_rows if 'PROMOTER' in str(r.get('personCategory', '')).upper()]
-        print(f'Rows with PROMOTER category: {len(promoter_rows)}')
+    specs = [
+        ('1d',  TARGET,                       TARGET),
+        ('7d',  TARGET - timedelta(days=6),   TARGET),
+        ('30d', TARGET - timedelta(days=29),  TARGET),
+        ('90d', from_date,                    TARGET),
+    ]
 
-        specs = [
-            ('1d',  TARGET,                TARGET),
-            ('7d',  TARGET - timedelta(days=6),  TARGET),
-            ('30d', TARGET - timedelta(days=29), TARGET),
-            ('90d', from_date,             TARGET),
-        ]
+    def in_win(r, wstart, wend):
+        rd = record_date(r)
+        if not rd:
+            return False
+        try:
+            return wstart <= date.fromisoformat(rd) <= wend
+        except Exception:
+            return False
 
-        def in_window(r, wstart, wend):
-            rd = record_date(r)
-            if not rd:
-                return True
-            try:
-                return wstart <= date.fromisoformat(rd) <= wend
-            except Exception:
-                return True
+    windows = []
+    for win_name, wstart, wend in specs:
+        win_rows = [r for r in all_rows if in_win(r, wstart, wend)]
+        w = make_window(win_name, wstart, wend, win_rows)
+        windows.append(w)
+        Path(OUT / f'{win_name}.json').write_text(
+            json.dumps(w, indent=2, default=str), encoding='utf-8')
+        print(f'[{win_name}] rows={len(win_rows)} distinct_dates={len(w["distinct_dates"])}')
 
-        windows = []
-        for win_name, wstart, wend in specs:
-            win_rows = [r for r in all_rows if in_window(r, wstart, wend)]
-            if not win_rows and win_name != '1d':
-                win_rows = all_rows
-            w = make_window(win_name, wstart, wend, win_rows)
-            windows.append(w)
-            Path(OUT / f'{win_name}.json').write_text(
-                json.dumps(w, indent=2, default=str), encoding='utf-8')
-            print(f'[{win_name}] rows={len(win_rows)} distinct_dates={len(w["distinct_dates"])}')
-            time.sleep(1)
-
-        report = {
-            'source': 'NSE', 'dataset': 'insider_trading',
-            'target_date': str(TARGET), 'lookback_days': LOOKBACK,
-            'method': 'Stealth CDP page capture (narrowed to corporates-pit) + execute_async fallback',
-            'windows': [{k: v for k, v in w.items() if k not in ('rows', 'sample')}
-                        for w in windows],
-        }
-        Path(OUT / 'report.json').write_text(
-            json.dumps(report, indent=2, default=str), encoding='utf-8')
-        print(json.dumps({k: v for k, v in report.items() if k != 'windows'}, indent=2))
-
-    finally:
-        d.quit()
+    report = {
+        'source': 'NSE', 'dataset': 'insider_trading',
+        'target_date': str(TARGET), 'lookback_days': LOOKBACK,
+        'method': 'corporates-pit-gg filing list + per-filing XBRL XML parse (plain HTTP, no Akamai issue)',
+        'filings_in_window': len(in_window),
+        'filings_fetched_ok': ok,
+        'filings_failed': failed,
+        'windows': [{k: v for k, v in w.items() if k not in ('rows', 'sample')}
+                    for w in windows],
+    }
+    Path(OUT / 'report.json').write_text(
+        json.dumps(report, indent=2, default=str), encoding='utf-8')
+    print(json.dumps({k: v for k, v in report.items() if k != 'windows'}, indent=2))
 
 
 if __name__ == '__main__':
