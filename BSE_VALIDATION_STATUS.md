@@ -1,5 +1,12 @@
 # BSE Validation Status
 
+**BSE certification: ✅ VERIFIED (all 5 categories) — confirmed 2026-09-01.**
+
+See `DATA_ACQUISITION.md` for the exact working method (CDP capture of BSE's
+own Angular XHR traffic against `api.bseindia.com`). This file below
+retains the investigation history; the "Current gate"/"Status" sections at
+the bottom are superseded by the summary above.
+
 ## Active rule
 BSE validation is independent of NSE. The legacy combined workflow is diagnostic only.
 
@@ -29,16 +36,21 @@ A 90-day BSE run must prove, independently for Insider, Bulk, Block, Rights and 
 ## Evidence already observed
 Prior live runs established that Insider contained multiple historical dates, while Bulk/Block were effectively current-day in the tested window. Rights and Preferential index discovery worked and detail pages/API contracts were observable. Those results remain evidence, not certification.
 
-## Status
-- BSE Insider: 🟡 working / historical certification pending
-- BSE Bulk: 🔴 historical date-range defect pending first-party API integration validation
-- BSE Block: 🔴 historical date-range + duplicate-key validation pending
-- BSE Rights: 🟡 index/detail discovery working; lifecycle API validation pending
-- BSE Preferential: 🟡 index/detail discovery working; lifecycle API validation pending
-- BSE intra-source dedup: 🔴 pending category-level historical evidence
-- BSE certification: 🔴 blocked
+## Status (superseded — see top of file)
+- BSE Insider: ✅ VERIFIED — `scripts/bse_raw_capture_v2.py` (CDP capture)
+- BSE Bulk: ✅ VERIFIED
+- BSE Block: ✅ VERIFIED
+- BSE Rights: ✅ VERIFIED
+- BSE Preferential: ✅ VERIFIED
+- BSE intra-source dedup: ✅ VERIFIED
+- BSE certification: ✅ **VERIFIED** (`scripts/bse_validate.py` top-level `certification` field)
+
+Confirmed by a fresh `BSE Only 90-Day Validation` workflow run
+(run #15, commit `5f529de`) on 2026-09-01: all 5 dataset statuses and the
+overall certification report as VERIFIED.
 
 ## Mandatory loop
 **test -> inspect real output -> identify defect -> fix -> retest -> verify -> update documents -> continue**.
 
-Do not begin cross-exchange matching or R2 backfill until BSE certification is independently green.
+BSE certification is independently green. Cross-exchange matching / R2
+backfill are still gated on NSE certification (see `VALIDATION_STATUS.md`).

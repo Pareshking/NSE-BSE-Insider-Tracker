@@ -1,6 +1,39 @@
 # Validation Status — NSE + BSE
 
-Last updated: 2026-09-01
+Last updated: 2026-09-01 (post-XBRL-rewrite)
+
+**See `DATA_ACQUISITION.md` for the exact working method per category — this
+file tracks pass/fail status; that one explains how each fetch actually
+works and why.**
+
+## Current confirmed state
+
+- **BSE: ✅ VERIFIED — all 5 categories.** Confirmed by a fresh, isolated
+  `BSE Only 90-Day Validation` run (run #15, commit `5f529de`,
+  2026-09-01): every dataset status and the top-level `certification` field
+  read VERIFIED.
+- **NSE Insider Trading: ✅ fixed.** The root cause was calling a dead
+  endpoint (`/api/corporates-pit`, always empty) instead of the real one
+  (`/api/corporates-pit-gg`), and the real transaction data (person,
+  category, quantities) living in each filing's linked XBRL XML rather than
+  the list response. Rewritten in `scripts/nse_insider.py`; confirmed
+  `promoter_semantics: VERIFIED` in two consecutive live runs (1638 and 224
+  promoter-category rows respectively, well above the `>0` gate).
+- **NSE Bulk / Block / Rights / Preferential: previously VERIFIED, needs a
+  clean reconfirmation run.** These were not touched by the insider fix.
+  During same-session rapid back-to-back test triggers (5 CI runs of
+  `nse-validation.yml` within ~40 minutes), NSE's Akamai edge escalated from
+  soft bot-detection (HTTP 200 with an HTML page) to a hard
+  `403 Access Denied` across every NSE endpoint on the runner's IP. This
+  reads as **rate-limiting from testing cadence, not a code regression** —
+  nothing in `nse_bulk.py`/`nse_block.py`/`nse_rights.py`/`nse_preferential.py`
+  changed between the passing and blocked runs. A cooldown + a single clean
+  run should confirm this. `nse_bulk.py`/`nse_block.py` also gained a
+  3-retry-with-page-reload guard for the milder (HTTP 200, non-JSON) form of
+  this same Akamai behavior.
+- **Operational lesson:** don't fire `nse-validation.yml` repeatedly within
+  a short window while iterating — space test runs out (10+ minutes) to
+  avoid tripping Akamai's edge rate limiter across the whole domain.
 
 ## Operating rule
 No one-year R2 backfill and no production-schema freeze until all validation gates are cleared and explicitly authorized.
@@ -76,19 +109,20 @@ These are defect-diagnosis observations, not certification.
 ## Current gates
 | Exchange | Category | Status |
 |---|---|---|
-| NSE | Insider | 🟡 Working / fresh execution pending |
-| NSE | Promoter semantics | 🟡 Logic implemented / fresh execution pending |
-| NSE | Bulk | 🟡 Direct historical API implemented / fresh execution pending |
-| NSE | Block | 🟡 Direct historical API implemented / fresh execution pending |
-| NSE | Rights | 🟡 First-party APIs implemented / fresh execution pending |
-| NSE | Preferential | 🟡 First-party APIs implemented / fresh execution pending |
-| BSE | Insider | 🟡 Native mapping fixed / fresh API + historical execution pending |
-| BSE | Promoter semantics | 🟡 Native category logic fixed / fresh execution pending |
-| BSE | Bulk | 🔴 Historical gate failed in prior run / fresh API execution pending |
-| BSE | Block | 🔴 Historical gate failed in prior run / fresh API execution pending |
-| BSE | Rights | 🟡 Detail/API path identified / lifecycle validation pending |
-| BSE | Preferential | 🟡 Detail extraction works / lifecycle + historical validation pending |
-| Cross-exchange | Matching | 🔴 Blocked until both exchanges certify |
+| NSE | Insider | ✅ VERIFIED (corporates-pit-gg + XBRL rewrite) |
+| NSE | Promoter semantics | ✅ VERIFIED (confirmed 2 consecutive runs) |
+| NSE | Bulk | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
+| NSE | Block | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
+| NSE | Rights | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
+| NSE | Preferential | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
+| BSE | Insider | ✅ VERIFIED |
+| BSE | Promoter semantics | ✅ VERIFIED |
+| BSE | Bulk | ✅ VERIFIED |
+| BSE | Block | ✅ VERIFIED |
+| BSE | Rights | ✅ VERIFIED |
+| BSE | Preferential | ✅ VERIFIED |
+| BSE | Overall certification | ✅ VERIFIED (run #15, commit 5f529de) |
+| Cross-exchange | Matching | 🔴 Blocked until NSE overall certification is reconfirmed green |
 | R2 backfill | One-year | 🔴 Blocked |
 | Production schema | Freeze | 🔴 Blocked |
 

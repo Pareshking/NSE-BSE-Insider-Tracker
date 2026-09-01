@@ -52,8 +52,15 @@ def date_values(r):
                 try: vals.append(datetime.strptime(s[:11],f).date().isoformat()); break
                 except: pass
     return vals
+def dedup(rows):
+    seen,out=set(),[]
+    for r in rows:
+        k=json.dumps(r,sort_keys=True,default=str)
+        if k not in seen: seen.add(k); out.append(r)
+    return out
 def main():
     d=browser(); report={'source':'NSE','dataset':'rights_issue','url':URL,'target_date':str(TARGET),'lookback_days':LOOKBACK,'api_endpoints':APIS,'windows':[]}
+    widest_rows=[]
     try:
         for name,start in [('1d',TARGET),('7d',TARGET-timedelta(days=6)),('30d',TARGET-timedelta(days=29)),('90d',TARGET-timedelta(days=LOOKBACK-1))]:
             d.get(URL+f'?tabIndex=equity&from_date={start:%d-%m-%Y}&to_date={TARGET:%d-%m-%Y}'); time.sleep(6)
@@ -61,7 +68,12 @@ def main():
             for u in APIS:
                 x=js_fetch(d,u); rows=flatten(x.get('json')); api.append({'url':u,'status':x.get('status'),'bytes':len(x.get('text','')),'row_count':len(rows),'sample':rows[:3]}); allrows.extend(rows)
             ds=sorted({z for r in allrows for z in date_values(r)})
-            report['windows'].append({'name':name,'start':str(start),'end':str(TARGET),'api':api,'api_rows':len(allrows),'api_distinct_dates':ds,'api_earliest_date':ds[0] if ds else None,'api_latest_date':ds[-1] if ds else None,'tables':tables(d),'body_prefix':clean(d.find_element(By.TAG_NAME,'body').text)[:2000]})
+            allrows=dedup(allrows)
+            report['windows'].append({'name':name,'start':str(start),'end':str(TARGET),'api':api,'api_rows':len(allrows),'api_distinct_dates':ds,'api_earliest_date':ds[0] if ds else None,'api_latest_date':ds[-1] if ds else None,'tables':tables(d),'body_prefix':clean(d.find_element(By.TAG_NAME,'body').text)[:2000],'rows':allrows})
+            if name=='90d': widest_rows=allrows
     finally: d.quit()
-    (OUT/'report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)); print(json.dumps(report,indent=2,ensure_ascii=False))
+    report['rows']=widest_rows
+    report['count']=len(widest_rows)
+    report['columns']=sorted(widest_rows[0].keys()) if widest_rows and isinstance(widest_rows[0],dict) else []
+    (OUT/'report.json').write_text(json.dumps(report,indent=2,ensure_ascii=False)); print(json.dumps({k:v for k,v in report.items() if k!='windows'},indent=2,ensure_ascii=False))
 if __name__=='__main__': main()

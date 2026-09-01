@@ -615,29 +615,31 @@ Do not expand scope merely for completeness. Add datasets when source quality an
 ### Phase 2 — Bulk/Block
 - [x] NSE bulk route demonstrated.
 - [x] NSE block route demonstrated.
-- [ ] NSE validation/historical test.
-- [ ] BSE bulk reliable route.
-- [ ] BSE block reliable route.
-- [ ] BSE validation/historical test.
+- [x] NSE validation/historical test. (`scripts/nse_validate.py`; VERIFIED as of run #78, pending 24h Akamai-cooldown reconfirmation — see `VALIDATION_STATUS.md`)
+- [x] BSE bulk reliable route. (`scripts/bse_raw_capture_v2.py` CDP capture — VERIFIED)
+- [x] BSE block reliable route. (same script/method — VERIFIED)
+- [x] BSE validation/historical test. (`scripts/bse_validate.py`; VERIFIED run #15)
 
 ### Phase 3 — Acquisition hardening
 - [ ] Adapter interface.
-- [ ] Retry/backoff.
-- [ ] Rate-limit handling.
+- [x] Retry/backoff. (`nse_bulk.py`/`nse_block.py`: 3 retries with page reload on Akamai bot-page responses)
+- [ ] Rate-limit handling. (retry exists for the soft/HTML-page form; no backoff yet for the hard 403 edge-block form observed 2026-09-01 — see `VALIDATION_STATUS.md`)
 - [ ] Source fallback selection.
 - [ ] Schema drift checks.
-- [ ] Data-quality gates.
+- [x] Data-quality gates. (`nse_validate.py`/`bse_validate.py` evidence-first certification; `r2_writer.py` refuses to write a non-VERIFIED or empty dataset)
 - [ ] Failure notifications.
 
 ### Phase 4 — Storage
-- [ ] R2 layout finalized.
-- [ ] Canonical schema finalized.
-- [ ] Parquet writer.
-- [ ] Compression/partition benchmark.
-- [ ] Dedup/versioning.
-- [ ] Manifest.
-- [ ] Atomic writes.
-- [ ] Read layer.
+- [x] R2 layout finalized. (`raw/{exchange}/{category}/{date}/`, `canonical/{exchange}/{category}/{date}/`, `manifests/{date}.json` — see `DATA_ACQUISITION.md`)
+- [x] Canonical schema finalized. (deliberately loose/native-preserving per the native-schema requirement in `DATA_VALIDATION_AND_DEDUP_PLAN.md`: `exchange`/`category`/`canonical_event_id`/`ingested_at` plus every native source field, nested fields JSON-stringified for Parquet)
+- [x] Parquet writer. (`scripts/r2_writer.py`, via pandas + pyarrow)
+- [ ] Compression/partition benchmark. (using pyarrow's default Snappy compression; no formal size/read-speed benchmark done)
+- [x] Dedup/versioning. (`canonical_event_id` = sha1(exchange, category, row); re-running over the same source data is idempotent)
+- [x] Manifest. (`manifests/{date}.json`, written last, records every attempted (exchange,category) including skipped/blocked ones with a reason)
+- [x] Atomic writes. (each raw/Parquet object is one `put_object` call; the manifest is written only after every dataset write for the run completes)
+- [ ] Read layer. (no query/read API yet — Phase 6 Streamlit or a thin read script)
+
+Implemented in `.github/workflows/r2-storage.yml` + `scripts/r2_writer.py` (commit `e4f57f0`). Verified locally end-to-end with a mocked R2 client against real NSE insider data. **Not yet verified against the real R2 bucket in CI** — first live run is scheduled alongside the 24h NSE reconfirmation check-in (2026-09-02).
 
 ### Phase 5 — Historical data
 - [ ] One-year backfill.
