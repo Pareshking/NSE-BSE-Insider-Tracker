@@ -61,7 +61,10 @@ def js_fetch(d, url):
         raw['parse_error'] = str(exc)
     return raw
 
-def fetch_window(d, name, start, end, retries=3):
+CHUNK = 7  # max days per call -- see fetch_window() docstring below
+
+def fetch_range(d, start, end, retries=3):
+    """Single API call for one [start, end] sub-range. Returns (url, raw, rows)."""
     url = f'{BASE}/api/historicalOR/bulk-block-short-deals?optionType=block_deals&from={start:%d-%m-%Y}&to={end:%d-%m-%Y}'
     raw = js_fetch(d, url)
     for attempt in range(retries):
@@ -69,23 +72,45 @@ def fetch_window(d, name, start, end, retries=3):
             break
         # Akamai bot-detection HTML page instead of JSON -- reload the page to
         # refresh the session/challenge state, then retry.
-        print(f'  [{name}] non-JSON response (attempt {attempt+1}/{retries}), reloading page and retrying...')
+        print(f'    non-JSON response for {start}..{end} (attempt {attempt+1}/{retries}), reloading page and retrying...')
         d.get(PAGE)
         time.sleep(6)
         raw = js_fetch(d, url)
     obj  = raw.get('json') or {}
     rows = obj.get('data', []) if isinstance(obj, dict) else (obj if isinstance(obj, list) else [])
+    return url, raw, rows
+
+def fetch_window(d, name, start, end):
+    """A single call to /api/historicalOR/bulk-block-short-deals appears to cap
+    results at 70 rows sorted most-recent-first, regardless of the from/to
+    range requested -- confirmed 2026-09-01 on Bulk Deals (same underlying
+    endpoint, optionType=bulk_deals): a 90-day request and a 1-day request
+    both returned the exact same 70 rows, all from the single most recent
+    trading day. Chunking into CHUNK-day sub-ranges and combining -- same fix
+    shape as the old nse_insider.py 7-day-chunk workaround for a similar
+    per-call cap -- makes each sub-range's own top-70 available instead of
+    only the newest day's."""
+    urls, rows_by_key = [], {}
+    cur = start
+    while cur <= end:
+        chunk_end = min(cur + timedelta(days=CHUNK - 1), end)
+        url, raw, rows = fetch_range(d, cur, chunk_end)
+        urls.append(url)
+        for r in rows:
+            key = json.dumps(r, sort_keys=True, default=str)
+            rows_by_key[key] = r
+        cur = chunk_end + timedelta(days=1)
+        time.sleep(1)
+    rows = list(rows_by_key.values())
     dates = sorted({
         str(r.get('BD_DT_DATE') or r.get('mTIMESTAMP') or r.get('date') or '')
         for r in rows
         if (r.get('BD_DT_DATE') or r.get('mTIMESTAMP') or r.get('date'))
     })
     return {
-        'name': name, 'request_url': url,
-        'status': raw.get('status'), 'bytes': raw.get('bytes'),
+        'name': name, 'request_url': urls,
         'start_date': str(start), 'end_date': str(end),
-        'mode': 'json' if raw.get('json') is not None else 'non_json',
-        'parse_error': raw.get('parse_error'),
+        'mode': 'json' if rows else 'non_json',
         'count': len(rows),
         'columns': sorted(rows[0].keys()) if rows and isinstance(rows[0], dict) else [],
         'distinct_dates': dates,
