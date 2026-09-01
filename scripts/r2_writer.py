@@ -82,8 +82,96 @@ def canonical_event_id(exchange, category, row):
     return hashlib.sha1(f'{exchange}|{category}|{key}'.encode('utf-8')).hexdigest()
 
 
+def _pick(row, *keys):
+    for k in keys:
+        v = row.get(k)
+        if v not in (None, ''):
+            return v
+    return None
+
+
+def canonicalize(exchange, category, row):
+    """Frontend-facing aligned fields, common by name across NSE and BSE for a
+    given category. Computed from known native field names (verified against
+    real captured data on 2026-09-01 -- see DATA_ACQUISITION.md); anything not
+    recognized is left None rather than guessed. Never touches the native
+    columns, which stay available for drill-down/audit alongside these.
+    """
+    if category == 'insider_trading':
+        if exchange == 'nse':
+            qty = row.get('buyQuantity') or row.get('sellquantity')
+            val = row.get('buyValue') or row.get('sellValue')
+        else:
+            qty = row.get('quantity')
+            val = row.get('transaction_value')
+        return {
+            'canonical_company': _pick(row, 'companyName', 'company', 'nameOfTheCompany'),
+            'canonical_symbol': _pick(row, 'symbol', 'security_code'),
+            'canonical_person': _pick(row, 'acqName', 'person'),
+            'canonical_person_category': _pick(row, 'personCategory', 'person_category'),
+            'canonical_transaction_type': (str(_pick(row, 'transactionType', 'transaction_type') or '').upper() or None),
+            'canonical_quantity': qty,
+            'canonical_value': val,
+            'canonical_holding_before': _pick(row, 'beforeSharesNo', 'holding_before'),
+            'canonical_holding_after': _pick(row, 'afterSharesNo', 'holding_after'),
+            'canonical_transaction_date': _pick(row, 'date', 'transaction_date'),
+            'canonical_mode': _pick(row, 'modeOfAcquisition', 'mode'),
+            'canonical_broadcast_date': _pick(row, 'broadcastDt', 'broadcast_date'),
+        }
+    if category in ('bulk_deals', 'block_deals'):
+        if exchange == 'nse':
+            # NSE historical bulk/block-deals API field names (confirmed via
+            # nse_validate.py's dedup key, which has matched real NSE data).
+            # BD_SCRIP_NAME specifically is best-effort -- not yet re-verified
+            # against a fresh capture since bulk/block have been Akamai-BLOCKED
+            # for every run since this mapping was written.
+            company = _pick(row, 'BD_SCRIP_NAME', 'BD_SYMBOL')
+            symbol = _pick(row, 'BD_SYMBOL')
+            client = _pick(row, 'BD_CLIENT_NAME')
+            side_raw = str(_pick(row, 'BD_BUY_SELL') or '').upper()
+            qty = _pick(row, 'BD_QTY_TRD')
+            price = _pick(row, 'BD_TP_WATP')
+            event_date = _pick(row, 'BD_DT_DATE')
+        else:
+            company = _pick(row, 'company', 'security_name')
+            symbol = _pick(row, 'security_code')
+            client = _pick(row, 'person')
+            side_raw = str(_pick(row, 'side') or '').upper()
+            qty = _pick(row, 'quantity')
+            price = _pick(row, 'price')
+            event_date = _pick(row, 'event_date')
+        side = 'BUY' if side_raw in ('B', 'BUY') else ('SELL' if side_raw in ('S', 'SELL') else None)
+        return {
+            'canonical_company': company,
+            'canonical_symbol': symbol,
+            'canonical_client': client,
+            'canonical_side': side,
+            'canonical_quantity': qty,
+            'canonical_price': price,
+            'canonical_event_date': event_date,
+        }
+    if category in ('rights_issue', 'preferential_issue'):
+        # NSE's 'companyName' field on the Rights (FIRILS/listing-stage) index
+        # has been observed to contain a raw BSE scrip-code number instead of
+        # an actual name (e.g. "500306") -- verified 2026-09-01. Never surface
+        # a purely-numeric value as a company name; flag it instead.
+        raw_company = _pick(row, 'nameOfTheCompany', 'companyName', 'company')
+        company_unreliable = bool(raw_company) and str(raw_company).strip().isdigit()
+        return {
+            'canonical_company': None if company_unreliable else raw_company,
+            'canonical_company_unreliable': company_unreliable,
+            'canonical_symbol': _pick(row, 'nseSymbol', 'security_code', 'symbol'),
+            'canonical_stage': _pick(row, 'stage', 'issueType'),
+            'canonical_event_date': _pick(row, 'dateOfSubmission', 'boardResolutionDt', 'event_date'),
+        }
+    return {}
+
+
 def rows_to_parquet_bytes(exchange, category, rows):
     df = pd.json_normalize(rows)
+    canon = pd.DataFrame([canonicalize(exchange, category, r) for r in rows])
+    for col in canon.columns:
+        df[col] = canon[col].values
     df.insert(0, 'canonical_event_id', [canonical_event_id(exchange, category, r) for r in rows])
     df.insert(0, 'category', category)
     df.insert(0, 'exchange', exchange)
