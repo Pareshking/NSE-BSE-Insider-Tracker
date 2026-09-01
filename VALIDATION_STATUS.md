@@ -22,18 +22,30 @@ works and why.**
 - **NSE Rights / Preferential: ✅ confirmed VERIFIED** in a fresh run
   (`nse-validation.yml` run #87, 2026-09-01T16:58Z, commit `c8f2d9f`) —
   recovered fully from the earlier Akamai escalation.
-- **NSE Bulk / Block: still blocked — and likely not just a cooldown
-  issue.** Same run #87: both got the identical 22,087-byte non-JSON
-  bot-detection page across all 4 windows (1d/7d/30d/90d) despite the
-  existing 3-retry-with-page-reload guard. Real data would vary in size by
-  date range; getting the exact same bytes every time means it's the same
-  static page, not a data question.
+- **NSE Bulk / Block: CORRECTION — no evidence this has ever actually been
+  VERIFIED with real data in this project.** Earlier notes here described
+  this as "previously VERIFIED, needs a clean reconfirmation run," implying
+  a regression from working code. That was checked against the actual
+  evidence on 2026-09-01 and does not hold up: three separate runs spanning
+  the full day — `2f92237` (05:52 UTC), `973ce485` (06:52 UTC), and `c8f2d9f`
+  (16:58 UTC, run #87) — all got the **identical** ~22,085–22,087-byte
+  non-JSON bot-detection page across all 4 windows (1d/7d/30d/90d), 0 real
+  rows every time, regardless of script version or retry logic. Real data
+  would vary in size by date range; an identical byte count every time
+  means it's the same static page, not a data question. No run in this
+  project's history (checked from the earliest recorded run onward) shows
+  `nse_bulk`/`nse_block` actually passing `nse_validate.py`'s VERIFIED gate
+  (which strictly requires real captured rows — see `scripts/nse_validate.py`
+  lines 14-16 — so there's no looser historical definition this could be
+  hiding behind either).
   **2026-09-01 17:16 IST — user confirmed via phone browser that NSE's own
   Bulk Deals page loads real 31-Aug-2026 data instantly from an ordinary
   mobile connection.** This rules out "no data" or "site down," and points
   at IP-reputation blocking of GitHub Actions' data-center IP ranges
   specifically for this endpoint (Insider/Rights/Preferential aren't
-  affected from the same IPs, so it's endpoint-specific, not domain-wide).
+  affected from the same IPs, so it's endpoint-specific, not domain-wide) —
+  and consistent with it never having worked from a GitHub-hosted runner in
+  the first place, not something that broke.
   **Revised expectation: a cooldown period may not be sufficient on its
   own** the way it was for Rights/Preferential — if this is IP-based rather
   than request-cadence-based, the block may persist indefinitely from
@@ -147,10 +159,10 @@ These are defect-diagnosis observations, not certification.
 |---|---|---|
 | NSE | Insider | ✅ VERIFIED (corporates-pit-gg + XBRL rewrite) |
 | NSE | Promoter semantics | ✅ VERIFIED (confirmed 2 consecutive runs) |
-| NSE | Bulk | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
-| NSE | Block | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
-| NSE | Rights | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
-| NSE | Preferential | 🟡 Previously VERIFIED; Akamai rate-limited during rapid retesting — awaiting cooldown reconfirmation |
+| NSE | Bulk | 🔴 BLOCKED — no confirmed successful run found in this project's history (see "Current confirmed state" above); likely IP-reputation block on GitHub-hosted runners, not a cooldown issue |
+| NSE | Block | 🔴 BLOCKED — same as Bulk above |
+| NSE | Rights | ✅ VERIFIED (confirmed run #87, 2026-09-01T16:58Z) |
+| NSE | Preferential | ✅ VERIFIED (confirmed run #87, 2026-09-01T16:58Z) |
 | BSE | Insider | ✅ VERIFIED |
 | BSE | Promoter semantics | ✅ VERIFIED |
 | BSE | Bulk | ✅ VERIFIED |
