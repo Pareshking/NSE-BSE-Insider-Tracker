@@ -147,6 +147,54 @@ default/current-day view); `historical_date_test.method` is always set to
 
 ---
 
+## Cross-exchange field alignment (canonical layer)
+
+NSE and BSE never use the same field names for the same concept, and NSE
+doesn't even use the same field name for the same concept across its own
+categories. Verified on real captured data (2026-09-01):
+
+- Insider "company": NSE `companyName`, BSE `company`.
+- Rights "company": NSE `companyName` — **but on some rows this field holds
+  a raw BSE scrip code number (e.g. `"500306"`) instead of an actual company
+  name**, apparently because the underlying `FIRILS` (listing-stage) index
+  has different field semantics than `FIRIIP` (in-principle). Preferential
+  "company" uses yet a third NSE field name, `nameOfTheCompany`, and that one
+  is clean.
+- BSE's positional-array categories (`bse_validate.py`'s `normalize()`) use
+  generic labels like `stage_1`/`stage_2`/`stage_3` for Rights/Preferential —
+  one of which is literally an XML file path, not a semantic field name.
+
+`scripts/r2_writer.py`'s `canonicalize()` function adds a set of
+`canonical_*` columns to the Parquet output (never touching or dropping the
+native columns, which stay for drill-down/audit) so a frontend can read one
+consistent column name per category regardless of exchange:
+
+- `insider_trading`: `canonical_company`/`symbol`/`person`/`person_category`/
+  `transaction_type`/`quantity`/`value`/`holding_before`/`holding_after`/
+  `transaction_date`/`mode`/`broadcast_date`
+- `bulk_deals`/`block_deals`: `canonical_company`/`symbol`/`client`/`side`
+  (normalized to `BUY`/`SELL`)/`quantity`/`price`/`event_date`
+- `rights_issue`/`preferential_issue`: `canonical_company`/`symbol`/`stage`/
+  `event_date`, plus `canonical_company_unreliable` (`true` when the source
+  company-name field was purely numeric and was nulled out rather than
+  surfaced as a fake name — this is the scrip-code bug above)
+
+**Not yet handled: cross-exchange same-event matching.** The canonical
+layer aligns *column names*; it does not detect that an NSE-tagged row and
+a BSE-tagged row are the *same underlying disclosure* (companies dual-listed
+on both exchanges routinely file the same insider/rights/preferential event
+to both). Every row still carries its own `exchange` tag and
+`canonical_event_id`, so today's frontend will correctly show NSE and BSE
+observations as separate rows even when they describe the same real-world
+event. Building actual duplicate/same-event detection across exchanges is
+deliberately deferred — see `DATA_VALIDATION_AND_DEDUP_PLAN.md`'s
+"Cross-exchange matching" section — until both exchanges are independently
+certified, and needs its own design (exact/fuzzy match on
+company+symbol+date+quantity, classified as mirrored/same-event/
+exchange-specific/uncertain, never a blind merge).
+
+---
+
 ## Validation / certification
 
 - `scripts/nse_validate.py` reads each category's `report.json`/window files
