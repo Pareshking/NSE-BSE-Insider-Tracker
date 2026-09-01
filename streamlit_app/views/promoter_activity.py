@@ -1,0 +1,158 @@
+"""Promoter Activity -- net-position rollup, not a raw trade list.
+
+The point: NSE/BSE already show every individual insider trade. What they
+don't show is the STORY those trades add up to -- ten small daily buys by
+one promoter are the same underlying signal as one large purchase, and this
+page is where that rollup happens. Two grains, both real, neither hides the
+other: per (person, company) for "who is doing this," and per company for
+"what's happening here overall, across everyone." No minimum-size filter --
+every row is shown, sorted by the size of the net position so the real
+signals surface on their own.
+"""
+import sys
+from pathlib import Path
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib import r2_data, style
+
+st.markdown("### Promoter Activity")
+st.caption("Net position rollups -- not a raw trade list. See Evidence & Drill-down for individual transactions.")
+
+client = r2_data.get_client()
+if not r2_data.r2_configured():
+    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
+    st.stop()
+
+dates = r2_data.list_manifest_dates(client)
+if not dates:
+    st.info("No manifests found in the bucket yet.")
+    st.stop()
+
+top = st.columns([1, 1, 2])
+with top[0]:
+    selected_date = st.selectbox("Run date", dates, index=0)
+with top[1]:
+    exchange_choice = st.radio("Exchange", ["Both", "NSE", "BSE"], horizontal=True, label_visibility="collapsed")
+exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
+
+dfs = [r2_data.load_canonical(client, ex, "insider_trading", selected_date) for ex in exchanges]
+dfs = [d for d in dfs if not d.empty]
+if not dfs:
+    st.caption(f"No insider-trading rows for {selected_date} on {exchange_choice}.")
+    st.stop()
+
+df = pd.concat(dfs, ignore_index=True)
+df["_date"] = pd.to_datetime(df["canonical_transaction_date"], errors="coerce")
+run_date = df["_date"].max()
+
+ttype = df["canonical_transaction_type"].astype(str).str.upper()
+df["_signed_qty"] = pd.to_numeric(df["canonical_quantity"], errors="coerce").fillna(0)
+df["_signed_val"] = pd.to_numeric(df["canonical_value"], errors="coerce").fillna(0)
+is_disposal = ttype.str.contains("DISPOS")
+is_acq = ttype.str.contains("ACQUI")
+df.loc[is_disposal, ["_signed_qty", "_signed_val"]] *= -1
+unrecognized = (~is_disposal & ~is_acq).sum()
+
+WINDOWS = {"7D": 7, "30D": 30, "90D": 90}
+window_label = st.radio("Window", list(WINDOWS.keys()), index=1, horizontal=True)
+window_days = WINDOWS[window_label]
+cutoff = run_date - pd.Timedelta(days=window_days - 1)
+win_df = df[(df["_date"] >= cutoff) & (df["_date"] <= run_date)]
+
+if unrecognized:
+    st.caption(f"⚠️ {unrecognized} row(s) had a transaction type that wasn't recognized as ACQUISITION or DISPOSAL and are excluded from the net calculation (shown but not summed).")
+
+
+def fmt_signed_inr(v: float) -> str:
+    sign = "-" if v < 0 else ""
+    return sign + style.fmt_inr(abs(v))
+
+
+def direction_badge(net: float) -> str:
+    if net > 0:
+        return style.badge("NET BUY", "green", "green_bg", dot=False)
+    if net < 0:
+        return style.badge("NET SELL", "red", "red_bg", dot=False)
+    return style.badge("FLAT", "text_2", "bg_sub", dot=False)
+
+
+def sparkline(daily: pd.Series) -> go.Figure:
+    cum = daily.cumsum()
+    color = style.COLORS["green"] if cum.iloc[-1] >= 0 else style.COLORS["red"]
+    fig = go.Figure(go.Scatter(x=list(range(len(cum))), y=cum.values, mode="lines", line=dict(color=color, width=2)))
+    fig.update_layout(
+        height=40, margin=dict(l=0, r=0, t=0, b=0),
+        xaxis=dict(visible=False), yaxis=dict(visible=False),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    return fig
+
+
+grain = st.tabs(["By Person", "By Company"])
+
+with grain[0]:
+    grouped = (
+        win_df.groupby(["canonical_company", "canonical_person"], dropna=False)
+        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"))
+        .reset_index()
+    )
+    grouped = grouped.reindex(grouped["net_val"].abs().sort_values(ascending=False).index)
+    st.caption(f"{len(grouped)} promoter/company pairs, {window_label} window ending {run_date.date() if pd.notna(run_date) else '—'} -- sorted by size of net position, largest first.")
+    for _, row in grouped.head(20).iterrows():
+        c1, c2, c3, c4 = st.columns([2.5, 1.2, 1.2, 1.6])
+        with c1:
+            sub_color = style.COLORS["text_2"]
+            st.markdown(f"**{row['canonical_company']}**  \n<span style='color:{sub_color};font-size:12px;'>{row['canonical_person']}</span>", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<span class="mono">{row["net_qty"]:,.0f}</span> sh', unsafe_allow_html=True)
+        with c3:
+            st.markdown(f'<span class="mono">{fmt_signed_inr(row["net_val"])}</span>', unsafe_allow_html=True)
+        with c4:
+            st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
+        person_rows = win_df[(win_df["canonical_company"] == row["canonical_company"]) & (win_df["canonical_person"] == row["canonical_person"])].sort_values("_date")
+        if len(person_rows) > 1:
+            daily = person_rows.groupby(person_rows["_date"].dt.date)["_signed_qty"].sum()
+            st.plotly_chart(sparkline(daily), use_container_width=True, config={"displayModeBar": False}, key=f"spark-p-{row['canonical_company']}-{row['canonical_person']}")
+        st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
+    if len(grouped) > 20:
+        st.caption(f"{len(grouped) - 20} more pairs not shown as charts -- full list below.")
+        st.dataframe(
+            grouped.iloc[20:].rename(columns={"canonical_company": "Company", "canonical_person": "Person", "net_qty": "Net Qty", "net_val": "Net Value", "trades": "Trades"}),
+            hide_index=True, use_container_width=True,
+        )
+
+with grain[1]:
+    grouped_c = (
+        win_df.groupby("canonical_company", dropna=False)
+        .agg(net_qty=("_signed_qty", "sum"), net_val=("_signed_val", "sum"), trades=("_signed_qty", "size"), promoters=("canonical_person", "nunique"))
+        .reset_index()
+    )
+    grouped_c = grouped_c.reindex(grouped_c["net_val"].abs().sort_values(ascending=False).index)
+    st.caption(f"{len(grouped_c)} companies, {window_label} window -- all promoters/insiders combined per company, sorted by size of net position.")
+    for _, row in grouped_c.head(20).iterrows():
+        c1, c2, c3, c4 = st.columns([2.5, 1.2, 1.2, 1.6])
+        with c1:
+            sub_color = style.COLORS["text_2"]
+            st.markdown(f"**{row['canonical_company']}**  \n<span style='color:{sub_color};font-size:12px;'>{int(row['promoters'])} distinct promoter(s)/insider(s)</span>", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<span class="mono">{row["net_qty"]:,.0f}</span> sh', unsafe_allow_html=True)
+        with c3:
+            st.markdown(f'<span class="mono">{fmt_signed_inr(row["net_val"])}</span>', unsafe_allow_html=True)
+        with c4:
+            st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
+        company_rows = win_df[win_df["canonical_company"] == row["canonical_company"]].sort_values("_date")
+        if len(company_rows) > 1:
+            daily = company_rows.groupby(company_rows["_date"].dt.date)["_signed_qty"].sum()
+            st.plotly_chart(sparkline(daily), use_container_width=True, config={"displayModeBar": False}, key=f"spark-c-{row['canonical_company']}")
+        st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
+    if len(grouped_c) > 20:
+        st.caption(f"{len(grouped_c) - 20} more companies not shown as charts -- full list below.")
+        st.dataframe(
+            grouped_c.iloc[20:].rename(columns={"canonical_company": "Company", "net_qty": "Net Qty", "net_val": "Net Value", "trades": "Trades", "promoters": "Promoters"}),
+            hide_index=True, use_container_width=True,
+        )

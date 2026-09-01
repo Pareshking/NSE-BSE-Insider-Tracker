@@ -127,7 +127,7 @@ with left:
             + "".join(rows_html) + "</table>",
             unsafe_allow_html=True,
         )
-    st.caption("Full drill-down (native fields, source ID, ISIN cross-match) is on the Transactions page.")
+    st.caption("Full drill-down (native fields, source ID, ISIN cross-match) is on the Evidence & Drill-down page. Net-position rollups are on Promoter Activity.")
 
 with right:
     st.markdown("**Date coverage**")

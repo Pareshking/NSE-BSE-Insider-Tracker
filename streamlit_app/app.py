@@ -27,7 +27,8 @@ style.sidebar_brand()
 pg = st.navigation(
     [
         st.Page("views/overview.py", title="Overview", icon="\U0001f3e0", default=True),
-        st.Page("views/transactions.py", title="Transactions", icon="\U0001f4c8"),
+        st.Page("views/promoter_activity.py", title="Promoter Activity", icon="\U0001f4c8"),
+        st.Page("views/transactions.py", title="Evidence & Drill-down", icon="\U0001f50e"),
         st.Page("views/data_quality.py", title="Data Quality", icon="✅"),
     ]
 )

@@ -9,7 +9,8 @@ from lib import r2_data, style
 
 style.inject_base_css()
 
-st.title("Transactions")
+st.title("Evidence & Drill-down")
+st.caption("Every individual transaction, with source fields and cross-match evidence. For rollups and signals, see Overview and Promoter Activity.")
 
 client = r2_data.get_client()
 if not r2_data.r2_configured():
