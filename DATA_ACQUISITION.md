@@ -179,19 +179,36 @@ consistent column name per category regardless of exchange:
   company-name field was purely numeric and was nulled out rather than
   surfaced as a fake name — this is the scrip-code bug above)
 
-**Not yet handled: cross-exchange same-event matching.** The canonical
-layer aligns *column names*; it does not detect that an NSE-tagged row and
-a BSE-tagged row are the *same underlying disclosure* (companies dual-listed
-on both exchanges routinely file the same insider/rights/preferential event
-to both). Every row still carries its own `exchange` tag and
-`canonical_event_id`, so today's frontend will correctly show NSE and BSE
-observations as separate rows even when they describe the same real-world
-event. Building actual duplicate/same-event detection across exchanges is
-deliberately deferred — see `DATA_VALIDATION_AND_DEDUP_PLAN.md`'s
-"Cross-exchange matching" section — until both exchanges are independently
-certified, and needs its own design (exact/fuzzy match on
-company+symbol+date+quantity, classified as mirrored/same-event/
-exchange-specific/uncertain, never a blind merge).
+### Cross-exchange same-event matching: flagged, never merged
+
+Companies dual-listed on both exchanges routinely file the same disclosure
+to both. `find_cross_exchange_matches()` flags this per category+run without
+ever merging rows — both NSE and BSE observations always remain in the
+dataset independently:
+
+- Runs only when **both** exchanges' validators marked that category
+  VERIFIED for the run (never attempted against BLOCKED/partial data).
+- Requires a normalized company-name match (strips `LIMITED`/`LTD`/`PVT`/
+  punctuation) **and** either an exact quantity match (insider/bulk/block —
+  the strong signal) or a close event date on both sides when the category
+  has no quantity to compare (rights/preferential).
+- A company with more than one equally-good candidate on the other side is
+  left **unflagged** rather than guessing which one.
+- Matches add `cross_exchange_possible_match_id` (the other exchange's
+  `canonical_event_id`) and `cross_exchange_match_confidence`
+  (`high`/`medium`) columns to the Parquet output — a hint for the frontend
+  to show "also reported on the other exchange," nothing more.
+
+Real bug caught before shipping: BSE's `rights_issue`/`preferential_issue`
+schema has no date field at all (see the table above), so an early version
+of the date check was silently skipped, letting company-name-only matches
+through too permissively — 149 NSE-side matches collapsed to 77 BSE-side
+matches once dict-key collisions from multiple false candidates were
+resolved. Fixed by requiring dates on **both** sides when there's no
+quantity to corroborate; verified this now correctly flags 0 matches for
+`rights_issue` in a run where BSE genuinely lacks the data needed to
+confirm one, while still correctly flagging insider trades with matching
+company + date + quantity across exchanges.
 
 ---
 
