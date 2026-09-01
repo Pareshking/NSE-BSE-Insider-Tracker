@@ -19,18 +19,28 @@ works and why.**
   the list response. Rewritten in `scripts/nse_insider.py`; confirmed
   `promoter_semantics: VERIFIED` in two consecutive live runs (1638 and 224
   promoter-category rows respectively, well above the `>0` gate).
-- **NSE Bulk / Block / Rights / Preferential: previously VERIFIED, needs a
-  clean reconfirmation run.** These were not touched by the insider fix.
-  During same-session rapid back-to-back test triggers (5 CI runs of
-  `nse-validation.yml` within ~40 minutes), NSE's Akamai edge escalated from
-  soft bot-detection (HTTP 200 with an HTML page) to a hard
-  `403 Access Denied` across every NSE endpoint on the runner's IP. This
-  reads as **rate-limiting from testing cadence, not a code regression** —
-  nothing in `nse_bulk.py`/`nse_block.py`/`nse_rights.py`/`nse_preferential.py`
-  changed between the passing and blocked runs. A cooldown + a single clean
-  run should confirm this. `nse_bulk.py`/`nse_block.py` also gained a
-  3-retry-with-page-reload guard for the milder (HTTP 200, non-JSON) form of
-  this same Akamai behavior.
+- **NSE Rights / Preferential: ✅ confirmed VERIFIED** in a fresh run
+  (`nse-validation.yml` run #87, 2026-09-01T16:58Z, commit `c8f2d9f`) —
+  recovered fully from the earlier Akamai escalation.
+- **NSE Bulk / Block: still blocked — and likely not just a cooldown
+  issue.** Same run #87: both got the identical 22,087-byte non-JSON
+  bot-detection page across all 4 windows (1d/7d/30d/90d) despite the
+  existing 3-retry-with-page-reload guard. Real data would vary in size by
+  date range; getting the exact same bytes every time means it's the same
+  static page, not a data question.
+  **2026-09-01 17:16 IST — user confirmed via phone browser that NSE's own
+  Bulk Deals page loads real 31-Aug-2026 data instantly from an ordinary
+  mobile connection.** This rules out "no data" or "site down," and points
+  at IP-reputation blocking of GitHub Actions' data-center IP ranges
+  specifically for this endpoint (Insider/Rights/Preferential aren't
+  affected from the same IPs, so it's endpoint-specific, not domain-wide).
+  **Revised expectation: a cooldown period may not be sufficient on its
+  own** the way it was for Rights/Preferential — if this is IP-based rather
+  than request-cadence-based, the block may persist indefinitely from
+  GitHub-hosted runners. Decision (2026-09-01): keep the existing
+  scheduled-retry approach for now rather than standing up a self-hosted
+  runner or a manual CSV fallback; revisit if retries keep failing over
+  multiple days.
 - **Operational lesson:** don't fire `nse-validation.yml` repeatedly within
   a short window while iterating — space test runs out (10+ minutes) to
   avoid tripping Akamai's edge rate limiter across the whole domain.

@@ -77,11 +77,25 @@ it. Do the same before changing any of this.
   serves the bot-detection HTML for one window (status 200, `bytes≈22085`,
   JSON-parse fails on line 2). `fetch_window()` now retries up to 3 times per
   window, reloading the page between attempts to refresh the session state.
+- **2026-09-01 finding — likely IP-reputation, not just request-pattern
+  flakiness:** a run confirmed all 4 windows (1d/7d/30d/90d) got the
+  identical bot-detection page (same 22,087 bytes every time, regardless of
+  date range — real data would vary in size by range) despite the 3x retry.
+  In the same session, manually loading NSE's Bulk Deals page from an
+  ordinary residential/mobile connection returned real 31-Aug-2026 rows
+  instantly — confirming the site and the data are fine, and the block is
+  specific to this endpoint being called from a GitHub Actions runner's
+  data-center IP range. This means the existing retry-with-reload logic may
+  not be sufficient on its own; a durable fix likely needs the request to
+  originate from a non-data-center IP (e.g. a self-hosted runner) rather
+  than more retries against the same IP.
 
 ### 3. Block Deals (`scripts/nse_block.py`)
 
 Same method and same retry logic as Bulk Deals, against
-`https://www.nseindia.com/api/historical/block-deals`.
+`https://www.nseindia.com/api/historical/block-deals`. Same 2026-09-01
+finding applies — this endpoint gets the identical bot-detection page from
+the same runner IP range at the same time as Bulk Deals.
 
 ### 4. Rights Issues (`scripts/nse_rights.py`)
 
