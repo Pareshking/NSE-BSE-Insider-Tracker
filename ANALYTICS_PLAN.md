@@ -67,20 +67,25 @@ metric we need a new, small reference-data source:
   list?) -- needs the same rigor as any other data source before being
   trusted in a ranked view.
 
+**Correction (2026-09-01, after re-reading the repo more carefully):** the
+VR-sheet ingestion described below as future work is **already done**.
+`reference_data/security_master_20260901.csv` (5,287 rows: ISIN, NSE
+symbol, BSE scrip code, company, sector, industry, `mcap_category`) is
+the already-extracted, already-committed result of that same
+`stock-screener-01-Sep-2026--1932.xls` file, and `scripts/r2_writer.py`
+already uses it (`load_security_master()`/`resolve_isin()`) as the primary
+key for cross-exchange same-event matching. **Phase 0.5 does not need to
+build the symbol crosswalk -- it already exists.** The only genuinely new
+work is the numeric market-cap fetch + join described below.
+
 **Data sources confirmed (2026-09-01), replacing guesses with real inspection:**
 
-- `stock-screener-01-Sep-2026--1932.xls` (already in repo root, a Value
-  Research screener export) -- opens fine with `xlrd`'s
-  `ignore_workbook_corruption=True` flag (a known quirk of this export
-  format, not real corruption). 5,287 companies with `Security`, `ISIN`,
-  `BSE Code`, `NSE Code`, `Sector`, `Industry`, `Stock Rating`,
-  `Quality/Growth/Valuation/Momentum Score`, `Mcap Category`
-  (Small/Mid/Large Cap bucket only -- **not** a ₹ figure). 3,116 rows have
-  an NSE code, 4,581 have a BSE code. This is exactly the NSE<->BSE<->ISIN
-  cross-reference the cross-exchange matcher has been missing -- use it as
-  a static `reference/company_master` table (ingest once, re-ingest when
-  the user provides a refreshed export). It gives sector/industry and a
-  coarse cap-tier immediately, but not precise market cap.
+- `reference_data/security_master_20260901.csv` (see correction above) --
+  3,116 rows have an NSE code, 4,581 have a BSE code (`bse_scrip_code` is
+  null for 706, `nse_symbol` null for 2,171 -- real, not a defect, not
+  every security is cross-listed). Gives sector/industry and a coarse
+  `mcap_category` (Small/Mid/Large bucket only -- **not** a ₹ figure)
+  immediately, but not precise market cap.
 - `jugaad-data` (PyPI, NSE-only, actively maintained, already handles
   NSE's session/anti-bot dance so we don't reverse-engineer it ourselves
   again): `NSELive().stock_quote(symbol)` returns `securityInfo.issuedCap`
@@ -168,19 +173,99 @@ Decision: keep all three deferred/unscoped for now. Stay focused on
 Phase 0.5 -> Phase 2 -> Phase 3 first; revisit 6/8/7 (in that effort
 order) after.
 
+## Full blueprint re-read findings (2026-09-01)
+
+User asked to check whether `FRONTEND_UI_BLUEPRINT.md` had more detail on
+what was originally supposed to be displayed. It does -- the earlier check
+of this file was keyword-grep sampling, not a full read. Real gaps found,
+now decided:
+
+**Pulled into the near-term roadmap (user confirmed all of these):**
+
+- **Trends & Charts module** (blueprint §16) -- daily/weekly/monthly event
+  count, buy vs. sell, transaction value, category mix, across *all five*
+  categories combined. Distinct from Promoter Activity's per-row
+  sparklines -- this is a whole-market trend view. No new data source
+  needed (uses existing canonical data across categories).
+- **Downloads / export** (blueprint §18) -- CSV/JSON export of the
+  currently filtered dataset, with metadata (exchange, category,
+  requested/actual range, extraction timestamp, validation state, applied
+  filters). Nothing like this exists yet on any page. Cheap, no new data
+  source, applies to every page with a table.
+- **Richer Rights/Preferential lifecycle UI** (blueprint §11-12) -- the
+  blueprint specifies an explicit stage timeline (Announcement -> Record
+  Date -> Ratio/Price -> Issue Open/Close -> Entitlement -> Allotment ->
+  Listing/Trading Approval) with a detail drawer showing full stage
+  history, not just a status field. This upgrades Phase 3's description
+  below -- do this design work before Phase 3 build starts, not after.
+- **Global search** (blueprint §3, §19) -- Cmd/Ctrl+K, searches
+  company/symbol/ISIN/person/client/promoter category across all
+  categories, grouped results. Pure navigation UX, no new data source.
+  Streamlit has no native command-palette primitive -- will need a custom
+  component or a workaround; not yet investigated how.
+- **Validation & Evidence audit centre upgrade** (blueprint §15) -- current
+  Data Quality page (`streamlit_app/views/data_quality.py`) is much
+  thinner than spec: it has a certification matrix + known limitations +
+  security-master snapshot info, but none of the blueprint's `Runs |
+  Source Comparison | API Evidence | Schema | Duplicates | Coverage |
+  Errors` tabs, and no `Discovered -> Integrated -> Tested -> Validated`
+  state distinction for endpoints. **Open question, not yet resolved:**
+  the "Runs" tab needs workflow/run-ID/commit/status/artifact-link data --
+  we don't currently plumb GitHub Actions run history into the frontend,
+  and doing so from a public Streamlit app raises a credentials question
+  (a GitHub token embedded in a public app is a real exposure -- needs a
+  read-only, scoped approach, e.g. the pipeline writing its own run
+  summary to R2 at the end of each run instead of the frontend calling the
+  GitHub API directly). Needs a design decision before implementation.
+- **API Documentation / external API** (blueprint §4 sidebar item) --
+  implies exposing our certified canonical data externally. **Open
+  question, not yet resolved:** this is a product decision, not a UI task
+  -- who is the consumer? (Just the repo owner via scripts, in which case
+  R2 read access already IS the API and this is a documentation-only
+  task; or genuinely external third parties, in which case it needs auth,
+  rate-limiting, and a hosting decision this project has never discussed.)
+  Do not start building until that's answered.
+
+**Noted, deliberately not pulled forward:**
+
+- Accessibility (WCAG 2.2 AA), performance targets, staged loading
+  messages, mobile-specific layout, empty/error-state richness (blueprint
+  §24-30) -- real, documented requirements, but engineering/UX hygiene
+  rather than "quantitative platform" content. Not tracked as a phase;
+  revisit once the page set stabilizes.
+- Indian digit-grouping for raw currency values (`₹1,23,45,678`, blueprint
+  §22) vs. our current `fmt_inr()` fallback which uses US-style grouping
+  for values under ₹1,000 -- a small, concrete formatting bug. Folded into
+  the existing "Visual / formatting" cross-cutting section above, not a
+  separate phase.
+- "Top Companies" cross-category ranking (blueprint §16) -- likely the
+  same thing as the already-planned Phase 4 Signals home page (which pulls
+  top-ranked items from Phases 1-3 into one ranked front door). Treated as
+  the same deliverable, not a new one, unless it turns out Phase 4 doesn't
+  cover the cross-category blend the blueprint describes.
+
 ## Page structure
 
-| Page | Status | Notes |
+Revised sequence after the full blueprint re-read (2026-09-01) -- items
+pulled forward this round are marked **NEW**.
+
+| Page / deliverable | Status | Notes |
 |---|---|---|
 | Overview | Live, redesigned | Certification/status home -- KPIs, latest activity, coverage. Not a signal page. |
 | **Promoter Activity** | **Built, smoke-tested** | Net-position rollup, both grains (per person+company, per company), no threshold, sorted by \|net value\|. Needs: market-cap materiality column (Phase 0.5), column/date formatting pass. |
-| Bulk & Block Concentration | Not started (Phase 2) | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
-| Rights & Preferential Pipeline | Not started (Phase 3) | Lifecycle-stage view (BSE `in_principle_status`/`listing_stage_date` -- still unverified against live BSE data, verify before trusting in UI). Promoter vs non-promoter allotment share, amount-raised trend. |
-| Signals (home) | Not started (Phase 4) | Ranked cross-page front door, pulls top items from Phases 1-3. Replaces Overview as the default landing page once it exists. |
-| Cross-exchange correlated signals | Deferred (Phase 5) | Depends on the still-partial cross-exchange matcher -- the VR sheet's ISIN/BSE/NSE mapping (Phase 0.5) directly helps this. |
-| Peer / sector comparison | Deferred (Phase 6, unscoped) | Not in original docs. VR sheet's Sector/Industry columns make this feasible once scoped. |
-| Price-correlation overlay | Deferred (Phase 7, unscoped) | Not in original docs. Needs a price-history source (candidate: `jugaad-data` bhavcopy, NSE-only). |
-| Investment-signal alerts/notifications | Deferred (Phase 8, unscoped) | Not in original docs -- distinct from the existing data-quality "Alerts" nav item. |
+| Phase 0.5: Market cap join | Not started | Numeric market cap via `jugaad-data` (NSE) joined onto existing `security_master` crosswalk (already built, see correction above); coarse `mcap_category` fallback for BSE-only names. |
+| **NEW** Downloads / export | Not started, cross-cutting | CSV/JSON export + metadata, applies to every table page. Cheap, no new data source -- do this early, right after Phase 0.5, since every later page benefits from it existing. |
+| Phase 2: Bulk & Block Concentration | Not started | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
+| **NEW** Phase 2.5: Trends & Charts | Not started | Whole-market daily/weekly/monthly event count, buy vs. sell, category mix across all 5 categories. No new data source. |
+| Phase 3: Rights & Preferential Pipeline | Not started | **NEW: upgraded design** -- explicit lifecycle timeline (Announcement -> Record Date -> Ratio/Price -> Issue Open/Close -> Entitlement -> Allotment -> Listing) with full stage-history detail drawer, per blueprint §11-12, not just a status field. BSE `in_principle_status`/`listing_stage_date` still need live re-verification before trusting in UI. |
+| **NEW** Validation & Evidence upgrade | Not started, **blocked on a design decision** | Expand Data Quality into blueprint §15's audit centre (Runs/Source Comparison/API Evidence/Schema/Duplicates/Coverage/Errors tabs). Blocked until we decide how "Runs" data (workflow/commit/status) reaches the frontend without embedding GitHub credentials in a public app -- likely answer: pipeline writes its own run summary to R2. |
+| Phase 4: Signals (home) | Not started | Ranked cross-page front door, pulls top items from Phases 1-3 -- also intended to cover the blueprint's "Top Companies" cross-category ranking (insider + bulk/block blended). Replaces Overview as default landing page once it exists. |
+| **NEW** Global search | Not started, sequence after Phase 4 | Cmd/Ctrl+K across companies/persons/ISIN, grouped results. Needs the page set to stabilize first since results link into pages; Streamlit has no native command-palette primitive, implementation approach not yet investigated. |
+| Cross-exchange correlated signals | Deferred (Phase 5) | Depends on the still-partial cross-exchange matcher -- already helped by the existing `security_master` ISIN crosswalk. |
+| Peer / sector comparison | Deferred (Phase 6, unscoped) | Rides on Phase 0.5 + existing Sector/Industry columns once scoped. |
+| Price-correlation overlay | Deferred (Phase 7, unscoped) | Needs a price-history source (candidate: `jugaad-data` bhavcopy, NSE-only) plus historical backfill. |
+| Investment-signal alerts/notifications | Deferred (Phase 8, unscoped) | Distinct from the existing data-quality "Alerts" nav item. |
+| **NEW** API Documentation / external API | **Blocked on a product decision** | Who is the consumer -- just the repo owner (then this is a docs-only task, R2 read access already is the API) or genuine external third parties (then needs auth/rate-limiting/hosting, never discussed)? Do not sequence until answered. |
 | Evidence & Drill-down | Live, renamed from "Transactions" | Raw per-transaction view with source fields -- kept, demoted from top-level signal page to drill-down destination. |
 | Data Quality | Live, unchanged | Kept as-is. |
 
