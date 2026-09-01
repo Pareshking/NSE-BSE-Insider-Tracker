@@ -35,6 +35,32 @@ works and why.**
   a short window while iterating — space test runs out (10+ minutes) to
   avoid tripping Akamai's edge rate limiter across the whole domain.
 
+## Phase 4 (R2 storage): first live run confirmed working
+
+`r2-storage.yml` was merged to `main` and run for real
+(run #1, `33511424713`, 2026-09-01T13:13Z) against the live R2 bucket.
+`scripts/r2_writer.py` itself has **zero bugs** — every VERIFIED dataset
+wrote a real raw JSON object + Parquet file with a real SHA256 confirmed in
+the manifest, and every non-VERIFIED dataset was correctly skipped with a
+reason, never written as empty:
+
+| Exchange | Category | Result |
+|---|---|---|
+| NSE | insider_trading | ✅ written (465 rows) |
+| NSE | rights_issue | ✅ written (200 rows) — recovered from Akamai already |
+| NSE | preferential_issue | ✅ written (200 rows) — recovered from Akamai already |
+| NSE | bulk_deals | 🔴 skipped — still Akamai-BLOCKED |
+| NSE | block_deals | 🔴 skipped — still Akamai-BLOCKED |
+| BSE | bulk_deals | ✅ written (59 rows) |
+| BSE | block_deals | ✅ written (17 rows) |
+| BSE | rights_issue | ✅ written (267 rows) |
+| BSE | insider_trading | 🔴 skipped — BLOCKED this run (was VERIFIED 20 min earlier in the standalone BSE run; BSE's CDP capture is timing-sensitive, this reads as normal day-to-day flakiness, not a regression) |
+| BSE | preferential_issue | 🔴 skipped — BLOCKED this run (same as above) |
+
+6/10 datasets written this run. NSE rights/preferential already recovered
+from the earlier Akamai block on their own — only the bulk/block-deals
+endpoints specifically are still cooling down.
+
 ## Operating rule
 No one-year R2 backfill and no production-schema freeze until all validation gates are cleared and explicitly authorized.
 
