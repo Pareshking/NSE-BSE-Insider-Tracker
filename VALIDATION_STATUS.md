@@ -45,10 +45,25 @@ find the bug:
 - `preferential_issue_normalized.json` (1,142 real rows): **1,084/1,142
   (94.9%)** now resolve an ISIN, up from 0.
 
-Not yet re-confirmed through a live `r2-storage.yml` run (that will also
-move `cross_exchange_matches_flagged` off zero for these two categories) --
-verification so far is the fixed `resolve_isin()` re-run offline against
-the last run's real captured rows, not a fresh acquisition.
+**Live-run reconfirmation (2026-09-02, run
+[33589055414](https://github.com/Pareshking/NSE-BSE-Insider-Tracker/actions/runs/33589055414),
+commit `5a25a3d`)**: re-ran `resolve_isin()` against this run's own
+freshly-fetched `bse_validation/rights_issue_normalized.json` /
+`preferential_issue_normalized.json` (downloaded from its "Upload run
+evidence" artifact, not the earlier cached rows used to diagnose the bug)
+-- same **260/267 (97.4%)** and **1,084/1,142 (94.9%)** resolution rates.
+The fix holds on a genuinely fresh acquisition, not just against the data
+used to find the bug.
+
+Note: `cross_exchange_matches_flagged` stayed at 0 for both categories in
+this run's manifest, as expected -- that counter is a *different*
+mechanism (`find_cross_exchange_matches()`, which flags NSE/BSE rows as
+probable same-event duplicates by close dates, with no quantity signal to
+corroborate for these two categories) and isn't driven by whether
+`canonical_isin` resolves. Zero flagged matches here means no NSE/BSE pair
+this run had a close-enough date on both sides, not that the ISIN fix
+didn't take -- an earlier note in this section conflating the two was
+wrong and is corrected here.
 
 ## 2026-09-02 reconfirmation: all 10 (exchange, category) pairs VERIFIED
 
@@ -266,7 +281,7 @@ These are defect-diagnosis observations, not certification.
 | BSE | Preferential | ✅ VERIFIED |
 | BSE | Overall certification | ✅ VERIFIED (run #15, commit 5f529de; reconfirmed 2026-09-02 run 33575157195, all 10/10) |
 | Cross-exchange | Matching (insider/bulk/block) | ✅ Active, flag-only (ISIN crosswalk via `security_master`) |
-| Cross-exchange | Matching (rights/preferential) | ✅ Fixed 2026-09-02 -- `resolve_isin()` now tries `stage_3` (BSE's real scrip code) before `bse_company_code` (a different ID namespace); 97.4%/94.9% ISIN resolution confirmed against real evidence, pending live-run reconfirmation (see 2026-09-02 (later) section above) |
+| Cross-exchange | Matching (rights/preferential) | ✅ Fixed and live-run reconfirmed 2026-09-02 -- `resolve_isin()` now tries `stage_3` (BSE's real scrip code) before `bse_company_code` (a different ID namespace); 97.4%/94.9% ISIN resolution confirmed against both the original diagnostic evidence and a fresh `r2-storage.yml` acquisition (see 2026-09-02 (later) section above) |
 | R2 backfill | Gap detection + catch-up | ✅ Built and confirmed working in production, 2026-09-02 (`scripts/backfill_gaps.py`, backfilled 10 real missing weekdays in one run) -- not a one-year historical backfill, which remains unscoped |
 | Production schema | Freeze | 🔴 Not yet decided -- unrelated to this reconfirmation |
 
