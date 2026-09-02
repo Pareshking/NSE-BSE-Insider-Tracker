@@ -36,8 +36,9 @@ with h3:
     selected_date = st.selectbox("Run date", dates, index=0, label_visibility="collapsed")
 with h5:
     search_query = st.text_input(
-        "Search", placeholder="Search company, person, symbol…",
+        "Search", placeholder="Search company or symbol…",
         label_visibility="collapsed", key="overview_search",
+        help="Searching by person or fund name? Use Entity Tracker instead -- it looks up a name across every category, not just this page's company filter.",
     )
 
 manifest = r2_data.load_manifest(client, selected_date)
@@ -137,7 +138,11 @@ for i, category in enumerate(r2_data.CATEGORIES):
             unsafe_allow_html=True,
         )
 st.write("")
-st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Today\'s Signals</div>', unsafe_allow_html=True)
+title_col, link_col = st.columns([3, 1.3])
+with title_col:
+    st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Today\'s Signals</div>', unsafe_allow_html=True)
+with link_col:
+    st.page_link("views/confluence_screener.py", label="Cross-category confluence signals →", icon="🧭")
 
 sig1, sig2, sig3 = st.columns([1, 1.3, 1])
 
