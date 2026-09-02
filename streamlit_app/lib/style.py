@@ -173,6 +173,15 @@ div[role="radiogroup"] {{
 }}
 .evt-table td {{ padding: 9px 10px; border-bottom: 1px solid {COLORS['border']}; vertical-align: middle; }}
 .evt-table tr:last-child td {{ border-bottom: none; }}
+/* These tables carry 5-6 columns and are wider than a phone viewport, so
+   they need somewhere to scroll. Styling the table itself does not work:
+   with width:100% it stretches its parent instead of overflowing inside it,
+   which pushed the rightmost column (the value) off-screen with no way to
+   reach it. The wrapper is what bounds the width; min-width:0 stops it
+   inheriting the table's content width through the flex/grid parents
+   Streamlit puts around markdown blocks. */
+.table-scroll {{ overflow-x: auto; max-width: 100%; min-width: 0; }}
+.table-scroll .evt-table {{ min-width: max-content; }}
 </style>
 """,
         unsafe_allow_html=True,

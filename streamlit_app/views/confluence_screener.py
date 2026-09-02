@@ -221,7 +221,7 @@ if not transfers.empty:
         for _, r in transfers.iterrows()
     )
     st.markdown(
-        '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>BUYER ← SELLER</th><th style="text-align:right;">VALUE</th></tr>'
-        + rows_html + "</table>",
+        '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>BUYER ← SELLER</th><th style="text-align:right;">VALUE</th></tr>'
+        + rows_html + "</table></div>",
         unsafe_allow_html=True,
     )

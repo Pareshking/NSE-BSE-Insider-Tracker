@@ -162,9 +162,9 @@ with grain[0]:
                 for _, r in person_rows.iterrows()
             )
             st.markdown(
-                '<table class="evt-table"><tr><th>DATE</th><th>TYPE</th><th style="text-align:right;">QTY</th>'
+                '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>TYPE</th><th style="text-align:right;">QTY</th>'
                 '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
-                + detail_rows + "</table>",
+                + detail_rows + "</table></div>",
                 unsafe_allow_html=True,
             )
         st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
@@ -214,9 +214,9 @@ with grain[1]:
                 for _, r in company_rows.iterrows()
             )
             st.markdown(
-                '<table class="evt-table"><tr><th>DATE</th><th>PERSON</th><th>TYPE</th><th style="text-align:right;">QTY</th>'
+                '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>PERSON</th><th>TYPE</th><th style="text-align:right;">QTY</th>'
                 '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
-                + detail_rows + "</table>",
+                + detail_rows + "</table></div>",
                 unsafe_allow_html=True,
             )
         st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)

@@ -21,7 +21,8 @@ Env vars work the same as secrets.toml if you'd rather not create the file
 ## Tests
 
 ```bash
-python streamlit_app/tests/test_pages.py
+python streamlit_app/tests/test_pages.py            # every page renders, under odd data shapes
+python streamlit_app/tests/test_overview_signals.py # Overview's rollups say what they claim
 ```
 
 No credentials needed: every page runs headlessly (Streamlit's own
@@ -31,6 +32,14 @@ field, and one where R2 itself is unreachable. Also checks that the date
 parser resolves every format seen in `artifacts/` to the right day. Each
 case is a bug that was live at some point, so add one here whenever you fix
 another.
+
+`test_overview_signals.py` covers the rollups rather than the rendering, and
+is built from rows the deployed app actually showed: one bulk/block deal
+arriving as four rows because both counterparties disclose it and it can land
+in both feeds; 493 securities flagged "concentrated" at top3 100%, because a
+security traded by three or fewer clients is trivially 100%; +13,981.7% as a
+headline stake change off a 1,000-share base; and an ESOP filing summed into
+promoter "accumulation" and ranked by % of market cap.
 
 ## Pages
 
