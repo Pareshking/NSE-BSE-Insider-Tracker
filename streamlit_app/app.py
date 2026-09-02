@@ -16,26 +16,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import style
 
 st.set_page_config(
-    page_title="NSE·BSE Corporate Event Tracker",
+    page_title="Insiders",
     page_icon="\U0001f4ca",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 style.inject_base_css()
-style.sidebar_brand()
+style.top_brand_bar(
+    f"Session as of <span class=\"mono\">{datetime.now(timezone.utc).strftime('%d %b %Y · %H:%M UTC')}</span>"
+)
 
+# Top nav bar, not a sidebar -- this app is used on mobile, where a
+# left-hand sidebar drawer costs a tap and half the screen width every
+# time. position="top" needs a flat page list (a horizontal bar has nowhere
+# to put section headers), so the TRANSACTIONS/ANALYTICS/DATA & TRUST
+# grouping from the design mockup's sidebar doesn't carry over here.
 pg = st.navigation(
     [
         st.Page("views/overview.py", title="Overview", icon="\U0001f3e0", default=True),
+        st.Page("views/transactions.py", title="Evidence & Drill-down", icon="\U0001f50e"),
         st.Page("views/promoter_activity.py", title="Promoter Activity", icon="\U0001f4c8"),
         st.Page("views/bulk_block_concentration.py", title="Bulk & Block Concentration", icon="\U0001f4ca"),
-        st.Page("views/transactions.py", title="Evidence & Drill-down", icon="\U0001f50e"),
         st.Page("views/data_quality.py", title="Data Quality", icon="✅"),
-    ]
-)
-
-style.sidebar_footer(
-    f"Session as of<br/><span class=\"mono\">{datetime.now(timezone.utc).strftime('%d %b %Y · %H:%M UTC')}</span>"
+    ],
+    position="top",
 )
 
 pg.run()

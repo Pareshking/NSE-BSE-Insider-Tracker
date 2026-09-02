@@ -1,7 +1,9 @@
 import sys
+import warnings
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,14 +27,19 @@ if not dates:
     st.info("No manifests found in the bucket yet -- the R2 write workflow hasn't run, or hasn't produced output for any date.")
     st.stop()
 
-# --- header bar: title + exchange toggle + date selector + certification badges ---
-h1, h2, h3, h4 = st.columns([2, 1.4, 1.3, 2.3])
+# --- header bar: title + exchange toggle + date selector + search + certification badges ---
+h1, h2, h3, h5, h4 = st.columns([1.6, 1.4, 1.3, 2.2, 2.1])
 with h1:
     st.markdown("### Overview")
 with h2:
     exchange_choice = st.radio("Exchange", ["Both", "NSE", "BSE"], horizontal=True, label_visibility="collapsed")
 with h3:
     selected_date = st.selectbox("Run date", dates, index=0, label_visibility="collapsed")
+with h5:
+    search_query = st.text_input(
+        "Search", placeholder="Search company, person, symbol…",
+        label_visibility="collapsed", key="overview_search",
+    )
 
 manifest = r2_data.load_manifest(client, selected_date)
 entries = manifest.get("datasets", manifest if isinstance(manifest, list) else [])
@@ -44,7 +51,7 @@ if manifest.get("backfilled"):
         f"This date's data was backfilled by the {style.fmt_date(manifest.get('backfilled_from_run_date'))} run "
         "-- the scheduled run for this day didn't produce a manifest (a failed run, most likely), so this is a "
         "catch-up write from a later day's already-fetched data, not a same-day capture.",
-        icon="↻",
+        icon="🔄",
     )
 
 nse_ok = any(e.get("exchange") == "nse" and e.get("status") == "VERIFIED" for e in entries)
@@ -62,114 +69,219 @@ with h4:
 
 exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
 data = {(ex, cat): r2_data.load_canonical(client, ex, cat, selected_date) for ex in exchanges for cat in r2_data.CATEGORIES}
+insider_df = pd.concat([data.get((ex, "insider_trading"), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
 
-# --- KPI strip ---
+# Rights/preferential carry event dates from way earlier (or, for some
+# corporate-action fields, later -- e.g. a record date) in a listing's
+# lifecycle than the actual disclosure -- some run years off in either
+# direction. Window "today's signals" to the same 90D the acquisition
+# pipeline requests, both bounds, or a handful of stray rows swamp what's
+# supposed to be a recent-activity view (confirmed 2026-09-02 against real
+# data: unbounded above, the trend chart's x-axis ran three months past the
+# run date).
+_signal_anchor = pd.to_datetime(selected_date, errors="coerce")
+_signal_upper = _signal_anchor.date() if pd.notna(_signal_anchor) else None
+_signal_cutoff = (_signal_anchor - pd.Timedelta(days=89)).date() if pd.notna(_signal_anchor) else None
+
+# --- slim category-count strip: full per-category detail lives on Evidence
+# & Drill-down (already tabbed by category); this is just "where's the
+# volume", not a second copy of that page. ---
 status_by_key = {(e.get("exchange"), e.get("category")): e for e in entries}
-written_count = sum(1 for e in entries if e.get("written"))
-total_count = len(entries) or (len(r2_data.CATEGORIES) * len(r2_data.EXCHANGES))
-
-kpi_cols = st.columns(len(r2_data.CATEGORIES) + 1)
-for i, category in enumerate(r2_data.CATEGORIES):
-    with kpi_cols[i]:
-        df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-        badges = []
-        for ex in r2_data.EXCHANGES:
-            entry = status_by_key.get((ex, category), {})
-            written = bool(entry.get("written"))
-            badges.append(style.badge(ex.upper(), "green" if written else "amber", "green_bg" if written else "amber_bg"))
-        st.markdown(
-            style.kpi_card(
-                r2_data.CATEGORY_LABELS[category].upper(),
-                f"{len(df):,}",
-                f'<div style="display:flex;gap:6px;margin-top:9px;">{"".join(badges)}</div>',
-            ),
-            unsafe_allow_html=True,
-        )
-
-with kpi_cols[-1]:
-    st.markdown(
-        f"""
-        <div class="kpi-card" style="background:{style.COLORS['text']};color:#fff;">
-        <div class="kpi-label" style="color:#94a3b8;">DATASETS VERIFIED</div>
-        <div class="kpi-value" style="display:flex;align-items:baseline;gap:4px;">
-            {written_count}<span style="font-size:15px;color:#94a3b8;">/{total_count}</span>
-        </div>
-        <div style="font-size:11px;color:#cbd5e1;margin-top:9px;">this run · not an average score</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+strip_html = []
+for category in r2_data.CATEGORIES:
+    df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
+    any_written = any(status_by_key.get((ex, category), {}).get("written") for ex in r2_data.EXCHANGES)
+    fg, bg = ("text", "bg_sub") if any_written else ("amber", "amber_bg")
+    strip_html.append(
+        f'<span class="badge" style="background:{style.COLORS[bg]};color:{style.COLORS[fg]};font-weight:600;">'
+        f'{r2_data.CATEGORY_LABELS[category]} <span class="mono" style="font-weight:700;">{len(df):,}</span></span>'
     )
+st.markdown(f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">{"".join(strip_html)}</div>', unsafe_allow_html=True)
+st.caption("Full category-by-category browsing (filters, search, evidence drill-down) is on the Evidence & Drill-down page.")
 
 st.write("")
-left, right = st.columns([2, 1])
+st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:2px;">Today\'s Signals</div>', unsafe_allow_html=True)
+st.caption("Cross-category highlights, not raw counts -- who's buying/selling with conviction, what's big, where volume is concentrated.")
 
-with left:
-    st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:10px;">Latest activity — Insider Trading</div>', unsafe_allow_html=True)
-    insider_df = pd.concat([data.get((ex, "insider_trading"), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
+sig1, sig2, sig3 = st.columns([1, 1.3, 1])
+
+with sig1:
+    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Net Promoter Buyers / Sellers</div>', unsafe_allow_html=True)
     if insider_df.empty:
-        st.caption("No insider-trading rows written for this run date.")
+        st.caption("No insider-trading data.")
     else:
-        recent = insider_df.sort_values("canonical_transaction_date", ascending=False).head(8)
+        pdf = insider_df.copy()
+        person_cat = pdf.get("canonical_person_category", pd.Series(dtype=object)).astype(str).str.upper()
+        ttype = pdf.get("canonical_transaction_type", pd.Series(dtype=object)).astype(str).str.upper()
+        promoter_rows = pdf[person_cat.str.contains("PROMOTER")].copy()
+        signed_val = pd.to_numeric(promoter_rows.get("canonical_value"), errors="coerce").fillna(0)
+        signed_val = signed_val.where(~ttype.loc[promoter_rows.index].str.contains("DISPOS"), -signed_val)
+        promoter_rows["_signed_val"] = signed_val
+        net = promoter_rows.groupby("canonical_company")["_signed_val"].sum()
+        buyers, sellers = net[net > 0].sort_values(ascending=False).head(3), net[net < 0].sort_values().head(3)
+        if buyers.empty and sellers.empty:
+            st.caption("No promoter acquisitions/disposals this run.")
+        for company, val in buyers.items():
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
+                f'<span>{style.badge("BUY", "green", "green_bg", dot=False)} {company}</span>'
+                f'<span class="mono">{style.fmt_inr(val)}</span></div>',
+                unsafe_allow_html=True,
+            )
+        for company, val in sellers.items():
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
+                f'<span>{style.badge("SELL", "red", "red_bg", dot=False)} {company}</span>'
+                f'<span class="mono">-{style.fmt_inr(abs(val))}</span></div>',
+                unsafe_allow_html=True,
+            )
+    st.caption("Full net-position rollup is on Promoter Activity.")
+
+with sig2:
+    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Biggest Transactions — All Categories</div>', unsafe_allow_html=True)
+    # A single ranked feed across all 5 categories -- not just insider
+    # trading -- since a big bulk deal or preferential allotment is just as
+    # much "what happened today" as an insider filing.
+    combined_rows = []
+    for category in r2_data.CATEGORIES:
+        df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
+        if df.empty:
+            continue
+        df = df.copy()
+        if category == "insider_trading":
+            df["_value"] = pd.to_numeric(df.get("canonical_value"), errors="coerce")
+            df["_date"] = df.get("canonical_transaction_date")
+        elif category in ("bulk_deals", "block_deals"):
+            df["_value"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce") * pd.to_numeric(df.get("canonical_price"), errors="coerce")
+            df["_date"] = df.get("canonical_event_date")
+        else:
+            df["_value"] = pd.to_numeric(df.get("canonical_amount_raised"), errors="coerce")
+            df["_date"] = df.get("canonical_event_date")
+        df["_category"] = category
+        combined_rows.append(df[["_value", "_date", "_category", "canonical_company", "exchange"]])
+    combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame()
+    combined = combined.dropna(subset=["_value"])
+    if _signal_cutoff is not None and not combined.empty:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            parsed_dates = pd.to_datetime(combined["_date"], errors="coerce", dayfirst=True).dt.date
+        combined = combined[(parsed_dates >= _signal_cutoff) & (parsed_dates <= _signal_upper)]
+    if search_query and not combined.empty:
+        q = search_query.strip().lower()
+        combined = combined[combined["canonical_company"].astype(str).str.lower().str.contains(q, na=False)]
+    if combined.empty:
+        st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
+    else:
+        top_txns = combined.sort_values("_value", ascending=False).head(8)
         rows_html = []
-        for _, r in recent.iterrows():
-            date_ = style.fmt_date(r.get("canonical_transaction_date"))
-            company = str(r.get("canonical_company") or "—")
-            person = str(r.get("canonical_person") or "—")
-            cat = str(r.get("canonical_person_category") or "—")
-            ttype = str(r.get("canonical_transaction_type") or "—")
-            value = style.fmt_inr(r.get("canonical_value"))
+        for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
-            type_color = "green" if "ACQUI" in ttype.upper() else ("red" if "DISPOS" in ttype.upper() else "text_2")
             rows_html.append(
-                f'<tr><td class="mono">{date_}</td>'
-                f'<td style="font-weight:500;">{company}</td>'
-                f'<td style="color:{style.COLORS["text_2"]};">{person}</td>'
-                f'<td>{style.badge(cat, "nse" if ex=="nse" else "bse", "nse_bg" if ex=="nse" else "bse_bg", dot=False)}</td>'
-                f'<td style="color:{style.COLORS[type_color]};font-weight:500;">{ttype.title()}</td>'
-                f'<td class="mono" style="text-align:right;">{value}</td>'
+                f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
+                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
+                f'<td>{style.badge(r2_data.CATEGORY_LABELS.get(r["_category"], r["_category"]), "text_2", "bg_sub", dot=False)}</td>'
+                f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
             )
         st.markdown(
-            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th><th>CATEGORY</th>'
-            f'<th>TYPE</th><th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
+            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th>'
+            '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
             + "".join(rows_html) + "</table>",
             unsafe_allow_html=True,
         )
-    st.caption("Full drill-down (native fields, source ID, ISIN cross-match) is on the Evidence & Drill-down page. Net-position rollups are on Promoter Activity.")
+        if search_query:
+            st.caption(f"{len(combined):,} transactions match “{search_query}”, top {len(top_txns)} shown by value.")
+    st.caption("Ranked by value across insider trading, bulk/block deals, and rights/preferential issues, last 90 days. Full drill-down on Evidence & Drill-down.")
 
-with right:
-    st.markdown("**Date coverage**")
-    if not insider_df.empty and "canonical_transaction_date" in insider_df.columns:
-        n_dates = insider_df["canonical_transaction_date"].nunique()
-        coverage_pct = min(100, round(100 * n_dates / 90))
-        freshness = style.fmt_date(manifest.get("generated_at"))
-        st.markdown(
-            f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">Requested</span><span class="mono">90D</span></div>'
-            f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">Actual (Insider)</span><span class="mono">{n_dates} dates</span></div>'
-            f'<div style="height:6px;background:{style.COLORS["bg_sub"]};border-radius:3px;overflow:hidden;margin:8px 0;"><div style="width:{coverage_pct}%;height:100%;background:{style.COLORS["green"]};"></div></div>'
-            f'<div class="kv-row" style="border-bottom:none;"><span style="color:{style.COLORS["text_2"]};">Freshness</span><span class="mono" style="color:{style.COLORS["green"]};">{freshness}</span></div>',
-            unsafe_allow_html=True,
-        )
+with sig3:
+    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Concentration Alerts</div>', unsafe_allow_html=True)
+    alert_rows = []
+    for category in ("bulk_deals", "block_deals"):
+        df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
+        if df.empty:
+            continue
+        df = df.copy()
+        df["_value"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce").fillna(0) * pd.to_numeric(df.get("canonical_price"), errors="coerce").fillna(0)
+        for (company, symbol), sub in df.groupby(["canonical_company", "canonical_symbol"], dropna=False):
+            by_client = sub.groupby("canonical_client")["_value"].sum().sort_values(ascending=False)
+            total = by_client.sum()
+            share = (by_client.head(3).sum() / total) if total else 0.0
+            if share >= 0.6 and total > 0:
+                alert_rows.append({"company": company, "category": category, "value": total, "share": share})
+    if not alert_rows:
+        st.caption("No securities with >60% top-3-client concentration this run.")
     else:
-        st.caption("No data to compute coverage from.")
-
-    st.markdown("**System status**")
-    blocked = [e for e in entries if e.get("status") not in ("VERIFIED",) and e.get("exchange")]
-    if blocked:
-        for e in blocked:
+        alert_rows.sort(key=lambda r: r["value"], reverse=True)
+        st.markdown(f'<div style="font-size:22px;font-weight:700;margin-bottom:6px;">{len(alert_rows)}</div>', unsafe_allow_html=True)
+        st.caption(f"{'security' if len(alert_rows) == 1 else 'securities'} with a handful of clients driving most of the volume.")
+        for r in alert_rows[:4]:
             st.markdown(
-                f"⚠️ {e.get('exchange', '?').upper()} {r2_data.CATEGORY_LABELS.get(e.get('category'), e.get('category'))}: "
-                f"**{e.get('status')}** — {e.get('reason', 'no reason recorded')}"
+                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
+                f'<span>{style.badge("CONCENTRATED", "red", "red_bg", dot=False)} {r["company"]}</span>'
+                f'<span class="mono">top3 {r["share"]*100:.0f}%</span></div>',
+                unsafe_allow_html=True,
             )
-    else:
-        st.success("No blocked or skipped datasets this run.")
+    st.caption("Top-3-client share of a security's traded value, this run. Full view on Bulk & Block Concentration.")
 
-    st.markdown("**Validation & evidence**")
-    rows_html = "".join(
-        f'<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid {style.COLORS["border"]};font-size:12px;">'
-        f'<span>{e.get("exchange","?").upper()} {r2_data.CATEGORY_LABELS.get(e.get("category"), e.get("category"))}</span>'
-        f'{style.status_badge(e.get("status","MISSING"))}</div>'
-        for e in entries
+st.write("")
+st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:10px;">Activity Trend — All Categories</div>', unsafe_allow_html=True)
+# One line per category, not just insider trading -- daily row counts using
+# each category's own date field (transaction_date for insider trading,
+# event_date for the other four).
+_DATE_FIELD = {
+    "insider_trading": "canonical_transaction_date",
+    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
+    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
+}
+_TREND_COLORS = {
+    "insider_trading": style.COLORS["blue"], "bulk_deals": style.COLORS["nse"],
+    "block_deals": style.COLORS["bse"], "rights_issue": style.COLORS["green"],
+    "preferential_issue": style.COLORS["amber"],
+}
+daily_by_cat = {}
+for category in r2_data.CATEGORIES:
+    df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
+    date_field = _DATE_FIELD[category]
+    if df.empty or date_field not in df.columns:
+        continue
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        dates = pd.to_datetime(df[date_field], errors="coerce", dayfirst=True).dt.date
+    dates = dates.dropna()
+    if _signal_cutoff is not None:
+        dates = dates[(dates >= _signal_cutoff) & (dates <= _signal_upper)]
+    daily = dates.value_counts()
+    if not daily.empty:
+        daily_by_cat[category] = daily
+
+if not daily_by_cat:
+    st.caption("No data to chart.")
+else:
+    visible_labels = st.pills(
+        "Categories", [r2_data.CATEGORY_LABELS[c] for c in daily_by_cat],
+        selection_mode="multi", default=[r2_data.CATEGORY_LABELS[c] for c in daily_by_cat],
+        label_visibility="collapsed", key="trend_category_toggle",
     )
-    st.markdown(rows_html or "<em>No manifest entries.</em>", unsafe_allow_html=True)
-    st.caption("Full audit on the Data Quality page.")
+    shown = {c for c in daily_by_cat if r2_data.CATEGORY_LABELS[c] in (visible_labels or [])}
+    all_dates = sorted(set().union(*(d.index for d in daily_by_cat.values())))
+    fig = go.Figure()
+    for category, daily in daily_by_cat.items():
+        if category not in shown:
+            continue
+        fig.add_trace(go.Scatter(
+            x=all_dates, y=[int(daily.get(d, 0)) for d in all_dates],
+            mode="lines", name=r2_data.CATEGORY_LABELS[category],
+            line=dict(color=_TREND_COLORS[category], width=2.5),
+        ))
+    if not shown:
+        st.caption("No categories selected -- toggle one on above to chart it.")
+    else:
+        fig.update_layout(
+            height=240, margin=dict(l=0, r=0, t=4, b=0),
+            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor=style.COLORS["border"], zeroline=False),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=11)),
+            font=dict(family="IBM Plex Sans, sans-serif", size=11, color=style.COLORS["text_2"]),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+st.caption("Daily row count per category, last 90 days. Click a pill to toggle its line.")

@@ -7,6 +7,8 @@ every element (slide-in drawer, custom dropdowns) natively.
 """
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 import streamlit as st
 
@@ -71,11 +73,17 @@ def inject_base_css():
         .sec-title {{ font-size: 11px; font-weight: 700; color: {COLORS['text_3']}; letter-spacing: .05em; margin: 18px 0 4px 0; }}
 
         /* ---- Streamlit chrome removal: this should read as a standalone
-           product, not an obvious Streamlit demo. ---- */
-        [id="MainMenu"] {{ visibility: hidden; }}
+           product, not an obvious Streamlit demo.
+           NOTE: with position="top" navigation, the nav pills render INSIDE
+           header[data-testid="stHeader"] > [data-testid="stToolbar"]
+           (confirmed 2026-09-02 from the real DOM) -- collapsing the header
+           to height:0 or hiding the toolbar outright (an earlier version of
+           this rule, written back when nav lived in the sidebar) hides the
+           ONLY navigation UI in the app. Hide just the specific chrome
+           elements instead of their shared ancestor. ---- */
+        [id="MainMenu"] {{ display: none; }}
         footer {{ visibility: hidden; }}
-        header[data-testid="stHeader"] {{ background: transparent; height: 0; }}
-        [data-testid="stToolbar"] {{ display: none; }}
+        header[data-testid="stHeader"] {{ background: {COLORS['bg']}; border-bottom: 1px solid {COLORS['border']}; }}
         [data-testid="stDecoration"] {{ display: none; }}
         [data-testid="stStatusWidget"] {{ display: none; }}
         .stAppDeployButton {{ display: none; }}
@@ -84,20 +92,24 @@ def inject_base_css():
         [data-testid="stAppViewContainer"] > .main {{ padding-top: 0.5rem; }}
         [data-testid="stMainBlockContainer"] {{ padding-top: 1.2rem; }}
 
-        /* ---- Sidebar: brand block + reskinned native nav ---- */
-        [data-testid="stSidebar"] {{ background: {COLORS['bg']}; border-right: 1px solid {COLORS['border']}; }}
-        [data-testid="stSidebarNav"] {{ padding-top: 4px; }}
-        [data-testid="stSidebarNav"] a {{
-            border-radius: 7px; margin: 1px 0; font-size: 13px; font-weight: 500;
+        /* ---- Top nav bar (position="top"), not a sidebar -- this app is
+           used on mobile, where a sidebar drawer costs a tap and half the
+           screen width every time. Real testids (confirmed 2026-09-02):
+           stTopNavLinkContainer wraps each stTopNavLink <a>. ---- */
+        [data-testid="stTopNavLink"] {{
+            border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: 500;
             color: {COLORS['text_2']};
         }}
-        [data-testid="stSidebarNav"] a[aria-current="page"] {{
+        [data-testid="stTopNavLink"][aria-current="page"] {{
             background: {COLORS['blue_bg']}; color: #1d4ed8; font-weight: 600;
         }}
-        .brand-block {{ padding: 4px 4px 14px 4px; border-bottom: 1px solid {COLORS['border']}; margin-bottom: 6px; }}
-        .brand-title {{ font-size: 15px; font-weight: 700; color: {COLORS['text']}; line-height: 1.3; }}
-        .brand-sub {{ font-size: 11px; color: {COLORS['text_3']}; margin-top: 4px; }}
-        .sidebar-footer {{ font-size: 11px; color: {COLORS['text_3']}; margin-top: 18px; }}
+        .top-brand {{
+            display: flex; align-items: baseline; justify-content: space-between;
+            flex-wrap: wrap; gap: 6px; padding: 10px 2px 8px 2px;
+            border-bottom: 1px solid {COLORS['border']}; margin-bottom: 4px;
+        }}
+        .top-brand-title {{ font-size: 15px; font-weight: 700; color: {COLORS['text']}; }}
+        .top-brand-session {{ font-size: 11px; color: {COLORS['text_3']}; }}
 
         /* ---- Segmented control (exchange toggle) built from st.radio.
            Real DOM (verified 2026-09-01): label[data-testid="stRadioOption"]
@@ -129,18 +141,22 @@ def inject_base_css():
     )
 
 
-def sidebar_brand():
-    st.sidebar.markdown(
-        '<div class="brand-block">'
-        '<div class="brand-title">NSE·BSE Corporate<br/>Event Tracker</div>'
-        '<div class="brand-sub">Insider · Deals · Issues</div>'
+def top_brand_bar(session_text: str):
+    """Brand strip above the top nav bar -- replaces the old sidebar's brand
+    block + footer now that navigation runs across the top, not down the
+    side (this app is used on mobile, where a sidebar drawer costs a tap
+    and half the screen width every time)."""
+    dots = "".join(
+        f'<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:{COLORS[c]};margin-right:4px;"></span>'
+        for c in ("red", "amber", "green")
+    )
+    st.markdown(
+        '<div class="top-brand">'
+        f'<div>{dots}<span class="top-brand-title" style="margin-left:4px;">Insiders</span></div>'
+        f'<div class="top-brand-session">{session_text}</div>'
         "</div>",
         unsafe_allow_html=True,
     )
-
-
-def sidebar_footer(text: str):
-    st.sidebar.markdown(f'<div class="sidebar-footer">{text}</div>', unsafe_allow_html=True)
 
 
 def fmt_inr(value) -> str:
@@ -169,8 +185,12 @@ def fmt_date(value) -> str:
         return "—"
     # dayfirst=True: NSE/BSE source dates are Indian-convention DD/MM/YYYY
     # when ambiguous (e.g. '03/04/2026'); pandas' default dayfirst=False
-    # would silently misread that as 3 April instead of 4 March.
-    parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+    # would silently misread that as 3 April instead of 4 March. It's a
+    # harmless no-op on unambiguous ISO strings, but pandas warns on those
+    # anyway -- suppress just that warning rather than dropping dayfirst.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
     if pd.isna(parsed):
         return str(value)
     return parsed.strftime("%d %b %Y")
