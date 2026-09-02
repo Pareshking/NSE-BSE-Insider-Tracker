@@ -88,7 +88,15 @@ def resolve_isin(exchange, category, row):
             return isin
         return _prefix_match_symbol(symbol, isin_by_nse_symbol)
     else:
-        code = _pick(row, 'security_code', 'bse_company_code', 'stage_3')
+        # 'stage_3' is rights_issue/preferential_issue's scripcode field --
+        # a real 6-digit BSE scrip code, same namespace as the security
+        # master's bse_scrip_code (confirmed 2026-09-02 against live BSE
+        # data: stage_3 values like 570005/544559/544459 hit the crosswalk
+        # directly). 'bse_company_code' (BSE's COMPANY_CODE, e.g. 8255,
+        # 13640) is a *different*, shorter internal BSE ID that never
+        # matches bse_scrip_code -- it must not be tried before stage_3,
+        # only as a last resort for any dataset that has no stage_3.
+        code = _pick(row, 'security_code', 'stage_3', 'bse_company_code')
         return isin_by_bse_code.get(str(code).strip()) if code else None
 
 

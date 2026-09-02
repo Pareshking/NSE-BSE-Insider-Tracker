@@ -204,19 +204,24 @@ four are ~100% populated with real values (`in_principle_status`/
 00:00:00"`); `listing_stage_date` is ~52% populated, correctly, since not
 every issue has reached the listing stage yet.
 
-**Known limitation, not a bug:** `bse_company_code`'s values (e.g. `8255`,
-`13640`) are a *different BSE internal ID namespace* than the 6-digit
-`bse_scrip_code` used everywhere else in this project
-(`reference_data/security_master_20260901.csv`, e.g. `500002`, `500325`)
--- confirmed by grepping the security master for these exact values and
-finding zero matches. This means `resolve_isin()` in `r2_writer.py` cannot
-bridge BSE Rights/Preferential rows to an ISIN via the existing crosswalk,
-so cross-exchange matching for these two categories still reports 0
-matches (`canonical_isin` empty for all 267 rows checked, vs 107 distinct
-ISINs on the NSE side). The date fields are otherwise correct and ready to
-use the moment a real `bse_company_code` -> `bse_scrip_code` (or -> ISIN
-directly) lookup is found -- that's a new, separate investigation, not
-something wrong with what shipped.
+**Fixed 2026-09-02:** `bse_company_code`'s values (e.g. `8255`, `13640`) are
+a *different BSE internal ID namespace* than the 6-digit `bse_scrip_code`
+used everywhere else in this project
+(`reference_data/security_master_20260901.csv`, e.g. `500002`, `500325`) --
+confirmed by grepping the security master for these exact values and
+finding zero matches. The bridge to `bse_scrip_code` was already being
+captured, though: `ri_pref_row()` extracts `scripcode` (BSE's own field
+name) at position 3 as `stage_3`, and those values (`570005`, `544559`,
+`544459`, ...) ARE 6-digit BSE scrip codes that hit the security master
+directly. `resolve_isin()`'s `_pick(row, 'security_code', 'bse_company_code',
+'stage_3')` just had the wrong priority -- it tried the newer,
+wrong-namespace `bse_company_code` field before the older, correct
+`stage_3` field, so `stage_3` never got a chance to run. Swapped the order
+to `'security_code', 'stage_3', 'bse_company_code'`. Re-running
+`resolve_isin()` against the same evidence used to diagnose this: 260/267
+(97.4%) rights_issue rows and 1,084/1,142 (94.9%) preferential_issue rows
+now resolve a real ISIN, up from 0. See `VALIDATION_STATUS.md`'s
+"2026-09-02 (later)" section for the full before/after.
 
 ---
 

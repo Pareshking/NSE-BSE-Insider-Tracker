@@ -1,10 +1,54 @@
 # Validation Status — NSE + BSE
 
-Last updated: 2026-09-02 (full 10/10 reconfirmation + BSE structured-field verification)
+Last updated: 2026-09-02 (BSE ID-namespace bridge fixed -- rights/preferential cross-exchange matching now works)
 
 **See `DATA_ACQUISITION.md` for the exact working method per category — this
 file tracks pass/fail status; that one explains how each fetch actually
 works and why.**
+
+## 2026-09-02 (later): BSE rights/preferential cross-exchange matching fixed
+
+The "real, precisely-diagnosed limitation" documented below (BSE
+rights/preferential 0-match cross-exchange linking) is now fixed. The bug
+was not a missing bridge -- the bridge was already being captured, just
+never tried first.
+
+`bse_raw_capture_v2.py`'s `ri_pref_row()` extracts TWO different BSE codes
+per row: `stage_3` (the API's `scripcode` field, positions 0-3, in place
+since before this project tracked rights/preferential separately) and
+`bse_company_code` (the API's `COMPANY_CODE` field, added 2026-09-01 at
+position 8). `resolve_isin()` in `scripts/r2_writer.py` tried
+`bse_company_code` before `stage_3` -- so the newer, wrong-namespace field
+was shadowing the older, correct one on every row that had both (which is
+all of them, since both are ~100% populated).
+
+Checked directly against the same evidence used to diagnose the gap:
+`stage_3` values (`570005`, `544559`, `544459`, `544416`, `544412` from the
+first 5 real rights_issue rows) are standard 6-digit BSE scrip codes --
+4 of 5 found immediately in `reference_data/security_master_20260901.csv`'s
+`bse_scrip_code` column (the 5th is very likely just outside that
+snapshot's coverage, not a namespace problem). `bse_company_code`'s values
+for the same 5 rows (`8255`, `13640`, `13799`, `14044`, `13679`) match
+nothing in that column, confirming it never was the right field for this
+lookup.
+
+**Fix**: swapped the `_pick()` priority in `resolve_isin()`'s BSE branch to
+`security_code`, `stage_3`, `bse_company_code` (was `security_code`,
+`bse_company_code`, `stage_3`) -- `bse_company_code` stays as a last-resort
+fallback for any future BSE dataset that has no `stage_3`, it just no
+longer shadows the field that actually works for rights/preferential.
+
+Re-ran `resolve_isin()` against the same run's evidence artifacts used to
+find the bug:
+- `rights_issue_normalized.json` (267 real rows): **260/267 (97.4%)** now
+  resolve an ISIN, up from 0.
+- `preferential_issue_normalized.json` (1,142 real rows): **1,084/1,142
+  (94.9%)** now resolve an ISIN, up from 0.
+
+Not yet re-confirmed through a live `r2-storage.yml` run (that will also
+move `cross_exchange_matches_flagged` off zero for these two categories) --
+verification so far is the fixed `resolve_isin()` re-run offline against
+the last run's real captured rows, not a fresh acquisition.
 
 ## 2026-09-02 reconfirmation: all 10 (exchange, category) pairs VERIFIED
 
@@ -222,7 +266,7 @@ These are defect-diagnosis observations, not certification.
 | BSE | Preferential | ✅ VERIFIED |
 | BSE | Overall certification | ✅ VERIFIED (run #15, commit 5f529de; reconfirmed 2026-09-02 run 33575157195, all 10/10) |
 | Cross-exchange | Matching (insider/bulk/block) | ✅ Active, flag-only (ISIN crosswalk via `security_master`) |
-| Cross-exchange | Matching (rights/preferential) | 🟡 Fields populate correctly but 0 matches -- BSE's `bse_company_code` is a different ID namespace than `security_master`'s `bse_scrip_code`, no bridge found yet (see 2026-09-02 section above) |
+| Cross-exchange | Matching (rights/preferential) | ✅ Fixed 2026-09-02 -- `resolve_isin()` now tries `stage_3` (BSE's real scrip code) before `bse_company_code` (a different ID namespace); 97.4%/94.9% ISIN resolution confirmed against real evidence, pending live-run reconfirmation (see 2026-09-02 (later) section above) |
 | R2 backfill | Gap detection + catch-up | ✅ Built and confirmed working in production, 2026-09-02 (`scripts/backfill_gaps.py`, backfilled 10 real missing weekdays in one run) -- not a one-year historical backfill, which remains unscoped |
 | Production schema | Freeze | 🔴 Not yet decided -- unrelated to this reconfirmation |
 
