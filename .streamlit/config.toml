@@ -5,3 +5,14 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f8fafc"
 textColor = "#0f172a"
 font = "sans serif"
+
+[client]
+# Default is "full": an uncaught exception renders its type, message and
+# full traceback in the browser. On this app a traceback exposes the R2
+# bucket name, the account-scoped endpoint URL and server filesystem paths
+# to anyone who can load the page. "none" keeps all of that server-side --
+# expected failures are caught and explained by lib/r2_data.py instead.
+showErrorDetails = "none"
+
+[browser]
+gatherUsageStats = false

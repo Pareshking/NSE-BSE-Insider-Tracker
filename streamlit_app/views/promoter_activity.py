@@ -17,20 +17,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import r2_data, style
+from lib import fields, r2_data, style
 
 st.markdown("### Promoter Activity")
 st.caption("Net position rollups -- not a raw trade list. See Evidence & Drill-down for individual transactions.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
-
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+client, dates = r2_data.page_gate()
 
 top = st.columns([1, 1, 2])
 with top[0]:
@@ -39,19 +31,21 @@ with top[1]:
     exchange_choice = st.radio("Exchange", ["Both", "NSE", "BSE"], horizontal=True, label_visibility="collapsed")
 exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
 
-dfs = [r2_data.load_canonical(client, ex, "insider_trading", selected_date) for ex in exchanges]
-dfs = [d for d in dfs if not d.empty]
-if not dfs:
+with r2_data.guard(f"the {selected_date} run"):
+    df = r2_data.load_combined(client, "insider_trading", exchanges, selected_date)
+if df.empty:
     st.caption(f"No insider-trading rows for {selected_date} on {exchange_choice}.")
     st.stop()
 
-df = pd.concat(dfs, ignore_index=True)
-df["_date"] = pd.to_datetime(df["canonical_transaction_date"], errors="coerce")
+# fields.parse_dates, not a bare pd.to_datetime: BSE rows carry Indian
+# DD/MM/YYYY, which pandas' default reading turns into either the wrong day
+# or NaT -- and a NaT silently drops the row from every window below.
+df["_date"] = fields.parse_dates(df["canonical_transaction_date"])
 run_date = df["_date"].max()
 
-ttype = df["canonical_transaction_type"].astype(str).str.upper()
-df["_signed_qty"] = pd.to_numeric(df["canonical_quantity"], errors="coerce").fillna(0)
-df["_signed_val"] = pd.to_numeric(df["canonical_value"], errors="coerce").fillna(0)
+ttype = fields.text_col(df, "canonical_transaction_type", upper=True)
+df["_signed_qty"] = fields.num_col(df, "canonical_quantity")
+df["_signed_val"] = fields.num_col(df, "canonical_value")
 is_disposal = ttype.str.contains("DISPOS")
 is_acq = ttype.str.contains("ACQUI")
 df.loc[is_disposal, ["_signed_qty", "_signed_val"]] *= -1
@@ -70,10 +64,10 @@ if unrecognized:
 # scripts/nse_market_cap.py. A given rupee/share number means something
 # completely different for a small-cap vs a large-cap company; this is the
 # normalizer for that. No BSE-listed-only names covered here yet.
-mcap_df = r2_data.load_market_cap(client, selected_date)
-mcap_available = not mcap_df.empty
+with r2_data.guard("the market cap reference data"):
+    mcap_lookup = r2_data.market_cap_lookup(client, selected_date)
+mcap_available = mcap_lookup is not None
 if mcap_available:
-    mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"]
     win_df = win_df.copy()
     win_df["_market_cap"] = win_df["canonical_symbol"].astype(str).str.upper().map(mcap_lookup)
 else:

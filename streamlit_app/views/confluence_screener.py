@@ -15,50 +15,68 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import confluence, r2_data, style
+from lib import confluence, fields, r2_data, style
 
 st.markdown("### Confluence Screener")
 st.caption("Companies where promoters, institutions, and capital-raise events overlap -- ranked by Float Absorption Ratio (FAR), the % of market cap changing hands to informed entities.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
+@st.cache_data(ttl=300, max_entries=6, show_spinner="Joining categories by ISIN…")
+def confluence_table(_client, date: str, exchanges: tuple[str, ...]):
+    """The per-ISIN confluence table and the internal transfers pulled out
+    of it, for one (run date, exchange choice).
 
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+    Cached because it is by far the heaviest thing this app does -- the
+    internal-transfer pass compares every bulk/block buy against every sell
+    on the same ISIN and date -- and none of it depends on the filters
+    below. Uncached, every keystroke in the search box re-ran the whole
+    join.
+    """
+    cats = {c: r2_data.load_combined(_client, c, exchanges, date) for c in r2_data.CATEGORIES}
+    mcap_lookup = r2_data.market_cap_lookup(_client, date)
+
+    promoter_flow = confluence.promoter_insider_flow(cats["insider_trading"], mcap_lookup)
+    inst_flow, transfers = confluence.institutional_flow(cats["bulk_deals"], cats["block_deals"], mcap_lookup)
+    actions = confluence.corporate_action_flags(cats["rights_issue"], cats["preferential_issue"])
+
+    merged = pd.merge(promoter_flow, inst_flow, on="canonical_isin", how="outer", suffixes=("_p", "_i"))
+    merged["company"] = merged["company_p"].combine_first(merged.get("company_i"))
+    merged["symbol"] = merged["symbol_p"].combine_first(merged.get("symbol_i"))
+    merged["market_cap"] = merged["market_cap_p"].combine_first(merged.get("market_cap_i"))
+    merged = merged.drop(columns=[c for c in ("company_p", "company_i", "symbol_p", "symbol_i", "market_cap_p", "market_cap_i") if c in merged.columns])
+    merged = merged.merge(actions, on="canonical_isin", how="left")
+    for col, default in [("promoter_net_value", 0), ("institutional_net_value", 0), ("has_rights_issue", False), ("has_preferential", False)]:
+        merged[col] = merged[col].fillna(default)
+
+    merged["combined_flow"] = merged["promoter_net_value"] + merged["institutional_net_value"]
+    merged["far_pct"] = 100 * merged["combined_flow"] / merged["market_cap"]
+    merged["tier"] = merged["market_cap"].map(confluence.mcap_tier)
+    if merged.empty:
+        # .apply(axis=1) over no rows returns an empty Series, which pandas
+        # refuses to unpack into two columns ("Columns must be same length
+        # as key"). Reached whenever nothing joins -- e.g. a run where no
+        # category resolved an ISIN.
+        merged["category"] = pd.Series(dtype=object)
+        merged["category_color"] = pd.Series(dtype=object)
+    else:
+        merged[["category", "category_color"]] = merged.apply(lambda r: pd.Series(confluence.classify(r)), axis=1)
+    return merged, transfers
+
+
+client, dates = r2_data.page_gate()
 
 top = st.columns([1, 1, 2])
 with top[0]:
     selected_date = st.selectbox("Run date", dates, index=0)
 with top[1]:
     exchange_choice = st.radio("Exchange", ["Both", "NSE", "BSE"], horizontal=True, label_visibility="collapsed")
-exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
+exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange_choice.lower(),)
 
-cats = {c: pd.concat([r2_data.load_canonical(client, ex, c, selected_date) for ex in exchanges], ignore_index=True)
-        for c in r2_data.CATEGORIES}
-mcap_df = r2_data.load_market_cap(client, selected_date)
-mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"] if not mcap_df.empty else None
-
-promoter_flow = confluence.promoter_insider_flow(cats["insider_trading"], mcap_lookup)
-inst_flow, transfers = confluence.institutional_flow(cats["bulk_deals"], cats["block_deals"], mcap_lookup)
-actions = confluence.corporate_action_flags(cats["rights_issue"], cats["preferential_issue"])
-
-merged = pd.merge(promoter_flow, inst_flow, on="canonical_isin", how="outer", suffixes=("_p", "_i"))
-merged["company"] = merged["company_p"].combine_first(merged.get("company_i"))
-merged["symbol"] = merged["symbol_p"].combine_first(merged.get("symbol_i"))
-merged["market_cap"] = merged["market_cap_p"].combine_first(merged.get("market_cap_i"))
-merged = merged.drop(columns=[c for c in ("company_p", "company_i", "symbol_p", "symbol_i", "market_cap_p", "market_cap_i") if c in merged.columns])
-merged = merged.merge(actions, on="canonical_isin", how="left")
-for col, default in [("promoter_net_value", 0), ("institutional_net_value", 0), ("has_rights_issue", False), ("has_preferential", False)]:
-    merged[col] = merged[col].fillna(default)
-
-merged["combined_flow"] = merged["promoter_net_value"] + merged["institutional_net_value"]
-merged["far_pct"] = 100 * merged["combined_flow"] / merged["market_cap"]
-merged["tier"] = merged["market_cap"].map(confluence.mcap_tier)
-merged[["category", "category_color"]] = merged.apply(lambda r: pd.Series(confluence.classify(r)), axis=1)
+with r2_data.guard(f"the {selected_date} run"):
+    merged, transfers = confluence_table(client, selected_date, exchanges)
+    # Loaded separately (not returned from the cache above) so the
+    # constituent-transaction dialog reads the same already-cached frames
+    # instead of keeping a second copy of them alive in the cache.
+    cats = {c: r2_data.load_combined(client, c, exchanges, selected_date) for c in r2_data.CATEGORIES}
 
 if merged.empty:
     st.info("No insider/bulk/block/rights/preferential data for this run date.")
@@ -94,7 +112,14 @@ else:
         filtered[~has_far].reindex(filtered[~has_far]["combined_flow"].abs().sort_values(ascending=False).index),
     ])
 
-st.caption(f"{len(ranked):,} companies with a confluence signal this run (of {len(merged):,} with any promoter/institutional/corporate-action activity).")
+caption_col, export_col = st.columns([3, 1])
+with caption_col:
+    st.caption(f"{len(ranked):,} companies with a confluence signal this run (of {len(merged):,} with any promoter/institutional/corporate-action activity).")
+with export_col:
+    style.download_csv(
+        ranked.drop(columns=["category_color"], errors="ignore"),
+        f"confluence_{selected_date}_{exchange_choice.lower()}.csv", label="Export screen",
+    )
 
 for _, row in ranked.head(40).iterrows():
     far_html = f'{row["far_pct"]:+.2f}%<span style="font-size:10px;color:{style.COLORS["text_3"]};"> FAR</span>' if pd.notna(row["far_pct"]) else '<span style="color:' + style.COLORS["text_3"] + ';font-size:11px;">mcap n/a</span>'
@@ -117,8 +142,8 @@ for _, row in ranked.head(40).iterrows():
     # FAR is a combined number -- show which side is actually driving it,
     # since "Insider Alpha" and "Certification" are fundamentally about
     # WHO is buying, not just how much in total.
-    promoter_val = row.get("promoter_net_value") or 0
-    inst_val = row.get("institutional_net_value") or 0
+    promoter_val = fields.as_float(row.get("promoter_net_value"))
+    inst_val = fields.as_float(row.get("institutional_net_value"))
     breakdown_bits = []
     if promoter_val:
         color = "green" if promoter_val > 0 else "red"
@@ -160,7 +185,7 @@ if detail_isin:
                 any_rows = True
                 side = str(r.get("canonical_side") or "")
                 color = "green" if side == "BUY" else "red"
-                value = pd.to_numeric(r.get("canonical_quantity"), errors="coerce") * pd.to_numeric(r.get("canonical_price"), errors="coerce")
+                value = fields.as_float(r.get("canonical_quantity")) * fields.as_float(r.get("canonical_price"))
                 st.markdown(
                     f'<div class="kv-row"><span>{style.fmt_date(r.get("canonical_event_date"))} · {r2_data.CATEGORY_LABELS[cat]} · '
                     f'<span style="color:{style.COLORS[color]};">{side}</span> · {r.get("canonical_client") or "—"}</span>'

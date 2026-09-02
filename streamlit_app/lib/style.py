@@ -7,10 +7,10 @@ every element (slide-in drawer, custom dropdowns) natively.
 """
 from __future__ import annotations
 
-import warnings
-
 import pandas as pd
 import streamlit as st
+
+from . import fields
 
 COLORS = {
     "bg": "#ffffff",
@@ -159,11 +159,52 @@ def top_brand_bar(session_text: str):
     )
 
 
+def download_csv(df: "pd.DataFrame", filename: str, *, label: str = "Download CSV", key: str | None = None):
+    """Export exactly the rows currently on screen, with the canonical_*
+    values as stored -- raw numbers and source date strings, not this app's
+    ₹8.40L / '01 Sep 2026' display formatting. Someone re-checking a figure
+    against the exchange's own filing needs what was published, not what we
+    rendered."""
+    if df is None or df.empty:
+        return
+    st.download_button(
+        label=f"{label} ({len(df):,} rows)",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name=filename,
+        mime="text/csv",
+        key=key,
+    )
+
+
+DISCLAIMER = (
+    "Public NSE/BSE disclosures, republished for research. Not investment advice, "
+    "not a recommendation, and no relationship with either exchange or SEBI. Figures are "
+    "as filed by the issuer and can be revised or withdrawn at source -- verify against the "
+    "exchange's own filing before acting on anything here."
+)
+
+
+def disclaimer_footer():
+    """Rendered on every page. A tool that ranks insider and promoter
+    activity invites being read as a buy/sell signal; saying plainly that it
+    isn't belongs on the screen, not only in the README."""
+    st.markdown(
+        f'<div style="margin-top:28px;padding-top:10px;border-top:1px solid {COLORS["border"]};'
+        f'font-size:10.5px;color:{COLORS["text_3"]};line-height:1.5;">{DISCLAIMER}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def fmt_inr(value) -> str:
     """₹8.40L / ₹1.14Cr style compact currency, matching the mockup."""
     try:
         v = float(value)
     except (TypeError, ValueError):
+        return "—"
+    # NaN survives float() and used to render as the literal "₹nan". An
+    # amount the source didn't publish is unknown, not zero, so it gets the
+    # same em dash as any other absent value.
+    if pd.isna(v):
         return "—"
     if abs(v) >= 1e7:
         return f"₹{v/1e7:.2f}Cr"
@@ -180,17 +221,17 @@ def fmt_date(value) -> str:
     parquet round-trips that pick up a spurious 00:00:00) and Streamlit's
     default rendering shows whatever it gets verbatim. Falls back to the
     original string, never blanks a value it can't parse -- this project
-    doesn't hide data it can't explain, just don't show it worse than raw."""
+    doesn't hide data it can't explain, just don't show it worse than raw.
+
+    Parsing lives in lib.fields.parse_dates, which picks the convention per
+    value. This used to pass a blanket dayfirst=True on the grounds that it
+    was "a harmless no-op on unambiguous ISO strings" -- it isn't: pandas
+    reads ISO '2026-09-01' as 9 January 2026 under dayfirst, so every NSE
+    date whose day-of-month was <= 12 rendered with day and month swapped.
+    """
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "—"
-    # dayfirst=True: NSE/BSE source dates are Indian-convention DD/MM/YYYY
-    # when ambiguous (e.g. '03/04/2026'); pandas' default dayfirst=False
-    # would silently misread that as 3 April instead of 4 March. It's a
-    # harmless no-op on unambiguous ISO strings, but pandas warns on those
-    # anyway -- suppress just that warning rather than dropping dayfirst.
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+    parsed = fields.parse_date(value)
     if pd.isna(parsed):
         return str(value)
     return parsed.strftime("%d %b %Y")
@@ -198,7 +239,10 @@ def fmt_date(value) -> str:
 
 def fmt_date_col(series: "pd.Series") -> "pd.Series":
     """Same formatting as fmt_date, applied to a whole column for st.dataframe."""
-    return series.map(fmt_date)
+    parsed = fields.parse_dates(series)
+    return parsed.dt.strftime("%d %b %Y").fillna(
+        series.map(lambda v: "—" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v))
+    )
 
 
 def badge(text: str, fg_key: str, bg_key: str, dot: bool = True) -> str:

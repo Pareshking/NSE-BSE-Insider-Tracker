@@ -12,23 +12,15 @@ style.inject_base_css()
 st.title("Data Quality")
 st.caption("First-class audit surface — never inferred from workflow success.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
-
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+client, dates = r2_data.page_gate()
 
 selected_date = st.selectbox("Run date", dates, index=0)
-manifest = r2_data.load_manifest(client, selected_date)
+with r2_data.guard(f"the {selected_date} run"):
+    manifest = r2_data.load_manifest(client, selected_date)
+    data = r2_data.load_all_canonical(client, selected_date)
 entries = manifest.get("datasets", manifest if isinstance(manifest, list) else [])
 if isinstance(entries, dict):
     entries = list(entries.values())
-
-data = r2_data.load_all_canonical(client, selected_date)
 
 written = sum(1 for e in entries if e.get("written"))
 total = len(entries) or (len(r2_data.CATEGORIES) * len(r2_data.EXCHANGES))
@@ -103,7 +95,19 @@ with left:
         "- Confluence Screener classifications (Insider Alpha, Certification, etc.) are a **same-90-day-window heuristic**, not a statistical test — "
         "they flag *what* overlapped, not a probability the overlap is meaningful, and carry no price history to confirm it\n"
         "- Confluence Screener's Float Absorption Ratio needs market cap for a name — where it's missing, that company sorts by raw value instead, "
-        "never silently dropped"
+        "never silently dropped\n"
+        "- Source dates arrive in three conventions (NSE ISO `2026-08-28`, NSE IST-midnight-as-UTC `…T18:30:00Z`, BSE `31/08/2026`); "
+        "`lib/fields.parse_dates` picks per value, and anything it can't place is shown as filed rather than guessed at\n"
+        "- A canonical field an exchange didn't publish narrows what a page can compute, and the page says so — it is never backfilled with a "
+        "placeholder that would read as data"
+    )
+    st.markdown("**Scope of this app**")
+    st.markdown(
+        "- Republishes public NSE/BSE disclosures for research. **Not investment advice**, not a recommendation, and not affiliated with "
+        "either exchange or SEBI\n"
+        "- Every figure is as filed by the issuer. Issuers revise and withdraw filings, so verify against the exchange's own filing before "
+        "acting on anything here\n"
+        "- No price history anywhere in this project, by design — nothing here says whether any of this activity paid off"
     )
 with right:
     st.markdown("**Reference data**")

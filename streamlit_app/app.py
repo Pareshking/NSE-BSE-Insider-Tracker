@@ -44,3 +44,7 @@ pg = st.navigation(
 )
 
 pg.run()
+
+# After pg.run() so it sits at the foot of whichever page just rendered --
+# every page, without each one having to remember to call it.
+style.disclaimer_footer()

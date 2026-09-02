@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from . import fields
+
 MCAP_TIERS = [
     (1000e7, "Micro (< Rs.1,000Cr)"),
     (5000e7, "Small (Rs.1,000-5,000Cr)"),
@@ -56,12 +58,12 @@ def promoter_insider_flow(insider_df: pd.DataFrame, mcap_lookup) -> pd.DataFrame
         return pd.DataFrame(columns=["canonical_isin", "company", "symbol", "promoter_net_value", "promoter_trades", "market_cap"])
     df = insider_df.copy()
     df = df.dropna(subset=["canonical_isin"])
-    person_cat = df.get("canonical_person_category", pd.Series(dtype=object)).astype(str).str.upper()
+    person_cat = fields.text_col(df, "canonical_person_category", upper=True)
     df = df[person_cat.str.contains("PROMOTER")]
     if df.empty:
         return pd.DataFrame(columns=["canonical_isin", "company", "symbol", "promoter_net_value", "promoter_trades", "market_cap"])
-    ttype = df.get("canonical_transaction_type", pd.Series(dtype=object)).astype(str).str.upper()
-    signed = pd.to_numeric(df.get("canonical_value"), errors="coerce").fillna(0)
+    ttype = fields.text_col(df, "canonical_transaction_type", upper=True)
+    signed = fields.num_col(df, "canonical_value")
     signed = signed.where(~ttype.str.contains("DISPOS"), -signed)
     df["_signed_val"] = signed
     df = _with_market_cap(df, mcap_lookup)
@@ -85,10 +87,10 @@ def institutional_flow(bulk_df: pd.DataFrame, block_df: pd.DataFrame, mcap_looku
         return empty, pd.DataFrame()
 
     df = combined.dropna(subset=["canonical_isin"]).copy()
-    df["_qty"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce").fillna(0)
-    df["_price"] = pd.to_numeric(df.get("canonical_price"), errors="coerce").fillna(0)
+    df["_qty"] = fields.num_col(df, "canonical_quantity")
+    df["_price"] = fields.num_col(df, "canonical_price")
     df["_value"] = df["_qty"] * df["_price"]
-    side = df.get("canonical_side", pd.Series(dtype=object)).astype(str).str.upper()
+    side = fields.text_col(df, "canonical_side", upper=True)
     df["_signed_val"] = df["_value"].where(side != "SELL", -df["_value"])
 
     # Internal transfer: same ISIN, same date, a BUY and a SELL within 1% of
@@ -125,6 +127,20 @@ def institutional_flow(bulk_df: pd.DataFrame, block_df: pd.DataFrame, mcap_looku
     return grouped, pd.DataFrame(transfer_rows)
 
 
+def _allottee_mix(categories: pd.Series) -> str | None:
+    """PROMOTER / MIXED / NON_PROMOTER for one ISIN's allottee categories,
+    or None when the source didn't say -- an unstated category is unknown,
+    not evidence of a non-promoter allotment."""
+    stated = categories[categories.astype(str).str.strip() != ""]
+    if stated.empty:
+        return None
+    if (stated == "PROMOTER").any():
+        return "PROMOTER"
+    if (stated == "MIXED").any():
+        return "MIXED"
+    return "NON_PROMOTER"
+
+
 def corporate_action_flags(rights_df: pd.DataFrame, preferential_df: pd.DataFrame) -> pd.DataFrame:
     """Per-ISIN: has_rights_issue, has_preferential, and the preferential
     allottee mix (PROMOTER / NON_PROMOTER / MIXED) -- the allottee category
@@ -137,9 +153,11 @@ def corporate_action_flags(rights_df: pd.DataFrame, preferential_df: pd.DataFram
         frames.append(r.set_index("canonical_isin"))
     if not preferential_df.empty and "canonical_isin" in preferential_df.columns:
         p = preferential_df.dropna(subset=["canonical_isin"]).copy()
-        allottee_mix = p.groupby("canonical_isin")["canonical_allottee_category"].apply(
-            lambda s: "PROMOTER" if (s == "PROMOTER").any() else ("MIXED" if (s == "MIXED").any() else "NON_PROMOTER")
-        )
+        # An exchange can publish preferential issues without an allottee
+        # category; the flag still holds, the PROMOTER/NON_PROMOTER split
+        # just isn't knowable for those rows.
+        p["canonical_allottee_category"] = fields.text_col(p, "canonical_allottee_category", upper=True)
+        allottee_mix = p.groupby("canonical_isin")["canonical_allottee_category"].apply(_allottee_mix)
         pf = pd.DataFrame({"has_preferential": True, "preferential_allottee": allottee_mix})
         frames.append(pf)
     if not frames:
@@ -162,8 +180,12 @@ def classify(row) -> tuple[str, str]:
     """One of the confluence archetypes from the literature, given a row
     with promoter_net_value, institutional_net_value, has_rights_issue,
     has_preferential, preferential_allottee. Returns (label, color_key)."""
-    promoter_net = row.get("promoter_net_value") or 0
-    inst_net = row.get("institutional_net_value") or 0
+    # as_float, not `or 0`: NaN is truthy, so `row.get(...) or 0` keeps the
+    # NaN and every comparison below silently answers False -- an ISIN that
+    # only one side of the outer merge covered would fall through to
+    # "No Confluence" instead of being classified on the side that has data.
+    promoter_net = fields.as_float(row.get("promoter_net_value"))
+    inst_net = fields.as_float(row.get("institutional_net_value"))
     has_pref = bool(row.get("has_preferential"))
     has_rights = bool(row.get("has_rights_issue"))
     allottee = row.get("preferential_allottee")

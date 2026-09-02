@@ -22,20 +22,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import r2_data, style
+from lib import fields, r2_data, style
 
 st.markdown("### Bulk & Block Concentration")
 st.caption("Client concentration and largest transactions -- not a raw deal list. See Evidence & Drill-down for individual transactions.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
-
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+client, dates = r2_data.page_gate()
 
 top = st.columns([1, 1, 2])
 with top[0]:
@@ -47,8 +39,8 @@ exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice
 deal_type = st.tabs(["Bulk Deals", "Block Deals"])
 CATEGORY_BY_TAB = {"Bulk Deals": "bulk_deals", "Block Deals": "block_deals"}
 
-mcap_df = r2_data.load_market_cap(client, selected_date)
-mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"] if not mcap_df.empty else None
+with r2_data.guard("the market cap reference data"):
+    mcap_lookup = r2_data.market_cap_lookup(client, selected_date)
 
 
 def fmt_signed_inr(v: float) -> str:
@@ -90,17 +82,19 @@ def sparkline(daily: pd.Series, color: str) -> go.Figure:
 for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
     category = CATEGORY_BY_TAB[tab_name]
     with tab:
-        dfs = [r2_data.load_canonical(client, ex, category, selected_date) for ex in exchanges]
-        dfs = [d for d in dfs if not d.empty]
-        if not dfs:
+        with r2_data.guard(f"the {selected_date} run"):
+            df = r2_data.load_combined(client, category, exchanges, selected_date)
+        if df.empty:
             st.caption(f"No {tab_name.lower()} for {selected_date} on {exchange_choice}.")
             continue
 
-        df = pd.concat(dfs, ignore_index=True)
-        df["_date"] = pd.to_datetime(df["canonical_event_date"], errors="coerce")
+        # fields.parse_dates, not a bare pd.to_datetime: BSE bulk/block rows
+        # carry Indian DD/MM/YYYY, which pandas' default reading turns into
+        # NaT -- silently dropping every BSE row from the windows below.
+        df["_date"] = fields.parse_dates(df["canonical_event_date"])
         run_date = df["_date"].max()
-        df["_qty"] = pd.to_numeric(df["canonical_quantity"], errors="coerce").fillna(0)
-        df["_price"] = pd.to_numeric(df["canonical_price"], errors="coerce").fillna(0)
+        df["_qty"] = fields.num_col(df, "canonical_quantity")
+        df["_price"] = fields.num_col(df, "canonical_price")
         df["_value"] = df["_qty"] * df["_price"]
         if mcap_lookup is not None:
             df["_market_cap"] = df["canonical_symbol"].astype(str).str.upper().map(mcap_lookup)
@@ -112,7 +106,19 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
         cutoff = run_date - pd.Timedelta(days=window_days - 1)
         win_df = df[(df["_date"] >= cutoff) & (df["_date"] <= run_date)]
 
-        grain = st.radio("View", ["By Security", "By Client", "Largest Transactions"], horizontal=True, key=f"grain-{category}")
+        # Both concentration grains are defined by who the counterparty was,
+        # so without canonical_client there is nothing honest to compute:
+        # folding every row into one unnamed client would report 100%
+        # concentration on every security. Say the field is missing and
+        # offer the one view that doesn't depend on it.
+        has_client = "canonical_client" in win_df.columns
+        grain_options = ["By Security", "By Client", "Largest Transactions"] if has_client else ["Largest Transactions"]
+        grain = st.radio("View", grain_options, horizontal=True, key=f"grain-{category}")
+        if not has_client:
+            st.caption(
+                f"⚠️ This run's {tab_name.lower()} carry no client field, so the concentration views "
+                "(By Security, By Client) can't be computed -- showing individual transactions only."
+            )
 
         if grain == "Largest Transactions":
             largest = win_df.sort_values("_value", ascending=False).head(30)

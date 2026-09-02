@@ -12,15 +12,7 @@ style.inject_base_css()
 st.title("Evidence & Drill-down")
 st.caption("Every individual transaction, with source fields and cross-match evidence. For rollups and signals, see Overview and Promoter Activity.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
-
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+client, dates = r2_data.page_gate()
 
 top = st.columns([1, 1, 3])
 with top[0]:
@@ -83,12 +75,11 @@ def pretty_label(col: str) -> str:
 
 for tab, cat in zip(category, r2_data.CATEGORIES):
     with tab:
-        dfs = [r2_data.load_canonical(client, ex, cat, selected_date) for ex in exchanges]
-        dfs = [d for d in dfs if not d.empty]
-        if not dfs:
+        with r2_data.guard(f"the {selected_date} run"):
+            df = r2_data.load_combined(client, cat, exchanges, selected_date)
+        if df.empty:
             st.caption(f"No {r2_data.CATEGORY_LABELS[cat]} rows for {selected_date} on {exchange_choice}.")
             continue
-        df = pd.concat(dfs, ignore_index=True)
 
         filter_cols = st.columns(len(FILTERABLE.get(cat, [])) + 1)
         mask = pd.Series(True, index=df.index)
@@ -111,7 +102,17 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
             mask &= row_mask
 
         filtered = df[mask]
-        st.caption(f"{len(filtered):,} of {len(df):,} rows")
+        count_col, export_col = st.columns([3, 1])
+        with count_col:
+            st.caption(f"{len(filtered):,} of {len(df):,} rows")
+        with export_col:
+            # Every column, not just the displayed ones: the native source
+            # fields are the point of this page, and an export that dropped
+            # them would be less evidence than the screen it came from.
+            style.download_csv(
+                filtered, f"{cat}_{selected_date}_{exchange_choice.lower()}.csv",
+                label="Export rows", key=f"dl-{cat}",
+            )
 
         show_cols = [c for c in DISPLAY_COLUMNS[cat] if c in filtered.columns]
         display_df = filtered[show_cols].copy()

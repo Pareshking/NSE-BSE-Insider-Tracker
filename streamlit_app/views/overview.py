@@ -1,30 +1,171 @@
 import sys
-import warnings
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import r2_data, style
+from lib import fields, r2_data, style
 
-client = r2_data.get_client()
+# Rights/preferential carry event dates from way earlier (or, for some
+# corporate-action fields, later -- e.g. a record date) in a listing's
+# lifecycle than the actual disclosure -- some run years off in either
+# direction. Window "today's signals" to the same 90D the acquisition
+# pipeline requests, both bounds, or a handful of stray rows swamp what's
+# supposed to be a recent-activity view (confirmed 2026-09-02 against real
+# data: unbounded above, the trend chart's x-axis ran three months past the
+# run date).
+WINDOW_DAYS = 90
+DATE_FIELD = {
+    "insider_trading": "canonical_transaction_date",
+    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
+    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
+}
+CONCENTRATION_THRESHOLD = 0.6   # top-3-client share of a security's traded value
+MIN_BASE_HOLDING = 1000         # below this a share move is a meaningless % (see stake changes)
 
-if not r2_data.r2_configured():
-    st.title("Overview")
-    st.warning(
-        "R2 credentials aren't configured for this app, so there's no data to show yet. "
-        "Set `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, "
-        "`R2_BUCKET_NAME` in `.streamlit/secrets.toml` (or as env vars) -- the same "
-        "values already used by the GitHub Actions R2-storage workflow."
-    )
-    st.stop()
 
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.title("Overview")
-    st.info("No manifests found in the bucket yet -- the R2 write workflow hasn't run, or hasn't produced output for any date.")
-    st.stop()
+@st.cache_data(ttl=300, max_entries=6, show_spinner=False)
+def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
+    """Every rollup this page draws, computed once per (run date, exchange
+    choice).
+
+    These are pure functions of the run's data, but Streamlit re-executes
+    the whole script on every widget interaction -- so uncached, typing a
+    single character into the search box re-parsed 90 days of dates and
+    re-ran the per-security concentration groupby for all five categories.
+    Search now filters the results below instead of recomputing them.
+    """
+    anchor = fields.parse_date(date)
+    upper = anchor.date() if pd.notna(anchor) else None
+    cutoff = (anchor - pd.Timedelta(days=WINDOW_DAYS - 1)).date() if pd.notna(anchor) else None
+    window_dates = pd.date_range(cutoff, upper, freq="D").date if cutoff is not None else []
+
+    by_category = {c: r2_data.load_combined(_client, c, exchanges, date) for c in r2_data.CATEGORIES}
+    insider_df = by_category["insider_trading"]
+
+    def in_window(dates_series):
+        if cutoff is None:
+            return dates_series.notna()
+        return dates_series.notna() & (dates_series >= cutoff) & (dates_series <= upper)
+
+    # --- per-category daily counts, for the pulse strip's this-week-vs-usual delta
+    daily_by_cat = {}
+    for category, df in by_category.items():
+        date_field = DATE_FIELD[category]
+        if df.empty or date_field not in df.columns:
+            daily_by_cat[category] = pd.Series(0, index=window_dates)
+            continue
+        cat_dates = fields.parse_dates(df[date_field]).dt.date
+        cat_dates = cat_dates[in_window(cat_dates)]
+        daily = cat_dates.value_counts()
+        daily_by_cat[category] = daily.reindex(window_dates, fill_value=0).sort_index() if len(window_dates) else daily
+
+    # --- promoter accumulation, ranked by % of market cap
+    promoter_ranking = pd.DataFrame(columns=["net_val", "symbol", "market_cap", "pct_mcap"])
+    if not insider_df.empty:
+        person_cat = fields.text_col(insider_df, "canonical_person_category", upper=True)
+        promoter_rows = insider_df[person_cat.str.contains("PROMOTER")].copy()
+        if not promoter_rows.empty:
+            ttype = fields.text_col(promoter_rows, "canonical_transaction_type", upper=True)
+            signed_val = fields.num_col(promoter_rows, "canonical_value")
+            promoter_rows["_signed_val"] = signed_val.where(~ttype.str.contains("DISPOS"), -signed_val)
+            grouped = promoter_rows.groupby("canonical_company").agg(
+                net_val=("_signed_val", "sum"), symbol=("canonical_symbol", "first"),
+            )
+            mcap_lookup = r2_data.market_cap_lookup(_client, date)
+            if mcap_lookup is not None:
+                grouped["market_cap"] = grouped["symbol"].astype(str).str.upper().map(mcap_lookup)
+                grouped["pct_mcap"] = 100 * grouped["net_val"] / grouped["market_cap"]
+            else:
+                grouped["market_cap"] = pd.NA
+                grouped["pct_mcap"] = pd.NA
+            # Sort by |% of market cap| when known; unknown-market-cap rows sort
+            # by raw value but always land after every ranked row, never
+            # crowding out a smaller name just because its % couldn't be computed.
+            has_pct = grouped["pct_mcap"].notna()
+            promoter_ranking = pd.concat([
+                grouped[has_pct].reindex(grouped[has_pct]["pct_mcap"].abs().sort_values(ascending=False).index),
+                grouped[~has_pct].reindex(grouped[~has_pct]["net_val"].abs().sort_values(ascending=False).index),
+            ])
+
+    # --- one ranked feed across all 5 categories -- a big bulk deal or
+    # preferential allotment is just as much "what happened today" as an
+    # insider filing.
+    combined_rows = []
+    for category, df in by_category.items():
+        if df.empty:
+            continue
+        df = df.copy()
+        if category == "insider_trading":
+            df["_value"] = fields.num_col(df, "canonical_value", fill=None)
+            df["_date"] = df.get("canonical_transaction_date")
+            ttype = fields.text_col(df, "canonical_transaction_type", upper=True)
+            df["_side"] = ttype.map(lambda t: "BUY" if "ACQUI" in t else ("SELL" if "DISPOS" in t else None))
+        elif category in ("bulk_deals", "block_deals"):
+            df["_value"] = fields.num_col(df, "canonical_quantity", fill=None) * fields.num_col(df, "canonical_price", fill=None)
+            df["_date"] = df.get("canonical_event_date")
+            df["_side"] = fields.text_col(df, "canonical_side", upper=True).where(lambda s: s.isin(["BUY", "SELL"]))
+        else:
+            df["_value"] = fields.num_col(df, "canonical_amount_raised", fill=None)
+            df["_date"] = df.get("canonical_event_date")
+            df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
+        df["_category"] = category
+        combined_rows.append(df[["_value", "_date", "_category", "_side", "canonical_company", "exchange"]])
+    combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
+        columns=["_value", "_date", "_category", "_side", "canonical_company", "exchange"])
+    combined = combined.dropna(subset=["_value"])
+    if not combined.empty:
+        combined = combined[in_window(fields.parse_dates(combined["_date"]).dt.date)]
+    top_transactions = combined.sort_values("_value", ascending=False)
+
+    # --- concentration: a handful of clients driving most of a security's volume
+    alert_rows = []
+    for category in ("bulk_deals", "block_deals"):
+        df = by_category[category]
+        if df.empty or "canonical_client" not in df.columns:
+            continue
+        df = df.copy()
+        df["_value"] = fields.num_col(df, "canonical_quantity") * fields.num_col(df, "canonical_price")
+        for (company, _symbol), sub in df.groupby(["canonical_company", "canonical_symbol"], dropna=False):
+            by_client = sub.groupby("canonical_client")["_value"].sum().sort_values(ascending=False)
+            total = by_client.sum()
+            share = (by_client.head(3).sum() / total) if total else 0.0
+            if share >= CONCENTRATION_THRESHOLD and total > 0:
+                alert_rows.append({"company": company, "category": category, "value": total, "share": share})
+    alert_rows.sort(key=lambda r: r["value"], reverse=True)
+
+    # --- biggest stake changes, by % of the holding, not rupees
+    stake_changes = pd.DataFrame()
+    if not insider_df.empty and "canonical_holding_before" in insider_df.columns:
+        hdf = insider_df.copy()
+        hdf["_before"] = fields.num_col(hdf, "canonical_holding_before", fill=None)
+        hdf["_after"] = fields.num_col(hdf, "canonical_holding_after", fill=None)
+        # A tiny base holding turns a small share move into a meaningless
+        # four-digit percentage -- require a real starting position before
+        # trusting the ratio.
+        hdf = hdf[hdf["_before"] >= MIN_BASE_HOLDING]
+        hdf["_pct_change"] = 100 * (hdf["_after"] - hdf["_before"]) / hdf["_before"]
+        hdf = hdf.dropna(subset=["_pct_change"])
+        stake_changes = hdf.reindex(hdf["_pct_change"].abs().sort_values(ascending=False).index)
+
+    return {
+        "daily_by_cat": daily_by_cat,
+        "promoter_ranking": promoter_ranking,
+        "top_transactions": top_transactions,
+        "concentration_alerts": alert_rows,
+        "stake_changes": stake_changes,
+        "has_insider_data": not insider_df.empty,
+    }
+
+
+def matches_company(df: pd.DataFrame, query: str) -> pd.DataFrame:
+    if not query or df.empty:
+        return df
+    return df[df["canonical_company"].astype(str).str.lower().str.contains(query.strip().lower(), na=False)]
+
+
+client, dates = r2_data.page_gate("Overview")
 
 # --- header bar: title + exchange toggle + date selector + search + certification badges ---
 h1, h2, h3, h5, h4 = st.columns([1.6, 1.4, 1.3, 2.2, 2.1])
@@ -41,7 +182,8 @@ with h5:
         help="Searching by person or fund name? Use Entity Tracker instead -- it looks up a name across every category, not just this page's company filter.",
     )
 
-manifest = r2_data.load_manifest(client, selected_date)
+with r2_data.guard(f"the {selected_date} run"):
+    manifest = r2_data.load_manifest(client, selected_date)
 entries = manifest.get("datasets", manifest if isinstance(manifest, list) else [])
 if isinstance(entries, dict):
     entries = list(entries.values())
@@ -67,49 +209,10 @@ with h4:
         unsafe_allow_html=True,
     )
 
-exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
-data = {(ex, cat): r2_data.load_canonical(client, ex, cat, selected_date) for ex in exchanges for cat in r2_data.CATEGORIES}
-insider_df = pd.concat([data.get((ex, "insider_trading"), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-
-# Rights/preferential carry event dates from way earlier (or, for some
-# corporate-action fields, later -- e.g. a record date) in a listing's
-# lifecycle than the actual disclosure -- some run years off in either
-# direction. Window "today's signals" to the same 90D the acquisition
-# pipeline requests, both bounds, or a handful of stray rows swamp what's
-# supposed to be a recent-activity view (confirmed 2026-09-02 against real
-# data: unbounded above, the trend chart's x-axis ran three months past the
-# run date).
-_signal_anchor = pd.to_datetime(selected_date, errors="coerce")
-_signal_upper = _signal_anchor.date() if pd.notna(_signal_anchor) else None
-_signal_cutoff = (_signal_anchor - pd.Timedelta(days=89)).date() if pd.notna(_signal_anchor) else None
-
-# One shared per-category daily-count series, windowed to the same 90D the
-# acquisition pipeline requests -- computed once, reused by the pulse strip's
-# this-week-vs-usual delta below instead of redoing this date-parsing pass
-# per widget.
-_DATE_FIELD = {
-    "insider_trading": "canonical_transaction_date",
-    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
-    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
-}
-_window_dates = (
-    pd.date_range(_signal_cutoff, _signal_upper, freq="D").date if _signal_cutoff is not None else []
-)
-daily_by_cat = {}
-for category in r2_data.CATEGORIES:
-    df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-    date_field = _DATE_FIELD[category]
-    if df.empty or date_field not in df.columns:
-        daily_by_cat[category] = pd.Series(0, index=_window_dates)
-        continue
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        cat_dates = pd.to_datetime(df[date_field], errors="coerce", dayfirst=True).dt.date
-    cat_dates = cat_dates.dropna()
-    if _signal_cutoff is not None:
-        cat_dates = cat_dates[(cat_dates >= _signal_cutoff) & (cat_dates <= _signal_upper)]
-    daily = cat_dates.value_counts()
-    daily_by_cat[category] = daily.reindex(_window_dates, fill_value=0).sort_index() if len(_window_dates) else daily
+exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange_choice.lower(),)
+with r2_data.guard(f"the {selected_date} run"):
+    agg = overview_aggregates(client, selected_date, exchanges)
+daily_by_cat = agg["daily_by_cat"]
 
 # --- Category Pulse Strip: count + this-week-vs-usual delta, per category --
 # a signal ("is this heating up right now"), not a trend chart -- shape over
@@ -156,34 +259,10 @@ with sig1:
     # under mega-cap noise. Falls back to raw value only when market cap
     # isn't available for a name (NSE-only reference data, see Promoter
     # Activity's own caveat).
-    if insider_df.empty:
+    if not agg["has_insider_data"]:
         st.caption("No insider-trading data.")
     else:
-        pdf = insider_df.copy()
-        person_cat = pdf.get("canonical_person_category", pd.Series(dtype=object)).astype(str).str.upper()
-        ttype = pdf.get("canonical_transaction_type", pd.Series(dtype=object)).astype(str).str.upper()
-        promoter_rows = pdf[person_cat.str.contains("PROMOTER")].copy()
-        signed_val = pd.to_numeric(promoter_rows.get("canonical_value"), errors="coerce").fillna(0)
-        signed_val = signed_val.where(~ttype.loc[promoter_rows.index].str.contains("DISPOS"), -signed_val)
-        promoter_rows["_signed_val"] = signed_val
-        grouped = promoter_rows.groupby("canonical_company").agg(
-            net_val=("_signed_val", "sum"), symbol=("canonical_symbol", "first"),
-        )
-        mcap_df = r2_data.load_market_cap(client, selected_date)
-        if not mcap_df.empty:
-            mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"]
-            grouped["market_cap"] = grouped["symbol"].astype(str).str.upper().map(mcap_lookup)
-            grouped["pct_mcap"] = 100 * grouped["net_val"] / grouped["market_cap"]
-        else:
-            grouped["pct_mcap"] = pd.NA
-        # Sort by |% of market cap| when known; unknown-market-cap rows sort
-        # by raw value but always land after every ranked row, never
-        # crowding out a smaller name just because its % couldn't be computed.
-        has_pct = grouped["pct_mcap"].notna()
-        ranked = pd.concat([
-            grouped[has_pct].reindex(grouped[has_pct]["pct_mcap"].abs().sort_values(ascending=False).index),
-            grouped[~has_pct].reindex(grouped[~has_pct]["net_val"].abs().sort_values(ascending=False).index),
-        ])
+        ranked = agg["promoter_ranking"]
         buyers = ranked[ranked["net_val"] > 0].head(4)
         sellers = ranked[ranked["net_val"] < 0].head(2)
         if buyers.empty and sellers.empty:
@@ -208,41 +287,11 @@ with sig2:
     # A single ranked feed across all 5 categories -- not just insider
     # trading -- since a big bulk deal or preferential allotment is just as
     # much "what happened today" as an insider filing.
-    combined_rows = []
-    for category in r2_data.CATEGORIES:
-        df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-        if df.empty:
-            continue
-        df = df.copy()
-        if category == "insider_trading":
-            df["_value"] = pd.to_numeric(df.get("canonical_value"), errors="coerce")
-            df["_date"] = df.get("canonical_transaction_date")
-            ttype = df.get("canonical_transaction_type", pd.Series(dtype=object)).astype(str).str.upper()
-            df["_side"] = ttype.map(lambda t: "BUY" if "ACQUI" in t else ("SELL" if "DISPOS" in t else None))
-        elif category in ("bulk_deals", "block_deals"):
-            df["_value"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce") * pd.to_numeric(df.get("canonical_price"), errors="coerce")
-            df["_date"] = df.get("canonical_event_date")
-            df["_side"] = df.get("canonical_side", pd.Series(dtype=object)).astype(str).str.upper().where(lambda s: s.isin(["BUY", "SELL"]))
-        else:
-            df["_value"] = pd.to_numeric(df.get("canonical_amount_raised"), errors="coerce")
-            df["_date"] = df.get("canonical_event_date")
-            df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
-        df["_category"] = category
-        combined_rows.append(df[["_value", "_date", "_category", "_side", "canonical_company", "exchange"]])
-    combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame()
-    combined = combined.dropna(subset=["_value"])
-    if _signal_cutoff is not None and not combined.empty:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            parsed_dates = pd.to_datetime(combined["_date"], errors="coerce", dayfirst=True).dt.date
-        combined = combined[(parsed_dates >= _signal_cutoff) & (parsed_dates <= _signal_upper)]
-    if search_query and not combined.empty:
-        q = search_query.strip().lower()
-        combined = combined[combined["canonical_company"].astype(str).str.lower().str.contains(q, na=False)]
+    combined = matches_company(agg["top_transactions"], search_query)
     if combined.empty:
         st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
     else:
-        top_txns = combined.sort_values("_value", ascending=False).head(8)
+        top_txns = combined.head(8)
         rows_html = []
         for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
@@ -275,23 +324,10 @@ with sig2:
 
 with sig3:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Concentration Alerts</div>', unsafe_allow_html=True)
-    alert_rows = []
-    for category in ("bulk_deals", "block_deals"):
-        df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-        if df.empty:
-            continue
-        df = df.copy()
-        df["_value"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce").fillna(0) * pd.to_numeric(df.get("canonical_price"), errors="coerce").fillna(0)
-        for (company, symbol), sub in df.groupby(["canonical_company", "canonical_symbol"], dropna=False):
-            by_client = sub.groupby("canonical_client")["_value"].sum().sort_values(ascending=False)
-            total = by_client.sum()
-            share = (by_client.head(3).sum() / total) if total else 0.0
-            if share >= 0.6 and total > 0:
-                alert_rows.append({"company": company, "category": category, "value": total, "share": share})
+    alert_rows = agg["concentration_alerts"]
     if not alert_rows:
-        st.caption("No securities with >60% top-3-client concentration this run.")
+        st.caption(f"No securities with >{CONCENTRATION_THRESHOLD:.0%} top-3-client concentration this run.")
     else:
-        alert_rows.sort(key=lambda r: r["value"], reverse=True)
         st.markdown(f'<div style="font-size:22px;font-weight:700;margin-bottom:6px;">{len(alert_rows)}</div>', unsafe_allow_html=True)
         st.caption(f"{'security' if len(alert_rows) == 1 else 'securities'} with a handful of clients driving most of the volume.")
         for r in alert_rows[:4]:
@@ -305,25 +341,14 @@ with sig3:
 
 st.write("")
 st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
-if insider_df.empty or "canonical_holding_before" not in insider_df.columns:
+if agg["stake_changes"].empty and not search_query:
     st.caption("No holding-before/after data this run.")
 else:
-    hdf = insider_df.copy()
-    hdf["_before"] = pd.to_numeric(hdf.get("canonical_holding_before"), errors="coerce")
-    hdf["_after"] = pd.to_numeric(hdf.get("canonical_holding_after"), errors="coerce")
-    # A tiny base holding turns a small share move into a meaningless
-    # four-digit percentage -- require a real starting position before
-    # trusting the ratio.
-    hdf = hdf[hdf["_before"] >= 1000]
-    hdf["_pct_change"] = 100 * (hdf["_after"] - hdf["_before"]) / hdf["_before"]
-    hdf = hdf.dropna(subset=["_pct_change"])
-    if search_query and not hdf.empty:
-        q = search_query.strip().lower()
-        hdf = hdf[hdf["canonical_company"].astype(str).str.lower().str.contains(q, na=False)]
+    hdf = matches_company(agg["stake_changes"], search_query)
     if hdf.empty:
         st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
     else:
-        top_changes = hdf.reindex(hdf["_pct_change"].abs().sort_values(ascending=False).index).head(8)
+        top_changes = hdf.head(8)
         rows_html = []
         for _, r in top_changes.iterrows():
             pct = r["_pct_change"]

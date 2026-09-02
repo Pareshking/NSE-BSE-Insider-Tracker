@@ -11,20 +11,12 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import confluence, r2_data, style
+from lib import confluence, fields, r2_data, style
 
 st.markdown("### Entity Tracker")
 st.caption("Search a promoter, insider, or institutional client name to see everything they did across insider trading and bulk/block deals this window.")
 
-client = r2_data.get_client()
-if not r2_data.r2_configured():
-    st.warning("R2 credentials aren't configured -- see the Overview page for what's needed.")
-    st.stop()
-
-dates = r2_data.list_manifest_dates(client)
-if not dates:
-    st.info("No manifests found in the bucket yet.")
-    st.stop()
+client, dates = r2_data.page_gate()
 
 top = st.columns([1, 1, 2])
 with top[0]:
@@ -39,16 +31,20 @@ if not name_query:
     st.stop()
 
 q = name_query.strip().lower()
-cats = {c: pd.concat([r2_data.load_canonical(client, ex, c, selected_date) for ex in exchanges], ignore_index=True)
-        for c in r2_data.CATEGORIES}
+with r2_data.guard(f"the {selected_date} run"):
+    cats = {c: r2_data.load_combined(client, c, exchanges, selected_date) for c in r2_data.CATEGORIES}
 preferential_actions = confluence.corporate_action_flags(pd.DataFrame(), cats["preferential_issue"])
 pref_isins_by_promoter = set(preferential_actions.loc[preferential_actions["preferential_allottee"] == "PROMOTER", "canonical_isin"]) if not preferential_actions.empty else set()
 
 rows = []
-insider_hits = cats["insider_trading"][cats["insider_trading"].get("canonical_person", pd.Series(dtype=object)).astype(str).str.lower().str.contains(q, na=False)] if not cats["insider_trading"].empty else pd.DataFrame()
+insider_df = cats["insider_trading"]
+insider_hits = insider_df[fields.text_col(insider_df, "canonical_person").str.lower().str.contains(q, na=False)]
 for _, r in insider_hits.iterrows():
     ttype = str(r.get("canonical_transaction_type") or "").upper()
-    val = pd.to_numeric(r.get("canonical_value"), errors="coerce") or 0
+    # NaN default, not 0: a filing with no value published is unknown, and
+    # style.fmt_inr renders that as an em dash. (`or 0`, the previous
+    # spelling, kept the NaN anyway -- NaN is truthy -- and printed "₹nan".)
+    val = fields.as_float(r.get("canonical_value"), default=float("nan"))
     signed = -val if "DISPOS" in ttype else val
     rows.append({
         "date": r.get("canonical_transaction_date"), "category": "insider_trading",
@@ -57,10 +53,11 @@ for _, r in insider_hits.iterrows():
         "exchange": r.get("exchange"), "entity_role": r.get("canonical_person_category"),
     })
 for cat in ("bulk_deals", "block_deals"):
-    hits = cats[cat][cats[cat].get("canonical_client", pd.Series(dtype=object)).astype(str).str.lower().str.contains(q, na=False)] if not cats[cat].empty else pd.DataFrame()
+    hits = cats[cat][fields.text_col(cats[cat], "canonical_client").str.lower().str.contains(q, na=False)]
     for _, r in hits.iterrows():
         side = str(r.get("canonical_side") or "").upper()
-        val = (pd.to_numeric(r.get("canonical_quantity"), errors="coerce") or 0) * (pd.to_numeric(r.get("canonical_price"), errors="coerce") or 0)
+        val = (fields.as_float(r.get("canonical_quantity"), default=float("nan"))
+               * fields.as_float(r.get("canonical_price"), default=float("nan")))
         rows.append({
             "date": r.get("canonical_event_date"), "category": cat,
             "company": r.get("canonical_company"), "isin": r.get("canonical_isin"),
@@ -108,8 +105,17 @@ st.markdown(
 )
 
 st.write("")
-st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">All Transactions</div>', unsafe_allow_html=True)
-detail = entity_df.sort_values("date", ascending=False).copy()
+title_col, export_col = st.columns([3, 1])
+with title_col:
+    st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">All Transactions</div>', unsafe_allow_html=True)
+with export_col:
+    style.download_csv(entity_df, f"entity_{selected_date}.csv", label="Export transactions")
+# Sort on the parsed date, not the raw string: "date" holds whatever each
+# exchange published, so a lexicographic sort interleaves BSE's 31/08/2026
+# with NSE's 2026-08-31 into an order that is not chronological at all.
+detail = entity_df.copy()
+detail["_sort_date"] = fields.parse_dates(detail["date"])
+detail = detail.sort_values("_sort_date", ascending=False, na_position="last").drop(columns=["_sort_date"])
 detail["date"] = detail["date"].map(style.fmt_date)
 detail["category"] = detail["category"].map(r2_data.CATEGORY_LABELS)
 detail["value"] = detail["value"].map(style.fmt_inr)
