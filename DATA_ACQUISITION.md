@@ -193,6 +193,31 @@ filter and re-captures to pick up historical data (not just the page's
 default/current-day view); `historical_date_test.method` is always set to
 `'direct_api_date_params'` so `bse_validate.py`'s evidence gate accepts it.
 
+### BSE Rights/Preferential structured fields (added 2026-09-01, live-confirmed 2026-09-02)
+
+`ri_pref_row()` in `bse_raw_capture_v2.py` additionally maps positions 4-8
+of the raw row to `in_principle_status`, `in_principle_date`,
+`listing_status`, `listing_stage_date`, `bse_company_code`. Confirmed
+against a real run's evidence artifact (267 Rights Issue rows): the first
+four are ~100% populated with real values (`in_principle_status`/
+`listing_status` e.g. `"New"`/`"Revised"`; dates like `"8/18/2026
+00:00:00"`); `listing_stage_date` is ~52% populated, correctly, since not
+every issue has reached the listing stage yet.
+
+**Known limitation, not a bug:** `bse_company_code`'s values (e.g. `8255`,
+`13640`) are a *different BSE internal ID namespace* than the 6-digit
+`bse_scrip_code` used everywhere else in this project
+(`reference_data/security_master_20260901.csv`, e.g. `500002`, `500325`)
+-- confirmed by grepping the security master for these exact values and
+finding zero matches. This means `resolve_isin()` in `r2_writer.py` cannot
+bridge BSE Rights/Preferential rows to an ISIN via the existing crosswalk,
+so cross-exchange matching for these two categories still reports 0
+matches (`canonical_isin` empty for all 267 rows checked, vs 107 distinct
+ISINs on the NSE side). The date fields are otherwise correct and ready to
+use the moment a real `bse_company_code` -> `bse_scrip_code` (or -> ISIN
+directly) lookup is found -- that's a new, separate investigation, not
+something wrong with what shipped.
+
 ---
 
 ## Cross-exchange field alignment (canonical layer)

@@ -1,10 +1,58 @@
 # Validation Status — NSE + BSE
 
-Last updated: 2026-09-01 (post-XBRL-rewrite)
+Last updated: 2026-09-02 (full 10/10 reconfirmation + BSE structured-field verification)
 
 **See `DATA_ACQUISITION.md` for the exact working method per category — this
 file tracks pass/fail status; that one explains how each fetch actually
 works and why.**
+
+## 2026-09-02 reconfirmation: all 10 (exchange, category) pairs VERIFIED
+
+Overnight safety-net check-in, `r2-storage.yml` run
+[33575157195](https://github.com/Pareshking/NSE-BSE-Insider-Tracker/actions/runs/33575157195)
+(commit `7a7f9b9`, target_date=2026-08-31, lookback_days=90): **manifest
+shows `written_count: 10, skipped_count: 0`** -- NSE and BSE, all 5
+categories each, all VERIFIED. This is the first run in this project's
+history to certify all 10 combinations in a single pass.
+
+Also confirmed as part of this run, checking a same-day change that had
+been UNTESTED against live BSE data (new `bse_raw_capture_v2.py` fields
+`in_principle_status`/`in_principle_date`/`listing_status`/
+`listing_stage_date`/`bse_company_code` for Rights/Preferential):
+
+- **Field-name assumptions were correct.** Downloaded the run's evidence
+  artifact and checked `bse_validation/rights_issue_normalized.json`
+  directly (267 real rows): `in_principle_status`, `in_principle_date`,
+  `listing_status`, `bse_company_code` are 100% populated with real
+  values (not empty strings); `listing_stage_date` is 52% populated
+  (140/267) -- correctly partial, since not every rights issue has
+  reached the listing stage yet, not a defect.
+- **Real, precisely-diagnosed limitation found (not a regression, not new
+  today -- rights/preferential cross-exchange matching has never worked):**
+  `bse_company_code`'s values (e.g. `8255`, `13640`) are a *different* BSE
+  internal ID namespace than the 6-digit `bse_scrip_code` in
+  `reference_data/security_master_20260901.csv` (e.g. `500002`, `500325`)
+  -- confirmed directly, `grep`ing the security master for these exact
+  values found zero matches. `resolve_isin()`'s BSE branch looks up
+  `bse_company_code` against that crosswalk and never finds it, so
+  `canonical_isin` stays empty for every BSE rights/preferential row
+  (`0` distinct ISINs across 267 rows, vs 107 on the NSE side) and
+  cross-exchange matching for these two categories still can't confirm a
+  link (`cross_exchange_matches_flagged: 0`, unchanged from before this
+  change). The new date fields populate correctly and are ready to use
+  the moment a real bridge between these two BSE ID namespaces is found
+  -- that's a new, separate investigation (a BSE company-code-to-scrip-code
+  lookup, not yet located), not a bug in what shipped.
+- BSE `block_deals` (17 rows), `rights_issue` (267 rows), `preferential_issue`
+  (1,142 rows) all independently confirmed VERIFIED in this same run --
+  no regression from the field additions.
+- Market cap reference data: 8,106 symbols resolved (3,169 NSE + 4,685 BSE
+  + 252 cross-exchange aliases) in this same run, consistent with Phase 0.5's
+  standalone testing earlier the same day.
+- The gap-detection backfill (`scripts/backfill_gaps.py`) ran for real for
+  the first time in production: found 10 weekdays (2026-08-17 through
+  2026-08-28) with no manifest yet and backfilled all of them from this
+  run's already-fetched data, exactly as designed.
 
 ## Current confirmed state
 
@@ -172,10 +220,11 @@ These are defect-diagnosis observations, not certification.
 | BSE | Block | ✅ VERIFIED |
 | BSE | Rights | ✅ VERIFIED |
 | BSE | Preferential | ✅ VERIFIED |
-| BSE | Overall certification | ✅ VERIFIED (run #15, commit 5f529de) |
-| Cross-exchange | Matching | 🔴 Blocked until NSE overall certification is reconfirmed green |
-| R2 backfill | One-year | 🔴 Blocked |
-| Production schema | Freeze | 🔴 Blocked |
+| BSE | Overall certification | ✅ VERIFIED (run #15, commit 5f529de; reconfirmed 2026-09-02 run 33575157195, all 10/10) |
+| Cross-exchange | Matching (insider/bulk/block) | ✅ Active, flag-only (ISIN crosswalk via `security_master`) |
+| Cross-exchange | Matching (rights/preferential) | 🟡 Fields populate correctly but 0 matches -- BSE's `bse_company_code` is a different ID namespace than `security_master`'s `bse_scrip_code`, no bridge found yet (see 2026-09-02 section above) |
+| R2 backfill | Gap detection + catch-up | ✅ Built and confirmed working in production, 2026-09-02 (`scripts/backfill_gaps.py`, backfilled 10 real missing weekdays in one run) -- not a one-year historical backfill, which remains unscoped |
+| Production schema | Freeze | 🔴 Not yet decided -- unrelated to this reconfirmation |
 
 ## Execution state
 The repository has continued receiving fixes on `main`. The latest dedicated NSE/BSE certification evidence still requires fresh runner execution and artifact inspection. No queued run, green diagnostic run, or artifact existence is treated as certification.
