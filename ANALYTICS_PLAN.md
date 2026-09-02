@@ -475,3 +475,60 @@ against the fake-R2 harness) in one sitting. Decisions made:
   invent a different set for a sibling analytics page.
 - Nav placed directly after Promoter Activity, before Evidence &
   Drill-down, consistent with "rollup pages first, raw drill-down after."
+
+## Using this data for actual investment decisions -- concrete signal ideas
+
+User asked, once Phase 1/2/0.5 existed, to think concretely about how this
+data finds real opportunities rather than just displaying nicely. Grounded
+in what's ACTUALLY built (not aspirational) -- these are usable today by
+combining existing pages, and they're the real argument for building
+Phase 4 (Signals home) next rather than a nice-to-have.
+
+**Important framing, stated once here rather than caveated everywhere:**
+none of this is causal. Disclosed insider/bulk trades happen for many
+reasons unrelated to conviction (ESOP exercise, estate/tax planning, loan
+collateral calls, fund rebalancing). These are candidates for further
+diligence, not buy signals. `PROJECT_PLAN.md` already states this
+correlation-is-not-causation principle; it applies in full here.
+
+1. **Promoter accumulation, ranked by materiality, not headline size.**
+   Already buildable today from Promoter Activity's "By Company" grain:
+   sort by `% of market cap` (not absolute ₹), filter to NET BUY. A
+   promoter buying 1% of their OWN company's market cap in a month is a
+   far more concentrated bet than a mega-cap promoter's routine ₹50 Cr
+   top-up that's 0.001% of market cap -- exactly the distinction absolute
+   numbers hide and the one this whole redesign started from.
+2. **Concentrated bulk-deal activity as an accumulation flag.** On Bulk &
+   Block Concentration's "By Security" view, a CONCENTRATED badge (top-3
+   clients >=60% of a security's traded value) combined with a NET-BUY
+   bias among those clients and a meaningful % of market cap reads as
+   "a small number of parties are quietly building a position" -- the
+   kind of pattern that's invisible scrolling NSE's own bulk-deals page
+   one row at a time, which is the entire point of this product existing.
+3. **Cross-signal confirmation (the real edge, not yet built as one
+   view).** The strongest candidate is a company showing BOTH signal 1
+   AND signal 2 in the same window -- promoter net-buying at a material
+   % of market cap AND concentrated, net-buying bulk/block activity in
+   the same stock, in the same period. Two independent parties (insiders
+   and large external clients) moving the same direction at material
+   size is a materially stronger candidate than either alone. This is
+   exactly what **Phase 4 (Signals home)** should compute: join Promoter
+   Activity's per-company net-% and Bulk/Block's per-security top3-share
+   + net direction, rank by combined conviction, surface the overlap as
+   its own top section.
+4. **Repeat-client tracking.** Bulk & Block's "By Client" grain, watched
+   over time (once multiple days of history are browsable, not just one
+   run), identifies specific institutional/HNI names with a consistent
+   net-buy bias across many securities -- a "who is the smart money in
+   this market right now" view, not tied to any one stock.
+5. **Not pursued, and why:** a raw "buy this stock" recommendation engine
+   was considered and rejected -- this product's own trust model
+   (Overview/Data Quality's VERIFIED-vs-BLOCKED distinction, the
+   evidence-drawer-first design) exists specifically because the value
+   here is verifiable, sourced signal candidates for a human to
+   investigate further, not an opaque automated call. Keep it that way.
+
+Phase 4 remains "not started" in the table above -- this section exists so
+that when it IS built, it builds signal 3 (the cross-confirmation view)
+first, since that's the one genuinely new capability, not a restatement of
+Phase 1 or Phase 2 in a new location.
