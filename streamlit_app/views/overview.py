@@ -16,11 +16,6 @@ from lib import fields, r2_data, style
 # data: unbounded above, the trend chart's x-axis ran three months past the
 # run date).
 WINDOW_DAYS = 90
-DATE_FIELD = {
-    "insider_trading": "canonical_transaction_date",
-    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
-    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
-}
 CONCENTRATION_THRESHOLD = 0.6   # top-3-client share of a security's traded value
 MIN_BASE_HOLDING = 1000         # below this a share move is a meaningless % (see stake changes)
 
@@ -39,7 +34,6 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
     anchor = fields.parse_date(date)
     upper = anchor.date() if pd.notna(anchor) else None
     cutoff = (anchor - pd.Timedelta(days=WINDOW_DAYS - 1)).date() if pd.notna(anchor) else None
-    window_dates = pd.date_range(cutoff, upper, freq="D").date if cutoff is not None else []
 
     by_category = {c: r2_data.load_combined(_client, c, exchanges, date) for c in r2_data.CATEGORIES}
     insider_df = by_category["insider_trading"]
@@ -48,18 +42,6 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         if cutoff is None:
             return dates_series.notna()
         return dates_series.notna() & (dates_series >= cutoff) & (dates_series <= upper)
-
-    # --- per-category daily counts, for the pulse strip's this-week-vs-usual delta
-    daily_by_cat = {}
-    for category, df in by_category.items():
-        date_field = DATE_FIELD[category]
-        if df.empty or date_field not in df.columns:
-            daily_by_cat[category] = pd.Series(0, index=window_dates)
-            continue
-        cat_dates = fields.parse_dates(df[date_field]).dt.date
-        cat_dates = cat_dates[in_window(cat_dates)]
-        daily = cat_dates.value_counts()
-        daily_by_cat[category] = daily.reindex(window_dates, fill_value=0).sort_index() if len(window_dates) else daily
 
     # --- promoter accumulation, ranked by % of market cap
     promoter_ranking = pd.DataFrame(columns=["net_val", "symbol", "market_cap", "pct_mcap"])
@@ -150,7 +132,6 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         stake_changes = hdf.reindex(hdf["_pct_change"].abs().sort_values(ascending=False).index)
 
     return {
-        "daily_by_cat": daily_by_cat,
         "promoter_ranking": promoter_ranking,
         "top_transactions": top_transactions,
         "concentration_alerts": alert_rows,
@@ -212,35 +193,12 @@ with h4:
 exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange_choice.lower(),)
 with r2_data.guard(f"the {selected_date} run"):
     agg = overview_aggregates(client, selected_date, exchanges)
-daily_by_cat = agg["daily_by_cat"]
+# The category pulse strip that used to sit here (five row counts with a
+# this-week-vs-usual delta) is gone: on mobile its five cards stacked into a
+# full screen of scrolling that had to be got past before reaching anything
+# actionable, and a raw row count per category is closer to a pipeline
+# statistic than a signal. Data Quality already carries the per-run counts.
 
-# --- Category Pulse Strip: count + this-week-vs-usual delta, per category --
-# a signal ("is this heating up right now"), not a trend chart -- shape over
-# time doesn't tell an investor what to do with it.
-pulse_cols = st.columns(len(r2_data.CATEGORIES))
-for i, category in enumerate(r2_data.CATEGORIES):
-    daily = daily_by_cat[category]
-    total = int(daily.sum())
-    last7 = int(daily.tail(7).sum())
-    prior_avg7 = daily.iloc[:-7].mean() * 7 if len(daily) > 7 else None
-    if prior_avg7 and prior_avg7 > 0:
-        delta_pct = 100 * (last7 - prior_avg7) / prior_avg7
-        delta_html = (
-            f'<span style="color:{style.COLORS["green"] if delta_pct >= 0 else style.COLORS["red"]};font-weight:600;">'
-            f'{"▲" if delta_pct >= 0 else "▼"} {abs(delta_pct):.0f}%</span> <span style="color:{style.COLORS["text_3"]};">vs usual week</span>'
-        )
-    else:
-        delta_html = f'<span style="color:{style.COLORS["text_3"]};">{last7} in last 7d</span>'
-    with pulse_cols[i]:
-        st.markdown(
-            f'<div class="kpi-card" style="padding:12px 14px;">'
-            f'<div class="kpi-label">{r2_data.CATEGORY_LABELS[category].upper()}</div>'
-            f'<div class="kpi-value" style="font-size:22px;margin-top:4px;">{total:,}</div>'
-            f'<div style="font-size:10.5px;margin-top:4px;">{delta_html}</div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-st.write("")
 title_col, link_col = st.columns([3, 1.3])
 with title_col:
     st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Today\'s Signals</div>', unsafe_allow_html=True)
