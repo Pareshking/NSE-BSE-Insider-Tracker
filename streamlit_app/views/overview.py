@@ -3,7 +3,6 @@ import warnings
 from pathlib import Path
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -83,21 +82,61 @@ _signal_anchor = pd.to_datetime(selected_date, errors="coerce")
 _signal_upper = _signal_anchor.date() if pd.notna(_signal_anchor) else None
 _signal_cutoff = (_signal_anchor - pd.Timedelta(days=89)).date() if pd.notna(_signal_anchor) else None
 
-# --- slim category-count strip: full per-category detail lives on Evidence
-# & Drill-down (already tabbed by category); this is just "where's the
-# volume", not a second copy of that page. ---
-status_by_key = {(e.get("exchange"), e.get("category")): e for e in entries}
-strip_html = []
+# One shared per-category daily-count series, windowed to the same 90D the
+# acquisition pipeline requests -- computed once, reused by the pulse strip's
+# this-week-vs-usual delta below instead of redoing this date-parsing pass
+# per widget.
+_DATE_FIELD = {
+    "insider_trading": "canonical_transaction_date",
+    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
+    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
+}
+_window_dates = (
+    pd.date_range(_signal_cutoff, _signal_upper, freq="D").date if _signal_cutoff is not None else []
+)
+daily_by_cat = {}
 for category in r2_data.CATEGORIES:
     df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-    any_written = any(status_by_key.get((ex, category), {}).get("written") for ex in r2_data.EXCHANGES)
-    fg, bg = ("text", "bg_sub") if any_written else ("amber", "amber_bg")
-    strip_html.append(
-        f'<span class="badge" style="background:{style.COLORS[bg]};color:{style.COLORS[fg]};font-weight:600;">'
-        f'{r2_data.CATEGORY_LABELS[category]} <span class="mono" style="font-weight:700;">{len(df):,}</span></span>'
-    )
-st.markdown(f'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">{"".join(strip_html)}</div>', unsafe_allow_html=True)
-st.caption("Full category-by-category browsing (filters, search, evidence drill-down) is on the Evidence & Drill-down page.")
+    date_field = _DATE_FIELD[category]
+    if df.empty or date_field not in df.columns:
+        daily_by_cat[category] = pd.Series(0, index=_window_dates)
+        continue
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        cat_dates = pd.to_datetime(df[date_field], errors="coerce", dayfirst=True).dt.date
+    cat_dates = cat_dates.dropna()
+    if _signal_cutoff is not None:
+        cat_dates = cat_dates[(cat_dates >= _signal_cutoff) & (cat_dates <= _signal_upper)]
+    daily = cat_dates.value_counts()
+    daily_by_cat[category] = daily.reindex(_window_dates, fill_value=0).sort_index() if len(_window_dates) else daily
+
+# --- Category Pulse Strip: count + this-week-vs-usual delta, per category --
+# a signal ("is this heating up right now"), not a trend chart -- shape over
+# time doesn't tell an investor what to do with it.
+pulse_cols = st.columns(len(r2_data.CATEGORIES))
+for i, category in enumerate(r2_data.CATEGORIES):
+    daily = daily_by_cat[category]
+    total = int(daily.sum())
+    last7 = int(daily.tail(7).sum())
+    prior_avg7 = daily.iloc[:-7].mean() * 7 if len(daily) > 7 else None
+    if prior_avg7 and prior_avg7 > 0:
+        delta_pct = 100 * (last7 - prior_avg7) / prior_avg7
+        delta_html = (
+            f'<span style="color:{style.COLORS["green"] if delta_pct >= 0 else style.COLORS["red"]};font-weight:600;">'
+            f'{"▲" if delta_pct >= 0 else "▼"} {abs(delta_pct):.0f}%</span> <span style="color:{style.COLORS["text_3"]};">vs usual week</span>'
+        )
+    else:
+        delta_html = f'<span style="color:{style.COLORS["text_3"]};">{last7} in last 7d</span>'
+    with pulse_cols[i]:
+        st.markdown(
+            f'<div class="kpi-card" style="padding:12px 14px;">'
+            f'<div class="kpi-label">{r2_data.CATEGORY_LABELS[category].upper()}</div>'
+            f'<div class="kpi-value" style="font-size:22px;margin-top:4px;">{total:,}</div>'
+            f'<div style="font-size:10.5px;margin-top:4px;">{delta_html}</div>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+st.caption("Count and this week vs. the window's usual pace, last 90 days -- full category-by-category browsing is on Evidence & Drill-down.")
 
 st.write("")
 st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:2px;">Today\'s Signals</div>', unsafe_allow_html=True)
@@ -106,7 +145,15 @@ st.caption("Cross-category highlights, not raw counts -- who's buying/selling wi
 sig1, sig2, sig3 = st.columns([1, 1.3, 1])
 
 with sig1:
-    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Net Promoter Buyers / Sellers</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Accumulation Signals — Promoters</div>', unsafe_allow_html=True)
+    # Ranked by % of market cap, not raw rupees: a promoter quietly building
+    # a Rs.25Cr position over several staggered buys in a Rs.100Cr company is
+    # a far stronger conviction signal than a Rs.1Cr filing at HDFC Bank --
+    # summing the whole window's transactions per company already captures
+    # staggered buying, raw-rupee ranking just buries the small-cap signal
+    # under mega-cap noise. Falls back to raw value only when market cap
+    # isn't available for a name (NSE-only reference data, see Promoter
+    # Activity's own caveat).
     if insider_df.empty:
         st.caption("No insider-trading data.")
     else:
@@ -117,25 +164,42 @@ with sig1:
         signed_val = pd.to_numeric(promoter_rows.get("canonical_value"), errors="coerce").fillna(0)
         signed_val = signed_val.where(~ttype.loc[promoter_rows.index].str.contains("DISPOS"), -signed_val)
         promoter_rows["_signed_val"] = signed_val
-        net = promoter_rows.groupby("canonical_company")["_signed_val"].sum()
-        buyers, sellers = net[net > 0].sort_values(ascending=False).head(3), net[net < 0].sort_values().head(3)
+        grouped = promoter_rows.groupby("canonical_company").agg(
+            net_val=("_signed_val", "sum"), symbol=("canonical_symbol", "first"),
+        )
+        mcap_df = r2_data.load_market_cap(client, selected_date)
+        if not mcap_df.empty:
+            mcap_lookup = mcap_df.drop_duplicates("symbol").set_index("symbol")["market_cap"]
+            grouped["market_cap"] = grouped["symbol"].astype(str).str.upper().map(mcap_lookup)
+            grouped["pct_mcap"] = 100 * grouped["net_val"] / grouped["market_cap"]
+        else:
+            grouped["pct_mcap"] = pd.NA
+        # Sort by |% of market cap| when known; unknown-market-cap rows sort
+        # by raw value but always land after every ranked row, never
+        # crowding out a smaller name just because its % couldn't be computed.
+        has_pct = grouped["pct_mcap"].notna()
+        ranked = pd.concat([
+            grouped[has_pct].reindex(grouped[has_pct]["pct_mcap"].abs().sort_values(ascending=False).index),
+            grouped[~has_pct].reindex(grouped[~has_pct]["net_val"].abs().sort_values(ascending=False).index),
+        ])
+        buyers = ranked[ranked["net_val"] > 0].head(4)
+        sellers = ranked[ranked["net_val"] < 0].head(2)
         if buyers.empty and sellers.empty:
             st.caption("No promoter acquisitions/disposals this run.")
-        for company, val in buyers.items():
+        for company, row in pd.concat([buyers, sellers]).iterrows():
+            is_buy = row["net_val"] > 0
+            pct_html = (
+                f'<span class="mono" style="font-size:11px;">{row["pct_mcap"]:+.1f}% mcap</span>'
+                if pd.notna(row["pct_mcap"]) else
+                f'<span style="font-size:10px;color:{style.COLORS["text_3"]};">mcap n/a</span>'
+            )
             st.markdown(
-                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
-                f'<span>{style.badge("BUY", "green", "green_bg", dot=False)} {company}</span>'
-                f'<span class="mono">{style.fmt_inr(val)}</span></div>',
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
+                f'<span>{style.badge("BUY" if is_buy else "SELL", "green" if is_buy else "red", "green_bg" if is_buy else "red_bg", dot=False)} {company}</span>'
+                f'<span style="text-align:right;">{pct_html}<br/><span class="mono">{style.fmt_inr(abs(row["net_val"]))}</span></span></div>',
                 unsafe_allow_html=True,
             )
-        for company, val in sellers.items():
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
-                f'<span>{style.badge("SELL", "red", "red_bg", dot=False)} {company}</span>'
-                f'<span class="mono">-{style.fmt_inr(abs(val))}</span></div>',
-                unsafe_allow_html=True,
-            )
-    st.caption("Full net-position rollup is on Promoter Activity.")
+    st.caption("Full window summed per company (catches staggered buying), ranked by % of market cap where known. Full rollup on Promoter Activity.")
 
 with sig2:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Biggest Transactions — All Categories</div>', unsafe_allow_html=True)
@@ -151,14 +215,18 @@ with sig2:
         if category == "insider_trading":
             df["_value"] = pd.to_numeric(df.get("canonical_value"), errors="coerce")
             df["_date"] = df.get("canonical_transaction_date")
+            ttype = df.get("canonical_transaction_type", pd.Series(dtype=object)).astype(str).str.upper()
+            df["_side"] = ttype.map(lambda t: "BUY" if "ACQUI" in t else ("SELL" if "DISPOS" in t else None))
         elif category in ("bulk_deals", "block_deals"):
             df["_value"] = pd.to_numeric(df.get("canonical_quantity"), errors="coerce") * pd.to_numeric(df.get("canonical_price"), errors="coerce")
             df["_date"] = df.get("canonical_event_date")
+            df["_side"] = df.get("canonical_side", pd.Series(dtype=object)).astype(str).str.upper().where(lambda s: s.isin(["BUY", "SELL"]))
         else:
             df["_value"] = pd.to_numeric(df.get("canonical_amount_raised"), errors="coerce")
             df["_date"] = df.get("canonical_event_date")
+            df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
         df["_category"] = category
-        combined_rows.append(df[["_value", "_date", "_category", "canonical_company", "exchange"]])
+        combined_rows.append(df[["_value", "_date", "_category", "_side", "canonical_company", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame()
     combined = combined.dropna(subset=["_value"])
     if _signal_cutoff is not None and not combined.empty:
@@ -176,15 +244,25 @@ with sig2:
         rows_html = []
         for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
+            side = r.get("_side")
+            if side == "BUY":
+                side_badge = style.badge("BUY", "green", "green_bg", dot=False)
+            elif side == "SELL":
+                side_badge = style.badge("SELL", "red", "red_bg", dot=False)
+            elif side == "ISSUANCE":
+                side_badge = style.badge("ISSUANCE", "text_2", "bg_sub", dot=False)
+            else:
+                side_badge = "—"
             rows_html.append(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
                 f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
                 f'<td>{style.badge(r2_data.CATEGORY_LABELS.get(r["_category"], r["_category"]), "text_2", "bg_sub", dot=False)}</td>'
+                f'<td>{side_badge}</td>'
                 f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
             )
         st.markdown(
-            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th>'
+            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th><th>SIDE</th>'
             '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
             + "".join(rows_html) + "</table>",
             unsafe_allow_html=True,
@@ -224,64 +302,42 @@ with sig3:
     st.caption("Top-3-client share of a security's traded value, this run. Full view on Bulk & Block Concentration.")
 
 st.write("")
-st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:10px;">Activity Trend — All Categories</div>', unsafe_allow_html=True)
-# One line per category, not just insider trading -- daily row counts using
-# each category's own date field (transaction_date for insider trading,
-# event_date for the other four).
-_DATE_FIELD = {
-    "insider_trading": "canonical_transaction_date",
-    "bulk_deals": "canonical_event_date", "block_deals": "canonical_event_date",
-    "rights_issue": "canonical_event_date", "preferential_issue": "canonical_event_date",
-}
-_TREND_COLORS = {
-    "insider_trading": style.COLORS["blue"], "bulk_deals": style.COLORS["nse"],
-    "block_deals": style.COLORS["bse"], "rights_issue": style.COLORS["green"],
-    "preferential_issue": style.COLORS["amber"],
-}
-daily_by_cat = {}
-for category in r2_data.CATEGORIES:
-    df = pd.concat([data.get((ex, category), pd.DataFrame()) for ex in exchanges], ignore_index=True) if exchanges else pd.DataFrame()
-    date_field = _DATE_FIELD[category]
-    if df.empty or date_field not in df.columns:
-        continue
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        dates = pd.to_datetime(df[date_field], errors="coerce", dayfirst=True).dt.date
-    dates = dates.dropna()
-    if _signal_cutoff is not None:
-        dates = dates[(dates >= _signal_cutoff) & (dates <= _signal_upper)]
-    daily = dates.value_counts()
-    if not daily.empty:
-        daily_by_cat[category] = daily
-
-if not daily_by_cat:
-    st.caption("No data to chart.")
+st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:2px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
+st.caption("Ranked by % change in the insider's own holding, not ₹ value -- a modest rupee amount can be a huge conviction move for a small stake, and a huge rupee amount can be trivial for a large one.")
+if insider_df.empty or "canonical_holding_before" not in insider_df.columns:
+    st.caption("No holding-before/after data this run.")
 else:
-    visible_labels = st.pills(
-        "Categories", [r2_data.CATEGORY_LABELS[c] for c in daily_by_cat],
-        selection_mode="multi", default=[r2_data.CATEGORY_LABELS[c] for c in daily_by_cat],
-        label_visibility="collapsed", key="trend_category_toggle",
-    )
-    shown = {c for c in daily_by_cat if r2_data.CATEGORY_LABELS[c] in (visible_labels or [])}
-    all_dates = sorted(set().union(*(d.index for d in daily_by_cat.values())))
-    fig = go.Figure()
-    for category, daily in daily_by_cat.items():
-        if category not in shown:
-            continue
-        fig.add_trace(go.Scatter(
-            x=all_dates, y=[int(daily.get(d, 0)) for d in all_dates],
-            mode="lines", name=r2_data.CATEGORY_LABELS[category],
-            line=dict(color=_TREND_COLORS[category], width=2.5),
-        ))
-    if not shown:
-        st.caption("No categories selected -- toggle one on above to chart it.")
+    hdf = insider_df.copy()
+    hdf["_before"] = pd.to_numeric(hdf.get("canonical_holding_before"), errors="coerce")
+    hdf["_after"] = pd.to_numeric(hdf.get("canonical_holding_after"), errors="coerce")
+    # A tiny base holding turns a small share move into a meaningless
+    # four-digit percentage -- require a real starting position before
+    # trusting the ratio.
+    hdf = hdf[hdf["_before"] >= 1000]
+    hdf["_pct_change"] = 100 * (hdf["_after"] - hdf["_before"]) / hdf["_before"]
+    hdf = hdf.dropna(subset=["_pct_change"])
+    if search_query and not hdf.empty:
+        q = search_query.strip().lower()
+        hdf = hdf[hdf["canonical_company"].astype(str).str.lower().str.contains(q, na=False)]
+    if hdf.empty:
+        st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
     else:
-        fig.update_layout(
-            height=240, margin=dict(l=0, r=0, t=4, b=0),
-            xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor=style.COLORS["border"], zeroline=False),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=11)),
-            font=dict(family="IBM Plex Sans, sans-serif", size=11, color=style.COLORS["text_2"]),
+        top_changes = hdf.reindex(hdf["_pct_change"].abs().sort_values(ascending=False).index).head(8)
+        rows_html = []
+        for _, r in top_changes.iterrows():
+            pct = r["_pct_change"]
+            color = "green" if pct >= 0 else "red"
+            rows_html.append(
+                f'<tr><td class="mono">{style.fmt_date(r.get("canonical_transaction_date"))}</td>'
+                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
+                f'<td style="color:{style.COLORS["text_2"]};">{r.get("canonical_person") or "—"}</td>'
+                f'<td class="mono" style="text-align:right;color:{style.COLORS[color]};font-weight:600;">{pct:+.1f}%</td>'
+                f'<td style="text-align:right;">{style.exchange_badge(str(r.get("exchange") or ""))}</td></tr>'
+            )
+        st.markdown(
+            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th>'
+            '<th style="text-align:right;">HOLDING Δ</th><th style="text-align:right;">EXCH</th></tr>'
+            + "".join(rows_html) + "</table>",
+            unsafe_allow_html=True,
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-st.caption("Daily row count per category, last 90 days. Click a pill to toggle its line.")
+    st.caption("Requires a starting holding of at least 1,000 shares, to keep the ratio meaningful. Full drill-down on Evidence & Drill-down.")
