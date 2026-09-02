@@ -136,11 +136,8 @@ for i, category in enumerate(r2_data.CATEGORIES):
             f"</div>",
             unsafe_allow_html=True,
         )
-st.caption("Count and this week vs. the window's usual pace, last 90 days -- full category-by-category browsing is on Evidence & Drill-down.")
-
 st.write("")
-st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:2px;">Today\'s Signals</div>', unsafe_allow_html=True)
-st.caption("Cross-category highlights, not raw counts -- who's buying/selling with conviction, what's big, where volume is concentrated.")
+st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Today\'s Signals</div>', unsafe_allow_html=True)
 
 sig1, sig2, sig3 = st.columns([1, 1.3, 1])
 
@@ -199,7 +196,7 @@ with sig1:
                 f'<span style="text-align:right;">{pct_html}<br/><span class="mono">{style.fmt_inr(abs(row["net_val"]))}</span></span></div>',
                 unsafe_allow_html=True,
             )
-    st.caption("Full window summed per company (catches staggered buying), ranked by % of market cap where known. Full rollup on Promoter Activity.")
+    st.caption("Ranked by % of market cap. Full rollup on Promoter Activity.")
 
 with sig2:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Biggest Transactions — All Categories</div>', unsafe_allow_html=True)
@@ -269,7 +266,7 @@ with sig2:
         )
         if search_query:
             st.caption(f"{len(combined):,} transactions match “{search_query}”, top {len(top_txns)} shown by value.")
-    st.caption("Ranked by value across insider trading, bulk/block deals, and rights/preferential issues, last 90 days. Full drill-down on Evidence & Drill-down.")
+    st.caption("Ranked by value, last 90 days. Full drill-down on Evidence & Drill-down.")
 
 with sig3:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Concentration Alerts</div>', unsafe_allow_html=True)
@@ -299,11 +296,10 @@ with sig3:
                 f'<span class="mono">top3 {r["share"]*100:.0f}%</span></div>',
                 unsafe_allow_html=True,
             )
-    st.caption("Top-3-client share of a security's traded value, this run. Full view on Bulk & Block Concentration.")
+    st.caption("Top-3-client share of traded value. Full view on Bulk & Block Concentration.")
 
 st.write("")
-st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:2px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
-st.caption("Ranked by % change in the insider's own holding, not ₹ value -- a modest rupee amount can be a huge conviction move for a small stake, and a huge rupee amount can be trivial for a large one.")
+st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
 if insider_df.empty or "canonical_holding_before" not in insider_df.columns:
     st.caption("No holding-before/after data this run.")
 else:
@@ -340,4 +336,4 @@ else:
             + "".join(rows_html) + "</table>",
             unsafe_allow_html=True,
         )
-    st.caption("Requires a starting holding of at least 1,000 shares, to keep the ratio meaningful. Full drill-down on Evidence & Drill-down.")
+    st.caption("Ranked by % change in holding, not ₹ value.")
