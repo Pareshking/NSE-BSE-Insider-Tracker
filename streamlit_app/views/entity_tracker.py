@@ -99,8 +99,8 @@ for _, r in by_company.iterrows():
         f'<td class="mono" style="text-align:right;">{int(r["trades"])}</td></tr>'
     )
 st.markdown(
-    '<table class="evt-table"><tr><th>COMPANY</th><th style="text-align:right;">NET VALUE</th><th style="text-align:right;">TRADES</th></tr>'
-    + "".join(rows_html) + "</table>",
+    '<div class="table-scroll"><table class="evt-table"><tr><th>COMPANY</th><th style="text-align:right;">NET VALUE</th><th style="text-align:right;">TRADES</th></tr>'
+    + "".join(rows_html) + "</table></div>",
     unsafe_allow_html=True,
 )
 

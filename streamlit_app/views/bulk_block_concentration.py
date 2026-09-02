@@ -138,10 +138,10 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                     f'<td style="text-align:right;">{style.exchange_badge(r.get("exchange") or "")}</td></tr>'
                 )
             st.markdown(
-                '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CLIENT</th><th>SIDE</th>'
+                '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CLIENT</th><th>SIDE</th>'
                 '<th style="text-align:right;">QTY</th><th style="text-align:right;">VALUE</th>'
                 '<th style="text-align:right;">% MCAP</th><th style="text-align:right;">EXCH</th></tr>'
-                + "".join(rows_html) + "</table>",
+                + "".join(rows_html) + "</table></div>",
                 unsafe_allow_html=True,
             )
             continue
@@ -191,9 +191,9 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                         for _, r in sec_rows.iterrows()
                     )
                     st.markdown(
-                        '<table class="evt-table"><tr><th>DATE</th><th>CLIENT</th><th>SIDE</th>'
+                        '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>CLIENT</th><th>SIDE</th>'
                         '<th style="text-align:right;">QTY</th><th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
-                        + detail_rows + "</table>",
+                        + detail_rows + "</table></div>",
                         unsafe_allow_html=True,
                     )
                 st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
@@ -241,9 +241,9 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                         for _, r in client_rows.iterrows()
                     )
                     st.markdown(
-                        '<table class="evt-table"><tr><th>DATE</th><th>SECURITY</th><th>SIDE</th>'
+                        '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>SECURITY</th><th>SIDE</th>'
                         '<th style="text-align:right;">QTY</th><th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
-                        + detail_rows + "</table>",
+                        + detail_rows + "</table></div>",
                         unsafe_allow_html=True,
                     )
                 st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)

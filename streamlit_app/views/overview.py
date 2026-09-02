@@ -16,8 +16,42 @@ from lib import fields, r2_data, style
 # data: unbounded above, the trend chart's x-axis ran three months past the
 # run date).
 WINDOW_DAYS = 90
-CONCENTRATION_THRESHOLD = 0.6   # top-3-client share of a security's traded value
-MIN_BASE_HOLDING = 1000         # below this a share move is a meaningless % (see stake changes)
+
+# --- Concentration Alerts -------------------------------------------------
+# Top-3-client share is trivially 100% for any security that only had one to
+# three clients trade it in the window, which is most of them -- that alone
+# flagged 493 "concentrated" securities on the 2026-08-31 run, every one at
+# top3 100%. A concentration claim only says anything once there were enough
+# participants for the trade to have been spread out and it wasn't, so
+# require both a real field of clients and a size worth noticing.
+CONCENTRATION_THRESHOLD = 0.6      # top-3 share of a security's traded value
+CONCENTRATION_MIN_CLIENTS = 5      # below this, "top 3" is the whole population
+CONCENTRATION_MIN_VALUE = 1e7      # Rs.1Cr -- ignore token volume
+
+# --- Biggest Stake Changes ------------------------------------------------
+# % change is relative to the person's OWN prior holding, so a small base
+# turns an ordinary purchase into a four-digit headline (a real row: 1,000 ->
+# 140,817 shares reads as +13,981.7%). Requiring a real starting position is
+# the only thing that keeps this column meaningful, and the before/after
+# counts are shown alongside so the reader can judge the number themselves.
+MIN_BASE_HOLDING = 25_000
+
+# --- Accumulation Signals -------------------------------------------------
+# SEBI PIT disclosures carry a mode of acquisition/disposal, and most of the
+# values in it are not open-market conviction: an ESOP allotment, a pledge or
+# its invocation, an inter-se transfer between promoters, a gift or a
+# corporate action all file the same way and carry the same rupee value.
+# Summing them into "accumulation" and ranking by % of market cap is what
+# produced rows like a -27.1%-of-market-cap "SELL". Rows whose mode is not
+# stated are kept (dropping them would hide real market trades -- the field
+# was empty on a third of the sampled NSE filings), so this excludes only
+# what the source positively says was not a market transaction.
+NON_MARKET_MODE_PATTERNS = (
+    "ESOP", "ESOS", "ESPS", "PLEDGE", "INVOK", "REVOK", "ENCUMBR",
+    "INTER-SE", "INTER SE", "OFF MARKET", "OFF-MARKET", "GIFT",
+    "TRANSMISSION", "INHERIT", "BONUS", "SPLIT", "AMALGAM", "MERGER",
+    "DEMERGER", "CONVERSION", "ALLOT", "RIGHTS", "BUYBACK", "OPEN OFFER",
+)
 
 
 @st.cache_data(ttl=300, max_entries=6, show_spinner=False)
@@ -45,9 +79,16 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
 
     # --- promoter accumulation, ranked by % of market cap
     promoter_ranking = pd.DataFrame(columns=["net_val", "symbol", "market_cap", "pct_mcap"])
+    non_market_excluded = 0
     if not insider_df.empty:
         person_cat = fields.text_col(insider_df, "canonical_person_category", upper=True)
         promoter_rows = insider_df[person_cat.str.contains("PROMOTER")].copy()
+        # Drop what the filing itself says was not an open-market trade.
+        if not promoter_rows.empty:
+            mode = fields.text_col(promoter_rows, "canonical_mode", upper=True)
+            is_non_market = mode.str.contains("|".join(NON_MARKET_MODE_PATTERNS), regex=True, na=False)
+            non_market_excluded = int(is_non_market.sum())
+            promoter_rows = promoter_rows[~is_non_market]
         if not promoter_rows.empty:
             ttype = fields.text_col(promoter_rows, "canonical_transaction_type", upper=True)
             signed_val = fields.num_col(promoter_rows, "canonical_value")
@@ -93,29 +134,71 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
             df["_date"] = df.get("canonical_event_date")
             df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
         df["_category"] = category
-        combined_rows.append(df[["_value", "_date", "_category", "_side", "canonical_company", "exchange"]])
+        # Quantity/price identify the underlying trade for the dedup below;
+        # they are meaningless for the issuance categories, which is fine --
+        # those never take the bulk/block branch.
+        df["_qty"] = fields.num_col(df, "canonical_quantity", fill=None)
+        df["_price"] = fields.num_col(df, "canonical_price", fill=None)
+        combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price",
+                                 "canonical_company", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
-        columns=["_value", "_date", "_category", "_side", "canonical_company", "exchange"])
+        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "canonical_company", "exchange"])
     combined = combined.dropna(subset=["_value"])
     if not combined.empty:
-        combined = combined[in_window(fields.parse_dates(combined["_date"]).dt.date)]
-    top_transactions = combined.sort_values("_value", ascending=False)
+        combined["_parsed_date"] = fields.parse_dates(combined["_date"])
+        combined = combined[in_window(combined["_parsed_date"].dt.date)]
 
-    # --- concentration: a handful of clients driving most of a security's volume
+    # One bulk/block trade is disclosed by BOTH counterparties, and the same
+    # trade can surface in the bulk feed and the block feed, so a single deal
+    # arrived here as up to four identical-value rows -- on the 2026-08-31 run
+    # Adani Green filled four of the eight slots with one 09 Jun deal. Collapse
+    # on what identifies the trade itself (company, day, quantity, price) and
+    # keep one row, remembering that both sides were disclosed.
+    if not combined.empty:
+        deals = combined["_category"].isin(["bulk_deals", "block_deals"])
+        sides = (
+            combined[deals]
+            .groupby(["canonical_company", "_parsed_date", "_qty", "_price"], dropna=False)["_side"]
+            .transform(lambda s: "BUY & SELL" if s.nunique() > 1 else s.iloc[0])
+        )
+        combined.loc[deals, "_side"] = sides
+        deduped = combined[deals].drop_duplicates(
+            subset=["canonical_company", "_parsed_date", "_qty", "_price"], keep="first")
+        combined = pd.concat([combined[~deals], deduped], ignore_index=True)
+
+    # Most recent first. This is a "what just happened" feed; ranking it by
+    # size instead meant one enormous deal from ten weeks ago outranked
+    # everything that happened this week, and the same few mega-caps sat at
+    # the top of the page every day regardless of the run date.
+    top_transactions = combined.sort_values("_parsed_date", ascending=False, na_position="last") \
+        if not combined.empty else combined
+
+    # --- concentration: a few clients driving most of a security's volume.
+    # Bulk and block are pooled per security here (unlike the dedicated page,
+    # which keeps them apart because they are distinct deal types): the
+    # question this asks is "who accumulated this stock", and a client who
+    # worked through both windows is one story, not two. Pooling also stops
+    # the same company being listed twice with nothing to tell the rows apart.
+    deal_frames = [by_category[c] for c in ("bulk_deals", "block_deals")
+                   if not by_category[c].empty and "canonical_client" in by_category[c].columns]
     alert_rows = []
-    for category in ("bulk_deals", "block_deals"):
-        df = by_category[category]
-        if df.empty or "canonical_client" not in df.columns:
-            continue
-        df = df.copy()
-        df["_value"] = fields.num_col(df, "canonical_quantity") * fields.num_col(df, "canonical_price")
-        for (company, _symbol), sub in df.groupby(["canonical_company", "canonical_symbol"], dropna=False):
+    if deal_frames:
+        deals_df = pd.concat(deal_frames, ignore_index=True)
+        deals_df["_value"] = fields.num_col(deals_df, "canonical_quantity") * fields.num_col(deals_df, "canonical_price")
+        for company, sub in deals_df.groupby("canonical_company", dropna=False):
             by_client = sub.groupby("canonical_client")["_value"].sum().sort_values(ascending=False)
-            total = by_client.sum()
-            share = (by_client.head(3).sum() / total) if total else 0.0
-            if share >= CONCENTRATION_THRESHOLD and total > 0:
-                alert_rows.append({"company": company, "category": category, "value": total, "share": share})
-    alert_rows.sort(key=lambda r: r["value"], reverse=True)
+            total = float(by_client.sum())
+            n_clients = int(by_client.size)
+            if n_clients < CONCENTRATION_MIN_CLIENTS or total < CONCENTRATION_MIN_VALUE:
+                continue
+            share = by_client.head(3).sum() / total
+            if share >= CONCENTRATION_THRESHOLD:
+                alert_rows.append({
+                    "company": company, "value": total, "share": float(share),
+                    "clients": n_clients, "top_client": by_client.index[0],
+                    "top_client_share": float(by_client.iloc[0] / total),
+                })
+    alert_rows.sort(key=lambda r: (r["share"], r["value"]), reverse=True)
 
     # --- biggest stake changes, by % of the holding, not rupees
     stake_changes = pd.DataFrame()
@@ -133,6 +216,7 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
 
     return {
         "promoter_ranking": promoter_ranking,
+        "non_market_excluded": non_market_excluded,
         "top_transactions": top_transactions,
         "concentration_alerts": alert_rows,
         "stake_changes": stake_changes,
@@ -238,7 +322,13 @@ with sig1:
                 f'<span style="text-align:right;">{pct_html}<br/><span class="mono">{style.fmt_inr(abs(row["net_val"]))}</span></span></div>',
                 unsafe_allow_html=True,
             )
-    st.caption("Ranked by % of market cap. Full rollup on Promoter Activity.")
+    _excluded = agg["non_market_excluded"]
+    st.caption(
+        "Open-market promoter trades only, ranked by % of market cap."
+        + (f" {_excluded} non-market filing(s) (ESOP, pledge, inter-se, gift) excluded."
+           if _excluded else "")
+        + " Full rollup on Promoter Activity."
+    )
 
 with sig2:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Biggest Transactions — All Categories</div>', unsafe_allow_html=True)
@@ -271,31 +361,50 @@ with sig2:
                 f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
             )
         st.markdown(
-            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th><th>SIDE</th>'
+            '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th><th>SIDE</th>'
             '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
-            + "".join(rows_html) + "</table>",
+            + "".join(rows_html) + "</table></div>",
             unsafe_allow_html=True,
         )
         if search_query:
-            st.caption(f"{len(combined):,} transactions match “{search_query}”, top {len(top_txns)} shown by value.")
-    st.caption("Ranked by value, last 90 days. Full drill-down on Evidence & Drill-down.")
+            st.caption(f"{len(combined):,} transactions match “{search_query}”, {len(top_txns)} most recent shown.")
+    st.caption(
+        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. "
+        "Full drill-down on Evidence & Drill-down."
+    )
 
 with sig3:
     st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Concentration Alerts</div>', unsafe_allow_html=True)
-    alert_rows = agg["concentration_alerts"]
+    alert_rows = matches_company(pd.DataFrame(agg["concentration_alerts"]), search_query)
+    alert_rows = alert_rows.to_dict("records") if not alert_rows.empty else []
     if not alert_rows:
-        st.caption(f"No securities with >{CONCENTRATION_THRESHOLD:.0%} top-3-client concentration this run.")
+        st.caption(
+            f"No security had {CONCENTRATION_MIN_CLIENTS}+ clients trading it with the top 3 "
+            f"taking {CONCENTRATION_THRESHOLD:.0%}+ of the value this run."
+        )
     else:
-        st.markdown(f'<div style="font-size:22px;font-weight:700;margin-bottom:6px;">{len(alert_rows)}</div>', unsafe_allow_html=True)
-        st.caption(f"{'security' if len(alert_rows) == 1 else 'securities'} with a handful of clients driving most of the volume.")
+        # The bare count used to lead here, and it was the least useful thing
+        # on the page -- "493 securities" told an investor nothing and every
+        # row read top3 100%. Lead with the names instead, and say who the
+        # dominant client actually is, which is the part worth acting on.
         for r in alert_rows[:4]:
             st.markdown(
-                f'<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid {style.COLORS["border"]};">'
-                f'<span>{style.badge("CONCENTRATED", "red", "red_bg", dot=False)} {r["company"]}</span>'
-                f'<span class="mono">top3 {r["share"]*100:.0f}%</span></div>',
+                f'<div style="font-size:12px;padding:6px 0;border-bottom:1px solid {style.COLORS["border"]};">'
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">'
+                f'<span style="font-weight:500;">{r["company"] or "—"}</span>'
+                f'<span class="mono" style="white-space:nowrap;">top3 {r["share"]*100:.0f}%</span></div>'
+                f'<div style="color:{style.COLORS["text_3"]};font-size:10.5px;margin-top:2px;">'
+                f'{r["clients"]} clients · {style.fmt_inr(r["value"])} traded · largest '
+                f'<span style="color:{style.COLORS["text_2"]};">{r["top_client"] or "—"}</span> '
+                f'at {r["top_client_share"]*100:.0f}%</div></div>',
                 unsafe_allow_html=True,
             )
-    st.caption("Top-3-client share of traded value. Full view on Bulk & Block Concentration.")
+        if len(alert_rows) > 4:
+            st.caption(f"{len(alert_rows) - 4} more on Bulk & Block Concentration.")
+    st.caption(
+        f"Securities where {CONCENTRATION_MIN_CLIENTS}+ clients traded and the top 3 still took "
+        f"{CONCENTRATION_THRESHOLD:.0%}+ of the value. Full view on Bulk & Block Concentration."
+    )
 
 st.write("")
 st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
@@ -315,13 +424,23 @@ else:
                 f'<tr><td class="mono">{style.fmt_date(r.get("canonical_transaction_date"))}</td>'
                 f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
                 f'<td style="color:{style.COLORS["text_2"]};">{r.get("canonical_person") or "—"}</td>'
+                # The share counts sit next to the percentage on purpose: the
+                # % is against this person's own prior holding, so it is only
+                # interpretable once you can see what that holding was.
+                f'<td class="mono" style="text-align:right;color:{style.COLORS["text_2"]};">'
+                f'{r["_before"]:,.0f} → {r["_after"]:,.0f}</td>'
                 f'<td class="mono" style="text-align:right;color:{style.COLORS[color]};font-weight:600;">{pct:+.1f}%</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(str(r.get("exchange") or ""))}</td></tr>'
             )
         st.markdown(
-            '<table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th>'
+            '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th>'
+            '<th style="text-align:right;">SHARES</th>'
             '<th style="text-align:right;">HOLDING Δ</th><th style="text-align:right;">EXCH</th></tr>'
-            + "".join(rows_html) + "</table>",
+            + "".join(rows_html) + "</table></div>",
             unsafe_allow_html=True,
         )
-    st.caption("Ranked by % change in holding, not ₹ value.")
+    st.caption(
+        f"Change in the individual's own holding, not in the company. Only positions of "
+        f"{MIN_BASE_HOLDING:,}+ shares before the trade, since a smaller base turns an "
+        f"ordinary purchase into a four-digit percentage."
+    )
