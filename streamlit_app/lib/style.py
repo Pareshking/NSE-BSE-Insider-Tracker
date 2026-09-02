@@ -167,7 +167,10 @@ def fmt_date(value) -> str:
     doesn't hide data it can't explain, just don't show it worse than raw."""
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return "—"
-    parsed = pd.to_datetime(value, errors="coerce")
+    # dayfirst=True: NSE/BSE source dates are Indian-convention DD/MM/YYYY
+    # when ambiguous (e.g. '03/04/2026'); pandas' default dayfirst=False
+    # would silently misread that as 3 April instead of 4 March.
+    parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
     if pd.isna(parsed):
         return str(value)
     return parsed.strftime("%d %b %Y")

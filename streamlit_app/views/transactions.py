@@ -71,6 +71,16 @@ FILTERABLE = {
     "preferential_issue": ["canonical_stage", "canonical_allottee_category"],
 }
 
+# Columns formatted as compact currency (style.fmt_inr) rather than shown as
+# raw numbers -- keeps this table visually consistent with every other page's
+# currency display instead of reading as an unstyled dump of canonical_* rows.
+CURRENCY_COLUMNS = {"canonical_value", "canonical_price", "canonical_amount_raised"}
+QUANTITY_COLUMNS = {"canonical_quantity"}
+
+
+def pretty_label(col: str) -> str:
+    return col.replace("canonical_", "").replace("_", " ").title()
+
 for tab, cat in zip(category, r2_data.CATEGORIES):
     with tab:
         dfs = [r2_data.load_canonical(client, ex, cat, selected_date) for ex in exchanges]
@@ -104,12 +114,16 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
         st.caption(f"{len(filtered):,} of {len(df):,} rows")
 
         show_cols = [c for c in DISPLAY_COLUMNS[cat] if c in filtered.columns]
-        display_df = filtered[show_cols + ["canonical_event_id"]] if "canonical_event_id" in filtered.columns else filtered[show_cols]
-        display_df = display_df.drop(columns=["canonical_event_id"], errors="ignore")
+        display_df = filtered[show_cols].copy()
         date_col = "canonical_transaction_date" if "canonical_transaction_date" in display_df.columns else "canonical_event_date"
         if date_col in display_df.columns:
-            display_df = display_df.copy()
             display_df[date_col] = style.fmt_date_col(display_df[date_col])
+        for col in CURRENCY_COLUMNS & set(display_df.columns):
+            display_df[col] = display_df[col].map(style.fmt_inr)
+        for col in QUANTITY_COLUMNS & set(display_df.columns):
+            display_df[col] = display_df[col].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "—")
+        if "exchange" in display_df.columns:
+            display_df["exchange"] = display_df["exchange"].str.upper()
 
         event = st.dataframe(
             display_df,
@@ -118,6 +132,9 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
             on_select="rerun",
             selection_mode="single-row",
             key=f"table-{cat}",
+            column_config={
+                col: st.column_config.Column(label=pretty_label(col)) for col in display_df.columns
+            },
         )
 
         selected_rows = event.selection.rows if event and event.selection else []
@@ -136,8 +153,15 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
                 st.markdown('<div class="sec-title">CANONICAL FIELDS</div>', unsafe_allow_html=True)
                 for col in DISPLAY_COLUMNS[cat]:
                     if col in row.index and pd.notna(row[col]):
-                        label = col.replace("canonical_", "").replace("_", " ").title()
-                        value = style.fmt_date(row[col]) if col.endswith("_date") else row[col]
+                        label = pretty_label(col)
+                        if col.endswith("_date"):
+                            value = style.fmt_date(row[col])
+                        elif col in CURRENCY_COLUMNS:
+                            value = style.fmt_inr(row[col])
+                        elif col in QUANTITY_COLUMNS:
+                            value = f"{row[col]:,.0f}"
+                        else:
+                            value = row[col]
                         st.markdown(
                             f'<div class="kv-row"><span style="color:{style.COLORS["text_2"]};">{label}</span><span class="mono">{value}</span></div>',
                             unsafe_allow_html=True,

@@ -213,10 +213,16 @@ def canonicalize(exchange, category, row):
             'canonical_person': _pick(row, 'acqName', 'person'),
             'canonical_person_category': _pick(row, 'personCategory', 'person_category'),
             'canonical_transaction_type': (str(_pick(row, 'transactionType', 'transaction_type') or '').upper() or None),
-            'canonical_quantity': qty,
-            'canonical_value': val,
-            'canonical_holding_before': _pick(row, 'beforeSharesNo', 'holding_before'),
-            'canonical_holding_after': _pick(row, 'afterSharesNo', 'holding_after'),
+            # _num(), not the raw native value: NSE and BSE mix numeric and
+            # stringy representations of the same quantity (e.g. '51000.0')
+            # across rows, which is fine natively but breaks Arrow/Parquet
+            # once the frontend concats NSE+BSE into one column of mixed
+            # int/str objects (confirmed 2026-09-01 on the deployed app --
+            # ArrowInvalid: "Could not convert '51000.0' ... to int64").
+            'canonical_quantity': _num(qty),
+            'canonical_value': _num(val),
+            'canonical_holding_before': _num(_pick(row, 'beforeSharesNo', 'holding_before')),
+            'canonical_holding_after': _num(_pick(row, 'afterSharesNo', 'holding_after')),
             'canonical_transaction_date': _pick(row, 'date', 'transaction_date'),
             'canonical_transaction_date_from': txn_from,
             'canonical_transaction_date_to': txn_to,
@@ -265,8 +271,8 @@ def canonicalize(exchange, category, row):
             'canonical_symbol': symbol,
             'canonical_client': client,
             'canonical_side': side,
-            'canonical_quantity': qty,
-            'canonical_price': price,
+            'canonical_quantity': _num(qty),
+            'canonical_price': _num(price),
             'canonical_event_date': event_date,
         }
     if category in ('rights_issue', 'preferential_issue'):
