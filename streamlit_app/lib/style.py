@@ -109,7 +109,12 @@ html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
 
    Community Cloud's own owner strip (Share / star / edit / GitHub, in
    stToolbarActions) is deliberately NOT touched here. ---- */
+/* The ⋮ main menu is deliberately left visible. This rule predates the
+   st.html() bug and so had never actually applied; now that the stylesheet
+   reaches the page it would take effect, and the owner asked for the
+   toolbar to stay as it is. Re-enable by uncommenting.
 [id="MainMenu"] {{ display: none; }}
+*/
 footer {{ visibility: hidden; }}
 header[data-testid="stHeader"] {{ background: {COLORS['bg']}; border-bottom: 1px solid {COLORS['border']}; }}
 [data-testid="stDecoration"] {{ display: none; }}
