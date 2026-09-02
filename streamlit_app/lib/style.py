@@ -45,99 +45,137 @@ EXCHANGE_COLORS = {"nse": ("nse", "nse_bg"), "bse": ("bse", "bse_bg")}
 
 
 def inject_base_css():
-    # st.html(), not st.markdown() -- this is raw CSS with plenty of
-    # patterns (bare letter glued to a bracket attribute selector, e.g.
-    # `a[aria-current="page"]`) that Streamlit's markdown-then-HTML pipeline
-    # misparses as Markdown link syntax, silently truncating the string and
-    # leaking the rest as visible page text. st.html() renders raw HTML/CSS
-    # with no markdown pass at all, which sidesteps the whole bug class.
-    st.html(
+    # st.markdown(unsafe_allow_html=True), with `<style>` starting in column
+    # 0 -- BOTH parts matter, and getting either wrong silently drops this
+    # entire stylesheet:
+    #
+    #   * st.html() sanitizes what it is given and strips <style>/<link>
+    #     outright. Verified 2026-09-02 against the real DOM: it rendered
+    #     `<div data-testid="stHtml"></div>` -- empty -- so none of the rules
+    #     below applied and the app ran with no styling at all (no card
+    #     borders, no IBM Plex, and the Streamlit chrome this hides still
+    #     showing). It was moved here to dodge the markdown bug below; it
+    #     dodged it by discarding the CSS.
+    #
+    #   * The markdown bug was real, but it was an indentation bug. CommonMark
+    #     passes a `<style>` block through verbatim, with NO inline parsing --
+    #     so `a[aria-current="page"]` is safe -- but only when the tag opens
+    #     with at most 3 spaces of indent. This string used to be indented 8,
+    #     which makes it an indented CODE block instead, and that is what
+    #     mangled it. Keep the CSS flush left; do not re-indent to match the
+    #     surrounding function.
+    #
+    # The font is @import-ed rather than <link>-ed so the whole thing is one
+    # verbatim block.
+    st.markdown(
         f"""
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-        <style>
-        html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
-        .mono {{ font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }}
-        .badge {{
-            display: inline-flex; align-items: center; gap: 5px;
-            padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 600;
-            white-space: nowrap;
-        }}
-        .badge-dot {{ width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }}
-        .kpi-card {{
-            background: {COLORS['bg']}; border: 1px solid {COLORS['border']};
-            border-radius: 10px; padding: 16px;
-        }}
-        .kpi-label {{ font-size: 10.5px; font-weight: 600; color: {COLORS['text_3']}; letter-spacing: .04em; }}
-        .kpi-value {{ font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 8px; }}
-        .kv-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid {COLORS['border']}; font-size: 12.5px; }}
-        .sec-title {{ font-size: 11px; font-weight: 700; color: {COLORS['text_3']}; letter-spacing: .05em; margin: 18px 0 4px 0; }}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
+.mono {{ font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }}
+.badge {{
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 600;
+    white-space: nowrap;
+}}
+.badge-dot {{ width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }}
+.kpi-card {{
+    background: {COLORS['bg']}; border: 1px solid {COLORS['border']};
+    border-radius: 10px; padding: 16px;
+}}
+.kpi-label {{ font-size: 10.5px; font-weight: 600; color: {COLORS['text_3']}; letter-spacing: .04em; }}
+.kpi-value {{ font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 8px; }}
+.kv-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid {COLORS['border']}; font-size: 12.5px; }}
+.sec-title {{ font-size: 11px; font-weight: 700; color: {COLORS['text_3']}; letter-spacing: .05em; margin: 18px 0 4px 0; }}
 
-        /* ---- Streamlit chrome removal: this should read as a standalone
-           product, not an obvious Streamlit demo.
-           NOTE: with position="top" navigation, the nav pills render INSIDE
-           header[data-testid="stHeader"] > [data-testid="stToolbar"]
-           (confirmed 2026-09-02 from the real DOM) -- collapsing the header
-           to height:0 or hiding the toolbar outright (an earlier version of
-           this rule, written back when nav lived in the sidebar) hides the
-           ONLY navigation UI in the app. Hide just the specific chrome
-           elements instead of their shared ancestor. ---- */
-        [id="MainMenu"] {{ display: none; }}
-        footer {{ visibility: hidden; }}
-        header[data-testid="stHeader"] {{ background: {COLORS['bg']}; border-bottom: 1px solid {COLORS['border']}; }}
-        [data-testid="stDecoration"] {{ display: none; }}
-        [data-testid="stStatusWidget"] {{ display: none; }}
-        .stAppDeployButton {{ display: none; }}
-        [data-testid="stAppDeployButton"] {{ display: none; }}
-        a[href*="streamlit.io"] {{ display: none !important; }}
-        [data-testid="stAppViewContainer"] > .main {{ padding-top: 0.5rem; }}
-        [data-testid="stMainBlockContainer"] {{ padding-top: 1.2rem; }}
+/* ---- Streamlit chrome removal: this should read as a standalone
+   product, not an obvious Streamlit demo.
 
-        /* ---- Top nav bar (position="top"), not a sidebar -- this app is
-           used on mobile, where a sidebar drawer costs a tap and half the
-           screen width every time. Real testids (confirmed 2026-09-02):
-           stTopNavLinkContainer wraps each stTopNavLink <a>. ---- */
-        [data-testid="stTopNavLink"] {{
-            border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: 500;
-            color: {COLORS['text_2']};
-        }}
-        [data-testid="stTopNavLink"][aria-current="page"] {{
-            background: {COLORS['blue_bg']}; color: #1d4ed8; font-weight: 600;
-        }}
-        .top-brand {{
-            display: flex; align-items: baseline; justify-content: space-between;
-            flex-wrap: wrap; gap: 6px; padding: 10px 2px 8px 2px;
-            border-bottom: 1px solid {COLORS['border']}; margin-bottom: 4px;
-        }}
-        .top-brand-title {{ font-size: 15px; font-weight: 700; color: {COLORS['text']}; }}
-        .top-brand-session {{ font-size: 11px; color: {COLORS['text_3']}; }}
+   NEVER hide the header or the toolbar wholesale. Measured from the real
+   DOM (2026-09-02, Chromium, this Streamlit build):
 
-        /* ---- Segmented control (exchange toggle) built from st.radio.
-           Real DOM (verified 2026-09-01): label[data-testid="stRadioOption"]
-           > span (visually-hidden input) + div > div > (div[circle], div[stMarkdownContainer]).
-           The circle indicator is the first-child div two levels inside the
-           label's direct div child -- targeting the wrong depth here once
-           hid the whole label (text included), leaving an empty box. ---- */
-        div[role="radiogroup"] {{
-            background: {COLORS['bg_sub']}; border: 1px solid {COLORS['border']};
-            border-radius: 8px; padding: 3px; display: inline-flex; gap: 2px;
-        }}
-        [data-testid="stRadioOption"] {{
-            border-radius: 6px; padding: 3px 12px; margin: 0 !important; font-size: 12px !important;
-        }}
-        [data-testid="stRadioOption"] > div > div > div:first-child {{ display: none; }}
-        [data-testid="stRadioOption"][data-selected="true"] {{ background: {COLORS['blue']}; }}
-        [data-testid="stRadioOption"][data-selected="true"] p {{ color: #fff !important; font-weight: 600; }}
+     - at >=1280px the page nav is [data-testid="stTopNavLink"];
+     - at 412px there is NO stTopNavLink at all. The nav collapses into
+       the sidebar (stSidebarNav), and the ONLY way to reach it is the
+       [data-testid="stExpandSidebarButton"] chevron, which lives INSIDE
+       header > stToolbar.
 
-        /* ---- Small custom HTML table (Latest Activity) ---- */
-        .evt-table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
-        .evt-table th {{
-            text-align: left; font-size: 10px; font-weight: 600; color: {COLORS['text_3']};
-            letter-spacing: .03em; padding: 8px 10px; border-bottom: 1px solid {COLORS['border']};
-        }}
-        .evt-table td {{ padding: 9px 10px; border-bottom: 1px solid {COLORS['border']}; vertical-align: middle; }}
-        .evt-table tr:last-child td {{ border-bottom: none; }}
-        </style>
-        """
+   So hiding stToolbar would cost a phone user every page but the one they
+   landed on. Hide individual chrome children only, and leave the expand
+   chevron alone. (An older comment here claimed the top nav renders inside
+   the toolbar. It does not -- and that claim was recorded while this
+   stylesheet was not reaching the page at all, so nothing it described had
+   ever actually been observed applying.)
+
+   Community Cloud's own owner strip (Share / star / edit / GitHub, in
+   stToolbarActions) is deliberately NOT touched here. ---- */
+/* The ⋮ main menu is deliberately left visible. This rule predates the
+   st.html() bug and so had never actually applied; now that the stylesheet
+   reaches the page it would take effect, and the owner asked for the
+   toolbar to stay as it is. Re-enable by uncommenting.
+[id="MainMenu"] {{ display: none; }}
+*/
+footer {{ visibility: hidden; }}
+header[data-testid="stHeader"] {{ background: {COLORS['bg']}; border-bottom: 1px solid {COLORS['border']}; }}
+[data-testid="stDecoration"] {{ display: none; }}
+[data-testid="stStatusWidget"] {{ display: none; }}
+.stAppDeployButton {{ display: none; }}
+[data-testid="stAppDeployButton"] {{ display: none; }}
+a[href*="streamlit.io"] {{ display: none !important; }}
+/* The header overlays the top of the main container, so this padding is
+   what keeps the brand strip out from under it -- it is not just cosmetic
+   tightening. 1.2rem (the value here while the stylesheet was being
+   silently dropped, so nobody saw it apply) clips "Insiders" and the
+   session timestamp behind the 60px header. */
+[data-testid="stMainBlockContainer"] {{ padding-top: 4.5rem; }}
+
+/* ---- Top nav bar (position="top"), not a sidebar -- this app is
+   used on mobile, where a sidebar drawer costs a tap and half the
+   screen width every time. Real testids (confirmed 2026-09-02):
+   stTopNavLinkContainer wraps each stTopNavLink <a>. ---- */
+[data-testid="stTopNavLink"] {{
+    border-radius: 7px; padding: 6px 14px; font-size: 13px; font-weight: 500;
+    color: {COLORS['text_2']};
+}}
+[data-testid="stTopNavLink"][aria-current="page"] {{
+    background: {COLORS['blue_bg']}; color: #1d4ed8; font-weight: 600;
+}}
+.top-brand {{
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 6px; padding: 10px 2px 8px 2px;
+    border-bottom: 1px solid {COLORS['border']}; margin-bottom: 4px;
+}}
+.top-brand-title {{ font-size: 15px; font-weight: 700; color: {COLORS['text']}; }}
+.top-brand-session {{ font-size: 11px; color: {COLORS['text_3']}; }}
+
+/* ---- Segmented control (exchange toggle) built from st.radio.
+   Real DOM (verified 2026-09-01): label[data-testid="stRadioOption"]
+   > span (visually-hidden input) + div > div > (div[circle], div[stMarkdownContainer]).
+   The circle indicator is the first-child div two levels inside the
+   label's direct div child -- targeting the wrong depth here once
+   hid the whole label (text included), leaving an empty box. ---- */
+div[role="radiogroup"] {{
+    background: {COLORS['bg_sub']}; border: 1px solid {COLORS['border']};
+    border-radius: 8px; padding: 3px; display: inline-flex; gap: 2px;
+}}
+[data-testid="stRadioOption"] {{
+    border-radius: 6px; padding: 3px 12px; margin: 0 !important; font-size: 12px !important;
+}}
+[data-testid="stRadioOption"] > div > div > div:first-child {{ display: none; }}
+[data-testid="stRadioOption"][data-selected="true"] {{ background: {COLORS['blue']}; }}
+[data-testid="stRadioOption"][data-selected="true"] p {{ color: #fff !important; font-weight: 600; }}
+
+/* ---- Small custom HTML table (Latest Activity) ---- */
+.evt-table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
+.evt-table th {{
+    text-align: left; font-size: 10px; font-weight: 600; color: {COLORS['text_3']};
+    letter-spacing: .03em; padding: 8px 10px; border-bottom: 1px solid {COLORS['border']};
+}}
+.evt-table td {{ padding: 9px 10px; border-bottom: 1px solid {COLORS['border']}; vertical-align: middle; }}
+.evt-table tr:last-child td {{ border-bottom: none; }}
+</style>
+""",
+        unsafe_allow_html=True,
     )
 
 
