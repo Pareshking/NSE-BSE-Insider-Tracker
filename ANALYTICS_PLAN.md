@@ -257,7 +257,7 @@ pulled forward this round are marked **NEW**.
 | **Promoter Activity** | **Built, smoke-tested, market cap joined** | Net-position rollup, both grains (per person+company, per company), no threshold, sortable by \|net value\| or by \|% of market cap\|. Still needs: full column/date-format audit pass. |
 | Phase 0.5: Market cap join | **Shipped, both exchanges** | NSE: PR bhavcopy zip, whole market, one request, ~2,301 EQ-series symbols in ~1.8s. BSE: `bse.BSE().listSecurities()` across all 24 groups, official pre-computed `Mktcap` field, ~4,685 scrips in ~15-20s. No per-symbol lookups on either side (see correction below) -- combined into one `reference/market_cap` write. |
 | **NEW** Downloads / export | Not started, cross-cutting | CSV/JSON export + metadata, applies to every table page. Cheap, no new data source -- do this early, right after Phase 0.5, since every later page benefits from it existing. |
-| Phase 2: Bulk & Block Concentration | Not started | Top clients by volume per security, largest-transactions view, concentration metric. Ship with materiality (% of market cap) from the start. |
+| Phase 2: Bulk & Block Concentration | **Shipped** | `views/bulk_block_concentration.py`. Three grains per deal type (By Security / By Client / Largest Transactions), materiality (% of market cap) joined from day one, top-3-client concentration badge. See decisions log below. |
 | **NEW** Phase 2.5: Trends & Charts | Not started | Whole-market daily/weekly/monthly event count, buy vs. sell, category mix across all 5 categories. No new data source. |
 | Phase 3: Rights & Preferential Pipeline | Not started | **NEW: upgraded design** -- explicit lifecycle timeline (Announcement -> Record Date -> Ratio/Price -> Issue Open/Close -> Entitlement -> Allotment -> Listing) with full stage-history detail drawer, per blueprint §11-12, not just a status field. BSE `in_principle_status`/`listing_stage_date` still need live re-verification before trusting in UI. |
 | Validation & Evidence upgrade | Not started | Expand Data Quality into blueprint §15's audit centre (Runs/Source Comparison/API Evidence/Schema/Duplicates/Coverage/Errors tabs). "Runs" data source decided (2026-09-01): pipeline writes its own run-summary JSON to R2, no GitHub credentials in the public app -- see decision above. |
@@ -430,3 +430,48 @@ twice as real data came in:
 
 Next: Phase 2 (Bulk & Block Concentration), shipping with materiality
 from day one now that the market-cap join exists.
+
+## Phase 2 -- built autonomously, 2026-09-02
+
+User granted full authority to decide Phase 2 design without approval,
+asking only that decisions be logged. Built and smoke-tested (Playwright,
+no tracebacks, all three grain views + both deal-type tabs verified
+against the fake-R2 harness) in one sitting. Decisions made:
+
+- **Bulk and Block are separate tabs, never merged into one pool.** They
+  are legally/structurally distinct deal types (bulk: >0.5% of a
+  company's shares in one trade; block: pre-negotiated trades in a
+  separate window) -- combining their volumes into one number would
+  misrepresent both. Matches the existing project principle (Bulk/Block
+  kept "visually and logically separate," per `FRONTEND_UI_BLUEPRINT.md`
+  section 9).
+- **Two grains, same philosophy as Promoter Activity's "both ways"
+  decision**: By Security (who's active in this stock -- the concentration
+  question) and By Client (what is this client doing across stocks --
+  the repeat-player question). Added a third: Largest Transactions (a
+  flat, sorted list of the biggest individual deals), since "largest
+  transactions view" was explicitly named in the original Phase 2 scope
+  and doesn't fit either rollup grain -- a huge single deal can happen in
+  a security/client that isn't otherwise notable in aggregate.
+- **Concentration metric: top-3-client share of a security's total
+  traded value in the window**, not a formal HHI. Reasoning: this
+  project's audience is a single retail investor looking for a legible
+  signal, not an academic/regulatory concentration index -- "3 clients
+  did 80% of this stock's bulk-deal volume" is immediately meaningful,
+  an HHI score is not without a lookup table. Thresholds (>=60% =
+  CONCENTRATED, >=30% = MODERATE, else BROAD) are a judgment call with
+  no prior house convention to follow, documented as such in the code
+  comment rather than presented as statistically rigorous.
+- **Materiality (% of market cap) computed per-transaction and
+  per-security-rollup, using the same `r2_data.load_market_cap()` join
+  Promoter Activity already uses** -- no new plumbing needed, same
+  "n/a not fabricated" rule for uncovered symbols.
+- **No "By Client" materiality column.** A client's total traded value
+  compared against ITS OWN market cap makes no sense (a client isn't a
+  company); % of market cap only applies to the security side. Decided
+  not to force a materiality number onto the By Client grain just for
+  consistency with By Security.
+- **Windows: 7D/30D/90D, same as Promoter Activity** -- no reason to
+  invent a different set for a sibling analytics page.
+- Nav placed directly after Promoter Activity, before Evidence &
+  Drill-down, consistent with "rollup pages first, raw drill-down after."
