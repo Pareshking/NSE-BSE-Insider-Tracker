@@ -4,9 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       target_date:
-        description: 'Target date (YYYY-MM-DD) for both exchanges'
+        # MUST stay empty. This is what the run writes as manifests/{date}.json
+        # and therefore what the app's "Run date" selector offers. A hardcoded
+        # date here is not a harmless placeholder: "Run workflow" without
+        # touching the field sends that date, the Determine-target-date step
+        # below sees a non-empty input and honours it, and the run overwrites
+        # that same day forever. With '2026-08-31' as the default, four
+        # successful manual runs across 01-02 Sep 2026 all rewrote
+        # manifests/2026-08-31.json, and the app looked frozen on 31 Aug while
+        # the pipeline was in fact working perfectly.
+        # Blank = today (UTC). Fill it in only to backfill a specific day.
+        description: 'Target date (YYYY-MM-DD). Leave blank for today (UTC); set only to backfill.'
         required: false
-        default: '2026-08-31'
+        default: ''
       lookback_days:
         description: 'Historical lookback window'
         required: false
