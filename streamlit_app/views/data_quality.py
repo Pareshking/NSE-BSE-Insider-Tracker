@@ -84,6 +84,19 @@ st.caption(
     '"skipped" is never silently written as an empty "successful" result.'
 )
 
+# The one place rows are deliberately removed before writing, so it is
+# disclosed here rather than left to be inferred from a row count that
+# doesn't match the validator's.
+round_trips = sum(e.get("intraday_round_trip_rows_dropped", 0) or 0 for e in entries)
+if round_trips:
+    st.caption(
+        f"↳ {round_trips:,} intraday round-trip row(s) were dropped before writing this run — "
+        "one client buying and selling the same quantity of the same security on the same day, "
+        "which leaves no one's holding changed. Both legs are removed at ingestion "
+        "(`scripts/r2_writer.py`), so nothing downstream counts them. The validator certified "
+        f"{round_trips:,} rows more than the counts above; this is that difference."
+    )
+
 st.write("")
 left, right = st.columns(2)
 with left:
@@ -99,7 +112,11 @@ with left:
         "- Source dates arrive in three conventions (NSE ISO `2026-08-28`, NSE IST-midnight-as-UTC `…T18:30:00Z`, BSE `31/08/2026`); "
         "`lib/fields.parse_dates` picks per value, and anything it can't place is shown as filed rather than guessed at\n"
         "- A canonical field an exchange didn't publish narrows what a page can compute, and the page says so — it is never backfilled with a "
-        "placeholder that would read as data"
+        "placeholder that would read as data\n"
+        "- **Intraday round trips are dropped at ingestion**, not merely hidden: one client buying and selling the same quantity of the same "
+        "security on the same day ends flat, so both legs are removed before anything is written and no calculation anywhere sees them. "
+        "The count is reported above. This is the only case where rows are discarded rather than recorded — the upstream capture in "
+        "`artifacts/` still holds them if the rule ever needs re-checking"
     )
     st.markdown("**Scope of this app**")
     st.markdown(

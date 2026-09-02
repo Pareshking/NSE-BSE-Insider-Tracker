@@ -9,6 +9,8 @@ per the data-quality rule in PROJECT_PLAN.md section 11.
 
 R2 layout:
   raw/{exchange}/{category}/{date}/raw.json           -- validated rows, native fields preserved, unmodified
+                                                         (minus intraday round trips, which are dropped
+                                                          before writing -- see drop_intraday_round_trips)
   canonical/{exchange}/{category}/{date}/data.parquet -- same rows as Parquet + canonical_event_id/exchange/category/ingested_at columns
   manifests/{date}.json                                -- per-(exchange,category) ingestion outcome for this run
 
@@ -368,6 +370,67 @@ def _num(v):
         return None
 
 
+# A client who buys and sells the same stock in the same size on the same day
+# ends the day flat. Nobody's holding changed, so the pair says nothing about
+# accumulation, distribution or who controls a float -- it is day trading that
+# happened to cross the 0.5% bulk-deal disclosure threshold. On Atal Realtech
+# (05-09 Jun 2026) this was almost the entire tape: one LLP trading against
+# itself, burying the handful of real one-way deals in the same name.
+#
+# These are dropped here, before anything is written, so no downstream
+# consumer has to remember to exclude them. The count goes into the manifest
+# (see write_dataset) rather than vanishing quietly, so a run's written row
+# count still reconciles against what the validator certified.
+#
+# Deliberately NOT dropped: the same trade disclosed by BOTH counterparties.
+# That is one real change of ownership, and knowing who bought is the point
+# of the dataset -- the frontend collapses those two rows for display
+# (streamlit_app/lib/dedup.py) but both are kept here.
+#
+# Scope is bulk/block only. Insider filings carry a person and a mode rather
+# than a client and a side, and a promoter round-tripping intraday is a
+# different (and much rarer) question.
+ROUND_TRIP_QTY_TOLERANCE = 0.01
+ROUND_TRIP_CATEGORIES = ('bulk_deals', 'block_deals')
+
+
+def drop_intraday_round_trips(exchange, category, rows):
+    """(kept_rows, dropped_count) -- both legs of any same-day, same-client,
+    same-size buy+sell in one security are removed.
+
+    Rows whose client or date cannot be read are always kept: the rule can
+    only fire on evidence, never on a gap.
+    """
+    if category not in ROUND_TRIP_CATEGORIES or not rows:
+        return rows, 0
+
+    groups = {}
+    for i, row in enumerate(rows):
+        canon = canonicalize(exchange, category, row) or {}
+        client = str(canon.get('canonical_client') or '').strip().upper()
+        security = canon.get('canonical_isin') or canon.get('canonical_symbol') or canon.get('canonical_company')
+        day = parse_loose_date(canon.get('canonical_event_date'))
+        if not client or not security or day is None:
+            continue
+        side = str(canon.get('canonical_side') or '').strip().upper()
+        qty = _num(canon.get('canonical_quantity')) or 0.0
+        groups.setdefault((client, str(security), day), []).append((i, side, qty))
+
+    drop = set()
+    for members in groups.values():
+        bought = sum(q for _, side, q in members if side == 'BUY')
+        sold = sum(q for _, side, q in members if side == 'SELL')
+        if bought <= 0 or sold <= 0:
+            continue
+        if abs(bought - sold) / max(bought, sold) <= ROUND_TRIP_QTY_TOLERANCE:
+            drop.update(i for i, _, _ in members)
+
+    if not drop:
+        return rows, 0
+    kept = [row for i, row in enumerate(rows) if i not in drop]
+    return kept, len(drop)
+
+
 def find_cross_exchange_matches(category, nse_canons, bse_canons):
     """Flag (never merge) NSE/BSE rows within the same category+run that
     plausibly describe the same underlying disclosure: same normalized
@@ -493,10 +556,15 @@ def get_status(exchange, nse_key, bse_key, nse_cert, bse_cert):
     return ((bse_cert or {}).get('datasets', {}).get(bse_key, {}) or {}).get('status', 'MISSING')
 
 
-def write_dataset(client, exchange, category, rows, status, match_annotations=None):
+def write_dataset(client, exchange, category, rows, status, match_annotations=None,
+                  round_trips_dropped=0):
     entry = {
         'exchange': exchange, 'category': category, 'status': status,
         'target_date': TARGET_DATE, 'row_count': len(rows) if rows else 0,
+        # Written so a run reconciles: the validator certified
+        # row_count + intraday_round_trip_rows_dropped rows, and this is
+        # where the difference is accounted for rather than lost.
+        'intraday_round_trip_rows_dropped': round_trips_dropped,
     }
     if status != 'VERIFIED' or not rows:
         entry['written'] = False
@@ -652,6 +720,17 @@ def main():
         nse_status = get_status('nse', nse_key, bse_key, nse_cert, bse_cert)
         bse_status = get_status('bse', nse_key, bse_key, nse_cert, bse_cert)
 
+        # Before anything else: intraday round trips are dropped here, so they
+        # are never matched, never canonicalized, never written, and never
+        # available to be counted by a downstream consumer that forgot to
+        # exclude them.
+        nse_rows, nse_round_trips = drop_intraday_round_trips('nse', category, nse_rows)
+        bse_rows, bse_round_trips = drop_intraday_round_trips('bse', category, bse_rows)
+        for ex, n in (('nse', nse_round_trips), ('bse', bse_round_trips)):
+            if n:
+                print(f'  {ex}/{category}: dropped {n} intraday round-trip row(s) '
+                      f'(same client, same day, same size both ways)')
+
         nse_matches, bse_matches = {}, {}
         if nse_status == 'VERIFIED' and bse_status == 'VERIFIED' and nse_rows and bse_rows:
             nse_canons = [canonicalize('nse', category, r) for r in nse_rows]
@@ -664,8 +743,10 @@ def main():
             if nse_matches:
                 print(f'  {category}: flagged {len(nse_matches)} possible cross-exchange match(es)')
 
-        manifest['datasets'].append(write_dataset(client, 'nse', category, nse_rows, nse_status, nse_matches))
-        manifest['datasets'].append(write_dataset(client, 'bse', category, bse_rows, bse_status, bse_matches))
+        manifest['datasets'].append(write_dataset(client, 'nse', category, nse_rows, nse_status, nse_matches,
+                                                  round_trips_dropped=nse_round_trips))
+        manifest['datasets'].append(write_dataset(client, 'bse', category, bse_rows, bse_status, bse_matches,
+                                                  round_trips_dropped=bse_round_trips))
 
     manifest['reference_data'] = [write_market_cap(client)]
 
