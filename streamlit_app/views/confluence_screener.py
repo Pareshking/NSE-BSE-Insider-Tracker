@@ -64,13 +64,16 @@ if merged.empty:
     st.info("No insider/bulk/block/rights/preferential data for this run date.")
     st.stop()
 
-filter_cols = st.columns([1.3, 1.3, 2])
+filter_cols = st.columns([1.3, 1.3, 1.6, 1.4])
 with filter_cols[0]:
     tier_pick = st.multiselect("Market cap tier", [t for _, t in confluence.MCAP_TIERS])
 with filter_cols[1]:
     category_pick = st.multiselect("Category", sorted(merged["category"].unique()))
 with filter_cols[2]:
     company_search = st.text_input("Search company / symbol", placeholder="Search…")
+with filter_cols[3]:
+    sort_basis = st.radio("Sort by", ["FAR %", "Combined Value"], horizontal=True,
+                           help="FAR % needs market cap; falls back to value when it's not available for a name.")
 
 filtered = merged[merged["category"] != "No Confluence"].copy()
 if tier_pick:
@@ -82,11 +85,14 @@ if company_search:
     filtered = filtered[filtered["company"].astype(str).str.lower().str.contains(q, na=False) |
                          filtered["symbol"].astype(str).str.lower().str.contains(q, na=False)]
 
-has_far = filtered["far_pct"].notna()
-ranked = pd.concat([
-    filtered[has_far].reindex(filtered[has_far]["far_pct"].abs().sort_values(ascending=False).index),
-    filtered[~has_far].reindex(filtered[~has_far]["combined_flow"].abs().sort_values(ascending=False).index),
-])
+if sort_basis == "Combined Value":
+    ranked = filtered.reindex(filtered["combined_flow"].abs().sort_values(ascending=False).index)
+else:
+    has_far = filtered["far_pct"].notna()
+    ranked = pd.concat([
+        filtered[has_far].reindex(filtered[has_far]["far_pct"].abs().sort_values(ascending=False).index),
+        filtered[~has_far].reindex(filtered[~has_far]["combined_flow"].abs().sort_values(ascending=False).index),
+    ])
 
 st.caption(f"{len(ranked):,} companies with a confluence signal this run (of {len(merged):,} with any promoter/institutional/corporate-action activity).")
 
@@ -108,6 +114,20 @@ for _, row in ranked.head(40).iterrows():
     with c4:
         if st.button("Details →", key=f"detail-{row['canonical_isin']}", use_container_width=True):
             st.session_state["confluence_detail_isin"] = row["canonical_isin"]
+    # FAR is a combined number -- show which side is actually driving it,
+    # since "Insider Alpha" and "Certification" are fundamentally about
+    # WHO is buying, not just how much in total.
+    promoter_val = row.get("promoter_net_value") or 0
+    inst_val = row.get("institutional_net_value") or 0
+    breakdown_bits = []
+    if promoter_val:
+        color = "green" if promoter_val > 0 else "red"
+        breakdown_bits.append(f'<span style="color:{style.COLORS[color]};">Promoter {style.fmt_inr(promoter_val)}</span>')
+    if inst_val:
+        color = "green" if inst_val > 0 else "red"
+        breakdown_bits.append(f'<span style="color:{style.COLORS[color]};">Institutional {style.fmt_inr(inst_val)}</span>')
+    if breakdown_bits:
+        st.markdown(f'<div style="font-size:11px;color:{style.COLORS["text_3"]};margin-top:2px;">{" · ".join(breakdown_bits)}</div>', unsafe_allow_html=True)
     st.markdown(f'<hr style="margin:4px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
 
 detail_isin = st.session_state.get("confluence_detail_isin")

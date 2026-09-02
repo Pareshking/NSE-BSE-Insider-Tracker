@@ -100,7 +100,10 @@ with left:
         "- Cross-exchange same-event matching is **flag-only** — never merges NSE and BSE rows into one combined truth\n"
         "- NSE endpoints Akamai-rate-limit under rapid re-testing — a `RATE-LIMITED`/`BLOCKED` status here reflects that, not a code failure\n"
         "- ISIN resolution depends on the security-master snapshot's coverage — a genuinely absent ISIN is reported as such, not guessed\n"
-        "- BSE rights/preferential lifecycle date fields were added recently and may still be pending live re-verification"
+        "- Confluence Screener classifications (Insider Alpha, Certification, etc.) are a **same-90-day-window heuristic**, not a statistical test — "
+        "they flag *what* overlapped, not a probability the overlap is meaningful, and carry no price history to confirm it\n"
+        "- Confluence Screener's Float Absorption Ratio needs market cap for a name — where it's missing, that company sorts by raw value instead, "
+        "never silently dropped"
     )
 with right:
     st.markdown("**Reference data**")
