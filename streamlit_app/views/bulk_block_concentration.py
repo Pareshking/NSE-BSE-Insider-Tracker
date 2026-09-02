@@ -174,6 +174,22 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                 if len(sec_rows) > 1:
                     daily = sec_rows.groupby(sec_rows["_date"].dt.date)["_value"].sum()
                     st.plotly_chart(sparkline(daily, style.COLORS["blue"]), use_container_width=True, config={"displayModeBar": False}, key=f"spark-sec-{category}-{row['canonical_symbol']}")
+                with st.expander(f"{int(row['trades'])} trade(s) -- who, when, how much"):
+                    detail_rows = "".join(
+                        f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
+                        f'<td style="font-weight:500;">{r.get("canonical_client") or "—"}</td>'
+                        f'<td style="color:{style.COLORS["green"] if str(r.get("canonical_side")).upper() == "BUY" else style.COLORS["red"]};font-weight:600;">{r.get("canonical_side") or "—"}</td>'
+                        f'<td class="mono" style="text-align:right;">{r["_qty"]:,.0f}</td>'
+                        f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
+                        f'<td style="text-align:right;">{style.exchange_badge(r.get("exchange") or "")}</td></tr>'
+                        for _, r in sec_rows.iterrows()
+                    )
+                    st.markdown(
+                        '<table class="evt-table"><tr><th>DATE</th><th>CLIENT</th><th>SIDE</th>'
+                        '<th style="text-align:right;">QTY</th><th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
+                        + detail_rows + "</table>",
+                        unsafe_allow_html=True,
+                    )
                 st.markdown(f'<hr style="margin:2px 0 10px 0;border:none;border-top:1px solid {style.COLORS["border"]};">', unsafe_allow_html=True)
             if len(grouped) > 20:
                 st.caption(f"{len(grouped) - 20} more securities -- full list below.")

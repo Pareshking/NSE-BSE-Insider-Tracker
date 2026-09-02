@@ -33,6 +33,8 @@ style.top_brand_bar(
 pg = st.navigation(
     [
         st.Page("views/overview.py", title="Overview", icon="\U0001f3e0", default=True),
+        st.Page("views/confluence_screener.py", title="Confluence Screener", icon="\U0001f9ed"),
+        st.Page("views/entity_tracker.py", title="Entity Tracker", icon="\U0001f464"),
         st.Page("views/transactions.py", title="Evidence & Drill-down", icon="\U0001f50e"),
         st.Page("views/promoter_activity.py", title="Promoter Activity", icon="\U0001f4c8"),
         st.Page("views/bulk_block_concentration.py", title="Bulk & Block Concentration", icon="\U0001f4ca"),
