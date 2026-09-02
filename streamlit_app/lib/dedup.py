@@ -102,6 +102,14 @@ def collapse_cross_exchange(df: pd.DataFrame) -> pd.DataFrame:
     return collapsed.drop(columns=["_pair_key"], errors="ignore")
 
 
+# NOTE ON WHERE THIS RUNS. As of 2026-09-02 the pipeline drops these rows at
+# ingestion -- scripts/r2_writer.py::drop_intraday_round_trips, same rule and
+# same tolerance -- so for any run written after that date this pass finds
+# nothing. It stays because the bucket still holds earlier runs that were
+# written before the rule existed, and picking an older date in the run
+# selector reads that data. Keep the two in sync; if they ever disagree, the
+# writer's version is the one that decides what exists.
+#
 # A client who buys and sells the same stock on the same day in the same
 # size has finished the day flat: no ownership changed hands, so it is not
 # accumulation, distribution or concentration -- it is day trading that
