@@ -129,6 +129,82 @@ def build_module():
     return mod
 
 
+def check_dedup() -> list[str]:
+    """The two Confluence Screener reports, which are different problems.
+
+    Ather Energy: ONE trade, four rows -- two counterparties at the SAME
+    price, in both the bulk and block feeds. Must collapse to one row.
+
+    Atal Realtech: one client on BOTH sides, same quantity, DIFFERENT prices
+    (SELL Rs.5.83Cr against BUY Rs.5.81Cr). Two real trades that cancel --
+    a day trade, not a duplicate. Must be recognised as a round trip, and
+    must NOT be collapsed as if it were one deal.
+    """
+    from lib import dedup
+    failures = []
+
+    def check(name, cond, detail=""):
+        print(f"{'ok  ' if cond else 'FAIL'} {name}{'' if cond else '  -- ' + detail}")
+        if not cond:
+            failures.append(name)
+
+    ather = pd.DataFrame([
+        dict(canonical_event_date="2026-08-28", canonical_company="Ather Energy Limited",
+             canonical_client="GOVERNMENT OF SINGAPORE", canonical_side="SELL",
+             canonical_quantity=1_000_000.0, canonical_price=1758.24,
+             canonical_isin="INE0LEZ01016", exchange="nse", category="Bulk Deals"),
+        dict(canonical_event_date="2026-08-28", canonical_company="Ather Energy Limited",
+             canonical_client="HERO MOTOCORP LIMITED", canonical_side="BUY",
+             canonical_quantity=1_000_000.0, canonical_price=1758.24,
+             canonical_isin="INE0LEZ01016", exchange="nse", category="Bulk Deals"),
+        dict(canonical_event_date="2026-08-28", canonical_company="Ather Energy Limited",
+             canonical_client="GOVERNMENT OF SINGAPORE", canonical_side="SELL",
+             canonical_quantity=1_000_000.0, canonical_price=1758.24,
+             canonical_isin="INE0LEZ01016", exchange="nse", category="Block Deals"),
+        dict(canonical_event_date="2026-08-28", canonical_company="Ather Energy Limited",
+             canonical_client="HERO MOTOCORP LIMITED", canonical_side="BUY",
+             canonical_quantity=1_000_000.0, canonical_price=1758.24,
+             canonical_isin="INE0LEZ01016", exchange="nse", category="Block Deals"),
+    ])
+    collapsed = dedup.collapse_all(ather)
+    check("Ather's four rows collapse to one", len(collapsed) == 1, f"got {len(collapsed)}")
+    if len(collapsed):
+        row = collapsed.iloc[0]
+        check("collapsed row names both sides", row.get("_sides") == "BUY & SELL", f"got {row.get('_sides')}")
+        check("collapsed row names both feeds",
+              "Bulk Deals" in str(row.get("_feeds")) and "Block Deals" in str(row.get("_feeds")),
+              f"got {row.get('_feeds')}")
+        check("collapsed row names both counterparties",
+              "SINGAPORE" in str(row.get("_parties")) and "HERO" in str(row.get("_parties")),
+              f"got {row.get('_parties')}")
+
+    atal = pd.DataFrame([
+        dict(canonical_event_date="2026-06-05", canonical_company="Atal Realtech Limited",
+             canonical_client="ALTIZEN VENTURES LLP", canonical_side="SELL",
+             canonical_quantity=500_000.0, canonical_price=116.6,
+             canonical_isin="INE0ALR01029", exchange="nse", category="Bulk Deals"),
+        dict(canonical_event_date="2026-06-05", canonical_company="Atal Realtech Limited",
+             canonical_client="ALTIZEN VENTURES LLP", canonical_side="BUY",
+             canonical_quantity=500_000.0, canonical_price=116.2,
+             canonical_isin="INE0ALR01029", exchange="nse", category="Bulk Deals"),
+        dict(canonical_event_date="2026-06-05", canonical_company="Atal Realtech Limited",
+             canonical_client="GARG ATUL", canonical_side="SELL",
+             canonical_quantity=200_000.0, canonical_price=119.0,
+             canonical_isin="INE0ALR01029", exchange="nse", category="Bulk Deals"),
+    ])
+    rt = dedup.intraday_round_trips(atal)
+    check("both legs of the same-party round trip flagged", int(rt.sum()) == 2, f"got {int(rt.sum())}")
+    check("the unrelated one-way sell is not flagged",
+          not bool(rt[atal["canonical_client"] == "GARG ATUL"].any()), "GARG ATUL was flagged")
+    kept, dropped = dedup.drop_intraday_round_trips(atal)
+    check("round-trip legs removed, other trade kept", len(kept) == 1 and dropped == 2,
+          f"kept {len(kept)}, dropped {dropped}")
+    # Different prices must NOT be treated as one deal by the duplicate collapse.
+    check("round trip is not collapsed as a duplicate",
+          len(dedup.collapse_deal_sides(atal)) == 3, f"got {len(dedup.collapse_deal_sides(atal))}")
+    return failures
+
+
 def main() -> int:
     mod = build_module()
     agg = mod.overview_aggregates(None, RUN_DATE, ("nse",))
@@ -182,6 +258,8 @@ def main() -> int:
         check("no percentage above 1000% survives",
               stake["_pct_change"].abs().max() < 1000,
               f"max {stake['_pct_change'].abs().max():.1f}%")
+
+    failures.extend(check_dedup())
 
     print(f"\n{len(failures)} failure(s)")
     return 1 if failures else 0

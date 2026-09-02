@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import confluence, fields, r2_data, style
+from lib import confluence, dedup, fields, r2_data, style
 
 st.markdown("### Confluence Screener")
 st.caption("Companies where promoters, institutions, and capital-raise events overlap -- ranked by Float Absorption Ratio (FAR), the % of market cap changing hands to informed entities.")
@@ -86,7 +86,7 @@ filter_cols = st.columns([1.3, 1.3, 1.6, 1.4])
 with filter_cols[0]:
     tier_pick = st.multiselect("Market cap tier", [t for _, t in confluence.MCAP_TIERS])
 with filter_cols[1]:
-    category_pick = st.multiselect("Category", sorted(merged["category"].unique()))
+    category_pick = st.multiselect("Category", sorted(merged["category"].dropna().unique(), key=str))
 with filter_cols[2]:
     company_search = st.text_input("Search company / symbol", placeholder="Search…")
 with filter_cols[3]:
@@ -179,19 +179,50 @@ if detail_isin:
                 f'({r.get("canonical_person_category") or "—"})</span><span class="mono">{style.fmt_inr(r.get("canonical_value"))}</span></div>',
                 unsafe_allow_html=True,
             )
+        # Bulk and block are pooled before rendering, not looped separately:
+        # one trade is disclosed by both counterparties AND can appear in both
+        # feeds, so looping per category showed a single deal four times
+        # (Ather Energy, 28 Aug 2026, Rs.1758.24Cr). Same-day same-client
+        # round trips are dropped outright -- they net to no ownership change
+        # and were burying the real deals (Atal Realtech's page was almost
+        # entirely one LLP trading against itself).
+        deal_frames = []
         for cat in ("bulk_deals", "block_deals"):
-            hits = cats[cat][cats[cat].get("canonical_isin") == isin] if not cats[cat].empty else pd.DataFrame()
-            for _, r in hits.iterrows():
+            if cats[cat].empty:
+                continue
+            hits = cats[cat][cats[cat].get("canonical_isin") == isin].copy()
+            if hits.empty:
+                continue
+            hits["category"] = r2_data.CATEGORY_LABELS[cat]
+            deal_frames.append(hits)
+        round_trips_dropped = 0
+        if deal_frames:
+            deals = pd.concat(deal_frames, ignore_index=True)
+            deals, round_trips_dropped = dedup.drop_intraday_round_trips(deals)
+            deals = dedup.collapse_all(deals)
+            deals = deals.sort_values("_dedup_date", ascending=False, na_position="last")
+            for _, r in deals.iterrows():
                 any_rows = True
-                side = str(r.get("canonical_side") or "")
-                color = "green" if side == "BUY" else "red"
+                sides = r.get("_sides") or "—"
+                color = "green" if sides == "BUY" else ("red" if sides == "SELL" else "text_2")
                 value = fields.as_float(r.get("canonical_quantity")) * fields.as_float(r.get("canonical_price"))
+                parties = r.get("_parties") or r.get("canonical_client") or "—"
+                # Only worth saying when the row actually folded two exchanges
+                # together; "NSE" alone is noise on every other line.
+                exchanges = str(r.get("_exchanges") or "")
+                cross_note = f" · {exchanges}" if "+" in exchanges else ""
                 st.markdown(
-                    f'<div class="kv-row"><span>{style.fmt_date(r.get("canonical_event_date"))} · {r2_data.CATEGORY_LABELS[cat]} · '
-                    f'<span style="color:{style.COLORS[color]};">{side}</span> · {r.get("canonical_client") or "—"}</span>'
+                    f'<div class="kv-row"><span>{style.fmt_date(r.get("canonical_event_date"))} · '
+                    f'{r.get("_feeds") or "—"} · '
+                    f'<span style="color:{style.COLORS[color]};">{sides}</span> · {parties}{cross_note}</span>'
                     f'<span class="mono">{style.fmt_inr(value)}</span></div>',
                     unsafe_allow_html=True,
                 )
+        if round_trips_dropped:
+            st.caption(
+                f"{round_trips_dropped} same-day round-trip leg(s) hidden — one client buying and "
+                "selling the same quantity on the same day, which changes no one's holding."
+            )
         for cat in ("rights_issue", "preferential_issue"):
             hits = cats[cat][cats[cat].get("canonical_isin") == isin] if not cats[cat].empty else pd.DataFrame()
             for _, r in hits.iterrows():

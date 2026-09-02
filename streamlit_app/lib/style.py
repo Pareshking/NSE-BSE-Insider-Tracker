@@ -262,6 +262,22 @@ def fmt_inr(value) -> str:
     return f"₹{v:,.0f}"
 
 
+def fmt_qty(value) -> str:
+    """Share counts, formatted the same way everywhere and safe on any dtype.
+
+    NSE and BSE mix numeric and stringy representations of the same quantity
+    ('51000.0' as often as 51000.0) -- scripts/r2_writer.py's _num() coerces
+    what it recognises, but anything it doesn't reaches the frontend as text.
+    An f-string number format on that text raises "Unknown format code 'f'
+    for object of type 'str'" and takes the whole page down, which is what
+    Evidence & Drill-down and Promoter Activity were doing.
+    """
+    number = fields.as_float(value, default=float("nan"))
+    if pd.isna(number):
+        return "—"
+    return f"{number:,.0f}"
+
+
 def fmt_date(value) -> str:
     """Clean 'DD Mon YYYY' date, no time component -- NSE/BSE source dates
     arrive in inconsistent formats (plain date strings, full ISO timestamps,
@@ -305,9 +321,13 @@ def status_badge(status: str) -> str:
     return badge(status, fg, bg)
 
 
-def exchange_badge(exchange: str) -> str:
-    fg, bg = EXCHANGE_COLORS.get(exchange, ("text_2", "bg_sub"))
-    return badge(exchange.upper(), fg, bg, dot=False)
+def exchange_badge(exchange) -> str:
+    # str() first: this is called with whatever the exchange column held, and
+    # a non-string there ("'int' object has no attribute 'upper'") took down
+    # Promoter Activity and Bulk & Block Concentration.
+    name = str(exchange or "").strip()
+    fg, bg = EXCHANGE_COLORS.get(name.lower(), ("text_2", "bg_sub"))
+    return badge(name.upper() or "—", fg, bg, dot=False)
 
 
 def kpi_card(label: str, value: str, sub_html: str = "") -> str:

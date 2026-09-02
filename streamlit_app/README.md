@@ -43,8 +43,8 @@ promoter "accumulation" and ranked by % of market cap.
 
 ## Pages
 
-- **Overview** -- category pulse strip, promoter accumulation ranked by % of
-  market cap, biggest transactions across all 5 categories, concentration
+- **Overview** -- promoter accumulation ranked by % of
+  market cap, most-recent transactions across all 5 categories, concentration
   alerts, biggest stake changes.
 - **Confluence Screener** -- per-ISIN join across insider / bulk / block /
   rights / preferential, ranked by Float Absorption Ratio.
@@ -73,6 +73,15 @@ prefer them over raw pandas when touching a canonical field:
   (NSE ISO `2026-08-28`, NSE IST-midnight-as-UTC `…T18:30:00.000Z`, BSE
   day-first `31/08/2026`). Any single blanket `dayfirst` setting reads one
   of them months off; this picks per value.
+- `lib.dedup` -- three different reasons one event shows up as several rows,
+  handled separately because they are not the same thing: both counterparties
+  disclose a bulk/block trade; the same trade can appear in the bulk feed and
+  the block feed; and NSE and BSE can both carry it (the writer flags those as
+  `cross_exchange_possible_match_id`, and collapsing them is a display choice
+  only -- the data still never merges the exchanges). Separately,
+  `intraday_round_trips` finds one client buying and selling the same size in
+  one day: real trades, but no ownership changed, so they are noise in every
+  accumulation and concentration view.
 - `lib.fields.text_col` / `num_col` -- a canonical column an exchange didn't
   publish, accessed as `df.get(col, pd.Series(dtype=object))`, yields an
   unaligned mask and raises `IndexingError`. These stay aligned to

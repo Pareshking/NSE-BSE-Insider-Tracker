@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import fields, r2_data, style
+from lib import dedup, fields, r2_data, style
 
 # Rights/preferential carry event dates from way earlier (or, for some
 # corporate-action fields, later -- e.g. a record date) in a listing's
@@ -182,8 +182,13 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
     deal_frames = [by_category[c] for c in ("bulk_deals", "block_deals")
                    if not by_category[c].empty and "canonical_client" in by_category[c].columns]
     alert_rows = []
+    round_trips_dropped = 0
     if deal_frames:
         deals_df = pd.concat(deal_frames, ignore_index=True)
+        # A client who buys and sells the same size in one day ends flat, so
+        # counting that turnover as "driving the volume" of a security
+        # overstates their grip on it -- they took no position at all.
+        deals_df, round_trips_dropped = dedup.drop_intraday_round_trips(deals_df)
         deals_df["_value"] = fields.num_col(deals_df, "canonical_quantity") * fields.num_col(deals_df, "canonical_price")
         for company, sub in deals_df.groupby("canonical_company", dropna=False):
             by_client = sub.groupby("canonical_client")["_value"].sum().sort_values(ascending=False)
@@ -219,6 +224,7 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         "non_market_excluded": non_market_excluded,
         "top_transactions": top_transactions,
         "concentration_alerts": alert_rows,
+        "round_trips_dropped": round_trips_dropped,
         "stake_changes": stake_changes,
         "has_insider_data": not insider_df.empty,
     }
@@ -401,9 +407,13 @@ with sig3:
             )
         if len(alert_rows) > 4:
             st.caption(f"{len(alert_rows) - 4} more on Bulk & Block Concentration.")
+    _rt = agg["round_trips_dropped"]
     st.caption(
         f"Securities where {CONCENTRATION_MIN_CLIENTS}+ clients traded and the top 3 still took "
-        f"{CONCENTRATION_THRESHOLD:.0%}+ of the value. Full view on Bulk & Block Concentration."
+        f"{CONCENTRATION_THRESHOLD:.0%}+ of the value."
+        + (f" {_rt} same-day round-trip leg(s) excluded — a client who ends the day flat took no position."
+           if _rt else "")
+        + " Full view on Bulk & Block Concentration."
     )
 
 st.write("")

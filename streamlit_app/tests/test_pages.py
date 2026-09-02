@@ -60,6 +60,15 @@ SCENARIOS = [
     ("no allottee category", dict(drop_cols=["canonical_allottee_category"])),
     ("no market cap reference", dict(with_mcap=False)),
     ("no value/qty/price", dict(drop_cols=["canonical_value", "canonical_quantity", "canonical_price"])),
+    # BSE writing text where NSE writes numbers. Each file is uniform; the
+    # mixture appears when load_combined concatenates them, and it took down
+    # Evidence & Drill-down and Promoter Activity on the live app.
+    ("BSE quantity as text", dict(cast_by_exchange={"bse": {"canonical_quantity": str}})),
+    ("BSE price as text", dict(cast_by_exchange={"bse": {"canonical_price": str}})),
+    ("BSE holdings as text", dict(cast_by_exchange={"bse": {
+        "canonical_holding_before": str, "canonical_holding_after": str}})),
+    ("exchange not a string", dict(cast_by_exchange={"bse": {"exchange": lambda v: 2}})),
+    ("mixed-type filter column", dict(cast_by_exchange={"bse": {"canonical_person_category": lambda v: 7}})),
 ]
 
 DATES = ["2026-09-02", "2026-09-01"]

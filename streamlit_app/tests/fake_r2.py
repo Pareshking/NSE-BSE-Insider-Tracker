@@ -49,14 +49,14 @@ class FakeS3:
         return _P()
 
 
-def build_objects(dates, *, insider_cols=None, drop_cols=(), with_mcap=True):
+def build_objects(dates, *, insider_cols=None, drop_cols=(), with_mcap=True, cast_by_exchange=None):
     """Synthetic bucket shaped exactly like scripts/r2_writer.py's layout."""
     objects = {}
     for date in dates:
         entries = []
         for ex in ("nse", "bse"):
             for cat in ("insider_trading", "bulk_deals", "block_deals", "rights_issue", "preferential_issue"):
-                df = _frame(ex, cat, date, drop_cols)
+                df = _frame(ex, cat, date, drop_cols, (cast_by_exchange or {}).get(ex))
                 entries.append({
                     "exchange": ex, "category": cat, "status": "VERIFIED",
                     "written": True, "row_count": len(df), "reason": "live fetch",
@@ -78,7 +78,7 @@ def _parquet(df):
     return buf.getvalue()
 
 
-def _frame(exchange, category, date, drop_cols=()):
+def _frame(exchange, category, date, drop_cols=(), cast=None):
     """One category's rows for one exchange.
 
     Dates are written in the convention that exchange really uses: NSE ISO
@@ -136,4 +136,12 @@ def _frame(exchange, category, date, drop_cols=()):
     for col in drop_cols:
         if col in df.columns:
             df = df.drop(columns=[col])
+    # One exchange writing a column as text while the other writes numbers is
+    # how mixed-dtype columns actually arise: each Parquet file is internally
+    # uniform, and the mixture only appears once load_combined concatenates
+    # them. That concat is what crashed Evidence & Drill-down and Promoter
+    # Activity ("Unknown format code 'f' for object of type 'str'").
+    for col, fn in (cast or {}).items():
+        if col in df.columns:
+            df[col] = df[col].map(lambda v, _f=fn: v if v is None else _f(v))
     return df

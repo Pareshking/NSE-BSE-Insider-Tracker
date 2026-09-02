@@ -86,7 +86,10 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
         for i, fcol in enumerate(FILTERABLE.get(cat, [])):
             if fcol not in df.columns:
                 continue
-            options = sorted(v for v in df[fcol].dropna().unique() if v)
+            # key=str: a canonical column can carry mixed types across
+            # NSE and BSE, and plain sorted() then raises "'<' not supported
+            # between instances of 'int' and 'str'".
+            options = sorted((v for v in df[fcol].dropna().unique() if v != ""), key=str)
             with filter_cols[i]:
                 picked = st.multiselect(fcol.replace("canonical_", "").replace("_", " ").title(), options, key=f"{cat}-{fcol}")
             if picked:
@@ -122,9 +125,9 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
         for col in CURRENCY_COLUMNS & set(display_df.columns):
             display_df[col] = display_df[col].map(style.fmt_inr)
         for col in QUANTITY_COLUMNS & set(display_df.columns):
-            display_df[col] = display_df[col].map(lambda v: f"{v:,.0f}" if pd.notna(v) else "—")
+            display_df[col] = display_df[col].map(style.fmt_qty)
         if "exchange" in display_df.columns:
-            display_df["exchange"] = display_df["exchange"].str.upper()
+            display_df["exchange"] = display_df["exchange"].astype(str).str.upper()
 
         event = st.dataframe(
             display_df,
@@ -160,7 +163,7 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
                         elif col in CURRENCY_COLUMNS:
                             value = style.fmt_inr(row[col])
                         elif col in QUANTITY_COLUMNS:
-                            value = f"{row[col]:,.0f}"
+                            value = style.fmt_qty(row[col])
                         else:
                             value = row[col]
                         st.markdown(

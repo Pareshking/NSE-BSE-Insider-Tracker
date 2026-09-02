@@ -156,7 +156,7 @@ with grain[0]:
             detail_rows = "".join(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
                 f'<td style="color:{style.COLORS["green"] if str(r.get("canonical_transaction_type")).upper().find("ACQUI")>=0 else style.COLORS["red"]};font-weight:600;">{r.get("canonical_transaction_type") or "—"}</td>'
-                f'<td class="mono" style="text-align:right;">{r.get("canonical_quantity") or 0:,.0f}</td>'
+                f'<td class="mono" style="text-align:right;">{style.fmt_qty(r.get("canonical_quantity"))}</td>'
                 f'<td class="mono" style="text-align:right;">{style.fmt_inr(r.get("canonical_value"))}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(r.get("exchange") or "")}</td></tr>'
                 for _, r in person_rows.iterrows()
@@ -208,7 +208,7 @@ with grain[1]:
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
                 f'<td style="font-weight:500;">{r.get("canonical_person") or "—"}</td>'
                 f'<td style="color:{style.COLORS["green"] if str(r.get("canonical_transaction_type")).upper().find("ACQUI")>=0 else style.COLORS["red"]};font-weight:600;">{r.get("canonical_transaction_type") or "—"}</td>'
-                f'<td class="mono" style="text-align:right;">{r.get("canonical_quantity") or 0:,.0f}</td>'
+                f'<td class="mono" style="text-align:right;">{style.fmt_qty(r.get("canonical_quantity"))}</td>'
                 f'<td class="mono" style="text-align:right;">{style.fmt_inr(r.get("canonical_value"))}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(r.get("exchange") or "")}</td></tr>'
                 for _, r in company_rows.iterrows()
