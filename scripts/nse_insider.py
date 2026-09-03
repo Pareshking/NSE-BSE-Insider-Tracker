@@ -43,6 +43,30 @@ MAX_WORKERS  = 8
 MAX_FILINGS  = 3000  # safety cap
 FETCH_RETRIES = 2
 
+# ── Per-filing cache ──────────────────────────────────────────────────────────
+# Every run used to re-fetch the detail XML of EVERY filing in the 90-day
+# window -- 1,724 requests on the 2026-08-31 run, of which 1,276 (74%) came
+# back empty. That failure is not a parser bug: sampling this same code from a
+# clean IP returned 120/120 OK, and then the filing-list endpoint itself
+# started answering 403 once enough requests had been made from that IP. NSE
+# rate-limits by volume, so a run that asks for 1,724 files trips the limit
+# partway through and loses the remainder.
+#
+# A filing's XBRL is immutable once published: NSE issues an amendment as a
+# NEW appId carrying prevAppId back to the original (see r2_writer.py's
+# canonical_is_revision). So the detail only ever needs fetching once, and
+# appId -- not a date cursor -- is the right key: a filing disclosed late is
+# simply an appId not in the cache yet, whenever it shows up.
+#
+# The cache is a single R2 object rather than one per filing, so a run reads
+# it in one GET instead of thousands of HEADs. Without R2 credentials (local
+# runs, diagnostics) the cache is skipped entirely and behaviour is exactly
+# what it was before -- fetch everything.
+CACHE_KEY = 'cache/nse_insider/parsed_filings.json'
+# Keep a margin beyond the window so a filing does not get evicted and
+# immediately re-fetched when the window edge moves past it day to day.
+CACHE_RETENTION_DAYS = LOOKBACK + 30
+
 TAG_RE = re.compile(r'<in-bse-co:([A-Za-z0-9]+)[^>]*>([^<]*)</in-bse-co:\1>')
 
 session = requests.Session()
@@ -123,6 +147,73 @@ def to_row(rec, filing):
         'broadcastDt':     filing.get('broadcastDateTime', ''),
         'appId':           filing.get('appId', ''),
     }
+
+
+def _r2_client():
+    """boto3 S3 client for R2, or None when this run has no credentials.
+    Missing credentials are not an error: the cache is an optimisation, and
+    the script must still work without it."""
+    missing = [k for k in ('CLOUDFLARE_ACCOUNT_ID', 'R2_ACCESS_KEY_ID',
+                           'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME')
+               if not os.environ.get(k)]
+    if missing:
+        print(f'  (no filing cache: {", ".join(missing)} not set -- fetching every filing)')
+        return None
+    try:
+        import boto3
+        return boto3.client(
+            's3',
+            endpoint_url=f"https://{os.environ['CLOUDFLARE_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+            aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
+            aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'],
+            region_name='auto',
+        )
+    except Exception as exc:
+        print(f'  (no filing cache: could not build R2 client -- {type(exc).__name__})')
+        return None
+
+
+def load_cache(client):
+    """{appId: {"broadcast": "YYYY-MM-DD", "rows": [...]}}. Any problem
+    reading it yields an empty cache and a full fetch -- never a failed run,
+    since a stale or unreadable cache must not be able to break acquisition."""
+    if client is None:
+        return {}
+    try:
+        body = client.get_object(Bucket=os.environ['R2_BUCKET_NAME'], Key=CACHE_KEY)['Body'].read()
+        cache = json.loads(body)
+        if not isinstance(cache, dict):
+            raise ValueError('cache is not an object')
+        print(f'  Filing cache: {len(cache)} filing(s) already parsed')
+        return cache
+    except Exception as exc:
+        name = type(exc).__name__
+        if 'NoSuchKey' in name or '404' in str(exc):
+            print('  Filing cache: none yet (first run) -- fetching every filing')
+        else:
+            print(f'  Filing cache: unreadable ({name}) -- fetching every filing')
+        return {}
+
+
+def save_cache(client, cache):
+    """Write the cache back, pruned to the retention window. Failure here is
+    logged and swallowed: the run's data is already complete without it."""
+    if client is None:
+        return
+    cutoff = (TARGET - timedelta(days=CACHE_RETENTION_DAYS)).isoformat()
+    pruned = {k: v for k, v in cache.items()
+              if str((v or {}).get('broadcast') or '') >= cutoff}
+    dropped = len(cache) - len(pruned)
+    try:
+        client.put_object(
+            Bucket=os.environ['R2_BUCKET_NAME'], Key=CACHE_KEY,
+            Body=json.dumps(pruned, default=str).encode('utf-8'),
+            ContentType='application/json',
+        )
+        print(f'  Filing cache: saved {len(pruned)} filing(s)'
+              + (f', pruned {dropped} older than {cutoff}' if dropped else ''))
+    except Exception as exc:
+        print(f'  Filing cache: could not save ({type(exc).__name__}) -- not fatal')
 
 
 def fetch_and_parse(filing):
@@ -206,18 +297,43 @@ def main():
     in_window = in_window[:MAX_FILINGS]
     print(f'Filings in {LOOKBACK}d window ({from_date} to {TARGET}): {len(in_window)}')
 
-    all_rows, ok, failed = [], 0, 0
+    # Split the window into what is already parsed and what actually has to
+    # be fetched. Only the second group costs an NSE request, and keeping
+    # that group small is the whole point -- see CACHE_KEY above.
+    r2 = _r2_client()
+    cache = load_cache(r2)
+
+    all_rows, ok, failed, from_cache = [], 0, 0, 0
+    to_fetch = []
+    for filing in in_window:
+        app_id = str(filing.get('appId') or '').strip()
+        cached = cache.get(app_id) if app_id else None
+        if cached and isinstance(cached.get('rows'), list):
+            all_rows.extend(cached['rows'])
+            from_cache += 1
+        else:
+            to_fetch.append(filing)
+
+    print(f'Cached: {from_cache}, to fetch: {len(to_fetch)}')
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-        futures = {ex.submit(fetch_and_parse, f): f for f in in_window}
+        futures = {ex.submit(fetch_and_parse, f): f for f in to_fetch}
         for fut in as_completed(futures):
+            filing = futures[fut]
             rows = fut.result()
             if rows:
                 ok += 1
                 all_rows.extend(rows)
+                app_id = str(filing.get('appId') or '').strip()
+                if app_id:
+                    # Only successful parses are cached. Caching an empty
+                    # result would make a rate-limited failure permanent --
+                    # the filing would never be retried on a later run.
+                    cache[app_id] = {'broadcast': filing.get('_broadcast_date', ''), 'rows': rows}
             else:
                 failed += 1
 
-    print(f'XML filings fetched OK: {ok}, failed/empty: {failed}')
+    save_cache(r2, cache)
+    print(f'XML filings fetched OK: {ok}, failed/empty: {failed}, reused from cache: {from_cache}')
     all_rows = dedup(all_rows)
     print(f'Total disclosure rows parsed: {len(all_rows)}')
 
@@ -256,6 +372,13 @@ def main():
         'filings_in_window': len(in_window),
         'filings_fetched_ok': ok,
         'filings_failed': failed,
+        # The measurement that says whether the cache is doing its job:
+        # filings_reused_from_cache should climb towards filings_in_window
+        # over successive runs, and nse_requests_made should fall to roughly
+        # the daily delta (~20-30) from the 1,724 it was.
+        'filings_reused_from_cache': from_cache,
+        'nse_requests_made': 1 + len(to_fetch),   # the filing list, plus each detail fetch
+        'filing_cache_enabled': r2 is not None,
         'windows': [{k: v for k, v in w.items() if k not in ('rows', 'sample')}
                     for w in windows],
     }

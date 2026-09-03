@@ -76,10 +76,19 @@ jobs:
         run: python scripts/nse_market_cap.py
 
       # --- NSE acquisition (5 categories) ---
+      # R2 credentials here are for the per-filing cache, NOT for writing
+      # datasets -- nse_insider.py only reads and updates
+      # cache/nse_insider/parsed_filings.json. Without them the script still
+      # runs, it just re-fetches every filing (which is what was tripping
+      # NSE's rate limit and losing 74% of them).
       - name: NSE Insider
         if: always()
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python scripts/nse_insider.py
       - name: NSE Bulk
         if: always()
