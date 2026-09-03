@@ -88,7 +88,11 @@ def _frame(exchange, category, date, drop_cols=(), cast=None):
     """
     base_date = pd.Timestamp(date)
     date_format = "%Y-%m-%d" if exchange == "nse" else "%d/%m/%Y"
-    days = [(base_date - pd.Timedelta(days=d)).strftime(date_format) for d in (1, 3, 10, 40)]
+    # Deliberately NOT in date order. The exchanges do not return sorted
+    # rows, and a fixture that happens to be sorted lets an unsorted page
+    # pass -- which is how Evidence & Drill-down shipped rendering Rights
+    # Issues as 14 Jul, 11 May, 30 Jun, 13 Jun.
+    days = [(base_date - pd.Timedelta(days=d)).strftime(date_format) for d in (10, 1, 40, 3)]
     if category == "insider_trading":
         df = pd.DataFrame({
             "canonical_transaction_date": days,

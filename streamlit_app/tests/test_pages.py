@@ -98,6 +98,36 @@ def check_dates() -> list[str]:
     return failures
 
 
+def check_ordering() -> list[str]:
+    """Evidence & Drill-down must render newest-first in every tab.
+
+    It shipped with no ordering at all, so rows appeared in whatever order
+    the source returned. The fixture deliberately supplies unsorted dates,
+    and sorting has to be on the PARSED date -- the raw column mixes NSE ISO
+    with BSE day-first, so a string sort is not chronological either.
+    """
+    failures = []
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    app = AppTest.from_file(str(REPO / "streamlit_app" / "views" / "transactions.py"), default_timeout=90)
+    app.run()
+    if app.exception:
+        return [f"Evidence & Drill-down raised: {app.exception[0].message.splitlines()[0][:70]}"]
+    checked = 0
+    for frame in app.dataframe:
+        for col_name in ("canonical_transaction_date", "canonical_event_date"):
+            col = frame.value.get(col_name)
+            if col is None or not len(col):
+                continue
+            parsed = pd.to_datetime(col, format="%d %b %Y", errors="coerce")
+            checked += 1
+            if list(parsed) != sorted(parsed, reverse=True):
+                failures.append(f"{col_name} not newest-first: {list(col)[:4]}")
+    if not checked:
+        failures.append("no dated tables rendered -- the ordering check asserted nothing")
+    return failures
+
+
 def run_page(name: str, expect_error: bool) -> str | None:
     """None when the page is fine, else a one-line description of what broke."""
     st.cache_data.clear()
@@ -123,6 +153,15 @@ def main() -> int:
         print(f"FAIL  date parsing: {message}")
     if not failures:
         print(f"ok    date parsing ({len(DATE_CASES)} real-world formats)")
+
+    objects = fake_r2.build_objects(DATES)
+    boto3.client = lambda *a, _o=objects, **kw: fake_r2.FakeS3(_o)
+    order_failures = check_ordering()
+    failures.extend(order_failures)
+    for message in order_failures:
+        print(f"FAIL  row ordering: {message}")
+    if not order_failures:
+        print("ok    row ordering (Evidence & Drill-down is newest-first)")
 
     cases = [(label, kwargs, False) for label, kwargs in SCENARIOS]
     cases.append(("R2 unreachable", dict(), True))

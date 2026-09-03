@@ -176,7 +176,7 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                     st.markdown(pct_mcap_html(row["pct_mcap"]), unsafe_allow_html=True)
                 with c5:
                     st.markdown(concentration_badge(row["top3_share"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· top3 {row["top3_share"]*100:.0f}%</span>', unsafe_allow_html=True)
-                sec_rows = win_df[win_df["canonical_symbol"] == row["canonical_symbol"]].sort_values("_date")
+                sec_rows = win_df[win_df["canonical_symbol"] == row["canonical_symbol"]].sort_values("_date", ascending=False)
                 if len(sec_rows) > 1:
                     daily = sec_rows.groupby(sec_rows["_date"].dt.date)["_value"].sum()
                     st.plotly_chart(sparkline(daily, style.COLORS["blue"]), use_container_width=True, config={"displayModeBar": False}, key=f"spark-sec-{category}-{row['canonical_symbol']}")
@@ -226,7 +226,7 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
                     st.markdown(f'<span class="mono">{style.fmt_inr(row["total_value"])}</span>', unsafe_allow_html=True)
                 with c4:
                     st.markdown(f'<span style="color:{style.COLORS["text_3"]};font-size:11px;">{int(row["trades"])} trades</span>', unsafe_allow_html=True)
-                client_rows = win_df[win_df["canonical_client"] == row["canonical_client"]].sort_values("_date")
+                client_rows = win_df[win_df["canonical_client"] == row["canonical_client"]].sort_values("_date", ascending=False)
                 if len(client_rows) > 1:
                     daily = client_rows.groupby(client_rows["_date"].dt.date)["_value"].sum()
                     st.plotly_chart(sparkline(daily, style.COLORS["blue"]), use_container_width=True, config={"displayModeBar": False}, key=f"spark-cl-{category}-{row['canonical_client']}")

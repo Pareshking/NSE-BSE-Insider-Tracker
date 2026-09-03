@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import r2_data, style
+from lib import fields, r2_data, style
 
 style.inject_base_css()
 
@@ -105,6 +105,21 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
             mask &= row_mask
 
         filtered = df[mask]
+
+        # Newest first. This table had no ordering at all, so it rendered in
+        # whatever order the source happened to return -- the Rights Issues
+        # tab opened on 14 Jul, 11 May, 30 Jun, 13 Jun, which reads as
+        # unsorted noise. Sorting on the PARSED date matters as much as
+        # sorting at all: the raw column mixes NSE ISO with BSE day-first, so
+        # a plain string sort interleaves the two exchanges into an order
+        # that is not chronological either.
+        date_field = ("canonical_transaction_date" if "canonical_transaction_date" in filtered.columns
+                      else "canonical_event_date")
+        if date_field in filtered.columns:
+            filtered = filtered.assign(_sort_date=fields.parse_dates(filtered[date_field])) \
+                               .sort_values("_sort_date", ascending=False, na_position="last") \
+                               .drop(columns=["_sort_date"])
+
         count_col, export_col = st.columns([3, 1])
         with count_col:
             st.caption(f"{len(filtered):,} of {len(df):,} rows")
