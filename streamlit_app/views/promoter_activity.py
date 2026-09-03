@@ -148,7 +148,7 @@ with grain[0]:
             st.markdown(pct_mcap_html(row["pct_mcap"]), unsafe_allow_html=True)
         with c5:
             st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
-        person_rows = win_df[(win_df["canonical_company"] == row["canonical_company"]) & (win_df["canonical_person"] == row["canonical_person"])].sort_values("_date")
+        person_rows = win_df[(win_df["canonical_company"] == row["canonical_company"]) & (win_df["canonical_person"] == row["canonical_person"])].sort_values("_date", ascending=False)
         if len(person_rows) > 1:
             daily = person_rows.groupby(person_rows["_date"].dt.date)["_signed_qty"].sum()
             st.plotly_chart(sparkline(daily), use_container_width=True, config={"displayModeBar": False}, key=f"spark-p-{row['canonical_company']}-{row['canonical_person']}")
@@ -199,7 +199,7 @@ with grain[1]:
             st.markdown(pct_mcap_html(row["pct_mcap"]), unsafe_allow_html=True)
         with c5:
             st.markdown(direction_badge(row["net_val"]) + f' <span style="color:{style.COLORS["text_3"]};font-size:11px;">· {int(row["trades"])} trades</span>', unsafe_allow_html=True)
-        company_rows = win_df[win_df["canonical_company"] == row["canonical_company"]].sort_values("_date")
+        company_rows = win_df[win_df["canonical_company"] == row["canonical_company"]].sort_values("_date", ascending=False)
         if len(company_rows) > 1:
             daily = company_rows.groupby(company_rows["_date"].dt.date)["_signed_qty"].sum()
             st.plotly_chart(sparkline(daily), use_container_width=True, config={"displayModeBar": False}, key=f"spark-c-{row['canonical_company']}")
