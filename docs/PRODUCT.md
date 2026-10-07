@@ -75,9 +75,11 @@ reader can't get by scrolling the exchange pages:
   tables rebuilt from it nightly; dated snapshots deletable once archived,
   but retention stays a dry run until the multi-year archive is stable.
   (08 Oct 2026)
-- **History**: backfill NSE insider filings from 19 Nov 2015 to 02 May 2026
-  (NSE's new system starts 03 May 2026), bulk deals from 2004, block from
-  Nov 2005. Proceed with the data in hand; don't wait for all of it. (08 Oct 2026)
+- **History**: only the last one year (from about 08 Oct 2025); the site
+  grows daily from there. NSE insider filings up to 02 May 2026 come from
+  the backfill (NSE's new system starts 03 May 2026 and the nightly job
+  covers it); bulk and block deals up to the first nightly record. Proceed
+  with the data in hand; don't wait for all of it. (08 Oct 2026)
 
 ## Pages
 
