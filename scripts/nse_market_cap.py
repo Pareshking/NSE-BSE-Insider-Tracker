@@ -1,4 +1,4 @@
-"""NSE market cap reference data -- Phase 0.5 of ANALYTICS_PLAN.md.
+"""NSE market cap reference data (used for "% of market cap"; see docs/SIGNALS.md).
 
 Feeds the "% of market cap" materiality metric: a given rupee/share figure
 means completely different things depending on company size, and nothing
