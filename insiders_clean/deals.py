@@ -31,6 +31,7 @@ import pandas as pd
 from .dates import parse_dates
 from .entities import add_entity_columns
 from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
+from .missing import present
 from .securities import SecurityMaster, display_name
 
 MAX_COUNTERPARTIES = 5
@@ -71,8 +72,8 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
 
     resolved = [master.resolve(ex, s) for ex, s in zip(df['exchange'], df['symbol'])]
     writer_isin = _col(raw, 'canonical_isin')
-    df['isin'] = [r[0] or w for r, w in zip(resolved, writer_isin)]
-    df['security_match'] = [r[1] if r[0] or not w else 'writer_isin' for r, w in zip(resolved, writer_isin)]
+    df['isin'] = [r[0] or (w if present(w) else None) for r, w in zip(resolved, writer_isin)]
+    df['security_match'] = [r[1] if r[0] or not present(w) else 'writer_isin' for r, w in zip(resolved, writer_isin)]
     df['security_key'] = df['isin'].fillna(df['exchange'] + ':' + df['symbol'].astype(str))
     report.unmatched(df.loc[df['isin'].isna(), ['exchange', 'symbol', 'company_raw']]
                      .rename(columns={'company_raw': 'name'}).astype(str).drop_duplicates()

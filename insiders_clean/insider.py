@@ -30,6 +30,7 @@ import pandas as pd
 from .calendar import Calendar, lateness
 from .dates import parse_dates
 from .entities import add_entity_columns
+from .missing import is_missing, present
 from .securities import SecurityMaster, display_name
 
 # Below this many shares held before the trade, a % change in the person's
@@ -82,7 +83,7 @@ _BLANK = {'', '-', '--', 'na', 'n.a.', 'nil', 'none', 'null'}
 
 
 def classify_mode(mode) -> str:
-    s = '' if mode is None or (isinstance(mode, float) and np.isnan(mode)) else str(mode).strip().lower()
+    s = '' if is_missing(mode) else str(mode).strip().lower()
     if s in _BLANK:
         return 'missing'
     for pat, kind in _MODE_RULES:
@@ -92,7 +93,7 @@ def classify_mode(mode) -> str:
 
 
 def classify_role(category) -> str:
-    s = '' if category is None or (isinstance(category, float) and np.isnan(category)) else str(category).lower()
+    s = '' if is_missing(category) else str(category).lower()
     if s.strip() in _BLANK:
         return 'missing'
     for pat, role in _ROLE_RULES:
@@ -102,7 +103,7 @@ def classify_role(category) -> str:
 
 
 def _side_word(text) -> str | None:
-    t = str(text or '').upper()
+    t = '' if is_missing(text) else str(text or '').upper()
     if re.search(r'PLEDGE|REVOK|INVOC|INVOK', t) and not re.search(r'BUY|SELL|PURCHASE|SALE', t):
         return None
     if re.search(r'BUY|ACQUI|PURCHASE', t):
@@ -235,8 +236,8 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # the 01 Sep export alone) is only a last resort.
     resolved = [master.resolve(ex, sym) for ex, sym in zip(df['exchange'], df['symbol'])]
     writer_isin = _col(raw, 'canonical_isin')
-    df['isin'] = [r[0] or w for r, w in zip(resolved, writer_isin)]
-    df['security_match'] = [r[1] if r[0] or not w else 'writer_isin' for r, w in zip(resolved, writer_isin)]
+    df['isin'] = [r[0] or (w if present(w) else None) for r, w in zip(resolved, writer_isin)]
+    df['security_match'] = [r[1] if r[0] or not present(w) else 'writer_isin' for r, w in zip(resolved, writer_isin)]
     recs = {i: master.record(i) for i in df['isin'].dropna().unique()}
     df['company'] = [(recs.get(i) or {}).get('display_name') or display_name(c)
                      for i, c in zip(df['isin'], df['company_raw'])]
