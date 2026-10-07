@@ -124,3 +124,15 @@ header[data-testid="stHeader"] { display: none; }
 /* ---- Native widgets in the same voice ---- */
 [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 [data-testid="stTabs"] [data-baseweb="tab"] p { font-size: 14px; }
+
+/* ---- Net flow bars (company page): zero in the middle ---- */
+.fl { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.fl-row { display: grid; grid-template-columns: 220px 1fr 120px; gap: 12px; align-items: center; font-size: 13.5px; }
+.fl-l { color: var(--ink-2); }
+.fl-track { position: relative; height: 10px; background: var(--subtle); border-radius: 5px; }
+.fl-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
+.fl-track i { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+.fl-track i.pos { left: 50%; background: var(--buy); }
+.fl-track i.neg { right: 50%; background: var(--sell); }
+.fl-v { text-align: right; color: var(--ink); font-weight: 600; }
+@media (max-width: 720px) { .fl-row { grid-template-columns: 1fr; gap: 4px; } .fl-v { text-align: left; } }

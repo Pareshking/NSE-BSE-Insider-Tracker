@@ -175,3 +175,143 @@ def company_board(t: pd.DataFrame, deals: pd.DataFrame | None, sh: pd.DataFrame 
         badges.append(b)
     board['badges'] = badges
     return board.sort_values('promoter_net_pct', ascending=False).reset_index(drop=True)
+
+
+# --- page building blocks (owner's page spec, 07-08 Oct 2026) ------------------
+
+LARGE_HANDSHAKE_VALUE = 10e7      # Rs.10 Cr ...
+LARGE_HANDSHAKE_PCT = 0.5         # ... or 0.5% of market cap
+SMALL_CAP_MAX_MCAP = 5000e7       # "small caps" for the institutional footprint
+ROLE_WORDS = {'promoter': 'promoter', 'promoter_group': 'promoter group', 'director': 'director', 'kmp': 'KMP'}
+
+
+def float_pct(value, market_cap, public_pct):
+    """A trade as a % of free float: value / (market cap x public holding %).
+    None when either denominator is unknown, never a guess."""
+    try:
+        v, m, p = float(value), float(market_cap), float(public_pct)
+    except (TypeError, ValueError):
+        return None
+    if not (m > 0 and p > 0) or pd.isna(v):
+        return None
+    return v / (m * p / 100) * 100
+
+
+def public_pct_by_isin(sh: pd.DataFrame | None) -> pd.Series:
+    s = latest_shareholding(sh)
+    if s.empty:
+        return pd.Series(dtype=float)
+    return s.dropna(subset=['isin']).drop_duplicates('isin', keep='last').set_index('isin')['public_holding_pct']
+
+
+def pledge_by_isin(sh: pd.DataFrame | None) -> pd.Series:
+    s = latest_shareholding(sh)
+    if s.empty:
+        return pd.Series(dtype=float)
+    return s.dropna(subset=['isin']).drop_duplicates('isin', keep='last').set_index('isin')['promoter_pledge_pct']
+
+
+def buys_in_days(t: pd.DataFrame, isin, person_id, upto: pd.Timestamp, days: int = 14) -> int:
+    """How many open-market buys this person filed in this company in the
+    `days` days to `upto` (the "3rd buy in 14 days" context)."""
+    m = ((t['isin'] == isin) & (t['person_id'] == person_id) & (t['side'] == 'BUY')
+         & (t['seen'] <= upto) & (t['seen'] > upto - pd.Timedelta(days=days)))
+    return int(m.sum())
+
+
+def session_by_company(t: pd.DataFrame, day: pd.Timestamp, sh: pd.DataFrame | None = None) -> pd.DataFrame:
+    """One row per company, person and side for one session: tranches
+    combined, value, % of market cap and of free float, trades."""
+    rows = t[t['seen'].dt.normalize() == day].dropna(subset=['isin'])
+    if rows.empty:
+        return pd.DataFrame()
+    g = rows.groupby(['isin', 'person_id', 'side'], as_index=False).agg(
+        company=('company', 'last'), nse_symbol=('nse_symbol', 'last'), person_name=('person_name', 'last'),
+        person_role=('person_role', 'last'), value=('value', 'sum'), pct_of_mcap=('pct_of_mcap', 'sum'),
+        market_cap=('market_cap', 'last'), trades=('trade_id', 'size'), is_token=('is_token', 'all'),
+        listed_on=('listed_on', 'last'))
+    pub = public_pct_by_isin(sh)
+    g['pct_of_float'] = [float_pct(v, m, pub.get(i)) for v, m, i in zip(g['value'], g['market_cap'], g['isin'])]
+    return g.sort_values('pct_of_mcap', ascending=False)
+
+
+def handshakes(deals: pd.DataFrame, trades: pd.DataFrame | None = None, days: int = 30,
+               ref: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Who absorbed whose shares: for each security and day, the real sellers
+    (market makers excluded) and the real buyers on the other side. A seller
+    is marked promoter when the same name filed as promoter or promoter group
+    for that company. Matched value is the smaller of the two sides."""
+    if deals is None or deals.empty:
+        return pd.DataFrame()
+    d = deals.copy()
+    d['date'] = pd.to_datetime(d['date'], errors='coerce')
+    mm = d['client_is_market_maker'].astype('boolean').fillna(False) if 'client_is_market_maker' in d else False
+    d = d[(~mm) & d['is_primary'].astype('boolean').fillna(False)].dropna(subset=['date'])
+    if d.empty:
+        return pd.DataFrame()
+    ref = ref or d['date'].max()
+    d = d[(d['date'] <= ref) & (d['date'] > ref - pd.Timedelta(days=days))]
+    d['_sec'] = d['isin'].fillna(d['exchange'].astype(str) + ':' + d['symbol'].astype(str))
+    promoters = set()
+    if trades is not None and not trades.empty:
+        p = trades[trades['person_role'].isin(PROMOTER_ROLES)]
+        promoters = set(zip(p['isin'], p['person_id']))
+    rows = []
+    for (_sec, day), g in d.groupby(['_sec', 'date']):
+        sell, buy = g[g['side'] == 'SELL'], g[g['side'] == 'BUY']
+        if sell.empty or buy.empty:
+            continue
+        sv, bv = sell['value'].sum(), buy['value'].sum()
+        rows.append({
+            'date': day, 'isin': g['isin'].iloc[0], 'company': g['company'].iloc[0], 'nse_symbol': g['nse_symbol'].iloc[0],
+            'sellers': '; '.join(sell.sort_values('value', ascending=False)['client_name'].astype(str)),
+            'buyers': '; '.join(buy.sort_values('value', ascending=False)['client_name'].astype(str)),
+            'seller_is_promoter': any((i, c) in promoters for i, c in zip(sell['isin'], sell['client_id'])),
+            'matched_value': min(sv, bv),
+            'pct_of_mcap_sold': pd.to_numeric(sell['pct_of_mcap'], errors='coerce').sum(),
+            'market_cap': g['market_cap'].iloc[0]})
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out['large'] = (out['matched_value'] >= LARGE_HANDSHAKE_VALUE) | (out['pct_of_mcap_sold'] >= LARGE_HANDSHAKE_PCT)
+    return out.sort_values(['date', 'matched_value'], ascending=False).reset_index(drop=True)
+
+
+def small_cap_accumulation(deals: pd.DataFrame, ref: pd.Timestamp | None = None, days: int = 30) -> pd.DataFrame:
+    """Small caps (under Rs.5,000 Cr) that real funds net-bought in bulk/block
+    deals over the last `days` days: who, net value, % of market cap."""
+    if deals is None or deals.empty:
+        return pd.DataFrame()
+    d = deals.copy()
+    d['date'] = pd.to_datetime(d['date'], errors='coerce')
+    mm = d['client_is_market_maker'].astype('boolean').fillna(False) if 'client_is_market_maker' in d else False
+    d = d[(~mm) & d['is_primary'].astype('boolean').fillna(False)]
+    if d.empty:
+        return pd.DataFrame()
+    ref = ref or d['date'].max()
+    d = d[(d['date'] <= ref) & (d['date'] > ref - pd.Timedelta(days=days))
+          & (pd.to_numeric(d['market_cap'], errors='coerce') < SMALL_CAP_MAX_MCAP)].dropna(subset=['isin'])
+    if d.empty:
+        return pd.DataFrame()
+    d = d.assign(signed_pct=pd.to_numeric(d['pct_of_mcap'], errors='coerce') * d['side'].map({'BUY': 1, 'SELL': -1}))
+    net_by_client = d.groupby(['isin', 'client_name'])['signed_value'].sum()
+    buyers = (net_by_client[net_by_client > 0].reset_index().sort_values('signed_value', ascending=False)
+              .groupby('isin')['client_name'].agg(lambda s: '; '.join(s.head(4))))
+    out = d.groupby('isin').agg(company=('company', 'last'), nse_symbol=('nse_symbol', 'last'),
+                                net_value=('signed_value', 'sum'), net_pct=('signed_pct', 'sum'),
+                                market_cap=('market_cap', 'last'), last=('date', 'max'))
+    out['net_buyers'] = buyers
+    out = out[out['net_value'] > 0].reset_index()
+    return out.sort_values('net_pct', ascending=False)
+
+
+def insider_details(t: pd.DataFrame, ref: pd.Timestamp, days: int = 90) -> pd.Series:
+    """Per company, who bought: e.g. '1 director, 2 promoters · 4 trades'."""
+    w = t[(t['side'] == 'BUY') & t['person_role'].isin(DECISION_ROLES) & ~t['is_token']
+          & (t['seen'] <= ref) & (t['seen'] > ref - pd.Timedelta(days=days))].dropna(subset=['isin'])
+    out = {}
+    for isin, g in w.groupby('isin'):
+        people = g.drop_duplicates('person_id')['person_role'].map(ROLE_WORDS).value_counts()
+        parts = [f'{n} {r}' + ('s' if n > 1 and r != 'KMP' else '') for r, n in people.items()]
+        out[isin] = f'{", ".join(parts)} · {len(g)} trade' + ('s' if len(g) != 1 else '')
+    return pd.Series(out, dtype=object)

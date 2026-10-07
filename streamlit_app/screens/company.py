@@ -57,6 +57,7 @@ def render():
     d = ctx.deals[ctx.deals['nse_symbol'].astype(str).str.upper() == sym] if not ctx.deals.empty else pd.DataFrame()
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
+        d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]  # same 12 months as the insider flow
     sh = signals.latest_shareholding(ctx.shareholding)
     shr = sh[sh['symbol'].astype(str).str.upper() == sym] if not sh.empty else pd.DataFrame()
     pledge = shr['promoter_pledge_pct'].iloc[0] if len(shr) else None
@@ -66,12 +67,39 @@ def render():
                  f'{kit.pct(signed.sum(), 3, signed=True)} of market cap, open market only',
                  'up' if prom['signed_value'].sum() > 0 else 'down' if prom['signed_value'].sum() < 0 else ''),
         kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), f'{off["person_id"].nunique()} people'),
-        kit.Tile('Deals net, real buyers', kit.rupees(d['signed_value'].sum() if not d.empty else None, signed=True),
+        kit.Tile('Deals net, 12 months', kit.rupees(d['signed_value'].sum() if not d.empty else None, signed=True),
                  'bulk/block, market makers excluded'),
         kit.Tile('Promoter holding · pledge',
                  f'{kit.pct(shr["promoter_holding_pct"].iloc[0], 1) if len(shr) else "—"} · {kit.pct(pledge, 1) if pledge is not None else "—"}',
-                 'pledge as % of promoter shares, latest quarter'),
+                 (f'free float {kit.pct(shr["public_holding_pct"].iloc[0], 1)} · ' if len(shr) else '')
+                 + 'pledge as % of promoter shares, latest quarter'),
     ])
+
+    # Net open-market flow by who, 12 months (owner's spec: promoters vs
+    # directors/KMP vs other insiders vs institutional deal buyers).
+    other = win[~win['person_role'].isin(list(signals.PROMOTER_ROLES) + ['director', 'kmp'])]
+    flows = [('Promoters', prom['signed_value'].sum()), ('Directors & KMP', off['signed_value'].sum()),
+             ('Other insiders', other['signed_value'].sum()),
+             ('Bulk/block buyers (no market makers)', d['signed_value'].sum() if not d.empty else 0.0)]
+    scale = max([abs(v) for _, v in flows] + [1.0])
+    bars = ''.join(
+        f'<div class="fl-row"><span class="fl-l">{esc(label)}</span><span class="fl-track">'
+        f'<i class="{"pos" if v >= 0 else "neg"}" style="width:{abs(v) / scale * 50:.1f}%"></i></span>'
+        f'<span class="fl-v num">{kit.rupees(v, signed=True)}</span></div>' for label, v in flows)
+    with kit.card('Net open-market flow by who', 'co_flow', '12 months, ₹'):
+        st.html(f'<div class="fl">{bars}</div>')
+
+    hs = signals.handshakes(ctx.deals, ctx.trades, days=365)
+    hs = hs[hs['nse_symbol'].astype(str).str.upper() == sym] if not hs.empty else hs
+    if not hs.empty:
+        with kit.card('Handshakes in this stock', 'co_hs', 'who sold, who absorbed it'):
+            st.dataframe(hs.assign(value_cr=hs['matched_value'] / 1e7,
+                                   who=hs['seller_is_promoter'].map({True: 'Promoter', False: ''}))[
+                ['date', 'sellers', 'who', 'buyers', 'value_cr', 'pct_of_mcap_sold']], hide_index=True, width='stretch',
+                column_config={'date': st.column_config.DateColumn('Date', format='DD MMM YYYY'), 'sellers': 'Sold by',
+                               'who': 'Seller is', 'buyers': 'Absorbed by',
+                               'value_cr': st.column_config.NumberColumn('Matched (₹ Cr)', format='%,.2f'),
+                               'pct_of_mcap_sold': st.column_config.NumberColumn('% of mcap sold', format='%.2f%%')})
 
     events = []
     for _, r in t.assign(seen=pd.to_datetime(t['broadcast_date'], errors='coerce')).sort_values('seen', ascending=False).head(60).iterrows():
@@ -101,4 +129,9 @@ def render():
             st.html('<div class="tl">' + ''.join(
                 f'<div class="tl-row"><span class="tl-d">{pd.Timestamp(dt).strftime("%d %b %y")}</span>'
                 f'<span class="tl-dot {dot}"></span><span class="tl-t">{txt}</span></div>' for dt, dot, txt in events[:80]) + '</div>')
-    kit.caption('A price chart with each filing marked at its broadcast date arrives with the price join.')
+    q = sym.replace('&', '%26')
+    st.html('<p class="cap">Exchange filings: '
+            f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" target="_blank">NSE insider trading</a> · '
+            f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-sast-regulation-29?symbol={q}" target="_blank">NSE SAST</a> · '
+            f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank">NSE quote</a>. '
+            'A price chart with each filing marked at its broadcast date arrives with the price join.</p>')

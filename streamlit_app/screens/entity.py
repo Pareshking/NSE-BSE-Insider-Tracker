@@ -33,12 +33,22 @@ def render():
         kit.note('Market maker.', 'This client buys and sells in near-equal amounts at high volume; its deals are '
                                   'liquidity, not positions, and are left out of signals.')
     mk = t[t['is_market'].astype('boolean').fillna(False)]
+    # Owner's spec: capital deployed in 12 months, active tickers; win rate and
+    # holding period come with the signal lab (docs/DATA_TO_PAGES.md S21).
+    seen = pd.to_datetime(mk['broadcast_date'], errors='coerce')
+    yr = mk[seen > seen.max() - pd.Timedelta(days=365)] if len(mk) else mk
+    bought_ins = pd.to_numeric(yr.loc[yr['side'] == 'BUY', 'value'], errors='coerce').sum() if len(yr) else 0.0
+    dy = d[d['date'] > d['date'].max() - pd.Timedelta(days=365)] if len(d) else d
+    bought_deals = pd.to_numeric(dy.loc[dy['side'] == 'BUY', 'value'], errors='coerce').sum() if len(dy) else 0.0
+    active = pd.concat([yr['isin'] if len(yr) else pd.Series(dtype=object),
+                        dy['isin'] if len(dy) else pd.Series(dtype=object)]).dropna().nunique()
     kit.tiles([
-        kit.Tile('Open-market insider net', kit.rupees(mk['signed_value'].sum() if len(mk) else None, signed=True),
-                 f'{mk["isin"].nunique()} companies'),
-        kit.Tile('Insider filings', kit.count(len(t)), f'{(~t["is_market"].astype("boolean").fillna(False)).sum():,} not open-market'),
-        kit.Tile('Deals net', kit.rupees(d['signed_value'].sum() if len(d) else None, signed=True),
-                 f'{d["isin"].nunique() if len(d) else 0} companies'),
+        kit.Tile('Capital deployed, 12 months', kit.rupees(bought_ins + bought_deals),
+                 f'open-market insider buys {kit.rupees(bought_ins)} · deal buys {kit.rupees(bought_deals)}'),
+        kit.Tile('Active companies, 12 months', kit.count(active), 'with an open-market buy, sale or deal'),
+        kit.Tile('Net, all data', kit.rupees((mk['signed_value'].sum() if len(mk) else 0) + (d['signed_value'].sum() if len(d) else 0),
+                                              signed=True), f'{kit.count(len(t))} insider filings · {kit.count(len(d))} deals'),
+        kit.Tile('Win rate · holding period', 'Pending', 'measured by the signal lab'),
     ])
     if len(t):
         with kit.card('Insider filings', 'en_it'):
