@@ -133,6 +133,8 @@ def test_mode_vocabulary():
     assert classify_mode('Scheme of Amalgamation') == 'scheme'
     assert classify_mode('Something new') == 'unrecognised'
     assert classify_mode(None) == 'missing'
+    assert classify_mode('-') == 'missing'
+    assert classify_role('-') == 'missing'
 
 
 def test_roles_and_sides():
@@ -149,3 +151,24 @@ def test_dates_parse_both_exchanges():
     got = parse_dates(pd.Series(['2026-08-27', '31-Aug-2026 17:40:12', '03/04/2026',
                                  '2026-08-30T18:30:00.000Z', '', None]))
     assert list(got) == [date(2026, 8, 27), date(2026, 8, 31), date(2026, 4, 3), date(2026, 8, 31), None, None]
+
+
+# --- calibrated on a year of real filings (May 2025 - Apr 2026) ----------------
+
+def test_pledge_unchanged_holding_is_not_a_mismatch(real_nse_rows, master, calendar, report):
+    row = dict(real_nse_rows[0], modeOfAcquisition='Pledge Creation', transactionType='Pledge Creation',
+               buyQuantity='4500', sellquantity='', beforeSharesNo='13365', afterSharesNo='13365')
+    k = run([row], master, calendar, report).iloc[0]
+    assert k['kind'] == 'pledge_create' and k['side'] is None
+    assert 'holding_change_differs_from_quantity' not in k['flags']
+
+
+def test_missing_role_borrowed_from_same_persons_other_filing(real_nse_rows, master, calendar, report):
+    base = next(r for r in real_nse_rows if r['symbol'] == 'ZEEL' and r['acqName'] == 'Shreyasi Goenka')
+    later = dict(base, personCategory='-', acqfromDt='2026-08-20', acqtoDt='2026-08-20',
+                 beforeSharesNo='6942048', afterSharesNo='7042048', buyQuantity='100000', buyValue='10000000')
+    out = run([base, later], master, calendar, report)
+    filled = out[out['holding_before'] == 6942048].iloc[0]
+    assert filled['person_role'] == 'immediate_relative'
+    assert filled['person_role_source'] == 'same_person_other_filing'
+    assert report.data['tables']['insider_trades']['roles_filled_from_other_filings'] == 1

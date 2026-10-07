@@ -34,6 +34,15 @@ from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
 from .securities import SecurityMaster, display_name
 
 MAX_COUNTERPARTIES = 5
+# Market makers and arbitrage desks. On NSE bulk/block deals from 09 Jul to
+# 07 Oct 2026, 31 clients with 50+ legs made 62% of all legs, and 30 of them
+# bought and sold within 20% of the same value (Junomoneta, QE Securities,
+# HRTI, Microcurves, NK Securities, iRage, AlphaGrep, Jump ...). They supply
+# liquidity; they are not building positions, so they are labelled and kept
+# out of signals. Measured per calendar quarter, so a fund that buys one
+# year and sells the next is not mistaken for one.
+MM_MIN_LEGS_PER_QUARTER = 40
+MM_MIN_BALANCE = 0.8
 
 
 def _id(parts) -> str:
@@ -104,9 +113,22 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     legs['deal_id'] = [_id(p) for p in zip(legs['exchange'], legs['security_key'], legs['client_id'],
                                             legs['date'], legs['side'])]
 
+    # market makers, per client per quarter
+    quarter = pd.to_datetime(legs['date']).dt.to_period('Q').astype(str)
+    side_val = legs.assign(_q=quarter, _buy=legs['value'].where(legs['side'] == 'BUY', 0.0),
+                           _sell=legs['value'].where(legs['side'] == 'SELL', 0.0))
+    per = side_val.groupby(['client_id', '_q']).agg(n=('deal_id', 'size'), b=('_buy', 'sum'), s=('_sell', 'sum'))
+    balance = per[['b', 's']].min(axis=1) / per[['b', 's']].max(axis=1).replace(0, np.nan)
+    mm = (per['n'] >= MM_MIN_LEGS_PER_QUARTER) & (balance >= MM_MIN_BALANCE)
+    legs['client_is_market_maker'] = [bool(mm.get((c, q), False)) for c, q in zip(legs['client_id'], quarter)]
+    t['market_maker_clients'] = sorted({c for (c, _q), v in mm.items() if v})[:50]
+    t['market_maker_legs'] = int(legs['client_is_market_maker'].sum())
+
     # 4. other side of the tape in that security that day
     day_key = ['exchange', 'security_key', 'date']
-    by_side = (legs.dropna(subset=['client_name']).sort_values('value', ascending=False)
+    # Real buyers and sellers first, market makers after them.
+    by_side = (legs.dropna(subset=['client_name'])
+               .sort_values(['client_is_market_maker', 'value'], ascending=[True, False])
                .groupby(day_key + ['side'], dropna=False)['client_name']
                .agg(lambda s: '; '.join(s.head(MAX_COUNTERPARTIES))))
     opposite = legs['side'].map({'BUY': 'SELL', 'SELL': 'BUY'})
@@ -145,7 +167,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
 
     cols = ['deal_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'feeds', 'date',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
-            'client_id', 'client_name', 'side', 'quantity', 'price', 'value', 'signed_value',
+            'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price', 'value', 'signed_value',
             'trades', 'market_cap', 'pct_of_mcap', 'counterparties', 'source_ids',
             'flags', 'needs_review']
     out = legs[cols].reset_index(drop=True)

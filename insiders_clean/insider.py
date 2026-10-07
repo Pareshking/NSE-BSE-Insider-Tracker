@@ -77,9 +77,13 @@ _ROLE_RULES = [
 ]
 
 
+# What filers write when a field is empty.
+_BLANK = {'', '-', '--', 'na', 'n.a.', 'nil', 'none', 'null'}
+
+
 def classify_mode(mode) -> str:
     s = '' if mode is None or (isinstance(mode, float) and np.isnan(mode)) else str(mode).strip().lower()
-    if not s:
+    if s in _BLANK:
         return 'missing'
     for pat, kind in _MODE_RULES:
         if re.search(pat, s):
@@ -89,7 +93,7 @@ def classify_mode(mode) -> str:
 
 def classify_role(category) -> str:
     s = '' if category is None or (isinstance(category, float) and np.isnan(category)) else str(category).lower()
-    if not s.strip():
+    if s.strip() in _BLANK:
         return 'missing'
     for pat, role in _ROLE_RULES:
         if re.search(pat, s):
@@ -159,6 +163,29 @@ def _col(df: pd.DataFrame, *names) -> pd.Series:
 
 def _row_id(parts) -> str:
     return hashlib.sha1('|'.join('' if p is None else str(p) for p in parts).encode()).hexdigest()[:16]
+
+
+def _fill_missing_roles(df: pd.DataFrame, report) -> pd.DataFrame:
+    """About 19% of NSE filings (May 2025 - Apr 2026) carry '-' as the
+    person category, 1,319 of them market trades. When the same person files
+    for the same security with a category elsewhere, that role is used and
+    `person_role_source` says so; otherwise the role stays 'missing' and the
+    row never counts as a promoter or director trade."""
+    df = df.copy()
+    df['person_role_source'] = np.where(df['person_role'].eq('missing'), 'missing', 'filing')
+    known = df[~df['person_role'].isin(['missing'])].dropna(subset=['person_id'])
+    sec = known['isin'].fillna(known['symbol'].astype(str))
+    lookup = known.groupby([sec, known['person_id']])['person_role'].agg(lambda s: s.value_counts().index[0])
+    miss = df['person_role'].eq('missing') & df['person_id'].notna()
+    keys = list(zip(df.loc[miss, 'isin'].fillna(df.loc[miss, 'symbol'].astype(str)), df.loc[miss, 'person_id']))
+    filled = pd.Series([lookup.get(k) for k in keys], index=df.index[miss])
+    hit = filled.notna()
+    df.loc[filled.index[hit], 'person_role'] = filled[hit]
+    df.loc[filled.index[hit], 'person_role_source'] = 'same_person_other_filing'
+    t = report.table('insider_trades')
+    t['roles_filled_from_other_filings'] = t.get('roles_filled_from_other_filings', 0) + int(hit.sum())
+    t['roles_still_missing'] = int(df['person_role'].eq('missing').sum())
+    return df
 
 
 def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date) -> pd.DataFrame:
@@ -248,6 +275,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # latest broadcast is kept. If the mode changed it was a correction,
     # otherwise a repeat (Prakash Steelage appIds 3136 and 3138, identical).
     df = _merge_truncated_names(df)
+    df = _fill_missing_roles(df, report)
     keep = pd.Series(True, index=df.index)
     known_app = set(df['app_id'].dropna())
     superseded = df['app_id'].isin(set(df['prev_app_id'].dropna()) & known_app)
@@ -278,7 +306,11 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     multiple = df['holding_after'] / df['holding_before'].where(df['holding_before'] > 0)
     flag(df['is_market'] & (multiple > HOLDING_MULTIPLE_REVIEW), 'holding_jump_on_market_trade')
     moved = (df['holding_after'] - df['holding_before']).abs()
-    flag((moved - df['quantity']).abs() > np.maximum(1, df['quantity'] * 0.01), 'holding_change_differs_from_quantity')
+    # Only for rows that move shares: a pledge leaves the holding unchanged
+    # by design (569 of the first 775 hits on a year of real filings).
+    flag(df['side'].notna() & ~df['kind'].str.startswith('pledge')
+         & ((moved - df['quantity']).abs() > np.maximum(1, df['quantity'] * 0.01)),
+         'holding_change_differs_from_quantity')
     # Gifts, ESOP grants and transmissions are legitimately filed at zero.
     flag(df['is_market'] & (df['quantity'] > 0) & ~(df['value'] > 0), 'missing_or_zero_value')
     mode_side = df['mode_raw'].map(_side_word)
@@ -311,7 +343,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
 
     cols = ['trade_id', 'source_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'app_id',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
-            'person_id', 'person_name', 'person_role', 'person_category_raw',
+            'person_id', 'person_name', 'person_role', 'person_role_source', 'person_category_raw',
             'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw',
             'quantity', 'value', 'signed_value', 'price', 'holding_before', 'holding_after',
             'holding_change_pct', 'market_cap', 'pct_of_mcap',

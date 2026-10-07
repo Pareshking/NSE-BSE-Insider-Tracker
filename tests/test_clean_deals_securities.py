@@ -126,3 +126,17 @@ def test_pipeline_run_produces_tables_and_report(real_nse_rows):
     assert t['input_rows'] == len(real_nse_rows) == t['output_rows'] + removed
     assert {'INE860A01027', 'INE647U01026'} <= set(tables['securities']['isin'])
     json.dumps(rep, default=str)  # the report must serialise as written to R2
+
+
+def test_balanced_high_volume_client_is_labelled_market_maker(master, report):
+    rows = []
+    for i in range(25):  # 50 legs in one quarter, buys and sells equal
+        day = f'{(i % 28) + 1:02d}/07/2026'
+        rows += [bse_deal('544717', 'CLEANMAX', 'FAST DESK LLP', 'BUY', 1000 + i, 100.0, day),
+                 bse_deal('544717', 'CLEANMAX', 'FAST DESK LLP', 'SELL', 1000 + i, 100.5,
+                          day.replace('/07/', '/08/'))]
+    rows.append(bse_deal('544717', 'CLEANMAX', 'PATIENT FUND', 'BUY', 5000, 101.0, '01/07/2026'))
+    out = clean_deals(canonical('bse', 'bulk_deals', rows), master, report, RUN_DATE)
+    assert out.loc[out['client_name'] == 'Fast Desk LLP', 'client_is_market_maker'].all()
+    assert not out.loc[out['client_name'] == 'Patient Fund', 'client_is_market_maker'].any()
+    assert report.data['tables']['deals']['market_maker_legs'] == 50
