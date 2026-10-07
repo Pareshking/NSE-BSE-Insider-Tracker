@@ -200,7 +200,7 @@ No one-year R2 backfill and no production-schema freeze until all validation gat
 NSE and BSE remain strictly separate. `.github/workflows/nse-validation.yml` and `.github/workflows/bse-validation.yml` are the certification paths. `data-validation.yml` is legacy diagnostic only.
 
 ## Frontend product direction
-A production frontend specification is documented in `FRONTEND_PRODUCT_SPEC.md`. The website is required to be a world-class quantitative research interface, not a raw scraper-output viewer. The planned flow is:
+The product and its decisions are documented in `docs/PRODUCT.md` (the earlier frontend specification was retired in October 2026). The website is required to be a world-class quantitative research interface, not a raw scraper-output viewer. The planned flow is:
 
 **Overview → Insider → Bulk → Block → Rights → Preferential → Data Quality/Validation → evidence drill-down**
 
