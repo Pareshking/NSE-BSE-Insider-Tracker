@@ -2,29 +2,56 @@
 
 What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
-`docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks, so the
-order here is by how many sections an item unlocks.
+`docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
-Priority after the backfill: 5 (shareholding coverage, used on four pages)
-and 11 (preferential and rights cleaning, unlocks three sections; its data is
-already collected), then 6 (prices).
+## Where things stand (08 Oct 2026, 02:00 IST)
 
-| # | Item | State | Done when |
-|---|---|---|---|
-| 1 | Baseline cleaning report from R2 | Run started 07 Oct 2026 (manual dispatch of R2 Storage Write) | `clean/reports/2026-10-07.json` read and its summary confirmed by the owner |
-| 2 | Merge PR 4 (new site) | Draft open | Merged after `clean/current/insider_trades.parquet` exists in R2 and CI is green on the PR head |
-| 3 | History backfill runner (PR 2) | Being built | Resumable, paced runner merged with tests; NSE insider 19 Nov 2015 - 02 May 2026, bulk 2004+, block Nov 2005+ loaded into `archive/`; backfill report read |
-| 4 | Clean step at 11-year scale | With PR 2 | Nightly clean over ~150k filings and ~500k deal rows finishes in minutes, measured |
-| 5 | Shareholding for every company | Only filings of the last 10 days so far | One run with a wide window (latest quarter for all listed companies) so % of float and pledge cover the whole universe |
-| 6 | Price join | Not started; needs a read-only R2 token for Paresh's price files (owner, in Cloudflare) | 52-week high, 200-day average, price paid vs today and the ICDR minimum price (higher of 90- and 10-session VWAP before the relevant date) on every NSE company, three checked by hand |
-| 7 | Signal lab and Track record page | Waits on 3 and 6 | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts |
-| 8 | Price chart with filings marked (company page) | Waits on 6 | Chart on every company page with each filing at its broadcast date |
-| 9 | Morning brief and watchlist warnings | Not started | Brief (email or Telegram) before 09:15 IST on trading days; a warning when an insider sells, pledges or gets cheap shares in a watched stock |
-| 10 | Model basket | Waits on 7 | A public paper portfolio following stated rules, updated nightly, costs included |
-| 11 | Rights and preferential issues in the clean layer | Not started | Archived and cleaned like insider trades; lifecycle stages grouped per issue; retention may then include them |
-| 12 | Buyback price and route | Flagged (`needs_price_gap`) | Offer price and tender/open-market route attached to every buyback |
-| 13 | BSE history and BSE events | Not started (BSE refuses direct API calls) | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
-| 14 | `nse_insider.py` keeps `prevAppId` | Open | Field captured; the cleaner's content-based revision check stays as a fallback |
-| 15 | Retention deletes for real | Dry run, by decision | Owner sets `R2_RETENTION_DELETE=1` after the multi-year archive has been stable |
-| 16 | Named-investor aliases | Not started | A curated list maps the spellings of known investors and funds (for example Rekha Jhunjhunwala, Ashish Kacholia, mutual-fund schemes) to one name, used by deals, SAST and person pages |
-| 17 | Site pages rebuilt from `docs/DATA_TO_PAGES.md` | Map written 08 Oct 2026, awaiting owner's approval | Every section in the map that is In is on its page; pending ones are listed as pending, none substituted |
+- `main` = 50fb329: clean layer (PR #2), NSE corporate events (PR #3),
+  `<NA>` hotfix (PR #6) and the backfill runner (PR #5) are merged.
+- First real clean run in R2 (run 37674160420, 07 Oct): insider filings
+  6,955 in -> 6,174 out (781 removed), deals 8,193 -> 7,823 (152 removed),
+  1,484 securities, 26 unmatched. Archive: NSE insider 4,835, NSE bulk 5,386,
+  NSE block 885, BSE insider 2,120, BSE bulk 1,745, BSE block 177 records.
+  `clean/current/insider_trades.parquet` now exists.
+- NSE events (SAST, actions, meetings, shareholding) collected once by hand
+  on 07 Oct; the daily schedule runs from 08 Oct.
+- PR #4 (new site, draft) on `feat/ui-shell` = 3bc4b6b: pages rebuilt from
+  the data map; not merged yet.
+- The overnight cloud run did not start; nothing ran after 02:00 IST.
+
+## Tomorrow, in this order
+
+| # | Item | Done when |
+|---|---|---|
+| A | Check the 781 removed insider rows (11%, vs ~2% on the calibration year) | Removal reasons in `clean/reports/2026-10-07.json` read; repeats confirmed as true copies (e.g. one filing captured in several nightly windows with changed fields), or the rule fixed |
+| B | Run the backfill from 01 Jan 2026 | `history-backfill.yml` dispatched (dry_run=false) for insider, bulk, block; reports in `clean/reports/backfill/` read; next nightly clean includes them |
+| C | Owner reviews the baseline numbers above | Owner confirms |
+| D | PR #4: rebase on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; owner has seen the screenshots |
+| E | Merge PR #4 | Merged after D; live insiders.streamlit.app shows the new site |
+| F | Shareholding for every company | `nse-events.yml` run with dataset=shareholding and a wide window (~120 days), repeated until most companies' latest quarter is in (300 XBRL files per run) |
+| G | Price join, no token needed | Paresh's public release `data-latest` (`nse_long_close.parquet`: adjusted closes, 1,419 NSE symbols; `ss_prices_2026.parquet`: OHLCV with volume; `bse_daily.parquet`) gives CMP, 52-week high, 200-day average, price paid vs CMP and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
+| H | Preferential and rights issues cleaned | Offer price, shares allotted, allotment and trading-approval dates, promoter or not; lock-in expiry (promoters 18 months, others 6); Capital raises sections S16-S18 built |
+
+## Later
+
+| # | Item | Done when |
+|---|---|---|
+| 7 | Signal lab and Track record page | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (history from 01 Jan 2026 limits the longer horizons) |
+| 8 | Price chart with filings marked (company page) | Waits on G |
+| 9 | Morning brief and watchlist warnings | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
+| 10 | Model basket | Waits on 7 |
+| 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
+| 13 | BSE history and BSE events | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
+| 14 | `nse_insider.py` keeps `prevAppId` | Field captured; content-based revision check stays as fallback |
+| 15 | Retention deletes for real | Owner sets `R2_RETENTION_DELETE=1` once the archive has been stable; stays a dry run until then |
+| 16 | Named-investor aliases | Curated list maps known investors' and funds' spellings to one name |
+| 18 | NSE block deals were BLOCKED on 07 Oct | Validator passes again, or the cause is found |
+
+## Decided, not to do
+
+- Screener.in and Tijori are not scraped. The owner gave permission on
+  08 Oct, but Screener's terms forbid copying or mirroring and its
+  robots.txt disallows the paginated pages; Tijori's terms couldn't be read
+  (rendered by script). NSE data and Paresh's public release cover the needs.
+- No prices token: Paresh's public `data-latest` release replaces it.
+- History starts on 01 Jan 2026 (owner, 08 Oct), not 2015.
