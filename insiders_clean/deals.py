@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 from .dates import parse_dates
-from .entities import add_entity_columns
+from .entities import add_entity_columns, per_group
 from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
 from .missing import present
 from .securities import SecurityMaster, display_name
@@ -82,7 +82,9 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     # 1. same execution in both feeds
     trade_key = ['exchange', 'security_key', 'client_id', 'date', 'side', 'quantity', 'price']
     df = df.sort_values('feed')  # 'block' before 'bulk': the block copy is kept
-    feeds = df.groupby(trade_key, dropna=False)['feed'].transform(lambda s: ','.join(sorted(set(s))))
+    g = df.groupby(trade_key, dropna=False, sort=False)
+    feeds = pd.Series(per_group(g.ngroup().to_numpy(), df['feed'], lambda c: ','.join(sorted(set(c)))),
+                      dtype=object)[g.ngroup().to_numpy()].set_axis(df.index)
     dup = df.duplicated(subset=trade_key, keep='first')
     report.removed('deals', 'same_trade_in_both_feeds', df.loc[dup, 'source_id'])
     df = df.assign(feeds=feeds)[~dup].copy()
@@ -94,9 +96,10 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     legs = g.agg(isin=('isin', 'first'), security_match=('security_match', 'first'),
                  symbol=('symbol', 'first'), company_raw=('company_raw', 'first'),
                  client_name=('client_name', 'first'), quantity=('quantity', 'sum'),
-                 value=('value', 'sum'), trades=('source_id', 'size'),
-                 feeds=('feeds', lambda s: ','.join(sorted({f for v in s for f in v.split(',')}))),
-                 source_ids=('source_id', lambda s: json.dumps(list(s)))).reset_index()
+                 value=('value', 'sum'), trades=('source_id', 'size')).reset_index()
+    codes = g.ngroup().to_numpy()  # same group order as the agg (sort=False)
+    legs['feeds'] = per_group(codes, df['feeds'], lambda c: ','.join(sorted({f for v in c for f in v.split(',')})))
+    legs['source_ids'] = per_group(codes, df['source_id'], lambda c: json.dumps(list(c)))
     rolled = len(df) - len(legs)
     if rolled:
         t['rolled_up_rows'] = t.get('rolled_up_rows', 0) + int(rolled)
@@ -121,19 +124,25 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     per = side_val.groupby(['client_id', '_q']).agg(n=('deal_id', 'size'), b=('_buy', 'sum'), s=('_sell', 'sum'))
     balance = per[['b', 's']].min(axis=1) / per[['b', 's']].max(axis=1).replace(0, np.nan)
     mm = (per['n'] >= MM_MIN_LEGS_PER_QUARTER) & (balance >= MM_MIN_BALANCE)
-    legs['client_is_market_maker'] = [bool(mm.get((c, q), False)) for c, q in zip(legs['client_id'], quarter)]
+    is_mm = mm.to_dict()  # dict lookups: a Series.get per leg is slow on a full history
+    legs['client_is_market_maker'] = [bool(is_mm.get((c, q), False)) for c, q in zip(legs['client_id'], quarter)]
     t['market_maker_clients'] = sorted({c for (c, _q), v in mm.items() if v})[:50]
     t['market_maker_legs'] = int(legs['client_is_market_maker'].sum())
 
     # 4. other side of the tape in that security that day
     day_key = ['exchange', 'security_key', 'date']
     # Real buyers and sellers first, market makers after them.
-    by_side = (legs.dropna(subset=['client_name'])
-               .sort_values(['client_is_market_maker', 'value'], ascending=[True, False])
-               .groupby(day_key + ['side'], dropna=False)['client_name']
-               .agg(lambda s: '; '.join(s.head(MAX_COUNTERPARTIES))))
+    ranked = (legs.dropna(subset=['client_name'])
+              .sort_values(['client_is_market_maker', 'value'], ascending=[True, False]))
+    gs = ranked.groupby(day_key + ['side'], dropna=False)
+    by_side = pd.Series(per_group(gs.ngroup().to_numpy(), ranked['client_name'],
+                                  lambda c: '; '.join(c[:MAX_COUNTERPARTIES])),
+                        index=gs.size().index, dtype=object)
     opposite = legs['side'].map({'BUY': 'SELL', 'SELL': 'BUY'})
-    legs['counterparties'] = [by_side.get((e, k, d, o)) if o else None for e, k, d, o in
+    names_by_side = by_side.to_dict()
+    # A missing date is looked up as before (the index holds it as NaN).
+    legs['counterparties'] = [(names_by_side.get((e, k, d, o)) if d is not None else by_side.get((e, k, d, o)))
+                              if o else None for e, k, d, o in
                               zip(legs['exchange'], legs['security_key'], legs['date'], opposite)]
 
     # 3. NSE/BSE copies of one leg
@@ -141,6 +150,9 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     legs['primary_id'] = None
     legs['listed_on'] = legs['exchange']
     linkable = legs.dropna(subset=['isin', 'client_id', 'date', 'side'])
+    # Only groups on both exchanges can link; filtering first avoids one
+    # pandas frame per row on a full history.
+    linkable = linkable[linkable.groupby(['isin', 'client_id', 'date', 'side', 'quantity'])['exchange'].transform('nunique') > 1]
     for _, grp in linkable.groupby(['isin', 'client_id', 'date', 'side', 'quantity']):
         if grp['exchange'].nunique() < 2:
             continue

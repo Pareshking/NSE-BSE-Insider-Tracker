@@ -145,8 +145,18 @@ def update_archive(client, exchange, category, notes, report_archive):
         put_parquet(client, f'{prefix}{part}.parquet', frame)
     arch = read_archive(client, exchange, category)
     if arch is not None:
-        last = TARGET_DATE if written_today else str(arch['last_seen'].max())
-        new_state = {'last_merged': max(last, (state or {}).get('last_merged', '')),
+        # last_merged says which dated snapshots the archive has absorbed
+        # (r2_retention). Backfilled rows carry the backfill's run date as
+        # last_seen, so they never count here; other keys in the state (the
+        # backfill's own entry) are kept.
+        nightly = arch[~archive.from_history(arch)]
+        if written_today:
+            last = TARGET_DATE
+        elif state is not None:
+            last = state.get('last_merged', '')
+        else:
+            last = str(nightly['last_seen'].max()) if not nightly.empty else ''
+        new_state = {**(state or {}), 'last_merged': max(last, (state or {}).get('last_merged', '')),
                      'records': len(arch), 'partitions_written_today': sorted(touched)}
         put(client, archive_state_key(exchange, category), json.dumps(new_state).encode(), 'application/json')
     withdrawn = int(archive.possibly_withdrawn(arch, TARGET_DATE).sum()) if written_today and arch is not None else None

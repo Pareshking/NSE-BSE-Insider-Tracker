@@ -28,6 +28,13 @@ on:
 permissions:
   contents: read
 
+# Shared with the history backfill: both write archive/ partitions, so they
+# never run at the same time; whichever starts second waits. (GitHub keeps one
+# waiting run per group: a newer waiting run replaces an older waiting one.)
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
 jobs:
   acquire-validate-store:
     runs-on: ubuntu-latest

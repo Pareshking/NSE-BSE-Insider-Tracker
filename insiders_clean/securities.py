@@ -107,6 +107,7 @@ class SecurityMaster:
         self.records: dict[str, dict] = {}
         self._sector_by_nse: dict[str, tuple] = {}
         self._sector_by_bse: dict[str, tuple] = {}
+        self._prefix_cache: dict[str, str | None] = {}
         nse_mcap = {}
         for r in market_cap_rows or []:
             sym = str(r.get('symbol', '')).strip().upper()
@@ -187,8 +188,10 @@ class SecurityMaster:
         guess between several (TATA would match nine tickers)."""
         if len(sym) < 4 or sym.isdigit():
             return None
-        cands = {s for s in self.by_nse if s.startswith(sym) or sym.startswith(s)}
-        return self.by_nse[next(iter(cands))] if len(cands) == 1 else None
+        if sym not in self._prefix_cache:  # one scan per symbol, not per row
+            cands = {s for s in self.by_nse if s.startswith(sym) or sym.startswith(s)}
+            self._prefix_cache[sym] = self.by_nse[next(iter(cands))] if len(cands) == 1 else None
+        return self._prefix_cache[sym]
 
     def record(self, isin) -> dict | None:
         rec = self.records.get(isin)
