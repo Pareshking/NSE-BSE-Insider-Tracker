@@ -246,6 +246,14 @@ def main():
         print(f'  {table}: {t["input_rows"]} in -> {t["output_rows"]} out; '
               f'removed {sum(r["count"] for r in t["removed"].values())}; flagged {t["flagged"]}')
     print(f'  unmatched securities: {len(report["unmatched_securities"])}')
+    for table, t in report['tables'].items():
+        for reason, r in t.get('removed', {}).items():
+            print(f'  removed {table}/{reason}: {r["count"]}')
+        b = t.get('removal_breakdown')
+        if b:
+            print(f'  {table} copies: by exchange {b["by_exchange"]}; same filing ID {b["same_filing_id"]}, '
+                  f'different filing ID {b["different_filing_id"]}, no filing ID {b["no_filing_id"]}')
+            print(f'  {table} fields that differ between kept and removed copies: {b["differing_fields"]}')
     for n in report['notes']:
         print(f'  note: {n}')
 

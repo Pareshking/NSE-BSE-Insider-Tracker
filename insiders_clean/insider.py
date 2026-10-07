@@ -194,6 +194,50 @@ def _fill_missing_roles(df: pd.DataFrame, report) -> pd.DataFrame:
     return df
 
 
+# Columns that are bookkeeping, not part of what the exchange filed.
+_NOT_NATIVE = re.compile(r'^(canonical_|cross_exchange_|ingested_at$|first_seen$|last_seen$|exchange$|category$)')
+BREAKDOWN_COMPARISONS = 3000
+
+
+def _removal_breakdown(raw: pd.DataFrame, df: pd.DataFrame, order: pd.DataFrame, dup: pd.Series,
+                       key_cols: list[str]) -> dict:
+    """Why rows were removed as copies: per exchange, whether the copy has
+    the same exchange filing ID as the row kept (one filing captured more
+    than once) or a different one (re-filed), and which filed fields differ
+    between them. Written to the cleaning report so a high removal count can
+    be checked without opening the data."""
+    removed = order[dup]
+    out = {'removed': len(removed), 'by_exchange': removed['exchange'].value_counts().to_dict(),
+           'same_filing_id': 0, 'different_filing_id': 0, 'no_filing_id': 0, 'differing_fields': {},
+           'examples': []}
+    if removed.empty:
+        return out
+    kept_idx = order.groupby(key_cols, dropna=False, sort=False).head(1)
+    kept_by_key = {tuple(r): i for i, r in zip(kept_idx.index, kept_idx[key_cols].astype(str).itertuples(index=False))}
+    native = [c for c in raw.columns if not _NOT_NATIVE.match(str(c))]
+    fields = {}
+    for n, (i, r) in enumerate(removed.iterrows()):
+        k = kept_by_key.get(tuple(r[key_cols].astype(str)))
+        if k is None:
+            continue
+        a, b = df.at[i, 'app_id'], df.at[k, 'app_id']
+        if pd.isna(a) or pd.isna(b) or not str(a).strip():
+            out['no_filing_id'] += 1
+        elif str(a) == str(b):
+            out['same_filing_id'] += 1
+        else:
+            out['different_filing_id'] += 1
+        if n < BREAKDOWN_COMPARISONS:
+            differ = [c for c in native if str(raw.at[i, c]) != str(raw.at[k, c])]
+            for c in differ:
+                fields[c] = fields.get(c, 0) + 1
+            if len(out['examples']) < 8:
+                out['examples'].append({'exchange': r['exchange'], 'kept': str(df.at[k, 'source_id']),
+                                        'removed': str(df.at[i, 'source_id']), 'fields_that_differ': differ[:12]})
+    out['differing_fields'] = dict(sorted(fields.items(), key=lambda x: -x[1])[:20])
+    return out
+
+
 def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date) -> pd.DataFrame:
     """canonical insider rows (both exchanges, native columns included,
     an `exchange` column) -> clean insider_trades."""
@@ -295,6 +339,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     corrected = dup & (order['mode_raw'].astype(str) != latest_mode.astype(str))
     report.removed('insider_trades', 'corrected_refiling', order.loc[corrected, 'source_id'])
     report.removed('insider_trades', 'repeat_filing', order.loc[dup & ~corrected, 'source_id'])
+    report.table('insider_trades')['removal_breakdown'] = _removal_breakdown(raw, df, order, dup, key_cols)
     keep.loc[dup[dup].index] = False
     df = df[keep].copy()
 

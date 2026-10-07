@@ -172,3 +172,18 @@ def test_missing_role_borrowed_from_same_persons_other_filing(real_nse_rows, mas
     assert filled['person_role'] == 'immediate_relative'
     assert filled['person_role_source'] == 'same_person_other_filing'
     assert report.data['tables']['insider_trades']['roles_filled_from_other_filings'] == 1
+
+
+def test_removal_breakdown_explains_copies(real_nse_rows, master, calendar, report):
+    """The cleaning report says, for removed copies, whether the copy was the
+    same exchange filing captured twice or a re-filing, and which filed
+    fields differ, so a high removal count can be checked from the report."""
+    rows = [r for r in real_nse_rows if r['appId'] in ('3135', '3136', '3138', '3139', '3082', '3119')]
+    run(rows, master, calendar, report)
+    b = report.data['tables']['insider_trades']['removal_breakdown']
+    assert b['removed'] == 5 and b['by_exchange'] == {'nse': 5}
+    assert b['different_filing_id'] == 5 and b['same_filing_id'] == 0
+    assert b['differing_fields']['appId'] == 5
+    assert 'broadcastDt' in b['differing_fields']          # re-filed later
+    assert 'modeOfAcquisition' in b['differing_fields']    # HCL's correction
+    assert len(b['examples']) == 5 and all(e['kept'] != e['removed'] for e in b['examples'])

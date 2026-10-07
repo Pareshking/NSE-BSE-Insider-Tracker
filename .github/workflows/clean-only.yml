@@ -1,0 +1,42 @@
+name: Clean only (rebuild clean tables)
+
+# Re-runs just the archive merge and clean step (scripts/clean_writer.py)
+# against what is already in R2, without collecting anything: for checking
+# a cleaning-rule change or reading the removal breakdown in the log. Shares
+# the archive lock with the nightly run and the backfill.
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Run date (YYYY-MM-DD). Blank = today (UTC).'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Archive and clean
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          if [ -z "$TARGET_DATE" ]; then export TARGET_DATE=$(date -u +%F); fi
+          python scripts/clean_writer.py
