@@ -171,3 +171,29 @@ def test_retention_never_touches_a_dataset_without_archive(bucket, monkeypatch):
     monkeypatch.setattr(retention, 'DELETE', True)
     retention.main()  # writer never ran: no archive
     assert r2.deleted == []
+
+
+def test_clean_runs_on_rows_round_tripped_through_the_archive(real_nse_rows):
+    """07 Oct 2026, first R2 run: rows read back from the archive carry <NA>
+    for missing text (here canonical_isin and a blank mode), and the cleaner
+    crashed on `not <NA>`. Two merges, the second mixing object and string
+    columns, then a full pipeline run."""
+    import pandas as pd
+
+    from insiders_clean.calendar import seed_state
+    from insiders_clean.pipeline import run
+
+    rows = [dict(r) for r in real_nse_rows[:40]]
+    rows[0]['modeOfAcquisition'] = ''
+    rows[1]['acqName'] = ''
+    day1 = canonical('nse', 'insider_trading', rows[:20])
+    day1['canonical_isin'] = None
+    arch, _ = archive.merge(None, day1, '2026-10-05')
+    arch, _ = archive.merge(arch, canonical('nse', 'insider_trading', rows[15:]), '2026-10-06')
+    assert pd.api.types.is_string_dtype(arch['canonical_isin']) and arch['canonical_isin'].isna().any()
+    arch = pd.concat([arch, arch.head(1).astype(object)], ignore_index=True)  # object + string mix
+    tables, _ = run({('nse', 'insider_trading'): arch}, '2026-10-07', seed_state())
+    t = tables['insider_trades']
+    assert not t['person_id'].astype(str).str.contains('<na>|na$', regex=True).any()
+    assert '<NA>' not in set(t['mode_raw'].dropna())
+    assert (t['kind'] == 'missing').any()

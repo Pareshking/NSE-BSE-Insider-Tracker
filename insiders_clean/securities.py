@@ -23,6 +23,8 @@ import re
 
 import pandas as pd
 
+from .missing import is_missing
+
 _SUFFIX_RE = re.compile(r'[\s,.]*\b(limited|ltd|ltd\.)\.?\s*$', re.IGNORECASE)
 _VOWELS = set('AEIOU')
 
@@ -31,7 +33,7 @@ def display_name(name) -> str | None:
     """Short readable company name: corporate suffix dropped, and an
     all-capitals name put into title case. Mixed-case names from the
     exchanges are already written the company's way and are left alone."""
-    if name is None or (isinstance(name, float) and pd.isna(name)):
+    if is_missing(name):
         return None
     s = re.sub(r'\s+', ' ', str(name)).strip()
     if not s:
@@ -160,7 +162,7 @@ class SecurityMaster:
         unmatched."""
         if isin and isinstance(isin, str) and isin.strip():
             return isin.strip(), 'native_isin'
-        if symbol is None or (isinstance(symbol, float) and pd.isna(symbol)):
+        if is_missing(symbol):
             return None, 'unmatched'
         key = str(symbol).strip()
         if key.endswith('.0') and key[:-2].isdigit():

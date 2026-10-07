@@ -7,6 +7,7 @@ import pandas as pd
 from .calendar import Calendar
 from .deals import clean_deals
 from .insider import clean_insider
+from .missing import normalise
 from .report import Report
 from .securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -32,7 +33,7 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
         for ex in ('nse', 'bse'):
             f = canonical.get((ex, category))
             if f is not None and not f.empty:
-                parts.append(f.assign(exchange=ex, category=category))
+                parts.append(normalise(f).assign(exchange=ex, category=category))
         return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
     insider = clean_insider(frames('insider_trading'), master, cal, report, run_date)

@@ -15,6 +15,7 @@ import re
 
 import pandas as pd
 
+from .missing import is_missing
 from .securities import _title_word
 
 # Variant -> one spelling, applied to the upper-cased, punctuation-free name.
@@ -27,7 +28,7 @@ _EQUIVALENTS = [
 
 
 def entity_key(name) -> str | None:
-    if name is None or (isinstance(name, float) and pd.isna(name)):
+    if is_missing(name):
         return None
     s = str(name).upper().replace('&', ' & ')
     s = re.sub(r"[.,'()\"/\\-]", ' ', s)
@@ -41,7 +42,7 @@ def entity_key(name) -> str | None:
 
 
 def entity_display(name) -> str | None:
-    if name is None or (isinstance(name, float) and pd.isna(name)):
+    if is_missing(name):
         return None
     s = re.sub(r'\s+', ' ', str(name)).strip()
     if s.upper() == s and any(ch.isalpha() for ch in s):

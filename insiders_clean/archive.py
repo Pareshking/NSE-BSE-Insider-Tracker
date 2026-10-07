@@ -26,6 +26,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .dates import parse_dates
+from .missing import is_missing
 
 KEY = 'canonical_event_id'
 # Column holding a record's own date, per category, in order of preference.
@@ -46,7 +47,7 @@ def _uniform(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in df.columns:
         if df[col].dtype == object:
-            df[col] = df[col].map(lambda v: None if v is None or (isinstance(v, float) and pd.isna(v)) else str(v))
+            df[col] = df[col].map(lambda v: None if is_missing(v) else str(v))
             df[col] = df[col].astype('string')
     return df
 
