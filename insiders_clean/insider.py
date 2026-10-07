@@ -28,8 +28,8 @@ import numpy as np
 import pandas as pd
 
 from .calendar import Calendar, lateness
-from .dates import parse_dates
-from .entities import add_entity_columns
+from .dates import parse_dates, to_datetime_day_first
+from .entities import add_entity_columns, most_common
 from .missing import is_missing, present
 from .securities import SecurityMaster, display_name
 
@@ -144,7 +144,11 @@ def _merge_truncated_names(df: pd.DataFrame) -> pd.DataFrame:
         if remap:
             idx = grp.index[grp['person_id'].isin(list(remap))]
             df.loc[idx, 'person_id'] = df.loc[idx, 'person_id'].map(remap)
-    names = df.groupby('person_id')['person_name'].agg(lambda s: max(s.dropna(), key=len, default=None))
+    # Longest spelling per person; on equal length the first seen.
+    named = df[['person_id', 'person_name']].dropna()
+    names = (named.assign(_len=named['person_name'].str.len(), _pos=np.arange(len(named)))
+             .sort_values(['_len', '_pos'], ascending=[False, True])
+             .drop_duplicates('person_id').set_index('person_id')['person_name'])
     df['person_name'] = df['person_id'].map(names)
     return df
 
@@ -176,7 +180,8 @@ def _fill_missing_roles(df: pd.DataFrame, report) -> pd.DataFrame:
     df['person_role_source'] = np.where(df['person_role'].eq('missing'), 'missing', 'filing')
     known = df[~df['person_role'].isin(['missing'])].dropna(subset=['person_id'])
     sec = known['isin'].fillna(known['symbol'].astype(str))
-    lookup = known.groupby([sec, known['person_id']])['person_role'].agg(lambda s: s.value_counts().index[0])
+    lookup = most_common(pd.DataFrame({'sec': sec, 'person_id': known['person_id'],
+                                       'role': known['person_role']}), ['sec', 'person_id'], 'role').to_dict()
     miss = df['person_role'].eq('missing') & df['person_id'].notna()
     keys = list(zip(df.loc[miss, 'isin'].fillna(df.loc[miss, 'symbol'].astype(str)), df.loc[miss, 'person_id']))
     filled = pd.Series([lookup.get(k) for k in keys], index=df.index[miss])
@@ -219,8 +224,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['intimation_date'] = parse_dates(_col(raw, 'intimDt'))
     broadcast_raw = _col(raw, 'canonical_broadcast_date', 'broadcastDt')
     df['broadcast_date'] = parse_dates(broadcast_raw)
-    df['broadcast_ts'] = pd.to_datetime(broadcast_raw.astype('string'), errors='coerce', format='mixed',
-                                        dayfirst=True)
+    df['broadcast_ts'] = to_datetime_day_first(broadcast_raw)
     df['app_num'] = pd.to_numeric(df['app_id'], errors='coerce')
 
     # --- classification ---
@@ -332,6 +336,9 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['primary_id'] = None
     df['listed_on'] = df['exchange']
     linkable = df.dropna(subset=['isin', 'person_id', 'quantity', 'trade_date_to'])
+    # Only groups on both exchanges can link; filtering first avoids one
+    # pandas frame per row on a full history.
+    linkable = linkable[linkable.groupby(link)['exchange'].transform('nunique') > 1]
     for _, grp in linkable.groupby(link):
         if grp['exchange'].nunique() < 2:
             continue
