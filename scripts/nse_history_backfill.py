@@ -1,6 +1,6 @@
 """Historical backfill: NSE's history endpoints -> the partitioned archive.
 
-    python scripts/nse_history_backfill.py --dataset insider            # 01 Jan 2026 .. 02 May 2026
+    python scripts/nse_history_backfill.py --dataset insider            # one year back .. 02 May 2026
     python scripts/nse_history_backfill.py --dataset bulk --dry-run     # fetch + map, print counts, write nothing
     python scripts/nse_history_backfill.py --dataset all --local-out out/   # home-connection fallback
     python scripts/nse_history_backfill.py --dataset all --upload-from out/ # ... merged into R2 later
@@ -12,7 +12,8 @@ What it fetches (insiders_clean/history.py has the field maps):
 * bulk / block: /api/historicalOR/bulk-block-short-deals?csv=true, one
   calendar year per call (the JSON form is capped at 70 rows). NSE serves bulk
   back to Jan 2004 and block to Nov 2005, but by the owner's decision (08 Oct
-  2026) every dataset starts on 01 Jan 2026 by default; --from goes further. Unless --to is given, a deals backfill ends
+  2026) every dataset starts one year before the run date by default (the site
+  grows daily from there); --from goes further. Unless --to is given, a deals backfill ends
   the day before the earliest nightly record in that dataset's archive, so
   history and nightly data never overlap.
 
@@ -79,15 +80,20 @@ REFERER = {
 PACE_SECONDS = (4.0, 6.0)
 RETRIES = 3
 STOP_STATUSES = (401, 403, 429)
+DEFAULT_YEARS_BACK = 1  # owner, 08 Oct 2026: one year of history, then daily data
+
+
+def today_ist() -> date:
+    return datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
 EARLIEST_SANE = date(1990, 1, 1)
 
 DATASETS = {
-    'insider': {'category': 'insider_trading', 'from': date(2026, 1, 1), 'to': date(2026, 5, 2),
+    'insider': {'category': 'insider_trading', 'from': None, 'to': date(2026, 5, 2),
                 'last': date(2026, 5, 2), 'chunk': 'quarter',
                 'date_fields': ('acqfromDt', 'acqtoDt', 'intimDt', 'broadcastDt')},
-    'bulk': {'category': 'bulk_deals', 'from': date(2026, 1, 1), 'to': None, 'last': None,
+    'bulk': {'category': 'bulk_deals', 'from': None, 'to': None, 'last': None,
              'chunk': 'year', 'option': 'bulk_deals', 'date_fields': ('BD_DT_DATE',)},
-    'block': {'category': 'block_deals', 'from': date(2026, 1, 1), 'to': None, 'last': None,
+    'block': {'category': 'block_deals', 'from': None, 'to': None, 'last': None,
               'chunk': 'year', 'option': 'block_deals', 'date_fields': ('BD_DT_DATE',)},
 }
 ORDER = ('insider', 'bulk', 'block')
@@ -169,9 +175,18 @@ class NseHistory:
         raise Failed(f'{last} (after {RETRIES} retries)')
 
     def warm_up(self):
-        if not self.warmed:
-            self._get(HOME)
-            self.warmed = True
+        """One best-effort visit for cookies. NSE (Akamai) answers the home
+        page with 403 to GitHub's runners while the data APIs still answer
+        them (the nightly scraper uses the API with no warm-up), so a refused
+        warm-up is not a reason to stop (first backfill run, 08 Oct 2026)."""
+        if self.warmed:
+            return
+        self.warmed = True
+        try:
+            self.session.get(HOME, timeout=30)
+            self.calls += 1
+        except requests.RequestException:
+            pass
 
     def insider(self, a: date, b: date) -> list[dict]:
         self.warm_up()
@@ -374,7 +389,7 @@ def resolve_range(dataset, start, end, client) -> tuple[date, date, str | None]:
     nightly record in the archive."""
     spec = DATASETS[dataset]
     note = None
-    start = start or spec['from']
+    start = start or spec['from'] or (today_ist() - timedelta(days=365 * DEFAULT_YEARS_BACK))
     if end is None:
         if spec['to'] is not None:
             end = spec['to']
