@@ -110,7 +110,7 @@ def test_deal_years():
 
 def test_insider_to_is_clipped_at_the_system_change():
     start, end, note = bf.resolve_range('insider', None, date(2026, 9, 30), None)
-    assert (start, end) == (date(2015, 11, 19), date(2026, 5, 2)) and 'clipped' in note
+    assert (start, end) == (date(2026, 1, 1), date(2026, 5, 2)) and 'clipped' in note
 
 
 # --- fake NSE ------------------------------------------------------------------
@@ -311,7 +311,7 @@ def test_deals_to_defaults_to_the_day_before_the_earliest_nightly_record():
     for part, f in parts.items():
         r2.objects[f'archive/canonical/nse/bulk_deals/{part}.parquet'] = parquet(f)
     start, end, note = bf.resolve_range('bulk', None, None, r2)
-    assert (start, end) == (date(2004, 1, 1), date(2026, 7, 9)) and '2026-07-10' in note
+    assert (start, end) == (date(2026, 1, 1), date(2026, 7, 9)) and '2026-07-10' in note
 
     # after a partial backfill, history rows don't move the default
     nse = FakeNSE(csv_body=csv_bytes('nse_bulk_2024.csv'))

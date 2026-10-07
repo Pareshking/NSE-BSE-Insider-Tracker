@@ -1,7 +1,8 @@
 name: NSE History Backfill
 
-# One-off backfill of NSE insider filings (19 Nov 2015 - 02 May 2026) and
-# bulk / block deals (2004 / 2005 onwards) into archive/ in R2. See
+# One-off backfill of NSE insider filings and bulk / block deals from
+# 01 Jan 2026 (owner's decision, 08 Oct 2026; insider ends 02 May 2026, where
+# NSE's new system and the nightly scraper take over) into archive/ in R2. See
 # scripts/nse_history_backfill.py and docs/CLEAN_LAYER.md ("Backfill").
 #
 # DRY RUN by default: fetches and maps, prints counts, writes nothing.
