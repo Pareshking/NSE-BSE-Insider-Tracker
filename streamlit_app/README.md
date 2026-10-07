@@ -1,5 +1,13 @@
 # Insiders: the site
 
+> **Status of the old website and app code (08 Oct 2026): demo only, wrong
+> at multiple levels.** The site that ran at insiders.streamlit.app before
+> PR #4, and its code (the old `streamlit_app/views/` pages and their in-app
+> calculations), are a demo. Their page structure, columns and underlying
+> calculations are wrong; do not use them for decisions or as a reference.
+> The collected data is not the problem: the NSE/BSE collection pipeline and
+> the raw/canonical data in R2 are sound. Current direction: `docs/PRODUCT.md`.
+
 ```
 streamlit run streamlit_app/app.py
 ```
