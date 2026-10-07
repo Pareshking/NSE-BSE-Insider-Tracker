@@ -24,7 +24,7 @@ same day something is promised, started or finished. Pages follow the data:
 | # | Item | Done when |
 |---|---|---|
 | A | ~~Check the 781 removed insider rows~~ **Done 08 Oct.** | Breakdown (clean-only run 37677587574): 37 corrected re-filings + 744 repeats; NSE 733 (727 with a different filing ID and later broadcast but the same person, shares, value, trade dates and holdings before/after; 6 the same filing ID twice), BSE 48 (same trade re-captured with small text differences). Checked against NSE's own filing list: only 41 of 3,152 filings are marked "Revision" and 2 carry prevAppId, e.g. HCL Tech 3119 is a "Revision" ("revised solely to rectify" the mode) with no prevAppId, while Prakash Steelage filed the same gift four times as "Original" in six minutes (3135-3139). Identical holdings before and after make two real trades impossible, so these are copies; removing them is right |
-| B | Run the backfill: last one year (from ~08 Oct 2025) | `history-backfill.yml` dispatched (dry_run=false) for insider, bulk, block; reports in `clean/reports/backfill/` read; next nightly clean includes them |
+| B | ~~Run the backfill: last one year~~ **Done 08 Oct.** | Run 37678771716: insider 8 Oct 2025 - 2 May 2026, 7,523 rows; bulk 8 Oct 2025 - 2 Jun 2026, 14,844 fetched, 8,381 stored (6,460 intraday round trips dropped, 43.5%, same rule and share as nightly); block 848 rows. 5 insider rows carry dates mistyped in the filing itself (Campus 26-Nov-2026 for 2025; Premier Polyfilm intimation 03-Feb-2036; Solar Industries 3 gifts dated 09-Nov-2026 but published 11-Mar-2026): parsed correctly, stored as filed, held back by the cleaner. Clean rebuild (run 37679323259): insider 14,478 in -> 13,487 out; deals 17,421 -> 16,825; 2,367 securities, 57 unmatched. One-year default and best-effort warm-up merged in PR #9 (NSE 403s the home page to GitHub's runner, not the API) |
 | C | Owner reviews the baseline numbers above | Owner confirms |
 | D | PR #4: rebase on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; owner has seen the screenshots |
 | E | Merge PR #4 | Merged after D; live insiders.streamlit.app shows the new site |
@@ -45,7 +45,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 14 | `nse_insider.py` keeps NSE's revision markers | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
 | 15 | Retention deletes for real | Owner sets `R2_RETENTION_DELETE=1` once the archive has been stable; stays a dry run until then |
 | 16 | Named-investor aliases | Curated list maps known investors' and funds' spellings to one name |
-| 18 | NSE block deals were BLOCKED on 07 Oct | Validator passes again, or the cause is found |
+| 18 | NSE block deals BLOCKED in the nightly collection on 07 and 08 Oct | Validator passes again, or the cause is found (history block deals came in fine through the CSV endpoint) |
 
 ## Decided, not to do
 
