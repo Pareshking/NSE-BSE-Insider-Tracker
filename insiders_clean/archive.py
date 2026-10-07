@@ -26,6 +26,7 @@ from __future__ import annotations
 import pandas as pd
 
 from .dates import parse_dates
+from .history import HISTORY_SOURCES
 from .missing import is_missing
 
 KEY = 'canonical_event_id'
@@ -102,12 +103,21 @@ def merge_partitioned(load, new: pd.DataFrame | None, run_date: str, category: s
     return out, added
 
 
+def from_history(frame: pd.DataFrame) -> pd.Series:
+    """Boolean mask: rows written by the historical backfill
+    (scripts/nse_history_backfill.py), not by the nightly run."""
+    if frame is None or 'source' not in frame:
+        return pd.Series(False, index=None if frame is None else frame.index, dtype=bool)
+    return frame['source'].astype('string').isin(HISTORY_SOURCES).fillna(False).astype(bool)
+
+
 def possibly_withdrawn(frame: pd.DataFrame, run_date: str, window_days: int = 80) -> pd.Series:
     """Boolean mask: last seen before today although first seen recently
-    enough that the source's rolling window should still include it."""
+    enough that the source's rolling window should still include it.
+    Backfilled rows are never in the nightly window, so never counted."""
     if frame is None or frame.empty or 'last_seen' not in frame:
         return pd.Series(dtype=bool)
     today = pd.Timestamp(run_date)
     first = pd.to_datetime(frame['first_seen'])
     last = pd.to_datetime(frame['last_seen'])
-    return (last < today) & (first >= today - pd.Timedelta(days=window_days))
+    return (last < today) & (first >= today - pd.Timedelta(days=window_days)) & ~from_history(frame)

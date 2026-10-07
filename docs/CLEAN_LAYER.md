@@ -24,6 +24,8 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 | `clean/current/securities.parquet` | One row per security used | Rewritten nightly |
 | `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
 | `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
+| `archive/_backfill/nse_{dataset}.json` | Backfill progress: chunks done, with row counts | Forever (small) |
+| `clean/reports/backfill/{date}_{dataset}.json` | One backfill run: chunks, rows fetched / added, where it stopped | Forever (small) |
 | `reference/nse_calendar.json` | Trading sessions, special sessions, holiday lists by year | Forever |
 | `reference/security_lists/{date}/` | NSE equity lists as fetched | 30 days |
 | `raw/…/{date}/`, `canonical/…/{date}/` | Dated 90-day snapshots from the writer | 14 days once archived |
@@ -74,6 +76,51 @@ volume-weighted price; NSE/BSE copies linked; counterparties listed.
 Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
 and BSE's list win on identity; the 01 Sep Value Research export only
 supplies sector and industry.
+
+## Backfill
+
+`scripts/nse_history_backfill.py` loads NSE's history into the same
+archive, so the nightly clean step rebuilds the clean tables over all of it.
+
+| Dataset | Endpoint | Default range | One call |
+|---|---|---|---|
+| `insider` | `/api/corporates-pit` (JSON) | 19 Nov 2015 - 02 May 2026 (NSE's new system from 03 May is the nightly's) | a calendar quarter |
+| `bulk` | `/api/historicalOR/bulk-block-short-deals`, `csv=true` | 01 Jan 2004 - the day before the earliest nightly record | a calendar year |
+| `block` | same | 01 Nov 2005 - the day before the earliest nightly record | a calendar year |
+
+Run it from Actions -> **NSE History Backfill** (dataset, from, to,
+dry run; dry run is the default and writes nothing), or locally:
+
+    python scripts/nse_history_backfill.py --dataset insider --dry-run
+    python scripts/nse_history_backfill.py --dataset all
+
+- **Pacing**: one warm-up of nseindia.com, one browser User-Agent for the
+  whole run, 4-6 s between calls; network errors and 5xx are retried 3
+  times, then the chunk is reported and left for the next run.
+- **Stops** at once on HTTP 401/403/429 or a body that is not JSON/CSV; the
+  report's `stopped_at` names the chunk. Everything before it is kept.
+- **Resume**: rerun the same command. Chunks listed in
+  `archive/_backfill/nse_{dataset}.json` are skipped.
+- **Fallback** when NSE blocks the GitHub runner: run on a home connection
+  with `--local-out DIR` (writes each chunk's canonical Parquet to DIR, no R2
+  needed for insider; deals need `--to`), then
+  `--upload-from DIR` with R2 credentials to merge those files into R2.
+- **What it writes**: rows go through `r2_writer.rows_to_parquet_bytes`
+  (intraday round trips dropped, as at night) and `archive.merge_partitioned`
+  with first_seen = last_seen = the run date. `_state.json` gets `records`
+  and a `backfill` entry; `last_merged` is never moved (retention reads it),
+  and no state file is created where the nightly has not built one.
+  Backfilled rows carry `source` = `nse_corporates_pit_history` or
+  `nse_historical_deals_csv`, are never counted as possibly withdrawn, and
+  never set `last_merged`.
+- Rows with impossible dates (a 2024 filing with a trade date in 3034) are
+  stored as they came and counted in the report; the cleaner flags them.
+- Don't run it during the nightly R2 Storage Write run (18:00 UTC): both
+  write archive partitions.
+
+The clean step was measured on a synthetic full history (154k insider
+filings, 510k bulk/block rows): 19 s and 1.9 GB peak for the whole
+process (136 s and 2.7 GB before the per-group Python calls were removed).
 
 ## Trading calendar
 

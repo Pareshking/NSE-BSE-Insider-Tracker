@@ -36,6 +36,11 @@ PIT_FIELDS = {
 # Kept as they are, under a history_ prefix (no nightly equivalent).
 PIT_KEPT = ('did', 'pid', 'exchange', 'anex', 'remarks', 'befAcqSharesPer', 'afterAcqSharesPer',
             'derivativeType', 'tdpDerivativeContractType', 'securitiesTypePost', 'xbrl')
+# `source` of every backfilled row. The archive tells history from nightly
+# rows by it (insiders_clean/archive.py::from_history).
+PIT_SOURCE = 'nse_corporates_pit_history'
+DEALS_SOURCE = 'nse_historical_deals_csv'
+HISTORY_SOURCES = (PIT_SOURCE, DEALS_SOURCE)
 # Values NSE uses for "nothing" in this feed.
 _EMPTY = {'-', '', 'NA', 'N.A.', 'None', 'null'}
 _ZERO = {'Nil', 'NIL', 'nil'}
@@ -101,7 +106,7 @@ def pit_row(h: dict) -> dict:
     # The nightly 'date' is the intimation date (falls back to broadcast).
     row['date'] = row['intimDt'] or row['broadcastDt']
     row['appId'] = ''
-    row['source'] = 'nse_corporates_pit_history'
+    row['source'] = PIT_SOURCE
     return row
 
 
@@ -115,6 +120,6 @@ def deal_rows(csv_bytes: bytes) -> list[dict]:
         row = {new: _clean(clean.get(old)) for old, new in DEAL_FIELDS.items()}
         if not row['BD_SYMBOL']:
             continue
-        row['source'] = 'nse_historical_deals_csv'
+        row['source'] = DEALS_SOURCE
         out.append(row)
     return out
