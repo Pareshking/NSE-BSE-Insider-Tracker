@@ -24,7 +24,7 @@ same day something is promised, started or finished. Pages follow the data:
 | # | Item | Done when |
 |---|---|---|
 | A | ~~Check the 781 removed insider rows~~ **Done 08 Oct.** | Breakdown (clean-only run 37677587574): 37 corrected re-filings + 744 repeats; NSE 733 (727 with a different filing ID and later broadcast but the same person, shares, value, trade dates and holdings before/after; 6 the same filing ID twice), BSE 48 (same trade re-captured with small text differences). Checked against NSE's own filing list: only 41 of 3,152 filings are marked "Revision" and 2 carry prevAppId, e.g. HCL Tech 3119 is a "Revision" ("revised solely to rectify" the mode) with no prevAppId, while Prakash Steelage filed the same gift four times as "Original" in six minutes (3135-3139). Identical holdings before and after make two real trades impossible, so these are copies; removing them is right |
-| B | Run the backfill from 01 Jan 2026 | `history-backfill.yml` dispatched (dry_run=false) for insider, bulk, block; reports in `clean/reports/backfill/` read; next nightly clean includes them |
+| B | Run the backfill: last one year (from ~08 Oct 2025) | `history-backfill.yml` dispatched (dry_run=false) for insider, bulk, block; reports in `clean/reports/backfill/` read; next nightly clean includes them |
 | C | Owner reviews the baseline numbers above | Owner confirms |
 | D | PR #4: rebase on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; owner has seen the screenshots |
 | E | Merge PR #4 | Merged after D; live insiders.streamlit.app shows the new site |
@@ -36,7 +36,7 @@ same day something is promised, started or finished. Pages follow the data:
 
 | # | Item | Done when |
 |---|---|---|
-| 7 | Signal lab and Track record page | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (history from 01 Jan 2026 limits the longer horizons) |
+| 7 | Signal lab and Track record page | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
 | 8 | Price chart with filings marked (company page) | Waits on G |
 | 9 | Morning brief and watchlist warnings | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
 | 10 | Model basket | Waits on 7 |
@@ -54,4 +54,4 @@ same day something is promised, started or finished. Pages follow the data:
   robots.txt disallows the paginated pages; Tijori's terms couldn't be read
   (rendered by script). NSE data and Paresh's public release cover the needs.
 - No prices token: Paresh's public `data-latest` release replaces it.
-- History starts on 01 Jan 2026 (owner, 08 Oct), not 2015.
+- History: only the last one year (owner, 08 Oct); the site grows daily from there.

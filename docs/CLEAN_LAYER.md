@@ -84,9 +84,9 @@ archive, so the nightly clean step rebuilds the clean tables over all of it.
 
 | Dataset | Endpoint | Default range | One call |
 |---|---|---|---|
-| `insider` | `/api/corporates-pit` (JSON) | 01 Jan 2026 - 02 May 2026 by default (NSE serves from 19 Nov 2015; NSE's new system from 03 May is the nightly's) | a calendar quarter |
-| `bulk` | `/api/historicalOR/bulk-block-short-deals`, `csv=true` | 01 Jan 2026 by default (NSE serves from Jan 2004) - the day before the earliest nightly record | a calendar year |
-| `block` | same | 01 Jan 2026 by default (NSE serves from Nov 2005) - the day before the earliest nightly record | a calendar year |
+| `insider` | `/api/corporates-pit` (JSON) | one year back - 02 May 2026 by default (NSE serves from 19 Nov 2015; NSE's new system from 03 May is the nightly's) | a calendar quarter |
+| `bulk` | `/api/historicalOR/bulk-block-short-deals`, `csv=true` | one year back by default (NSE serves from Jan 2004) - the day before the earliest nightly record | a calendar year |
+| `block` | same | one year back by default (NSE serves from Nov 2005) - the day before the earliest nightly record | a calendar year |
 
 Run it from Actions -> **NSE History Backfill** (dataset, from, to,
 dry run; dry run is the default and writes nothing), or locally:

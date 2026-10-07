@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import nse_history_backfill as bf
 import pandas as pd
@@ -110,7 +110,7 @@ def test_deal_years():
 
 def test_insider_to_is_clipped_at_the_system_change():
     start, end, note = bf.resolve_range('insider', None, date(2026, 9, 30), None)
-    assert (start, end) == (date(2026, 1, 1), date(2026, 5, 2)) and 'clipped' in note
+    assert (start, end) == (bf.today_ist() - timedelta(days=365), date(2026, 5, 2)) and 'clipped' in note
 
 
 # --- fake NSE ------------------------------------------------------------------
@@ -311,7 +311,7 @@ def test_deals_to_defaults_to_the_day_before_the_earliest_nightly_record():
     for part, f in parts.items():
         r2.objects[f'archive/canonical/nse/bulk_deals/{part}.parquet'] = parquet(f)
     start, end, note = bf.resolve_range('bulk', None, None, r2)
-    assert (start, end) == (date(2026, 1, 1), date(2026, 7, 9)) and '2026-07-10' in note
+    assert (start, end) == (bf.today_ist() - timedelta(days=365), date(2026, 7, 9)) and '2026-07-10' in note
 
     # after a partial backfill, history rows don't move the default
     nse = FakeNSE(csv_body=csv_bytes('nse_bulk_2024.csv'))
@@ -376,3 +376,16 @@ def test_most_common_and_per_group_match_the_groupby_lambdas():
     g = f.groupby(['a', 'b'], dropna=False, sort=False)
     assert per_group(g.ngroup().to_numpy(), f['v'], lambda c: '|'.join(map(str, c))) == \
         g['v'].agg(lambda s: '|'.join(map(str, s))).tolist()
+
+
+def test_refused_warm_up_does_not_stop_the_run():
+    """First real run (08 Oct 2026): NSE answered the home page with 403 to
+    GitHub's runner. The data API is what matters; the warm-up is best effort."""
+    nse = FakeNSE(script={0: Resp(403, b'Access Denied')})
+    rows = client(nse).insider(date(2024, 3, 4), date(2024, 3, 4))
+    assert rows and [u for u, _ in nse.calls] == [bf.HOME, bf.PIT_URL]
+
+
+def test_default_start_is_one_year_back():
+    start, _end, _note = bf.resolve_range('insider', None, None, None)
+    assert start == bf.today_ist() - timedelta(days=365)
