@@ -51,21 +51,23 @@ def _uniform(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def merge(archive: pd.DataFrame | None, new: pd.DataFrame | None, run_date: str) -> tuple[pd.DataFrame, int]:
+def merge(archive: pd.DataFrame | None, new: pd.DataFrame | None, run_date: str,
+          key: str = KEY) -> tuple[pd.DataFrame, int]:
     """(merged frame, number of records not seen before). Rows seen again
     take today's values (e.g. a newly flagged cross-exchange match) but keep
-    their original first_seen."""
+    their original first_seen. `key` is the identity column (the corporate
+    events collector uses its own event_id)."""
     if new is None or new.empty:
         return (archive if archive is not None else pd.DataFrame()), 0
     new = _uniform(new.drop(columns=['exchange', 'category'], errors='ignore'))
-    new = new.drop_duplicates(KEY, keep='last').assign(first_seen=run_date, last_seen=run_date)
+    new = new.drop_duplicates(key, keep='last').assign(first_seen=run_date, last_seen=run_date)
     if archive is None or archive.empty:
         return new.reset_index(drop=True), len(new)
     archive = _uniform(archive)
-    first = archive.set_index(KEY)['first_seen']
-    added = int((~new[KEY].isin(first.index)).sum())
-    new['first_seen'] = new[KEY].map(first).fillna(run_date)
-    merged = pd.concat([archive[~archive[KEY].isin(new[KEY])], new], ignore_index=True)
+    first = archive.set_index(key)['first_seen']
+    added = int((~new[key].isin(first.index)).sum())
+    new['first_seen'] = new[key].map(first).fillna(run_date)
+    merged = pd.concat([archive[~archive[key].isin(new[key])], new], ignore_index=True)
     return _uniform(merged), added
 
 
