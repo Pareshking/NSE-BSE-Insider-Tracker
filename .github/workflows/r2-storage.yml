@@ -152,6 +152,30 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python scripts/backfill_gaps.py
 
+      # --- Clean layer: archive every record once, rebuild clean/ from it ---
+      # The calendar step first, so tonight's deadlines can use tonight's
+      # confirmed sessions. Neither step can make the acquisition fail.
+      - name: Extend NSE trading calendar
+        if: always()
+        continue-on-error: true
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/update_calendar.py
+      - name: Archive and clean
+        if: always()
+        continue-on-error: true
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/clean_writer.py
+
       - name: Upload run evidence
         if: always()
         uses: actions/upload-artifact@v4
