@@ -18,3 +18,7 @@ data/curated/
 *.parquet
 *.csv
 *.zip
+
+# Small reference and test files that must be tracked despite *.csv above
+!reference_data/nse_sessions.csv
+!tests/fixtures/*.csv

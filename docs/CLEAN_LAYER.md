@@ -1,0 +1,91 @@
+# Clean layer
+
+The site reads clean tables, not the exchange data as collected. This page
+says where they live, what each rule does, and how storage is kept small.
+
+## Nightly order (R2 Storage Write workflow)
+
+1. Collect and validate NSE + BSE (unchanged).
+2. `scripts/r2_writer.py` writes `raw/` and `canonical/` for today (unchanged).
+3. `scripts/update_calendar.py` extends the NSE trading calendar.
+4. `scripts/clean_writer.py` merges today's canonical files into the archive
+   and rebuilds the clean tables from the whole archive.
+
+Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
+
+## R2 layout
+
+| Key | What | Kept |
+|---|---|---|
+| `archive/canonical/{exchange}/{category}/year=YYYY/quarter=Q.parquet` | Every collected record once, with `first_seen` / `last_seen`, partitioned by the record's own date; past quarters are written once, then only read | Forever |
+| `archive/canonical/{exchange}/{category}/_state.json` | Last run merged, record count, partitions written that night | Rewritten nightly |
+| `clean/current/insider_trades.parquet` | One row per filing, cleaned, full history | Rewritten nightly |
+| `clean/current/deals.parquet` | One row per client, security, day, side | Rewritten nightly |
+| `clean/current/securities.parquet` | One row per security used | Rewritten nightly |
+| `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
+| `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
+| `reference/nse_calendar.json` | Trading sessions, special sessions, holiday lists by year | Forever |
+| `reference/security_lists/{date}/` | NSE equity lists as fetched | 30 days |
+| `raw/…/{date}/`, `canonical/…/{date}/` | Dated 90-day snapshots from the writer | 14 days once archived |
+
+## Storage
+
+Each nightly snapshot repeats the full 90-day window, so one filing is
+stored up to ~60 times. The archive stores it once. `R2 Retention (weekly)`
+deletes dated snapshots older than 14 days that the archive has absorbed.
+It is a **dry run** until the repository variable `R2_RETENTION_DELETE` is
+set to `1`. It never touches a dataset that has no archive (rights and
+preferential issues are not archived yet), and it keeps market-cap history,
+manifests, the calendar and everything under `archive/` and `clean/`.
+
+The current Streamlit pages still read dated `canonical/` files through the
+run-date selector; with retention on, that selector offers the last 14 days
+until the pages move to `clean/`.
+
+## Rules
+
+Insider trades (`insiders_clean/insider.py`):
+
+- **Trade type** from the mode of acquisition. Only `market` is a decision to
+  buy or sell; ESOP, gift, inter-se, off-market, preferential, pledge,
+  scheme, conversion, offer for sale, bonus, rights and allotment are kept
+  but never counted as market trades. Unknown modes are reported.
+- **Side** from the transaction type; the mode is a fallback only.
+- **Revisions** are recognised by content (same person, security, side,
+  quantity, value, dates, holdings before and after); the latest broadcast
+  wins. NSE's `prevAppId` is not captured by `nse_insider.py`, and real
+  corrections arrive without it.
+- **Truncated names** (NSE cuts at ~30 characters) are merged within one
+  security on a unique prefix match.
+- **Deadlines**: SEBI PIT Reg 7(2)(a) insider -> company and 7(2)(b)
+  company -> exchange, each within 2 trading sessions. BSE rows don't
+  carry the intimation date, so only NSE rows get both checks.
+- **Held back for a look** (`needs_review`): unmatched security, unknown
+  mode, value over 25% of market cap, a market trade that multiplies the
+  holding more than 20x, holding change that doesn't match the quantity,
+  zero value on a market trade, mode contradicting side, dates out of
+  order or in the future.
+- NSE/BSE copies of one filing are linked; NSE is primary.
+
+Deals (`insiders_clean/deals.py`): same execution in the bulk and block feed
+counted once; same client, security, day and side rolled up with a
+volume-weighted price; NSE/BSE copies linked; counterparties listed.
+
+Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
+and BSE's list win on identity; the 01 Sep Value Research export only
+supplies sector and industry.
+
+## Trading calendar
+
+Seeded from the days NSE traded per the Paresh project's close history
+(30 Sep 2024 to 01 Oct 2026). Each night a bhavcopy check on two NSE
+archives confirms the days since; NSE's holiday list for the year marks
+special sessions (Muhurat, Budget weekends), which don't count as trading
+days. An answer that needs a day not yet confirmed is left empty. No
+hand-edited file is needed in any year.
+
+## Tests
+
+`python -m pytest tests -q`. Real NSE filings fetched 07 Oct 2026 are in
+`tests/fixtures/nse_pit_real.json` and go through the production writer's
+own `canonicalize()`.

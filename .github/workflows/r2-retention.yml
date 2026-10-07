@@ -1,0 +1,38 @@
+name: R2 Retention (weekly)
+
+# Deletes dated raw/ and canonical/ snapshots older than 14 days that the
+# archive has already absorbed (see scripts/r2_retention.py).
+#
+# DRY RUN by default: it only lists what it would delete. To let it delete,
+# set the repository variable R2_RETENTION_DELETE to 1
+# (Settings -> Secrets and variables -> Actions -> Variables).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 3 * * 0'  # Sunday 09:00 IST, away from the nightly run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-retention
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Prune absorbed snapshots
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_RETENTION_DELETE: ${{ vars.R2_RETENTION_DELETE }}
+        run: python scripts/r2_retention.py
