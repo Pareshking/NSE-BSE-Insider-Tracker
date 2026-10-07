@@ -33,8 +33,10 @@ on:
 permissions:
   contents: read
 
+# Shared with R2 Storage Write: both write archive/ partitions, so they
+# never run at the same time; whichever starts second waits.
 concurrency:
-  group: history-backfill
+  group: r2-archive-writes
   cancel-in-progress: false
 
 jobs:
