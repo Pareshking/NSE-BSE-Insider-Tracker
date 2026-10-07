@@ -23,7 +23,7 @@ same day something is promised, started or finished. Pages follow the data:
 
 | # | Item | Done when |
 |---|---|---|
-| A | Check the 781 removed insider rows (11%, vs ~2% on the calibration year) | Removal reasons in `clean/reports/2026-10-07.json` read; repeats confirmed as true copies (e.g. one filing captured in several nightly windows with changed fields), or the rule fixed |
+| A | ~~Check the 781 removed insider rows~~ **Done 08 Oct.** | Breakdown (clean-only run 37677587574): 37 corrected re-filings + 744 repeats; NSE 733 (727 with a different filing ID and later broadcast but the same person, shares, value, trade dates and holdings before/after; 6 the same filing ID twice), BSE 48 (same trade re-captured with small text differences). Checked against NSE's own filing list: only 41 of 3,152 filings are marked "Revision" and 2 carry prevAppId, e.g. HCL Tech 3119 is a "Revision" ("revised solely to rectify" the mode) with no prevAppId, while Prakash Steelage filed the same gift four times as "Original" in six minutes (3135-3139). Identical holdings before and after make two real trades impossible, so these are copies; removing them is right |
 | B | Run the backfill from 01 Jan 2026 | `history-backfill.yml` dispatched (dry_run=false) for insider, bulk, block; reports in `clean/reports/backfill/` read; next nightly clean includes them |
 | C | Owner reviews the baseline numbers above | Owner confirms |
 | D | PR #4: rebase on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; owner has seen the screenshots |
@@ -42,7 +42,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 10 | Model basket | Waits on 7 |
 | 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
 | 13 | BSE history and BSE events | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
-| 14 | `nse_insider.py` keeps `prevAppId` | Field captured; content-based revision check stays as fallback |
+| 14 | `nse_insider.py` keeps NSE's revision markers | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
 | 15 | Retention deletes for real | Owner sets `R2_RETENTION_DELETE=1` once the archive has been stable; stays a dry run until then |
 | 16 | Named-investor aliases | Curated list maps known investors' and funds' spellings to one name |
 | 18 | NSE block deals were BLOCKED on 07 Oct | Validator passes again, or the cause is found |
