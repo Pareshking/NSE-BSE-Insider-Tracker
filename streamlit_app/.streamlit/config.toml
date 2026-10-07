@@ -1,0 +1,31 @@
+[theme]
+# Insiders' palette. Same family as paresh.streamlit.app (light canvas, white
+# cards, indigo for interaction), drawn up for this site. The tokens are
+# repeated as CSS variables in ui/insiders.css for the custom HTML.
+base = "light"
+primaryColor = "#4F46E5"
+backgroundColor = "#F6F7F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0E1726"
+linkColor = "#4338CA"
+linkUnderline = false
+borderColor = "#DCE0E6"
+showWidgetBorder = true
+baseRadius = "10px"
+greenColor = "#0F7B4F"
+redColor = "#B42318"
+orangeColor = "#A15C07"
+dataframeHeaderBackgroundColor = "#F3F4F7"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap, sans-serif"
+codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..700&display=swap, monospace"
+
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+showErrorDetails = "auto"
+toolbarMode = "minimal"
