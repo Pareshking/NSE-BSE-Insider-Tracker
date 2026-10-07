@@ -1,0 +1,53 @@
+name: Site preview (screenshots on real data)
+
+# Runs the site against the real clean tables in R2 and screenshots every
+# page at desktop and phone width (scripts/site_screenshots.py). Fails if a
+# page shows an error. Screenshots are kept 7 days as a run artifact, for
+# review before a site change goes live.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'streamlit_app/**'
+      - 'insiders_clean/signals.py'
+      - 'scripts/site_screenshots.py'
+      - '.github/workflows/site-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    # Pull requests from forks get no secrets; only run for this repo's branches.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r streamlit_app/requirements.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Start the site on localhost
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          nohup python -m streamlit run streamlit_app/app.py --server.port 8501 --server.address localhost \
+            --server.headless true > streamlit.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://localhost:8501/_stcore/health && break; sleep 2; done
+      - name: Screenshot every page
+        run: python scripts/site_screenshots.py http://localhost:8501 screenshots
+      - name: Site log on failure
+        if: failure()
+        run: tail -100 streamlit.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-screenshots
+          path: screenshots/
+          retention-days: 7
