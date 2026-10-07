@@ -49,8 +49,12 @@ NSE_LISTS = {
 CALENDAR_KEY = 'reference/nse_calendar.json'
 
 
-def archive_key(exchange, category):
-    return f'archive/canonical/{exchange}/{category}.parquet'
+def archive_prefix(exchange, category):
+    return f'archive/canonical/{exchange}/{category}/'
+
+
+def archive_state_key(exchange, category):
+    return archive_prefix(exchange, category) + '_state.json'
 
 
 def get(client, key) -> bytes | None:
@@ -99,31 +103,57 @@ def read_parquet(client, key):
     return pd.read_parquet(io.BytesIO(body)) if body is not None else None
 
 
+def read_archive(client, exchange, category) -> pd.DataFrame | None:
+    """Every partition of one dataset's archive, concatenated."""
+    keys = [k for k in list_keys(client, archive_prefix(exchange, category)) if k.endswith('.parquet')]
+    frames = [read_parquet(client, k) for k in sorted(keys)]
+    frames = [f for f in frames if f is not None and not f.empty]
+    return pd.concat(frames, ignore_index=True) if frames else None
+
+
 def update_archive(client, exchange, category, notes, report_archive):
     """Merge today's canonical file (or, on the first run, every dated file)
-    into the archive. Returns the archive frame."""
-    key = archive_key(exchange, category)
-    arch = read_parquet(client, key)
-    added = 0
-    if arch is None:
+    into the partitioned archive. Returns the whole archive as one frame."""
+    prefix = archive_prefix(exchange, category)
+    state_body = get(client, archive_state_key(exchange, category))
+    state = json.loads(state_body) if state_body else None
+    touched, added = {}, 0
+
+    def load(part):
+        if part in touched:
+            return touched[part]
+        return read_parquet(client, f'{prefix}{part}.parquet')
+
+    if state is None:
         files = dated_canonical(client, exchange, category)
         for day, k in files:
-            arch, n = archive.merge(arch, read_parquet(client, k), day)
+            parts, n = archive.merge_partitioned(load, read_parquet(client, k), day, category)
+            touched.update(parts)
             added += n
-        notes.append(f'{exchange}/{category}: archive built from {len(files)} dated files')
+        if files:
+            notes.append(f'{exchange}/{category}: archive built from {len(files)} dated files')
     today = read_parquet(client, f'canonical/{exchange}/{category}/{TARGET_DATE}/data.parquet')
     written_today = today is not None
     if written_today:
-        arch, n = archive.merge(arch, today, TARGET_DATE)
+        parts, n = archive.merge_partitioned(load, today, TARGET_DATE, category)
+        touched.update(parts)
         added += n
-    else:
+    elif state is not None:
         notes.append(f'{exchange}/{category}: nothing written today; archive unchanged')
-    if arch is not None and not arch.empty:
-        put_parquet(client, key, arch)
-    withdrawn = int(archive.possibly_withdrawn(arch, TARGET_DATE).sum()) if written_today else None
+
+    for part, frame in touched.items():
+        put_parquet(client, f'{prefix}{part}.parquet', frame)
+    arch = read_archive(client, exchange, category)
+    if arch is not None:
+        last = TARGET_DATE if written_today else str(arch['last_seen'].max())
+        new_state = {'last_merged': max(last, (state or {}).get('last_merged', '')),
+                     'records': len(arch), 'partitions_written_today': sorted(touched)}
+        put(client, archive_state_key(exchange, category), json.dumps(new_state).encode(), 'application/json')
+    withdrawn = int(archive.possibly_withdrawn(arch, TARGET_DATE).sum()) if written_today and arch is not None else None
     report_archive[f'{exchange}/{category}'] = {
         'records': 0 if arch is None else len(arch), 'new_today': added,
-        'written_today': written_today, 'possibly_withdrawn_at_source': withdrawn}
+        'partitions_written': sorted(touched), 'written_today': written_today,
+        'possibly_withdrawn_at_source': withdrawn}
     return arch
 
 

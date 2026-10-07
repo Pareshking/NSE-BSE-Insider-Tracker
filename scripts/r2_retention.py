@@ -22,18 +22,16 @@ Safety:
 """
 from __future__ import annotations
 
-import io
+import json
 import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-import pandas as pd
-
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))
 
-from clean_writer import CATEGORIES, archive_key, get
+from clean_writer import CATEGORIES, archive_state_key, get
 from r2_writer import BUCKET, TARGET_DATE, r2_client
 
 KEEP_DAYS = int(os.environ.get('R2_RETENTION_KEEP_DAYS', '14'))
@@ -70,11 +68,12 @@ def list_with_size(client, prefix):
 
 
 def archive_through(client, exchange, category) -> date | None:
-    body = get(client, archive_key(exchange, category))
+    """Last run date merged into this dataset's archive, from its state file."""
+    body = get(client, archive_state_key(exchange, category))
     if body is None:
         return None
-    seen = pd.read_parquet(io.BytesIO(body), columns=['last_seen'])['last_seen']
-    return date.fromisoformat(str(seen.max())) if len(seen) else None
+    last = json.loads(body).get('last_merged')
+    return date.fromisoformat(last) if last else None
 
 
 def main():

@@ -17,7 +17,8 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 
 | Key | What | Kept |
 |---|---|---|
-| `archive/canonical/{exchange}/{category}.parquet` | Every collected record once, with `first_seen` / `last_seen` | Forever |
+| `archive/canonical/{exchange}/{category}/year=YYYY/quarter=Q.parquet` | Every collected record once, with `first_seen` / `last_seen`, partitioned by the record's own date; past quarters are written once, then only read | Forever |
+| `archive/canonical/{exchange}/{category}/_state.json` | Last run merged, record count, partitions written that night | Rewritten nightly |
 | `clean/current/insider_trades.parquet` | One row per filing, cleaned, full history | Rewritten nightly |
 | `clean/current/deals.parquet` | One row per client, security, day, side | Rewritten nightly |
 | `clean/current/securities.parquet` | One row per security used | Rewritten nightly |

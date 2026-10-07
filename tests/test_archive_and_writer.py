@@ -104,11 +104,20 @@ def bucket(monkeypatch, real_nse_rows):
     return r2, clean_writer, r2_retention
 
 
+def archive_frame(r2, prefix='archive/canonical/nse/insider_trading/'):
+    keys = sorted(k for k in r2.objects if k.startswith(prefix) and k.endswith('.parquet'))
+    return keys, pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in keys], ignore_index=True)
+
+
 def test_first_run_builds_archive_and_clean_tables(bucket, real_nse_rows):
     r2, writer, _ = bucket
     writer.main()
-    arch = pd.read_parquet(io.BytesIO(r2.objects['archive/canonical/nse/insider_trading.parquet']))
+    keys, arch = archive_frame(r2)
     assert len(arch) == 120  # union of the three dated windows, each record once
+    assert all('/year=2026/quarter=' in k for k in keys) and len(keys) >= 2
+    assert arch['canonical_event_id'].is_unique
+    state = json.loads(r2.objects['archive/canonical/nse/insider_trading/_state.json'])
+    assert state['last_merged'] == '2026-10-06' and state['records'] == 120
     latest = json.loads(r2.objects['clean/latest.json'])
     assert latest['date'] == '2026-10-07'
     trades = pd.read_parquet(io.BytesIO(r2.objects['clean/current/insider_trades.parquet']))
@@ -117,6 +126,28 @@ def test_first_run_builds_archive_and_clean_tables(bucket, real_nse_rows):
     assert report['archive']['nse/insider_trading']['records'] == 120
     assert any('archive built from 3 dated files' in n for n in report['notes'])
     assert 'reference/security_lists/2026-10-07/nse_equity.csv' in r2.objects
+
+
+def test_next_night_rewrites_only_the_quarters_it_touches(bucket, real_nse_rows):
+    r2, writer, _ = bucket
+    writer.main()
+    q3 = r2.objects['archive/canonical/nse/insider_trading/year=2026/quarter=3.parquet']
+    tonight = real_nse_rows[:4] + [dict(real_nse_rows[0], acqName='New Person', appId='9999')]
+    r2.objects['canonical/nse/insider_trading/2026-10-07/data.parquet'] = parquet(
+        canonical('nse', 'insider_trading', tonight).drop(columns=['exchange', 'category']))
+    writer.main()
+    state = json.loads(r2.objects['archive/canonical/nse/insider_trading/_state.json'])
+    assert state['partitions_written_today'] == ['year=2026/quarter=4']
+    assert state['last_merged'] == '2026-10-07' and state['records'] == 121
+    assert r2.objects['archive/canonical/nse/insider_trading/year=2026/quarter=3.parquet'] is q3  # not rewritten
+
+
+def test_partitions_follow_the_records_own_date(real_nse_rows):
+    df = canonical('nse', 'insider_trading', real_nse_rows)
+    parts = archive.partitions(df, 'insider_trading')
+    first = df['canonical_broadcast_date'].iloc[0]  # '01-Oct-2026 16:42:04'
+    assert first.startswith('01-Oct-2026') and parts.iloc[0] == 'year=2026/quarter=4'
+    assert archive.partition_of(None) == 'year=unknown'
 
 
 def test_retention_dry_run_deletes_nothing_then_deletes_only_absorbed_old(bucket, monkeypatch):
@@ -131,7 +162,7 @@ def test_retention_dry_run_deletes_nothing_then_deletes_only_absorbed_old(bucket
                                   'canonical/nse/insider_trading/2026-09-21/data.parquet',
                                   'raw/nse/insider_trading/2026-09-20/raw.json',
                                   'raw/nse/insider_trading/2026-09-21/raw.json']
-    assert 'archive/canonical/nse/insider_trading.parquet' in r2.objects
+    assert 'archive/canonical/nse/insider_trading/_state.json' in r2.objects
     assert 'canonical/nse/insider_trading/2026-10-06/data.parquet' in r2.objects  # inside 14 days
 
 
