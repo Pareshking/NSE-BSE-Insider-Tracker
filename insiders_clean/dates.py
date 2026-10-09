@@ -20,24 +20,35 @@ _TZ = r'(?:Z|[+-]\d{2}:?\d{2})\s*$'
 _KNOWN_DAY_FIRST = ('%d-%b-%Y', '%d-%b-%Y %H:%M', '%d-%b-%Y %H:%M:%S', '%d/%m/%Y', '%d-%m-%Y')
 
 
+def _ns(s: pd.Series) -> pd.Series:
+    """datetime64[ns] with anything outside the ns range as NaT. pandas 3
+    keeps such dates (a mistyped year 3034) in a coarser unit instead of
+    coercing them; pandas 2 coerced them. Either way they are 'unreadable'
+    here and the cleaner flags them."""
+    if s.dtype == 'datetime64[ns]':
+        return s
+    ok = (s >= pd.Timestamp.min) & (s <= pd.Timestamp.max)
+    return s.where(ok).astype('datetime64[ns]')
+
+
 def to_datetime_day_first(text: pd.Series) -> pd.Series:
     """pd.to_datetime(text, errors='coerce', dayfirst=True, format='mixed'),
     with the known shapes parsed by format first."""
     text = text.astype('string')
     out = pd.Series(pd.NaT, index=text.index, dtype='datetime64[ns]')
-    todo = text.notna().to_numpy(dtype=bool)
+    todo = text.notna().to_numpy(dtype=bool, copy=True)  # pandas 3 returns a read-only view
     for fmt in _KNOWN_DAY_FIRST:
         if not todo.any():
             return out
-        parsed = pd.to_datetime(text[todo], format=fmt, errors='coerce')
-        hit = parsed.notna().to_numpy(dtype=bool)
+        parsed = _ns(pd.to_datetime(text[todo], format=fmt, errors='coerce'))
+        hit = parsed.notna().to_numpy(dtype=bool, copy=True)
         if hit.any():
             pos = todo.nonzero()[0][hit]
             out.iloc[pos] = parsed.to_numpy()[hit]
             todo[pos] = False
     if not todo.any():
         return out
-    rest = pd.to_datetime(text[todo], errors='coerce', dayfirst=True, format='mixed')
+    rest = _ns(pd.to_datetime(text[todo], errors='coerce', dayfirst=True, format='mixed'))
     if rest.dtype != out.dtype:  # tz-aware or another unit: let pandas read it all, as before
         return pd.to_datetime(text, errors='coerce', dayfirst=True, format='mixed')
     out.iloc[todo.nonzero()[0]] = rest.to_numpy()
@@ -57,8 +68,8 @@ def parse_dates(values) -> pd.Series:
                        .dt.tz_convert(MARKET_TZ).dt.tz_localize(None))
     plain = iso & ~tz
     if plain.any():
-        out.loc[plain] = pd.to_datetime(text[plain].str[:10], errors='coerce', format='ISO8601')
-    rest = ~iso & text.notna() & (text != '')
+        out.loc[plain] = _ns(pd.to_datetime(text[plain].str[:10], errors='coerce', format='ISO8601')).to_numpy()
+    rest = ~iso & text.notna() & (text != '').fillna(False)
     if rest.any():
         out.loc[rest] = to_datetime_day_first(text[rest])
     return out.dt.date.where(out.notna(), None)

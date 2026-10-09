@@ -241,13 +241,14 @@ def impossible_dates(dataset: str, rows: list[dict], run_date: str) -> int:
 
 
 def canonical_frame(dataset: str, rows: list[dict]) -> tuple[pd.DataFrame | None, int]:
-    """(canonical frame as the nightly writer stores it, round trips dropped)."""
+    """(canonical frame as the nightly writer stores it, round-trip rows flagged).
+    Flagged rows stay in the frame (`intraday_round_trip`); nothing is dropped."""
     category = DATASETS[dataset]['category']
-    rows, dropped = r2_writer.drop_intraday_round_trips('nse', category, rows)
     if not rows:
-        return None, dropped
+        return None, 0
     body, _ = r2_writer.rows_to_parquet_bytes('nse', category, rows)
-    return pd.read_parquet(io.BytesIO(body)), dropped
+    frame = pd.read_parquet(io.BytesIO(body))
+    return frame, int(frame['intraday_round_trip'].sum())
 
 
 # --- R2 ---------------------------------------------------------------------

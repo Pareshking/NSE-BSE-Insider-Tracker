@@ -140,3 +140,43 @@ def test_balanced_high_volume_client_is_labelled_market_maker(master, report):
     assert out.loc[out['client_name'] == 'Fast Desk LLP', 'client_is_market_maker'].all()
     assert not out.loc[out['client_name'] == 'Patient Fund', 'client_is_market_maker'].any()
     assert report.data['tables']['deals']['market_maker_legs'] == 50
+
+
+# --- Phase 1: raw is never thinned; product window is strict --------------------
+
+def test_round_trip_rows_are_excluded_from_clean_but_counted(master, report):
+    rows = [bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0)]
+    raw = canonical('bse', 'bulk_deals', rows)
+    raw['intraday_round_trip'] = [True, True, False]
+    out = clean_deals(raw, master, report, RUN_DATE)
+    assert len(out) == 1 and out.iloc[0]['client_name'].upper().startswith('REAL')
+    assert report.data['tables']['deals']['removed']['intraday_round_trip']['count'] == 2
+
+
+def test_writer_flags_round_trips_and_keeps_every_row():
+    import sys
+    sys.path.insert(0, 'scripts')
+    import r2_writer
+    rows = [bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0)]
+    body, _ = r2_writer.rows_to_parquet_bytes('bse', 'bulk_deals', rows)
+    import io
+    df = pd.read_parquet(io.BytesIO(body))
+    assert len(df) == 3 and df['intraday_round_trip'].tolist() == [True, True, False]
+
+
+def test_product_window_boundary_is_strict():
+    from datetime import date
+
+    from insiders_clean.pipeline import apply_product_window
+    from insiders_clean.report import Report
+    t = pd.DataFrame({'deal_id': list('abcd'), 'exchange': 'nse',
+                      'date': [date(2025, 12, 31), date(2026, 1, 1), None, date(2026, 6, 1)]})
+    r = Report('2026-10-09')
+    out = apply_product_window(t, 'date', 'deals', r, 'deal_id')
+    assert out['deal_id'].tolist() == ['b', 'd']
+    rem = r.data['tables']['deals']['removed']
+    assert rem['before_product_start']['count'] == 1 and rem['no_readable_transaction_date']['count'] == 1

@@ -18,7 +18,8 @@ Steps, each counted in the cleaning report:
    so a promoter's block sale shows who bought it.
 
 Intraday round trips (same client buying and selling the same size on the
-same day) are already dropped by scripts/r2_writer.py before data reaches R2.
+same day) are flagged by scripts/r2_writer.py (`intraday_round_trip`), kept
+in the raw layer, and excluded here with a counted reason.
 """
 from __future__ import annotations
 
@@ -57,6 +58,15 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     if raw is None or raw.empty:
         return pd.DataFrame()
     t['input_rows'] += len(raw)
+    # Intraday round trips are flagged by the writer, never dropped from raw;
+    # they are excluded here, counted, and the archive keeps them.
+    if 'intraday_round_trip' in raw.columns:
+        rt = raw['intraday_round_trip'].fillna(False).astype(bool)
+        if rt.any():
+            report.removed('deals', 'intraday_round_trip', _col(raw.loc[rt], 'canonical_event_id'))
+            raw = raw.loc[~rt]
+        if raw.empty:
+            return pd.DataFrame()
     df = pd.DataFrame(index=raw.index)
     df['source_id'] = _col(raw, 'canonical_event_id')
     df['exchange'] = raw['exchange'].astype(str).str.lower()

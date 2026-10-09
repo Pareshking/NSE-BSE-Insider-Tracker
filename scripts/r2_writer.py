@@ -394,15 +394,17 @@ ROUND_TRIP_QTY_TOLERANCE = 0.01
 ROUND_TRIP_CATEGORIES = ('bulk_deals', 'block_deals')
 
 
-def drop_intraday_round_trips(exchange, category, rows):
-    """(kept_rows, dropped_count) -- both legs of any same-day, same-client,
-    same-size buy+sell in one security are removed.
+def round_trip_indices(exchange, category, rows):
+    """Indices of rows that are a leg of a same-day, same-client, same-size
+    buy+sell in one security. Nothing is removed: the raw layer keeps every
+    row and flags these (`intraday_round_trip`); the clean layer excludes
+    them with a counted reason.
 
-    Rows whose client or date cannot be read are always kept: the rule can
+    Rows whose client or date cannot be read are never flagged: the rule can
     only fire on evidence, never on a gap.
     """
     if category not in ROUND_TRIP_CATEGORIES or not rows:
-        return rows, 0
+        return set()
 
     groups = {}
     for i, row in enumerate(rows):
@@ -425,10 +427,16 @@ def drop_intraday_round_trips(exchange, category, rows):
         if abs(bought - sold) / max(bought, sold) <= ROUND_TRIP_QTY_TOLERANCE:
             drop.update(i for i, _, _ in members)
 
+    return drop
+
+
+def drop_intraday_round_trips(exchange, category, rows):
+    """Legacy (kept_rows, dropped_count) view of round_trip_indices, for
+    callers that still want the old behaviour. The pipeline no longer uses it."""
+    drop = round_trip_indices(exchange, category, rows)
     if not drop:
         return rows, 0
-    kept = [row for i, row in enumerate(rows) if i not in drop]
-    return kept, len(drop)
+    return [row for i, row in enumerate(rows) if i not in drop], len(drop)
 
 
 def find_cross_exchange_matches(category, nse_canons, bse_canons):
@@ -528,6 +536,8 @@ def rows_to_parquet_bytes(exchange, category, rows, match_annotations=None):
     df.insert(0, 'cross_exchange_possible_match_id',
               [match_annotations.get(i, {}).get('possible_duplicate_of') for i in range(len(rows))])
     df.insert(0, 'canonical_event_id', ids)
+    flagged = round_trip_indices(exchange, category, rows)
+    df.insert(1, 'intraday_round_trip', [i in flagged for i in range(len(rows))])
     df.insert(0, 'category', category)
     df.insert(0, 'exchange', exchange)
     df['ingested_at'] = datetime.now(timezone.utc).isoformat()
@@ -564,7 +574,8 @@ def write_dataset(client, exchange, category, rows, status, match_annotations=No
         # Written so a run reconciles: the validator certified
         # row_count + intraday_round_trip_rows_dropped rows, and this is
         # where the difference is accounted for rather than lost.
-        'intraday_round_trip_rows_dropped': round_trips_dropped,
+        'intraday_round_trip_rows_dropped': 0,  # nothing is dropped any more
+        'intraday_round_trip_rows_flagged': round_trips_dropped,
     }
     if status != 'VERIFIED' or not rows:
         entry['written'] = False
@@ -720,16 +731,10 @@ def main():
         nse_status = get_status('nse', nse_key, bse_key, nse_cert, bse_cert)
         bse_status = get_status('bse', nse_key, bse_key, nse_cert, bse_cert)
 
-        # Before anything else: intraday round trips are dropped here, so they
-        # are never matched, never canonicalized, never written, and never
-        # available to be counted by a downstream consumer that forgot to
-        # exclude them.
-        nse_rows, nse_round_trips = drop_intraday_round_trips('nse', category, nse_rows)
-        bse_rows, bse_round_trips = drop_intraday_round_trips('bse', category, bse_rows)
-        for ex, n in (('nse', nse_round_trips), ('bse', bse_round_trips)):
-            if n:
-                print(f'  {ex}/{category}: dropped {n} intraday round-trip row(s) '
-                      f'(same client, same day, same size both ways)')
+        # Round trips are flagged, never dropped, so the raw layer stays complete
+        # (see round_trip_indices; the flag is written by rows_to_parquet_bytes).
+        nse_round_trips = len(round_trip_indices('nse', category, nse_rows))
+        bse_round_trips = len(round_trip_indices('bse', category, bse_rows))
 
         nse_matches, bse_matches = {}, {}
         if nse_status == 'VERIFIED' and bse_status == 'VERIFIED' and nse_rows and bse_rows:
