@@ -12,8 +12,8 @@ on:
         description: 'To (YYYY-MM-DD). Blank = yesterday.'
         default: ''
       exchange:
-        description: 'NSE, BSE or NSE,BSE'
-        default: 'NSE,BSE'
+        description: 'NSE, BSE, NSE_PR (market cap) or a comma list'
+        default: 'NSE,BSE,NSE_PR'
   # Temporary: lets the working branch start the first run before this file is on main.
   push:
     branches: [ccr-27a6c75f-o9ztpa]
@@ -45,10 +45,10 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           FROM: ${{ inputs.from || '2025-01-01' }}
           TO: ${{ inputs.to }}
-          EXCHANGE: ${{ inputs.exchange || 'NSE,BSE' }}
+          EXCHANGE: ${{ inputs.exchange || 'NSE,BSE,NSE_PR' }}
         run: python scripts/price_backfill.py --from "$FROM" --to "$TO" --exchange "$EXCHANGE" | tee price_backfill.log
       - name: Summary
         if: always()
         run: |
           echo '### Price backfill (aggregate)' >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(NSE|BSE):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
+          grep -E '^(NSE|BSE|NSE_PR):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true

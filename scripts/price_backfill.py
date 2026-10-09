@@ -20,13 +20,22 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import prices  # noqa: E402
+from insiders_clean import market_cap, prices  # noqa: E402
 
 UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0 Safari/537.36'
+# name -> (raw label, url template, parser, output prefix, validator).
+# NSE_PR is NSE's PR zip: its mcap file gives shares in issue and market cap per day (point in time);
+# the zip also holds the day's corporate-action file (`bc`), kept as raw bytes for later parsing.
 SOURCES = {
-    'NSE': ('nse_udiff_cm', 'https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{ymd}_F_0000.csv.zip'),
-    'BSE': ('bse_udiff_cm', 'https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{ymd}_F_0000.CSV'),
+    'NSE': ('nse_udiff_cm', 'https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{ymd}_F_0000.csv.zip',
+            lambda b: prices.parse_udiff(b, 'NSE'), 'prices/daily/nse', prices.validate_day),
+    'BSE': ('bse_udiff_cm', 'https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{ymd}_F_0000.CSV',
+            lambda b: prices.parse_udiff(b, 'BSE'), 'prices/daily/bse', prices.validate_day),
+    'NSE_PR': ('nse_pr_zip', 'https://archives.nseindia.com/archives/equities/bhavcopy/pr/PR{dmy2}.zip',
+               market_cap.parse_mcap, 'marketcap/daily/nse', market_cap.validate),
 }
+KEYS = {'NSE': ['date', 'exchange', 'isin', 'symbol', 'series'], 'BSE': ['date', 'exchange', 'isin', 'symbol', 'series'],
+        'NSE_PR': ['date', 'symbol', 'series']}
 PAUSE = 0.6
 
 
@@ -43,7 +52,7 @@ def weekdays(start: date, end: date):
 
 
 def key(exchange: str, month: str) -> str:
-    return f'prices/daily/{exchange.lower()}/{month}.parquet'
+    return f'{SOURCES[exchange][3]}/{month}.parquet'
 
 
 def load_month(client, bucket, exchange, month):
@@ -57,8 +66,8 @@ def load_month(client, bucket, exchange, month):
 
 
 def fetch(session, store, exchange, day):
-    label, tmpl = SOURCES[exchange]
-    url = tmpl.format(ymd=f'{day:%Y%m%d}')
+    label, tmpl, parse, _, _ = SOURCES[exchange]
+    url = tmpl.format(ymd=f'{day:%Y%m%d}', dmy2=f'{day:%d%m%y}')
     r = session.get(url, timeout=45)
     if r.status_code in (403, 429):
         raise Stop(f'{exchange} {r.status_code}')
@@ -69,7 +78,7 @@ def fetch(session, store, exchange, day):
     if store is not None:
         store.put('exchange_files', label, r.content, url=url, status=200,
                   content_type=r.headers.get('Content-Type'), covers={'day': day.isoformat()})
-    return prices.parse_udiff(r.content, exchange)
+    return parse(r.content)
 
 
 def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep):
@@ -101,13 +110,13 @@ def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, 
                 continue
             t['sessions'] += 1
             t['rows'] += len(df)
-            for k, v in prices.validate_day(df).items():
-                if k != 'rows' and v:
+            for k, v in SOURCES[ex][4](df).items():
+                if k not in ('rows', 'listed') and v:
                     t['problems'][k] = t['problems'].get(k, 0) + v
             new.setdefault(month, []).append(df)
         for month, frames in new.items():
             merged = pd.concat([have[month], *frames]) if have[month] is not None else pd.concat(frames)
-            merged = merged.drop_duplicates(['date', 'exchange', 'isin', 'symbol', 'series']).sort_values(['date', 'symbol', 'series'])
+            merged = merged.drop_duplicates(KEYS[ex]).sort_values(['date', 'symbol'])
             if not dry and client is not None:
                 buf = io.BytesIO()
                 merged.to_parquet(buf, index=False)
@@ -121,7 +130,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--from', dest='start', default='2025-01-01')
     ap.add_argument('--to', dest='end', default='')
-    ap.add_argument('--exchange', default='NSE,BSE')
+    ap.add_argument('--exchange', default='NSE,BSE,NSE_PR')
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args(argv)
     start = datetime.strptime(a.start, '%Y-%m-%d').date()
