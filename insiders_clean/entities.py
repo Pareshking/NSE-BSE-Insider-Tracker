@@ -28,10 +28,19 @@ _EQUIVALENTS = [
 ]
 
 
+# A note some filers type after the name of a re-filed disclosure, e.g.
+# "Rohan Ranjeet Rajput (Revised)": not part of the name.
+_FILING_NOTE = re.compile(r'[\s\-]*[(\[]?\s*revised\s*[)\]]?\s*$', re.IGNORECASE)
+
+
+def _strip_note(name: str) -> str:
+    return _FILING_NOTE.sub('', name)
+
+
 def entity_key(name) -> str | None:
     if is_missing(name):
         return None
-    s = str(name).upper().replace('&', ' & ')
+    s = _strip_note(str(name)).upper().replace('&', ' & ')
     s = re.sub(r"[.,'()\"/\\-]", ' ', s)
     for pat, rep in _EQUIVALENTS:
         s = re.sub(pat, rep, s)
@@ -45,7 +54,7 @@ def entity_key(name) -> str | None:
 def entity_display(name) -> str | None:
     if is_missing(name):
         return None
-    s = re.sub(r'\s+', ' ', str(name)).strip()
+    s = re.sub(r'\s+', ' ', _strip_note(str(name))).strip()
     if s.upper() == s and any(ch.isalpha() for ch in s):
         s = ' '.join(_title_word(w) for w in s.split(' '))
     return s or None

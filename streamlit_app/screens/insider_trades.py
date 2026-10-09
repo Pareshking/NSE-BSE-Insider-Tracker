@@ -59,6 +59,8 @@ def render():
     if not need_data(ctx):
         return
     t = ctx.trades.copy()
+    # One row per trade: a filing on both exchanges shows once, "NSE,BSE" under Exchange.
+    t = t[t['is_primary'].astype('boolean').fillna(False)]
     t['seen'] = pd.to_datetime(t['broadcast_date'], errors='coerce')
     pure = st.toggle('Show pure open-market trades only', value=True, key='it_pure',
                      help='Leaves out ESOP allotments, gifts, inter-se transfers, schemes, preferential allotments and pledges')

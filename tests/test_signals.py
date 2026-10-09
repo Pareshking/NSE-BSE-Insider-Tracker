@@ -27,3 +27,11 @@ def test_handshake_nets_each_client_and_leaves_out_market_makers():
 def test_handshake_empty_when_nobody_is_on_both_sides():
     d = pd.DataFrame([deal('A', 'BUY', 1e7), deal('B', 'BUY', 2e7)])
     assert signals.handshakes(d, None, days=30).empty
+
+
+def test_revised_note_is_not_part_of_a_name():
+    from insiders_clean.entities import entity_display, entity_key
+    assert entity_key('Rohan Ranjeet Rajput (Revised)') == entity_key('ROHAN RANJEET RAJPUT')
+    assert entity_display('Rohan Ranjeet Rajput (Revised)') == 'Rohan Ranjeet Rajput'
+    assert entity_display('ACME HOLDINGS - REVISED') == 'Acme Holdings'
+    assert entity_key('Revised Holdings Ltd') == 'revised-holdings-limited'
