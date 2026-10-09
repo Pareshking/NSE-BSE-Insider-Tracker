@@ -15,9 +15,9 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | # | Dataset | Fields that matter | Coverage | Status |
 |---|---|---|---|---|
 | D1 | Insider trades (SEBI PIT) | person, role (19% blank), mode, side, shares, value, holding before/after, trade dates, intimation date (NSE only), broadcast time | NSE from 03 May 2026 nightly; BSE nightly (no intimation date) | In |
-| D1h | Insider trades, history | same, older names | NSE 19 Nov 2015 - 02 May 2026 | Pending (PR 2 runner ready) |
+| D1h | Insider trades, history | same, older names | NSE 08 Oct 2025 - 02 May 2026 (the one-year window) | In (backfill 08 Oct) |
 | D2 | Bulk and block deals | client, side, shares, price, date, feed | NSE + BSE, 90-day window nightly | In |
-| D2h | Bulk and block, history | same | NSE bulk 2004-, block Nov 2005- | Pending (PR 2) |
+| D2h | Bulk and block, history | same | NSE from 08 Oct 2025; nightly now reads the uncapped CSV | In (backfill 08 Oct, redone 09 Oct) |
 | D3 | SAST Reg 29 | acquirer, promoter flag, 29(1)/29(2), action, mode, shares and % acquired/sold, stake after | NSE, from 07 Oct 2026 (10-day windows) | In |
 | D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In (buyback price and route missing) |
 | D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead | In |
@@ -26,7 +26,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D8 | Rights issues | in-principle: board date, amount, consideration; listing stage | as D7 | Raw (TODO 11) |
 | D9 | Market cap | per symbol, daily | NSE PR file + BSE list | In |
 | D10 | Securities | ISIN, NSE symbol, BSE code, name, sector, industry, size bucket | NSE/BSE lists nightly + VR export | In |
-| D11 | Prices | adjusted daily close and volume | Paresh R2, NSE since 2010 | Pending (TODO 6; needs a read-only R2 token) |
+| D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In; not yet shown on pages (TODO G) |
 | D12 | Trading calendar | NSE sessions, special sessions | from 30 Sep 2024, extends nightly | In |
 | D13 | Measured outcomes | returns after each signal from broadcast time, after costs, with case counts | from D1h + D2h + D11 | Pending (TODO 7) |
 | D14 | Named-investor aliases | curated list mapping spellings of known investors and funds to one name | — | Pending (to add to TODO) |

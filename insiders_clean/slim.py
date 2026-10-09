@@ -1,7 +1,7 @@
 """Slim, precomputed summaries for the app (batch job only; the Streamlit pages never touch the full price table).
 
 `prices_summary_slim`: one row per ISIN with the adjusted latest close, 52-week high / low, calendar returns and a
-market-cap bucket. `ledger marks` are `ledger.mark` run once in the batch. Prices are adjusted for splits and bonuses only.
+market-cap bucket. Prices are adjusted for splits and bonuses only.
 
 Market-cap bucket is ESTIMATED: rank of NSE market cap on the latest stored day (top 100 Large, 101-250 Mid, 251-500
 Small, the rest Micro). It follows the AMFI/Nifty rank cut-offs but is computed from NSE's file, not AMFI's list.
@@ -10,11 +10,21 @@ from __future__ import annotations
 
 import pandas as pd
 
-from . import adjust, evaluate as ev
+from . import adjust
 
 BUCKETS = ('Large', 'Mid', 'Small', 'Micro')
 COLUMNS = ['isin', 'symbol', 'name', 'exchange', 'last_date', 'latest_close', 'high_52w', 'low_52w', 'pct_off_high',
            'ret_90d', 'ret_180d', 'last_split_date', 'last_split_factor', 'n_splits', 'market_cap', 'mcap_rank', 'mcap_bucket']
+
+
+def price_panel(prices: pd.DataFrame, field: str) -> pd.DataFrame:
+    """date x ISIN panel of `field`, NSE preferred, BSE filling the gaps."""
+    p = prices.dropna(subset=['isin', field])
+    p = p[p['isin'] != '']
+    p = p.assign(_rank=(p['exchange'] != 'NSE').astype(int)).sort_values(['isin', 'date', '_rank', 'value'],
+                                                                         ascending=[True, True, True, False])
+    p = p.drop_duplicates(['isin', 'date'])
+    return p.pivot(index='date', columns='isin', values=field).sort_index()
 
 
 def adjusted_panels(px: pd.DataFrame):
@@ -25,7 +35,7 @@ def adjusted_panels(px: pd.DataFrame):
     ratio = (px['adj_close'] / px['close']).where(px['close'] > 0)
     px['open'] = px['open'] * ratio
     px['close'] = px['adj_close']
-    return ev.price_panel(px, 'close'), ev.price_panel(px, 'open'), f
+    return price_panel(px, 'close'), price_panel(px, 'open'), f
 
 
 def bucket(rank: float) -> str | None:

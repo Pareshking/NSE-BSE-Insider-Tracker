@@ -257,29 +257,30 @@ def handshakes(deals: pd.DataFrame, trades: pd.DataFrame | None = None, days: in
     if trades is not None and not trades.empty:
         p = trades[trades['person_role'].isin(PROMOTER_ROLES)]
         promoters = set(zip(p['isin'], p['person_id']))
-    rows = []
-    for (_sec, day), g in d.groupby(['_sec', 'date']):
-        # Net each client first: one who bought and sold that day is a net
-        # seller or a net buyer, never on both sides of the same handshake.
-        g = g.assign(_signed=pd.to_numeric(g['signed_value'], errors='coerce'),
-                     _spct=pd.to_numeric(g['pct_of_mcap'], errors='coerce') * g['side'].map({'BUY': 1, 'SELL': -1}))
-        net = g.groupby(['client_id', 'client_name'], as_index=False).agg(v=('_signed', 'sum'), p=('_spct', 'sum'))
-        sell, buy = net[net['v'] < 0], net[net['v'] > 0]
-        if sell.empty or buy.empty:
-            continue
-        sv, bv = -sell['v'].sum(), buy['v'].sum()
-        isin = g['isin'].iloc[0]
-        rows.append({
-            'date': day, 'isin': isin, 'company': g['company'].iloc[0], 'nse_symbol': g['nse_symbol'].iloc[0],
-            'sellers': '; '.join(sell.sort_values('v')['client_name'].astype(str)),
-            'buyers': '; '.join(buy.sort_values('v', ascending=False)['client_name'].astype(str)),
-            'seller_is_promoter': any((isin, c) in promoters for c in sell['client_id']),
-            'matched_value': min(sv, bv),
-            'pct_of_mcap_sold': -sell['p'].sum(),
-            'market_cap': g['market_cap'].iloc[0]})
-    out = pd.DataFrame(rows)
-    if out.empty:
-        return out
+    # Net each client first: one who bought and sold that day is a net seller
+    # or a net buyer, never on both sides of the same handshake.
+    d['_signed'] = pd.to_numeric(d['signed_value'], errors='coerce')
+    d['_spct'] = pd.to_numeric(d['pct_of_mcap'], errors='coerce') * d['side'].map({'BUY': 1, 'SELL': -1})
+    keys = ['_sec', 'date']
+    net = d.groupby(keys + ['client_id', 'client_name'], as_index=False, dropna=False).agg(
+        v=('_signed', 'sum'), p=('_spct', 'sum'))
+    join = lambda x: '; '.join(x.astype(str))  # noqa: E731
+    sell = net[net['v'] < 0].sort_values('v').groupby(keys).agg(
+        sellers=('client_name', join), sv=('v', 'sum'), sp=('p', 'sum'), seller_ids=('client_id', list))
+    buy = net[net['v'] > 0].sort_values('v', ascending=False).groupby(keys).agg(
+        buyers=('client_name', join), bv=('v', 'sum'))
+    m = sell.join(buy, how='inner')
+    if m.empty:
+        return pd.DataFrame()
+    first = d.groupby(keys).agg(isin=('isin', 'first'), company=('company', 'first'),
+                                nse_symbol=('nse_symbol', 'first'), market_cap=('market_cap', 'first'))
+    m = m.join(first).reset_index()
+    out = pd.DataFrame({
+        'date': m['date'], 'isin': m['isin'], 'company': m['company'], 'nse_symbol': m['nse_symbol'],
+        'sellers': m['sellers'], 'buyers': m['buyers'],
+        'seller_is_promoter': [any((i, c) in promoters for c in ids) for i, ids in zip(m['isin'], m['seller_ids'])],
+        'matched_value': [min(-a, b) for a, b in zip(m['sv'], m['bv'])],
+        'pct_of_mcap_sold': -m['sp'], 'market_cap': m['market_cap']})
     out['large'] = (out['matched_value'] >= LARGE_HANDSHAKE_VALUE) | (out['pct_of_mcap_sold'] >= LARGE_HANDSHAKE_PCT)
     return out.sort_values(['date', 'matched_value'], ascending=False).reset_index(drop=True)
 

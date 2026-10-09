@@ -1,7 +1,7 @@
 """Daily prices from the exchanges' UDiFF bhavcopy files (NSE and BSE share one layout).
 
-VERIFIED (probe 09 Oct 2026, docs/DECISIONS.md): both exchanges serve the same 34-column CSV
-for 2025-01-15 and 2026-10-08. Prices here are as printed on the day: never adjusted.
+Checked against real files on 09 Oct 2026: both exchanges serve the same 34-column CSV for 2025-01-15 and
+2026-10-08. Prices here are as printed on the day: never adjusted.
 """
 from __future__ import annotations
 

@@ -46,6 +46,14 @@ def table(name: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+def prices() -> pd.DataFrame:
+    """One row per ISIN: latest close, 52-week high/low (split and bonus
+    adjusted), rewritten after each nightly run by scripts/precompute_slim.py."""
+    body = _read('artifacts/prices_summary_slim.parquet')
+    return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
 def latest() -> dict:
     body = _read('clean/latest.json')
     return json.loads(body) if body else {}

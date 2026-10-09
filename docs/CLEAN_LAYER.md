@@ -8,8 +8,7 @@ says where they live, what each rule does, and how storage is kept small.
 1. Collect and validate NSE + BSE (unchanged).
 1b. Every collector saves each response's exact bytes locally at fetch time
    (`scripts/raw_capture.py`); `scripts/raw_flush.py` then stores them in the
-   write-once `raw_v2/` layer (see "Raw layer"). Not yet exercised in
-   production (09 Oct 2026): the nightly runs from `main`, where this is not merged.
+   write-once `raw_v2/` layer (see "Raw layer").
 2. `scripts/r2_writer.py` writes `raw/` and `canonical/` for today. Intraday
    round-trip deal legs are flagged (`intraday_round_trip`), no longer dropped.
 3. `scripts/update_calendar.py` extends the NSE trading calendar.
@@ -70,9 +69,10 @@ nightly the flush step goes red.
 
 ## Product window
 
-The product holds transactions dated on or after 1 Jan 2026
-(`insiders_clean.pipeline.PRODUCT_START`). Earlier filings (the archive holds
-8 Oct to 31 Dec 2025) stay in the archive for offline research only. The clean
+The product holds transactions dated on or after 8 Oct 2025: the last one
+year as of 08 Oct 2026, growing daily from there
+(`insiders_clean.pipeline.PRODUCT_START`; owner, 08 Oct, confirmed 09 Oct).
+Anything older stays in the archive and never reaches a clean table. The clean
 step removes them with counted reasons `before_product_start` and
 `no_readable_transaction_date` (insider ranges use their last day). Reversible:
 change the constant and rerun the clean step.

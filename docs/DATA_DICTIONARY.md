@@ -125,6 +125,21 @@ NSE's daily `mcap` file from the PR zip. One row per date, symbol, series. Raw: 
 | `face_value`, `issue_size` | Face value and shares in issue on that day |
 | `close`, `market_cap` | Close in rupees; market cap = issue size x close (31 and 12 rows on the two sample days differ and are kept) |
 
+## Price summary (derived, `artifacts/prices_summary_slim.parquet`)
+
+One row per ISIN, rewritten after each nightly run by `scripts/precompute_slim.py`
+(workflow "Precompute slim assets"), so the site never loads the full price table.
+Prices adjusted for splits and bonuses only.
+
+| Column | Meaning |
+|---|---|
+| `isin`, `symbol`, `name`, `exchange` | Latest identity; NSE preferred, BSE fills the gaps |
+| `last_date`, `latest_close` | Last session with a print and its adjusted close |
+| `high_52w`, `low_52w`, `pct_off_high` | Range over the 365 days to the last stored session; `pct_off_high` = close / high - 1 |
+| `ret_90d`, `ret_180d` | Price change over 90 and 180 calendar days |
+| `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses seen in the price table |
+| `market_cap`, `mcap_rank`, `mcap_bucket` | NSE market cap on the last stored day; bucket by rank (1-100 Large, 101-250 Mid, 251-500 Small, rest Micro), computed by us, not AMFI's list. BSE-only names have none |
+
 ## Adjustment factors (computed, not stored yet)
 
 `insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `structural`, `minor`, `none` or `unknown`. Adjusted price at T uses only factors dated up to T.

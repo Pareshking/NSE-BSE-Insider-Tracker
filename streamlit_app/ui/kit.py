@@ -25,6 +25,14 @@ def _finite(v) -> float | None:
     return f if math.isfinite(f) else None
 
 
+def styled(df: pd.DataFrame, formats: dict[str, str]):
+    """A table whose missing numbers show blank, not Streamlit's "None".
+    `formats` maps each numeric column shown to a str.format pattern; with a
+    Styler, Streamlit uses these and ignores column_config number formats.
+    Values stay numeric, so columns still sort as numbers."""
+    return df.style.format({c: f for c, f in formats.items() if c in df.columns}, na_rep='')
+
+
 def rupees(v, signed: bool = False) -> str:
     """Indian units: Rs. L under one crore, Rs. Cr above. Em dash when unknown."""
     f = _finite(v)

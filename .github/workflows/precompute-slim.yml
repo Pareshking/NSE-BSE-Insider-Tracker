@@ -1,11 +1,11 @@
 name: Precompute slim assets
 
-# Writes artifacts/prices_summary_slim.parquet and ledger/ledger_marks.parquet (derived, rewritten each run). Runs after the ledger update that follows the nightly run, or on dispatch; aggregate output only.
+# Writes artifacts/prices_summary_slim.parquet (derived, rewritten each run). Runs after the nightly run, or on dispatch.
 on:
   workflow_dispatch:
-  # After the ledger update that follows the nightly run (chain: R2 Storage Write -> Forward ledger update -> this).
+  # After the nightly run on main.
   workflow_run:
-    workflows: ["Forward ledger update"]
+    workflows: ["R2 Storage Write (NSE + BSE)"]
     types: [completed]
 
 permissions:

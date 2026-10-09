@@ -24,9 +24,9 @@ PRESETS = {
     'High pledge': 'High pledge',
 }
 PENDING = {
-    'Breakout buyers (near 52W high)': 'needs the price join (docs/TODO.md #6)',
-    'Turnaround accumulation': 'needs the price join (docs/TODO.md #6)',
-    'Promoter warrants at premium': 'needs preferential issues cleaned and prices (TODO #6, #11)',
+    'Breakout buyers (near 52W high)': 'needs the price join (docs/TODO.md G)',
+    'Turnaround accumulation': 'needs the price join (docs/TODO.md G)',
+    'Promoter warrants at premium': 'needs preferential issues cleaned and prices (TODO G, H)',
 }
 
 
@@ -72,10 +72,12 @@ def render():
         float_pct=pd.to_numeric(pd.Series([signals.float_pct(n, m, pub.get(i)) for n, m, i in zip(net, mcap, rows['isin'])],
                                           index=rows.index, dtype=object), errors='coerce'),
         who=rows['isin'].map(details),
-        cmp_vs_high=None)
+        cmp_vs_high=pd.to_numeric(rows['isin'].map(ctx.prices.drop_duplicates('isin').set_index('isin')['pct_off_high'])
+                                  if not ctx.prices.empty else pd.Series(index=rows.index, dtype=float), errors='coerce') * 100)
     with kit.card(f'{len(rows)} companies', 'screener', f'90 days to {kit.day(ctx.ref)}'):
-        st.dataframe(show[['link', 'company', 'cap_sector', 'signals', 'net_cr', 'float_pct', 'promoter_net_pct',
-                           'who', 'cmp_vs_high']],
+        cols = ['link', 'company', 'cap_sector', 'signals', 'net_cr', 'float_pct', 'promoter_net_pct', 'who', 'cmp_vs_high']
+        st.dataframe(kit.styled(show[cols], {'net_cr': '{:+,.2f}', 'float_pct': '{:.2f}%', 'promoter_net_pct': '{:+.3f}%',
+                                             'cmp_vs_high': '{:+.1f}%'}),
                      hide_index=True, width='stretch', height=620, column_config={
                          'link': st.column_config.LinkColumn('', display_text='Open', width='small', pinned=True),
                          'company': st.column_config.TextColumn('Company', pinned=True),
@@ -87,6 +89,8 @@ def render():
                                                                     help='Net buy / (market cap x public holding %)'),
                          'promoter_net_pct': st.column_config.NumberColumn('% of mcap', format='%+.3f%%'),
                          'who': 'Insider details',
-                         'cmp_vs_high': st.column_config.TextColumn('CMP vs 52W high', help='Arrives with the price join')})
-        kit.caption('% of float is blank where the shareholding pattern is not loaded yet. CMP vs 52W high arrives with the '
-                    'price join. How each badge performed afterwards will be on Track record once measured.')
+                         'cmp_vs_high': st.column_config.NumberColumn(
+                             'CMP vs 52W high', help='Latest close against the highest close of the last 52 weeks, '
+                                                     'adjusted for splits and bonuses')})
+        kit.caption('% of float is blank where the shareholding pattern is not loaded yet; CMP vs 52W high is blank where '
+                    'the stock has no price in our NSE/BSE price files. How each badge performed afterwards will be on Track record once measured.')
