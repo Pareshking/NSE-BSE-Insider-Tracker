@@ -75,7 +75,7 @@ def render():
         kit.Tile('Promoter net, 12 months', kit.rupees(prom['signed_value'].sum(), signed=True),
                  f'{kit.pct(signed.sum(), 3, signed=True)} of market cap, open market only',
                  'up' if prom['signed_value'].sum() > 0 else 'down' if prom['signed_value'].sum() < 0 else ''),
-        kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), f'{off["person_id"].nunique()} people'),
+        kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), kit.plural(off['person_id'].nunique(), 'person', 'people')),
         kit.Tile('Deals net, 12 months', kit.rupees(d['signed_value'].sum() if not d.empty else None, signed=True),
                  'bulk/block, market makers excluded'),
         kit.Tile('Promoter holding · pledge',
@@ -124,7 +124,8 @@ def render():
     cmp_now = pr['latest_close'] if pr is not None else None
     show_all = st.toggle('Include ESOPs, gifts, transfers and pledges', value=False, key='co_tl_all')
     events = []
-    for r in t.assign(seen=pd.to_datetime(t['broadcast_date'], errors='coerce')).to_dict('records'):
+    tp = t[t['is_primary'].astype('boolean').fillna(False)]  # one event per trade, not one per exchange copy
+    for r in tp.assign(seen=pd.to_datetime(tp['broadcast_date'], errors='coerce')).to_dict('records'):
         market = bool(r.get('is_market'))
         if not market and not show_all:
             continue

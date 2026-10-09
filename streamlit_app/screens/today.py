@@ -164,12 +164,12 @@ def render():
         best = kit.Tile('Highest-conviction buy today', '—', 'No buy crossed the spotlight line today')
     kit.tiles([
         kit.Tile('Net open-market promoter flow', kit.rupees(net, signed=True),
-                 f'{prom["isin"].nunique() if not prom.empty else 0} companies, filed {kit.day(day)}',
+                 f'{kit.plural(prom["isin"].nunique() if not prom.empty else 0, "company", "companies")} · filed {kit.day(day)}',
                  'up' if net > 0 else 'down' if net < 0 else ''),
         best,
         kit.Tile('Cluster formations', kit.count(len(clus_today)), '2+ insiders buying within 30 days, crossed today'),
         kit.Tile('Institutional handshakes', kit.rupees(hs['matched_value'].sum() if not hs.empty else None),
-                 f'{len(hs)} buyer-seller matches on {kit.day(hs_day)}, market makers excluded' if hs_day is not None
+                 f'{kit.plural(len(hs), "buyer-seller match", "buyer-seller matches")} on {kit.day(hs_day)} · market makers excluded' if hs_day is not None
                  else 'No matched deals'),
     ])
 

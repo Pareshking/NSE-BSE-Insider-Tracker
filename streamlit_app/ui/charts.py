@@ -42,7 +42,7 @@ def price_with_trades(dates, closes, trades: pd.DataFrame, days: int = 365) -> a
                 shape=alt.Shape('what:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=['triangle-up', 'triangle-down']),
                                 legend=alt.Legend(title=None, orient='top-left', labelColor=INK3)),
                 color=alt.Color('what:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=[BUY, SELL]), legend=None),
-                size=alt.Size('value_cr:Q', scale=alt.Scale(range=[50, 420]), legend=None),
+                size=alt.Size('value_cr:Q', scale=alt.Scale(range=[110, 520]), legend=None),
                 tooltip=[alt.Tooltip('seen:T', title='Made public', format='%d %b %Y'),
                          alt.Tooltip('person_name:N', title='Who'), alt.Tooltip('role:N', title='Role'),
                          alt.Tooltip('what:N', title='Trade'), alt.Tooltip('value_cr:Q', title='₹ Cr', format=',.2f'),

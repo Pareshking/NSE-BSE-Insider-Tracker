@@ -223,3 +223,9 @@ def bar_list(items: list[tuple[str, float, str]], unit: str = '') -> str:
         f'<div class="bl-r"><span class="bl-l">{esc(label)}</span><span class="bl-t"><i class="{tone}" '
         f'style="width:{abs(v) / top * 100:.1f}%"></i></span><span class="bl-v">{indian(v)}{esc(unit)}</span></div>'
         for label, v, tone in sorted(items, key=lambda x: -abs(x[1]))) + '</div>'
+
+
+def plural(n, one: str, many: str = '') -> str:
+    """'1 company', '3 companies'."""
+    n = int(n or 0)
+    return f'{indian(n)} {one if n == 1 else (many or one + "s")}'
