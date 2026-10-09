@@ -245,3 +245,11 @@ def deal_alignment(deals: pd.DataFrame, camps: pd.DataFrame, asof) -> pd.DataFra
     g = ev.groupby('isin').agg(deal_net=('net_value', 'sum'), deal_days=('broadcast_date', 'nunique')).reset_index()
     g['deal_coincides'] = g['deal_net'] > 0
     return g[cols]
+
+
+def accumulation_tags(trades: pd.DataFrame, asof, min_net: float = 25 * LAKH) -> dict[str, tuple[float, bool]]:
+    """ISIN -> (promoter net value over 180 days, active campaign) for securities netting at least `min_net`."""
+    acc = promoter_absorption(trades, asof, min_value=1)
+    acc = acc[acc['net_180d'] >= min_net]
+    camps = active_campaigns(trades, asof).set_index('isin')['active'] if len(acc) else pd.Series(dtype=bool)
+    return {r.isin: (float(r.net_180d), bool(camps.get(r.isin, False))) for r in acc.itertuples()}

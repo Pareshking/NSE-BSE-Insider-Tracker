@@ -5,7 +5,7 @@ Basis: `main` at 97b2f58 (PR #14) against `feat/phase3-ui-shell` (PR #15). Owner
 ## 1. What changes on the live app
 | Area | `main` today | After merge |
 |---|---|---|
-| Navigation | 7 flat top-bar pages | 13 pages in three groups (Executive Conviction, Exploration & Screeners, Operations & Audit). VERIFIED in `app.py` |
+| Navigation | 7 flat top-bar pages | 13 pages in three groups (Daily, Explore, Research & Data) with plain names; see `docs/DECISIONS.md` for the old-to-new name map. VERIFIED in `app.py` |
 | Legacy pages | Overview, Confluence Screener, Entity Tracker, Evidence & Drill-down, Promoter Activity, Bulk & Block Concentration, Data Quality | All kept. Logic untouched except: Promoter Activity and Bulk & Block default window 30D -> 90D (options stay 7D/30D/90D); Confluence caption no longer says "informed entities"; Overview and Evidence gain dense trade tables, accumulation badges and the watchlist toggle |
 | New pages | none | Promoter Screener, Company Deep Dive, Forward Ledger, Risk & Caution Flags, Signal Evidence, Data Health & Lineage |
 | Look | IBM Plex, blue accent | Geist, indigo "Clear Ledger" palette, tighter gutters (`.streamlit/config.toml`, `lib/style.py`). Colors and fonts only |

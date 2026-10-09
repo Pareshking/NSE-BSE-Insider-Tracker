@@ -13,7 +13,7 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import confluence, fields, r2_data, style
 
-st.markdown("### Entity Tracker")
+st.markdown("### Person & fund search")
 st.caption("Search a promoter, insider, or institutional client name to see everything they did across insider trading and bulk/block deals this window.")
 
 client, dates = r2_data.page_gate()

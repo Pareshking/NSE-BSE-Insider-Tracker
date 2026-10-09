@@ -113,8 +113,8 @@ def test_screener_filters_and_lists_the_company():
 
 def test_screener_without_slim_artifact_degrades():
     app = run("1_Promoter_Screener", objects(with_slim=False))
-    assert not app.exception and any("price summary has not been written" in w.value for w in app.warning)
-    assert len(app.dataframe) == 1
+    assert not app.exception and len(app.dataframe) == 1
+    assert app.dataframe[0].value["M-Cap"].iloc[0] == "n/a"
 
 
 def test_ledger_reads_precomputed_marks_and_never_loads_prices():
@@ -149,7 +149,9 @@ def test_ledger_toggle_switches_between_series():
 def test_screener_shows_deal_alignment_and_filings_table():
     app = run("1_Promoter_Screener", objects())
     cols = list(app.dataframe[0].value.columns)
-    assert "Deals align" in cols and "Bulk/block in campaign (₹ Cr)" in cols and "Campaign" in cols
+    assert {"Symbol", "Company", "M-Cap", "90D net (₹ Cr)", "180D net (₹ Cr)", "% equity absorbed", "Active campaign", "52W drawdown %", "Action"} <= set(cols)
+    assert "Deals" in cols and app.dataframe[0].value["Action"].iloc[0].startswith("/deep-dive?isin=")
+    assert len(app.markdown) and not any("Insider buys" in str(m.value) for m in app.info)       # no prose banner above the table
 
 
 def test_evidence_page_states_verdict_and_net_of_cost():
@@ -165,7 +167,8 @@ def test_evidence_page_states_verdict_and_net_of_cost():
 def test_screener_watchlist_toggle_limits_results():
     app = run("1_Promoter_Screener", objects())
     app.text_area[0].set_value("ZZZZ").run()
-    app.checkbox[-2].check().run()                     # "Show my watchlist only" (last checkbox is the purity check's neighbour)
-    assert not app.exception
+    wl = [c for c in app.checkbox if c.label == "My watchlist only"][0]
+    wl.check().run()
+    assert not app.exception and len(app.dataframe) == 0
     app.text_area[0].set_value("ABC").run()
     assert not app.exception and len(app.dataframe) == 1

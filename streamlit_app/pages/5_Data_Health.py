@@ -10,7 +10,7 @@ from lib import clean_data, r2_data, style  # noqa: E402
 from insiders_clean import product_views as pv  # noqa: E402
 
 style.inject_base_css()
-st.title("Data health")
+style.head("Data status", "Freshness, raw capture, exclusions and unmapped entities")
 client = clean_data.gate()
 with r2_data.guard("data freshness"):
     trades, deals = clean_data.clean_table(client, 'insider_trades'), clean_data.clean_table(client, 'deals')

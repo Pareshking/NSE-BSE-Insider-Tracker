@@ -19,8 +19,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import fields, r2_data, style
 
-st.markdown("### Promoter Activity")
-st.caption("Net position rollups -- not a raw trade list. See Evidence & Drill-down for individual transactions.")
+st.markdown("### Promoter trades")
+st.caption("Net position rollups -- not a raw trade list. See All Filings for individual transactions.")
 
 client, dates = r2_data.page_gate()
 

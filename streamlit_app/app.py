@@ -33,24 +33,24 @@ style.top_brand_bar(
 # Top nav bar, not a sidebar (mobile). Pages are grouped into three sections, which the top bar shows as menus.
 pg = st.navigation(
     {
-        "Executive Conviction": [
-            st.Page("views/overview.py", title="Overview", icon="\U0001f3e0", default=True),
+        "Daily": [
+            st.Page("views/overview.py", title="Latest Filings", icon="\U0001f3e0", default=True),
             st.Page("pages/1_Promoter_Screener.py", title="Promoter Screener", icon="\U0001f4cc"),
-            st.Page("pages/2_Company_Deep_Dive.py", title="Company Deep Dive", icon="\U0001f50d"),
-            st.Page("pages/4_Forward_Ledger.py", title="Forward Ledger", icon="\U0001f4d2"),
-            st.Page("pages/3_Risk_Flags.py", title="Risk & Caution Flags", icon="⚠️"),
-            st.Page("pages/6_Signal_Evidence.py", title="Signal Evidence", icon="\U0001f9ea"),
+            st.Page("pages/2_Company_Deep_Dive.py", title="Company Page", icon="\U0001f50d", url_path="deep-dive"),
+            st.Page("pages/3_Risk_Flags.py", title="Promoter Selling", icon="⚠️"),
         ],
-        "Exploration & Screeners": [
-            st.Page("views/confluence_screener.py", title="Confluence Screener", icon="\U0001f9ed"),
-            st.Page("views/entity_tracker.py", title="Entity Tracker", icon="\U0001f464"),
-            st.Page("views/bulk_block_concentration.py", title="Bulk & Block Concentration", icon="\U0001f4ca"),
-            st.Page("views/promoter_activity.py", title="Promoter Activity", icon="\U0001f4c8"),
-            st.Page("views/transactions.py", title="Evidence & Drill-down", icon="\U0001f50e"),
+        "Explore": [
+            st.Page("views/promoter_activity.py", title="Promoter Trades", icon="\U0001f4c8"),
+            st.Page("views/bulk_block_concentration.py", title="Bulk & Block Deals", icon="\U0001f4ca"),
+            st.Page("views/confluence_screener.py", title="Overlapping Activity", icon="\U0001f9ed"),
+            st.Page("views/entity_tracker.py", title="Person & Fund Search", icon="\U0001f464"),
+            st.Page("views/transactions.py", title="All Filings", icon="\U0001f50e"),
         ],
-        "Operations & Audit": [
-            st.Page("pages/5_Data_Health.py", title="Data Health & Lineage", icon="\U0001fa7a"),
-            st.Page("views/data_quality.py", title="Data Quality", icon="✅"),
+        "Research & Data": [
+            st.Page("pages/6_Signal_Evidence.py", title="Research Findings", icon="\U0001f9ea"),
+            st.Page("pages/4_Forward_Ledger.py", title="Tracked Signals", icon="\U0001f4d2"),
+            st.Page("pages/5_Data_Health.py", title="Data Status", icon="\U0001fa7a"),
+            st.Page("views/data_quality.py", title="Run Checks", icon="✅"),
         ],
     },
     position="top",

@@ -9,7 +9,7 @@ from lib import r2_data, style
 
 style.inject_base_css()
 
-st.title("Data Quality")
+st.title("Run checks")
 st.caption("First-class audit surface — never inferred from workflow success.")
 
 client, dates = r2_data.page_gate()
@@ -105,9 +105,9 @@ with left:
         "- Cross-exchange same-event matching is **flag-only** — never merges NSE and BSE rows into one combined truth\n"
         "- NSE endpoints Akamai-rate-limit under rapid re-testing — a `RATE-LIMITED`/`BLOCKED` status here reflects that, not a code failure\n"
         "- ISIN resolution depends on the security-master snapshot's coverage — a genuinely absent ISIN is reported as such, not guessed\n"
-        "- Confluence Screener classifications (Insider Alpha, Certification, etc.) are a **same-90-day-window heuristic**, not a statistical test — "
+        "- Overlapping Activity classifications (Insider Alpha, Certification, etc.) are a **same-90-day-window heuristic**, not a statistical test — "
         "they flag *what* overlapped, not a probability the overlap is meaningful, and carry no price history to confirm it\n"
-        "- Confluence Screener's Float Absorption Ratio needs market cap for a name — where it's missing, that company sorts by raw value instead, "
+        "- Overlapping Activity's Float Absorption Ratio needs market cap for a name — where it's missing, that company sorts by raw value instead, "
         "never silently dropped\n"
         "- Source dates arrive in three conventions (NSE ISO `2026-08-28`, NSE IST-midnight-as-UTC `…T18:30:00Z`, BSE `31/08/2026`); "
         "`lib/fields.parse_dates` picks per value, and anything it can't place is shown as filed rather than guessed at\n"

@@ -139,6 +139,31 @@ h2, h3 {{ letter-spacing: -0.02em; }}
 .pill-sell {{ background: {COLORS['red_bg']}; color: {COLORS['red']}; }}
 .pill-tag {{ background: {COLORS['bg_sub']}; color: {COLORS['text_2']}; border: 1px solid {COLORS['border']}; }}
 .pill-prom {{ background: {COLORS['blue_bg']}; color: #4338CA; }}
+.scr-head {{ margin: 0 0 6px 0; }}
+.scr-head h1 {{ margin: 0 !important; padding: 0 !important; font-size: 1.35rem !important; }}
+.scr-head p {{ margin: 2px 0 0 0; font-size: 12.5px; color: {COLORS['text_3']}; }}
+.mkt-strip {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); background: {COLORS['bg']};
+    border: 1px solid {COLORS['border']}; border-radius: 12px; overflow: hidden; margin: 4px 0 10px 0; }}
+.ms-tile {{ display: flex; flex-direction: column; gap: 2px; padding: 9px 14px; border-right: 1px solid {COLORS['border']}; min-width: 0; }}
+.ms-tile:last-child {{ border-right: 0; }}
+.ms-k {{ font-size: 11px; font-weight: 600; color: {COLORS['text_3']}; text-transform: uppercase; letter-spacing: .03em; }}
+.ms-v {{ font-size: 20px; font-weight: 700; line-height: 1.15; color: {COLORS['text']}; font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.ms-s {{ font-size: 11.5px; color: {COLORS['text_2']}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.mkt-strip .up {{ color: {COLORS['green']}; }} .mkt-strip .down {{ color: {COLORS['red']}; }}
+/* Toolbars (containers keyed tb_*): on a phone their controls sit two per row instead of one per row. */
+@media (max-width: 640px) {{
+    [class*="st-key-tb_"] [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap !important; gap: .4rem !important; }}
+    [class*="st-key-tb_"] [data-testid="stColumn"], [class*="st-key-tb_"] [data-testid="column"] {{
+        min-width: calc(50% - .4rem) !important; flex: 1 1 calc(50% - .4rem) !important; }}
+    [class*="st-key-tb_"] [data-testid="stColumn"].tb-wide, .st-key-tb_scr [data-testid="stColumn"]:nth-child(3) {{ flex-basis: 100% !important; }}
+    .scr-head p {{ display: none; }}
+}}
+@media (max-width: 640px) {{
+    .mkt-strip {{ grid-template-columns: 1fr 1fr; }}
+    .ms-tile {{ border-bottom: 1px solid {COLORS['border']}; }}
+    .ms-v {{ font-size: 17px; }}
+}}
 .evt-table td.num, .evt-table th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
 .evt-table.dense td {{ padding: 5px 8px; }}
 .evt-table.dense th {{ padding: 6px 8px; }}
@@ -237,12 +262,7 @@ def download_csv(df: "pd.DataFrame", filename: str, *, label: str = "Download CS
     )
 
 
-DISCLAIMER = (
-    "Public NSE/BSE disclosures, republished for research. Not investment advice, "
-    "not a recommendation, and no relationship with either exchange or SEBI. Figures are "
-    "as filed by the issuer and can be revised or withdrawn at source -- verify against the "
-    "exchange's own filing before acting on anything here."
-)
+DISCLAIMER = "Public NSE/BSE disclosures, republished for research; not investment advice. Verify against the exchange's own filing."
 
 
 def disclaimer_footer():
@@ -250,8 +270,8 @@ def disclaimer_footer():
     activity invites being read as a buy/sell signal; saying plainly that it
     isn't belongs on the screen, not only in the README."""
     st.markdown(
-        f'<div style="margin-top:28px;padding-top:10px;border-top:1px solid {COLORS["border"]};'
-        f'font-size:10.5px;color:{COLORS["text_3"]};line-height:1.5;">{DISCLAIMER}</div>',
+        f'<div style="margin-top:20px;padding-top:8px;border-top:1px solid {COLORS["border"]};'
+        f'font-size:10.5px;color:{COLORS["text_3"]};line-height:1.4;">{DISCLAIMER}</div>',
         unsafe_allow_html=True,
     )
 
@@ -389,3 +409,23 @@ def paginate(df: "pd.DataFrame", key: str, page_size: int = 50) -> tuple["pd.Dat
     c2.caption(f"Page {page} of {pages} · rows {(page - 1) * page_size + 1:,}-{min(page * page_size, n):,} of {n:,}")
     start = (int(page) - 1) * page_size
     return df.iloc[start:start + page_size], start
+
+
+def head(title: str, sub: str = "") -> None:
+    """Compact page header: a title and at most one short line."""
+    st.markdown(f'<div class="scr-head"><h1>{title}</h1>' + (f"<p>{sub}</p>" if sub else "") + "</div>", unsafe_allow_html=True)
+
+
+def readings(tiles: list[tuple]) -> None:
+    """KPI strip. Each tile is (label, value, note, tone) with tone '', 'up' or 'down'; note and tone are optional."""
+    cells = ""
+    for t in tiles:
+        label, value, note, tone = (list(t) + ["", ""])[:4]
+        cells += (f'<div class="ms-tile"><span class="ms-k">{label}</span><span class="ms-v {tone}">{value}</span>'
+                  + (f'<span class="ms-s">{note}</span>' if note else "") + "</div>")
+    st.markdown(f'<div class="mkt-strip">{cells}</div>', unsafe_allow_html=True)
+
+
+def tag(text: str, tip: str = "", kind: str = "tag") -> str:
+    """A pill with a hover tooltip (title attribute), for caveats that must not take space on the page."""
+    return f'<span class="pill pill-{kind}" title="{tip}">{text}</span>'
