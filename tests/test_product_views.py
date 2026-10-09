@@ -62,13 +62,13 @@ def _summary():
 def test_screen_horizon_filters_and_purity():
     t, acc = _acc()
     camps = pv.active_campaigns(t, '2026-06-01')
-    out = pv.screen(acc, _summary(), camps, '180D', min_net=25e5)
+    out = pv.screen(acc, _summary(), camps, '180D', min_net=25e5, sort='net')
     assert list(out['isin']) == ['A', 'B', 'C'] and out.set_index('isin').at['A', 'net'] == 100e5
-    assert list(pv.screen(acc, _summary(), camps, '180D', exclude_sellers=True)['isin']) == ['B', 'C']   # A sold in window
-    assert list(pv.screen(acc, _summary(), camps, '180D', buckets=['Micro', 'Small'])['isin']) == ['A', 'B']
-    assert list(pv.screen(acc, _summary(), camps, '180D', min_drawdown=0.15)['isin']) == ['A', 'C']
+    assert sorted(pv.screen(acc, _summary(), camps, '180D', exclude_sellers=True)['isin']) == ['B', 'C']   # A sold in window
+    assert sorted(pv.screen(acc, _summary(), camps, '180D', buckets=['Micro', 'Small'])['isin']) == ['A', 'B']
+    assert sorted(pv.screen(acc, _summary(), camps, '180D', min_drawdown=0.15)['isin']) == ['A', 'C']
     assert list(pv.screen(acc, _summary(), camps, '180D', active_only=True)['isin']) == ['A']             # A: 2 buys 77 days apart, last 42d ago
-    assert list(pv.screen(acc, _summary(), camps, 'Sustained')['isin']) == ['A', 'B', 'C']
+    assert sorted(pv.screen(acc, _summary(), camps, 'Sustained')['isin']) == ['A', 'B', 'C']
 
 
 def test_screen_works_without_price_summary():
@@ -126,3 +126,13 @@ def test_deal_alignment_inside_campaign_window():
                       dict(isin='A', date='2026-01-10', is_primary=True, value=9e7, signed_value=-9e7, client_is_market_maker=False)])
     out = pv.deal_alignment(d, camps, '2026-06-01').set_index('isin')
     assert out.at['A', 'deal_net'] == 5e7 and out.at['A', 'deal_days'] == 1 and bool(out.at['A', 'deal_coincides'])
+
+
+def test_default_sort_is_newest_buy_and_pct_option():
+    t, acc = _acc()
+    default = pv.screen(acc, _summary(), pv.active_campaigns(t, '2026-06-01'), '180D', min_net=25e5)
+    assert list(default['isin']) == ['C', 'B', 'A']          # last buys: C 05-02, B 05-01, A 04-20 (A's net is largest but it is not first)
+    last = list(pd.to_datetime(default['last_buy']))
+    assert last == sorted(last, reverse=True)
+    by_pct = pv.screen(acc, _summary(), None, '180D', min_net=25e5, sort='pct')
+    assert list(by_pct['pct']) == sorted(by_pct['pct'], reverse=True)

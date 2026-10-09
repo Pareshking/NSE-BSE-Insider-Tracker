@@ -21,7 +21,7 @@ for k, v in {"CLOUDFLARE_ACCOUNT_ID": "a", "R2_ACCESS_KEY_ID": "k", "R2_SECRET_A
     os.environ.setdefault(k, v)
 import fake_r2  # noqa: E402
 
-PAGES = ["1_Promoter_Screener", "2_Company_Deep_Dive", "3_Risk_Flags", "4_Forward_Ledger", "5_Data_Health"]
+PAGES = ["1_Promoter_Screener", "2_Company_Deep_Dive", "3_Risk_Flags", "4_Forward_Ledger", "5_Data_Health", "6_Signal_Evidence"]
 
 
 def _pq(df):
@@ -150,3 +150,22 @@ def test_screener_shows_deal_alignment_and_filings_table():
     app = run("1_Promoter_Screener", objects())
     cols = list(app.dataframe[0].value.columns)
     assert "Deals align" in cols and "Bulk/block in campaign (₹ Cr)" in cols and "Campaign" in cols
+
+
+def test_evidence_page_states_verdict_and_net_of_cost():
+    app = run("6_Signal_Evidence", objects())
+    assert not app.exception
+    assert any("insufficient evidence" in e.value.lower() for e in app.error)
+    cols = list(app.dataframe[0].value.columns)
+    assert "60s excess, net %" in cols and "N (60s)" in cols
+    first = app.dataframe[0].value.iloc[0]
+    assert abs(first["60s excess, gross %"] - first["60s excess, net %"] - 0.30) < 1e-9
+
+
+def test_screener_watchlist_toggle_limits_results():
+    app = run("1_Promoter_Screener", objects())
+    app.text_area[0].set_value("ZZZZ").run()
+    app.checkbox[-2].check().run()                     # "Show my watchlist only" (last checkbox is the purity check's neighbour)
+    assert not app.exception
+    app.text_area[0].set_value("ABC").run()
+    assert not app.exception and len(app.dataframe) == 1

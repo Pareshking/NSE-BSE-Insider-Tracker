@@ -39,6 +39,7 @@ pg = st.navigation(
             st.Page("pages/2_Company_Deep_Dive.py", title="Company Deep Dive", icon="\U0001f50d"),
             st.Page("pages/4_Forward_Ledger.py", title="Forward Ledger", icon="\U0001f4d2"),
             st.Page("pages/3_Risk_Flags.py", title="Risk & Caution Flags", icon="⚠️"),
+            st.Page("pages/6_Signal_Evidence.py", title="Signal Evidence", icon="\U0001f9ea"),
         ],
         "Exploration & Screeners": [
             st.Page("views/confluence_screener.py", title="Confluence Screener", icon="\U0001f9ed"),

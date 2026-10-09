@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import clean_data, r2_data, style  # noqa: E402
+from lib import clean_data, r2_data, style, watchlist  # noqa: E402
 from insiders_clean import product_views as pv, trade_table as tt  # noqa: E402
 
 CR = 1e7
@@ -35,6 +35,9 @@ with st.expander("Filters", expanded=True):
                             disabled=not have_prices)
     active_only = c6.checkbox("Active campaign only", help=f"Repeat purchases with gaps of at most {pv.CAMPAIGN_GAP_DAYS} days, last buy within that gap of the latest data.")
     pure = st.checkbox("Exclude any stock with promoter selling in the selected window")
+    sort_label = st.radio("Sort by", ["Newest buy first", "% of equity absorbed", "Net value"], horizontal=True,
+                          help="Newest first is the default on purpose: a larger purchase is not a better signal (large buys did worse against size peers in our tests).")
+wl_only = watchlist.controls()
 if not have_prices:
     st.warning("The price summary has not been written yet (run the 'Precompute slim assets' workflow), so market-cap and price-context filters are off.")
 
@@ -44,7 +47,10 @@ dd_min = {"Any": 0.0}.get(dd_label, 0.15 if "15%" in dd_label else 0.30)
 
 acc = pv.promoter_absorption(trades, asof, min_value=1, min_pct=0)
 camps = pv.active_campaigns(trades, asof)
-res = pv.screen(acc, summary if have_prices else None, camps, horizon, net_min, pct_min, buckets or pv.BUCKET_ORDER, active_only, dd_min, pure)
+res = pv.screen(acc, summary if have_prices else None, camps, horizon, net_min, pct_min, buckets or pv.BUCKET_ORDER, active_only, dd_min, pure,
+                sort={'Newest buy first': 'last_buy', '% of equity absorbed': 'pct', 'Net value': 'net'}[sort_label])
+if wl_only:
+    res = watchlist.limit(res, watchlist.get(), 'isin', 'symbol').reset_index(drop=True)
 if len(res):
     res = res.merge(pv.deal_alignment(deals, camps, asof), on='isin', how='left')
 else:
@@ -60,20 +66,19 @@ if res.empty:
 grid = pd.DataFrame({
     'Symbol': res['symbol'].fillna(res['company']), 'Company': res['company'], 'Cap': res['mcap_bucket'].fillna('n/a'),
     **{f'{w}D net (₹ Cr)': (res[f'net_{w}d'] / CR) for w in pv.HORIZONS.values()},
-    '% absorbed (est.)': res['pct'], 'Campaign': res['span'].fillna('-'), 'Active': res['active'],
+    'Last buy': res['last_buy'], '% absorbed (est.)': res['pct'], 'Campaign': res['span'].fillna('-'), 'Active': res['active'],
     'Bulk/block in campaign (₹ Cr)': res['deal_net'] / CR, 'Deals align': res['deal_coincides'].fillna(False).map({True: 'Net buying', False: '-'}),
-    '% off 52W high': res['pct_off_high'] * 100}).sort_values(f'{pv.HORIZONS.get(horizon, 365)}D net (₹ Cr)', ascending=False)
-res = res.loc[grid.index].reset_index(drop=True)
-grid = grid.reset_index(drop=True)
+    '% off 52W high': res['pct_off_high'] * 100})
 num = lambda label, fmt: st.column_config.NumberColumn(label, format=fmt)       # noqa: E731 -- right-aligned numerics
 cfg = {**{f'{w}D net (₹ Cr)': num(f'{w}D net (₹ Cr)', '%.2f') for w in pv.HORIZONS.values()}, '% absorbed (est.)': num('% absorbed (est.)', '%.3f'),
        'Bulk/block in campaign (₹ Cr)': num('Bulk/block (₹ Cr)', '%.2f'), '% off 52W high': num('% off 52W high', '%.1f'),
        'Symbol': st.column_config.TextColumn(width='small'), 'Cap': st.column_config.TextColumn(width='small'),
+       'Last buy': st.column_config.DateColumn('Last buy', format='DD MMM YY', width='small'),
        'Campaign': st.column_config.TextColumn(width='medium'), 'Active': st.column_config.CheckboxColumn(width='small')}
 page, off = style.paginate(grid, 'screener', 50)
 event = st.dataframe(page, hide_index=True, use_container_width=True, on_select="rerun", selection_mode="single-row",
                      key="screener_grid", column_config=cfg)
-st.caption(f"{pv.BADGE_ACCUMULATION}. Sorted by the selected horizon, largest first. 'Deals align' = bulk/block net buying (market makers "
+st.caption(f"{pv.BADGE_ACCUMULATION}. Sorted as chosen above (newest buy first by default). 'Deals align' = bulk/block net buying (market makers "
            "excluded) inside the campaign window; deals carry no reliable FII/DII label. Select a row for its filings.")
 sel = event.selection.rows if event and event.selection else []
 if sel:

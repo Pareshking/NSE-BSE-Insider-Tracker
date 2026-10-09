@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import clean_data, dedup, fields, r2_data, style
+from lib import clean_data, dedup, fields, r2_data, style, watchlist
 
 # Rights/preferential carry event dates from way earlier (or, for some
 # corporate-action fields, later -- e.g. a record date) in a listing's
@@ -150,13 +150,13 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         df["_price"] = fields.num_col(df, "canonical_price", fill=None)
         if "canonical_isin" not in df.columns:
             df["canonical_isin"] = None
-        for extra in ("_by", "_cat", "_mode"):
+        for extra in ("_by", "_cat", "_mode", "canonical_symbol"):
             if extra not in df.columns:
                 df[extra] = None
         combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode",
-                                 "canonical_company", "canonical_isin", "exchange"]])
+                                 "canonical_company", "canonical_isin", "canonical_symbol", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
-        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode", "canonical_company", "canonical_isin", "exchange"])
+        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode", "canonical_company", "canonical_isin", "canonical_symbol", "exchange"])
     combined = combined.dropna(subset=["_value"])
     if not combined.empty:
         combined["_parsed_date"] = fields.parse_dates(combined["_date"])
@@ -306,6 +306,13 @@ with r2_data.guard(f"the {selected_date} run"):
     agg = overview_aggregates(client, selected_date, exchanges)
 # Multi-quarter context from the clean layer, joined to the feed by ISIN. Empty (no badges) if it cannot be read.
 acc_badges = clean_data.accumulation_badges(client)
+wl_only = watchlist.controls()
+wl = watchlist.get()
+if wl:
+    _feed = watchlist.limit(agg["top_transactions"], wl, "canonical_isin", "canonical_symbol")
+    _recent = _feed[pd.to_datetime(_feed["_parsed_date"]) >= pd.to_datetime(_feed["_parsed_date"]).max() - pd.Timedelta(days=7)] if len(_feed) else _feed
+    st.caption(f"Watchlist alerts: {len(wl)} tracked; {len(_feed)} filing(s) in the 90-day feed, {len(_recent)} in the last 7 days"
+               + (f", latest {style.fmt_date(_recent['_date'].iloc[0])}." if len(_recent) else "."))
 # The category pulse strip that used to sit here (five row counts with a
 # this-week-vs-usual delta) is gone: on mobile its five cards stacked into a
 # full screen of scrolling that had to be got past before reaching anything
@@ -334,6 +341,8 @@ with sig1:
         st.caption("No insider-trading data.")
     else:
         ranked = agg["promoter_ranking"]
+        if wl_only:
+            ranked = watchlist.limit(ranked, wl, None, "symbol")
         buyers = ranked[ranked["net_val"] > 0].head(4)
         sellers = ranked[ranked["net_val"] < 0].head(2)
         if buyers.empty and sellers.empty:
@@ -365,6 +374,8 @@ with sig2:
     # trading -- since a big bulk deal or preferential allotment is just as
     # much "what happened today" as an insider filing.
     combined = matches_company(agg["top_transactions"], search_query)
+    if wl_only:
+        combined = watchlist.limit(combined, wl, "canonical_isin", "canonical_symbol")
     if combined.empty:
         st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
     else:
@@ -446,6 +457,8 @@ if agg["stake_changes"].empty and not search_query:
     st.caption("No holding-before/after data this run.")
 else:
     hdf = matches_company(agg["stake_changes"], search_query)
+    if wl_only:
+        hdf = watchlist.limit(hdf, wl, "canonical_isin", "canonical_symbol")
     if hdf.empty:
         st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
     else:

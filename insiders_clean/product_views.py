@@ -175,11 +175,12 @@ BUCKET_ORDER = ('Large', 'Mid', 'Small', 'Micro')
 
 def screen(acc: pd.DataFrame, summary: pd.DataFrame | None, camps: pd.DataFrame | None, horizon: str = '180D',
            min_net: float = 25 * LAKH, min_pct: float = 0.0, buckets=BUCKET_ORDER, active_only: bool = False,
-           min_drawdown: float = 0.0, exclude_sellers: bool = False) -> pd.DataFrame:
+           min_drawdown: float = 0.0, exclude_sellers: bool = False, sort: str = 'last_buy') -> pd.DataFrame:
     """Promoter accumulation screen over the output of `promoter_absorption`. `horizon` is 90D / 180D / 365D, or
     'Sustained' (net positive in all three windows; the thresholds then apply to the 365-day figures). `min_pct` is in
     percent of market cap (ESTIMATED proxy). `min_drawdown` is a fraction (0.15 = at least 15% below the 52-week
-    high) and needs the price summary. `exclude_sellers` drops any security with promoter sales in the window."""
+    high) and needs the price summary. `exclude_sellers` drops any security with promoter sales in the window.
+    `sort`: 'last_buy' (newest buy first, the default: size is not evidence of a better signal), 'pct' (% of equity absorbed) or 'net' (value)."""
     d = acc.copy()
     w = 365 if horizon == 'Sustained' else HORIZONS[horizon]
     if horizon == 'Sustained':
@@ -203,7 +204,8 @@ def screen(acc: pd.DataFrame, summary: pd.DataFrame | None, camps: pd.DataFrame 
     d['active'] = d['active'].eq(True)
     if active_only:
         d = d[d['active']]
-    return d.sort_values('net', ascending=False).reset_index(drop=True)
+    key = {'last_buy': 'last_buy', 'pct': 'pct', 'net': 'net'}[sort]
+    return d.sort_values(key, ascending=False).reset_index(drop=True)
 
 
 def badge_text(net_180d: float, active: bool) -> str:
