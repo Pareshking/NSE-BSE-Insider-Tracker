@@ -1,20 +1,26 @@
 # CLAUDE.md
 
-Standing instructions for agents. Read `docs/PROGRESS.md` first, then `docs/MISSION.md`.
+Standing instructions for agents. Read `docs/PRODUCT.md` (purpose and every
+decision) and `docs/TODO.md` (where things stand, what is next) first.
 
 ## Repo map
-- `scripts/` collectors and R2 writers (nightly), `insiders_clean/` cleaning + raw store, `collectors/nse_events/`, `streamlit_app/` (old demo app, deployed from `main`), `docs/` (see `docs/CLEAN_LAYER.md`, `docs/DATA_DICTIONARY.md`).
+- `scripts/`: collectors and R2 writers (nightly), backfill, price backfill, precompute.
+- `insiders_clean/`: cleaning, archive, raw store, signals, prices.
+- `collectors/nse_events/`: SAST, corporate actions, board meetings, shareholding.
+- `streamlit_app/`: the site (`app.py`, `screens/` pages, `ui/` design kit, `data/store.py` reads R2). Deployed from `main` to insiders.streamlit.app.
+- `docs/`: `PRODUCT.md`, `DATA_TO_PAGES.md`, `SIGNALS.md`, `CLEAN_LAYER.md`, `DATA_DICTIONARY.md`, `TODO.md`.
 
 ## Commands
-- Setup: `pip install -r requirements.txt pytest` (pandas is pinned `<3`; tests also pass on 3.0).
-- Test: `python -m pytest tests streamlit_app/tests -q`
-- Clean tables / backfill / inventory run in GitHub Actions (R2 secrets live there, not in agent sessions): `NSE History Backfill`, `Clean only`, `Data inventory`.
+- Setup: `pip install -r requirements.txt -r streamlit_app/requirements.txt pytest`
+- Test: `python -m pytest tests -q`
+- Site locally: `python scripts/dev_ui.py FOLDER` (a local copy of `clean/current/`); R2 secrets live only in GitHub Actions and Streamlit Cloud.
+- Workflows (GitHub Actions): R2 Storage Write (nightly), Clean only, NSE History Backfill, Price backfill, Precompute slim assets, Site preview (screenshots on real data, runs on PRs).
 
-## Hard rules (docs/MISSION.md section 3)
-1. Never push or merge to `main` (it redeploys production); work on feature branches, PRs as drafts.
-2. Never delete/overwrite data files, scrapers, workflows or branches; never rewrite shared history.
-3. `Pareshking/Paresh` is read-only. Repo is public: no holdings, watchlists or personal data.
-4. No pre-2026 transactions in the product (clean layer filters at 1 Jan 2026; raw archive keeps them).
-5. Ask before: new secrets/paid services/wider Actions permissions, pre-2026 research data, final cut-over.
-6. Label claims VERIFIED / ESTIMATED / CLAIMED / HYPOTHESIS; flag contradictions; never invent data.
-7. Raw is write-once and never filtered (`raw_v2/`); filtering happens in the clean layer with counted reasons.
+## Rules
+1. Data correctness first; the site never cleans, it reads the clean tables.
+2. Pages follow the data (`docs/DATA_TO_PAGES.md`); a section waits for its data rather than being faked.
+3. The repo is public: nothing personal (holdings, watchlists) committed.
+4. Every signal shows its evidence status (`docs/PRODUCT.md`).
+5. Raw is write-once (`raw_v2/`); filtering happens in the clean layer with counted reasons.
+6. Product window: transactions from 8 Oct 2025 (`insiders_clean/pipeline.py`).
+7. Never invent data, columns, endpoints or results; say what is missing.

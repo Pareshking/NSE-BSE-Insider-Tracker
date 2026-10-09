@@ -25,3 +25,6 @@ data/curated/
 
 # Collector-side raw captures: ephemeral, flushed to R2 raw_v2/
 artifacts/raw_capture/
+
+# Local Claude Code settings and worktrees
+.claude/

@@ -1,12 +1,12 @@
 # Insiders: what the site is for, and what has been decided
 
-> **Status of the old website and app code (08 Oct 2026): demo only, wrong
-> at multiple levels.** The site that ran at insiders.streamlit.app before
-> PR #4, and its code (the old `streamlit_app/views/` pages and their in-app
-> calculations), are a demo. Their page structure, columns and underlying
-> calculations are wrong; do not use them for decisions or as a reference.
-> The collected data is not the problem: the NSE/BSE collection pipeline and
-> the raw/canonical data in R2 are sound. Current direction: `docs/PRODUCT.md`.
+> **Site history.** The demo that ran at insiders.streamlit.app until
+> October 2026 (the old `streamlit_app/views/` pages) was wrong at multiple
+> levels. A second app merged on 09 Oct 2026 (PRs #15/#16) re-used those
+> demo pages and was set aside the same day (owner); its useful data work was
+> kept (raw layer, uncapped deals CSV, NSE revision markers, filing links,
+> the price layer). The site now live is the one built from
+> `docs/DATA_TO_PAGES.md` (PR #17).
 
 This replaces the earlier frontend specification, UI blueprint and analytics
 plan, which described pages the owner found not useful for decisions. Those
@@ -23,8 +23,8 @@ current source of truth.
 
 ## Purpose
 
-Help a small individual investor in Indian equities decide, using NSE and
-BSE disclosures: spot a stock where insiders are putting real money in, and
+A data-first research tool that helps a small investor in Indian equities
+decide, using NSE and BSE disclosures: spot a stock where insiders are putting real money in, and
 avoid traps. NSE and BSE already publish every row for free, so a copy of
 their tables is worth nothing. The site earns its place only by what a
 reader can't get by scrolling the exchange pages:
@@ -80,6 +80,30 @@ reader can't get by scrolling the exchange pages:
   the backfill (NSE's new system starts 03 May 2026 and the nightly job
   covers it); bulk and block deals up to the first nightly record. Proceed
   with the data in hand; don't wait for all of it. (08 Oct 2026)
+- **Audience: the owner's own research tool** (owner, 09 Oct 2026). It runs
+  on Streamlit Community Cloud, sized for one reader, not for heavy public
+  traffic. The repo is public, so nothing personal (holdings, watchlists)
+  is committed; a watchlist lives in Streamlit secrets or the browser.
+- **Actionable, with evidence status.** Ranked candidates, plain labels and
+  risk flags, no generic disclaimers; every label says whether it is
+  measured on our data, supported by studies only, or exploratory.
+- **Timing rules for every return we show** (from the 09 Oct brief, adopted):
+  the clock starts at the exchange broadcast time, never the trade date or
+  the insider's price. Entry is the first price a reader could have traded:
+  that session's close for a filing broadcast well before the close,
+  otherwise the next session's open; the next session's close is reported as
+  the cautious variant. Nothing published after the broadcast may feed a
+  signal; tests enforce it. Count only complete windows; show the number of
+  cases beside every figure; deduct costs.
+- **Every number traces to its filing.** Insider rows carry the NSE filing
+  link (`source_url`); deals have no per-record link and the page says so.
+- **Evidence status on every signal**: measured on our data / supported by
+  published studies but not measured here / exploratory / did not work.
+  The 09 Oct research run (no edge in Jan-Jun 2026, against Nifty 500) is not
+  used: its benchmark was judged unsuitable for small caps by its own review.
+- **Show how far the price has moved since the broadcast**, so a reader
+  sees whether the news is already in the price.
+- **Phone first**: every page works at phone width.
 
 ## Pages
 
