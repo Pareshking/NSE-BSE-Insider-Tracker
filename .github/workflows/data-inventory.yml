@@ -4,8 +4,17 @@ name: Data inventory (read-only)
 # bucket. Aggregate output only (no names, no rows). Reads R2 with the
 # repository's existing secrets; the script calls get/list only.
 # Manual run: Actions -> Data inventory -> Run workflow.
+# TEMPORARY (owner decision 09 Oct 2026): a workflow file that is not on the
+# default branch cannot be dispatched, and nothing may reach main yet, so it
+# also runs on pushes that change this file or the script on the working
+# branch. Remove the push trigger once the file is on main.
 on:
   workflow_dispatch:
+  push:
+    branches: [ccr-27a6c75f-o9ztpa]
+    paths:
+      - .github/workflows/data-inventory.yml
+      - scripts/data_inventory.py
 
 permissions:
   contents: read
