@@ -118,6 +118,15 @@ def parse_disclosures(xml_text):
     return records
 
 
+REVISION_KEYS = ('prevAppId', 'typeOfSubmission', 'revisionRemark')
+
+
+def revision_fields(filing):
+    """NSE's revision markers from the filing-list entry (empty string when
+    absent). They do not enter the row id (r2_writer.ID_IGNORED_FIELDS)."""
+    return {k: (filing.get(k) or '') for k in REVISION_KEYS}
+
+
 def to_row(rec, filing):
     txn_raw = rec.get('SecuritiesAcquiredOrDisposedTransactionType', '').upper()
     if 'BUY' in txn_raw or 'ACQUI' in txn_raw or 'ALLOT' in txn_raw or 'SUBSCRI' in txn_raw:
@@ -151,6 +160,7 @@ def to_row(rec, filing):
         'intimDt':         rec.get('DateOfIntimationToCompany', ''),
         'broadcastDt':     filing.get('broadcastDateTime', ''),
         'appId':           filing.get('appId', ''),
+        **revision_fields(filing),
     }
 
 
@@ -316,7 +326,8 @@ def main():
         app_id = str(filing.get('appId') or '').strip()
         cached = cache.get(app_id) if app_id else None
         if cached and isinstance(cached.get('rows'), list):
-            all_rows.extend(cached['rows'])
+            # cached rows predate the revision markers: take them from today's list entry
+            all_rows.extend({**r, **revision_fields(filing)} for r in cached['rows'])
             from_cache += 1
         else:
             to_fetch.append(filing)

@@ -49,7 +49,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 10 | Model basket | Waits on 7 |
 | 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
 | 13 | BSE history and BSE events | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
-| 14 | `nse_insider.py` keeps NSE's revision markers | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
+| 14 | ~~`nse_insider.py` keeps NSE's revision markers~~ **Coded 09 Oct, unverified live** | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
 | 15 | Retention deletes for real | Owner sets `R2_RETENTION_DELETE=1` once the archive has been stable; stays a dry run until then |
 | 16 | Named-investor aliases | Curated list maps known investors' and funds' spellings to one name |
 | 18 | NSE block deals BLOCKED in the nightly collection on 07 and 08 Oct | Validator passes again, or the cause is found (history block deals came in fine through the CSV endpoint) |

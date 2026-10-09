@@ -49,6 +49,9 @@ The current Streamlit pages still read dated `canonical/` files through the
 run-date selector; with retention on, that selector offers the last 14 days
 until the pages move to `clean/`.
 
+Nightly bulk and block deals are read from NSE's uncapped CSV export
+(`scripts/nse_deals_csv.py`), not the JSON form (70 rows per call).
+
 ## Raw layer (`raw_v2/`, write-once)
 
 `insiders_clean/raw_store.py`. The exact bytes an exchange sent, never

@@ -169,7 +169,15 @@ def r2_client():
     )
 
 
+# Fields added to a row after the archive began. Left out of the hash so that
+# a row keeps the id it had before the field existed (otherwise every archived
+# row would be stored a second time under a new id).
+ID_IGNORED_FIELDS = frozenset({'prevAppId', 'typeOfSubmission', 'revisionRemark'})
+
+
 def canonical_event_id(exchange, category, row):
+    if isinstance(row, dict) and ID_IGNORED_FIELDS & row.keys():
+        row = {k: v for k, v in row.items() if k not in ID_IGNORED_FIELDS}
     key = json.dumps(row, sort_keys=True, default=str)
     return hashlib.sha1(f'{exchange}|{category}|{key}'.encode('utf-8')).hexdigest()
 
@@ -244,6 +252,10 @@ def canonicalize(exchange, category, row):
             'canonical_app_id': row.get('appId'),
             'canonical_prev_app_id': row.get('prevAppId'),
             'canonical_is_revision': bool(row.get('prevAppId')),
+            # NSE's own revision markers from the filing list (empty when the
+            # list did not carry them).
+            'canonical_submission_type': row.get('typeOfSubmission') or None,
+            'canonical_revision_remark': row.get('revisionRemark') or None,
         }
     if category in ('bulk_deals', 'block_deals'):
         if exchange == 'nse':

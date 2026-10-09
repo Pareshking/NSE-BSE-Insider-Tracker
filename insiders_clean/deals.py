@@ -51,6 +51,39 @@ def _id(parts) -> str:
     return hashlib.sha1('|'.join('' if p is None else str(p) for p in parts).encode()).hexdigest()[:16]
 
 
+CSV_SOURCES = ('nse_nightly_deals_csv', 'nse_historical_deals_csv')
+
+
+def _drop_json_copies(raw: pd.DataFrame, report) -> pd.DataFrame:
+    """The nightly collector used to read the JSON form of NSE's deals feed
+    (capped at 70 rows a call) and now reads the uncapped CSV. A deal both
+    forms returned is in the archive twice with different row ids. Where a CSV
+    row and an older-form row agree on exchange, feed, day, symbol, client,
+    side, quantity and price, the older-form copy goes (counted). Only across
+    forms: rows of one form are never compared with each other. (Rows with
+    identical content share a row id, so the archive keeps them once whatever
+    the form; the raw bytes in raw_v2 keep every line.)"""
+    if 'source' not in raw.columns:
+        return raw
+    src = raw['source'].astype('string')
+    is_csv = src.isin(CSV_SOURCES).fillna(False).to_numpy(dtype=bool, copy=True)
+    if not is_csv.any() or is_csv.all():
+        return raw
+    client = (_col(raw, 'canonical_client').astype('string').str.upper()
+              .str.replace(r'[^A-Z0-9]+', ' ', regex=True).str.strip())
+    key = (raw['exchange'].astype(str) + '|' + raw['category'].astype(str) + '|'
+           + parse_dates(_col(raw, 'canonical_event_date', 'BD_DT_DATE')).astype(str) + '|'
+           + _col(raw, 'canonical_symbol', 'BD_SYMBOL').astype(str) + '|' + client.astype(str) + '|'
+           + _col(raw, 'canonical_side').astype(str) + '|' + _num(_col(raw, 'canonical_quantity')).astype(str)
+           + '|' + _num(_col(raw, 'canonical_price')).round(2).astype(str))
+    csv_keys = set(key[is_csv])
+    older_copy = (~is_csv) & key.isin(csv_keys).to_numpy(dtype=bool, copy=True)
+    if older_copy.any():
+        report.removed('deals', 'same_deal_in_older_json_form', _col(raw.loc[older_copy], 'canonical_event_id'))
+        raw = raw.loc[~older_copy]
+    return raw
+
+
 def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> pd.DataFrame:
     """canonical bulk + block rows (both exchanges; `exchange` and
     `category` columns) -> clean deals."""
@@ -67,6 +100,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
             raw = raw.loc[~rt]
         if raw.empty:
             return pd.DataFrame()
+    raw = _drop_json_copies(raw, report)
     df = pd.DataFrame(index=raw.index)
     df['source_id'] = _col(raw, 'canonical_event_id')
     df['exchange'] = raw['exchange'].astype(str).str.lower()

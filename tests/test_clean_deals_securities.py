@@ -203,3 +203,29 @@ def test_flag_stored_as_text_in_the_archive_is_read_back_correctly(master, repor
     report2 = type(report)(RUN_DATE)
     out2 = clean_deals(text.assign(exchange='bse', category='bulk_deals'), master, report2, RUN_DATE)
     assert len(out2) == 1
+
+
+def test_csv_row_replaces_its_older_json_form_copy_but_identical_csv_rows_stay(master, report):
+    rows = [bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 101.0),     # CSV: a second, different trade
+            bse_deal('599999', 'ACMEUNIV', 'real  fund', 'BUY', 5000, 100.0),    # older JSON form, same deal
+            bse_deal('599999', 'ACMEUNIV', 'OTHER FUND', 'BUY', 700, 100.0)]     # older form only: stays
+    raw = canonical('bse', 'bulk_deals', rows)
+    raw['source'] = ['nse_nightly_deals_csv', 'nse_nightly_deals_csv', None, None]
+    out = clean_deals(raw, master, report, RUN_DATE)
+    real = out[out['client_name'].str.upper().str.startswith('REAL')].iloc[0]
+    assert real['quantity'] == 10000 and real['trades'] == 2          # the two CSV trades; JSON copy dropped
+    assert (out['client_name'].str.upper().str.startswith('OTHER')).sum() == 1
+    assert report.data['tables']['deals']['removed']['same_deal_in_older_json_form']['count'] == 1
+
+
+def test_nightly_csv_module_maps_to_the_json_field_names():
+    import sys
+    sys.path.insert(0, 'scripts')
+    import nse_deals_csv as nd
+    from conftest import FIXTURES
+    text = (FIXTURES / 'history' / 'nse_bulk_2024.csv').read_bytes().decode('utf-8-sig')
+    assert nd.is_csv(text) and not nd.is_csv('<html>Access Denied</html>') and not nd.is_csv('')
+    rows = nd.rows_from_csv(text)
+    assert rows and rows[0]['source'] == 'nse_nightly_deals_csv'
+    assert set(rows[0]) >= {'BD_DT_DATE', 'BD_SYMBOL', 'BD_CLIENT_NAME', 'BD_BUY_SELL', 'BD_QTY_TRD', 'BD_TP_WATP'}
