@@ -37,10 +37,12 @@ def apply_product_window(table: pd.DataFrame, date_col: str, name: str, report, 
 
 
 def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.DataFrame | None = None,
-        nse_lists=(), market_cap_rows=None):
+        nse_lists=(), market_cap_rows=None, price_ranges: pd.DataFrame | None = None):
     """
     canonical: {(exchange, category): DataFrame} as stored under canonical/
                in R2 (native + canonical_* columns).
+    price_ranges: day ranges from our price layer (insiders_clean.day_range);
+               None skips the price checks (reported, never an error).
     Returns ({table_name: DataFrame}, report_dict).
     """
     report = Report(run_date)
@@ -60,9 +62,11 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
                 parts.append(normalise(f).assign(exchange=ex, category=category))
         return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
-    insider = clean_insider(frames('insider_trading'), master, cal, report, run_date)
+    if price_ranges is None:
+        report.note('price checks not run: no price layer loaded')
+    insider = clean_insider(frames('insider_trading'), master, cal, report, run_date, price_ranges=price_ranges)
     deals_raw = pd.concat([frames('bulk_deals'), frames('block_deals')], ignore_index=True)
-    deals = clean_deals(deals_raw, master, report, run_date)
+    deals = clean_deals(deals_raw, master, report, run_date, price_ranges=price_ranges)
 
     insider = apply_product_window(insider, 'trade_date_to', 'insider_trades', report, 'trade_id')
     deals = apply_product_window(deals, 'date', 'deals', report, 'deal_id')

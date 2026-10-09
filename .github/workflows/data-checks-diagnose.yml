@@ -1,0 +1,53 @@
+name: Data checks diagnostic (read-only)
+
+# Runs the clean step on what is in R2 and reports what each data check
+# (TODO 19) and NSE's revision markers (TODO 14) find, without writing to R2:
+# scripts/data_checks_diagnose.py wraps the R2 client so only reads pass.
+# Counts are printed in the log; the rows each check touched are a run
+# artifact (14 days). The push trigger is temporary, for measuring on the
+# working branch (a new workflow cannot be dispatched from a branch); remove
+# it before merging.
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: 'Run date (YYYY-MM-DD). Blank = today (UTC).'
+        required: false
+        default: ''
+  push:
+    branches: [fix/data-checks]
+    paths:
+      - 'scripts/data_checks_diagnose.py'
+      - 'insiders_clean/**'
+      - '.github/workflows/data-checks-diagnose.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Data checks on R2 data (read-only)
+        env:
+          TARGET_DATE: ${{ inputs.target_date || '' }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: |
+          if [ -z "$TARGET_DATE" ]; then export TARGET_DATE=$(date -u +%F); fi
+          python scripts/data_checks_diagnose.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: data-checks
+          path: artifacts/data_checks/
+          retention-days: 14

@@ -29,6 +29,7 @@ import json
 import numpy as np
 import pandas as pd
 
+from . import day_range
 from .dates import parse_dates
 from .entities import add_entity_columns, per_group
 from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
@@ -84,9 +85,11 @@ def _drop_json_copies(raw: pd.DataFrame, report) -> pd.DataFrame:
     return raw
 
 
-def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> pd.DataFrame:
+def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
+                price_ranges: pd.DataFrame | None = None) -> pd.DataFrame:
     """canonical bulk + block rows (both exchanges; `exchange` and
-    `category` columns) -> clean deals."""
+    `category` columns) -> clean deals. `price_ranges` feeds the price check
+    (the deal's own exchange that day); without it nothing is flagged for price."""
     t = report.table('deals')
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -229,13 +232,28 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     flag(legs['side'].isna(), 'missing_side')
     flag(legs['pct_of_mcap'] > VALUE_SHARE_OF_MCAP_REVIEW * 100, 'value_over_25pct_of_mcap')
     flag(pd.to_datetime(legs['date']) > pd.Timestamp(run_date), 'date_in_future')
+    # The deal price against that day's traded range on the deal's own exchange.
+    rng = day_range.attach(legs, price_ranges, 'isin', 'date', 'date', exchange_col='exchange')
+    checked = day_range.check(legs['price'], rng)
+    legs['day_low'], legs['day_high'], legs['price_check'] = rng['day_low'], rng['day_high'], checked['price_check']
+    flag(legs['price_check'].isin(['below', 'above']), 'price_outside_day_range')
+    flag(legs['price_check'].eq('power_of_ten'), 'price_off_by_power_of_ten')
+    flag(legs['price_check'].eq('swapped'), 'quantity_price_swapped')
+    pc = checked['price_check']
+    t['price_check'] = {
+        'price_layer': price_ranges is not None, 'tolerance': day_range.PRICE_TOLERANCE,
+        'all': {k: int(v) for k, v in pc.value_counts().items()},
+        'by_feed': {f: {k: int(v) for k, v in pc[legs['feeds'] == f].value_counts().items()}
+                    for f in sorted(legs['feeds'].dropna().unique())},
+        'power_of_ten': {str(k): int(v) for k, v in checked['unit_power'].dropna().value_counts().items()}}
     legs['flags'] = [','.join(f) for f in flags]
     legs['needs_review'] = legs['flags'] != ''
     report.flagged('deals', flags)
 
     cols = ['deal_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'feeds', 'date',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
-            'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price', 'value', 'signed_value',
+            'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price',
+            'day_low', 'day_high', 'price_check', 'value', 'signed_value',
             'trades', 'market_cap', 'pct_of_mcap', 'counterparties', 'source_ids',
             'flags', 'needs_review']
     out = legs[cols].reset_index(drop=True)

@@ -13,7 +13,11 @@ Runs after r2_writer.py in the R2 Storage Write workflow.
    * BSE's securities list from the market-cap reference file the writer
      stores (reference/market_cap/{date}/data.json);
    * the trading calendar at reference/nse_calendar.json (kept current by
-     scripts/update_calendar.py, which runs just before this).
+     scripts/update_calendar.py, which runs just before this);
+   * that day's traded range from our own price layer
+     (prices/daily/{nse|bse}/YYYY-MM.parquet, the months of the product
+     window) for the price checks. Missing or unreadable months are noted;
+     with no prices at all the clean step runs and the checks say so.
 3. Write clean/current/{insider_trades,deals,securities}.parquet (the full
    history the site reads), clean/reports/{date}.json, and last
    clean/latest.json -- so a reader never follows the pointer to a
@@ -36,9 +40,9 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import archive
+from insiders_clean import archive, day_range
 from insiders_clean.calendar import seed_state
-from insiders_clean.pipeline import run
+from insiders_clean.pipeline import PRODUCT_START, run
 
 CATEGORIES = ('insider_trading', 'bulk_deals', 'block_deals')
 LOOKBACK_DAYS = 10
@@ -196,6 +200,21 @@ def last_good(client, pattern, run_day: date, include_today=False):
     return None
 
 
+def load_price_ranges(client, run_day: date, notes: list):
+    """Day ranges for every month of the product window, read-only.
+    Returns (ranges or None, info for the report)."""
+    try:
+        ranges, info = day_range.load(lambda k: get(client, k), day_range.months_between(PRODUCT_START, run_day))
+    except Exception as e:  # noqa: BLE001 -- prices are an input to checks, never a reason to fail the clean step
+        notes.append(f'price layer not read ({type(e).__name__}: {e}); price checks not run')
+        return None, {'error': f'{type(e).__name__}: {e}'}
+    if ranges is None:
+        notes.append('no price-layer months found; price checks not run')
+    if info.get('months_unreadable'):
+        notes.append(f'price layer: {len(info["months_unreadable"])} month file(s) unreadable, their days unchecked')
+    return ranges, info
+
+
 def main():
     client = r2_client()
     run_day = date.fromisoformat(TARGET_DATE)
@@ -221,9 +240,12 @@ def main():
     vr_path = ROOT / SECURITY_MASTER_PATH
     vr_master = pd.read_csv(vr_path, dtype=str, keep_default_na=False) if vr_path.exists() else None
 
+    ranges, price_info = load_price_ranges(client, run_day, notes)
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
-                         nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows)
+                         nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows,
+                         price_ranges=ranges)
     report['archive'] = archive_report
+    report['price_layer'] = price_info
     report['notes'] = notes + report['notes']
 
     written = {}
@@ -246,6 +268,11 @@ def main():
         print(f'  {table}: {t["input_rows"]} in -> {t["output_rows"]} out; '
               f'removed {sum(r["count"] for r in t["removed"].values())}; flagged {t["flagged"]}')
     print(f'  unmatched securities: {len(report["unmatched_securities"])}')
+    for table, t in report['tables'].items():
+        if t.get('price_check'):
+            print(f'  {table} price check: {t["price_check"]["all"]}')
+        if t.get('holding_check'):
+            print(f'  {table} holding check: {t["holding_check"]}')
     for table, t in report['tables'].items():
         for reason, r in t.get('removed', {}).items():
             print(f'  removed {table}/{reason}: {r["count"]}')
