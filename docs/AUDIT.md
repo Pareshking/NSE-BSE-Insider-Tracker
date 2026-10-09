@@ -70,3 +70,42 @@ Method: shallow clone of `Pareshking/paresh` (HEAD c4e68e7, 2026-10-09) and the 
 - Implication (ESTIMATED): the adjusted-close table alone misses most of the universe (the NSE-750-style gap predicted in the prompt). `bse_daily` fills most gaps but needs a corporate-action adjustment layer. Recommendation: build our own PIT price layer from official NSE/BSE bhavcopy archives plus corporate actions; use Paresh files only as an optional cross-check.
 - The security master carries Value Research ratings/scores as of 01 Sep 2026 (single snapshot): must never feed point-in-time features.
 - Still open: R2 inventory, event-level price coverage, forward-window counts, power numbers.
+
+---
+## Addendum 09 Oct 2026 — R2 inventory and power (Actions run 37902086767, commit d98522a; VERIFIED = read from R2 by the workflow)
+
+Aggregate output only. Prices for the windows are Paresh's public adjusted-close table (a proxy; NSE symbols only), to 2026-10-06.
+
+**Archive (rows / date range / before 2026 / 2026 onward / round-trip flagged)**
+| dataset | rows | date range | <2026 | >=2026 | RT flagged |
+|---|---:|---|---:|---:|---:|
+| nse/insider_trading | 12,370 | 2015-10-24 .. 2036-02-03 | 3,188 | 9,182 | n/a |
+| nse/bulk_deals | 20,269 | 2025-10-08 .. 2026-10-08 | 5,572 | 14,697 | 6,460 |
+| nse/block_deals | 1,732 | 2025-10-08 .. 2026-10-01 | 443 | 1,289 | 0 |
+| bse/insider_trading | 2,174 | 2015-05-15 .. 2026-10-08 | 19 | 2,155 | n/a |
+| bse/bulk_deals | 1,822 | 2026-09-01 .. 2026-10-08 | 0 | 1,822 | n/a |
+| bse/block_deals | 206 | 2026-08-31 .. 2026-10-08 | 0 | 206 | n/a |
+
+- VERIFIED: bulk redo (run 37901034740) added 6,460 rows (13,809 -> 20,269), all flagged `intraday_round_trip`; block redo (run 37901379384) added 0. The NSE insider archive holds dates up to 2036 (mistyped by filers; 0 unreadable).
+- VERIFIED bug found and fixed (d98522a): the archive stores a flag column with gaps as text, so `astype(bool)` made every row "flagged" (14,841 of 20,269 on the first post-redo inventory). `as_flag()` now reads only explicit true; flags stay boolean in the archive.
+- VERIFIED: bucket top-level prefixes are cache, canonical, clean, manifests, raw, reference (no `raw_v2` yet).
+- Clean tables currently in R2 (built by `main` code before the product window): insider_trades 13,553 rows (3,341 dated before 2026), deals 16,958 (3,426 before 2026). Hazard: until this branch merges, the nightly clean on `main` ignores the flag, so `clean/deals` will include the 6,460 recovered round-trip legs. The old live app does not read that table.
+- CLAIMED (script docstring, not measured): the nightly bulk/block collectors fetch one day per call and the endpoint caps a call at 70 rows, so a day with >70 deals loses its tail. The backfill's CSV endpoint has no such cap. Recommend moving nightly deals to the CSV endpoint.
+- Nightly raw capture (scripts/raw_capture.py + raw_flush.py, step in r2-storage.yml) is unit-tested but NOT yet exercised in production (the nightly runs from `main`).
+
+**Forward windows (2026 open-market, primary, not held back; entry = first session after broadcast date)**
+| side | events | with price history |
+|---|---:|---:|
+| buy | 3,260 | 927 (28%) |
+| sell | 2,013 | 1,356 (67%) |
+
+Buys: horizon (sessions) -> complete events / companies / company-months / abnormal sd / MDE by events / MDE by company-months
+- 5 -> 870 / 153 / 267 / 5.4% / 0.5% / 0.9%
+- 20 -> 770 / 142 / 244 / 10.5% / 1.1% / 1.9%
+- 60 -> 651 / 126 / 199 / 18.2% / 2.0% / 3.6%
+- 120 -> 520 / 111 / 153 / 23.5% / 2.9% / 5.3%
+- 250 -> 0 complete windows
+
+Sells: 5 -> 1,274 / 149 / 312 / 5.2% / 0.4% / 0.8%; 20 -> 1,096 / 137 / 278 / 9.6% / 0.8% / 1.6%; 60 -> 683 / 111 / 191 / 19.8% / 2.1% / 4.0%; 120 -> 387 / 71 / 105 / 23.7% / 3.4% / 6.5%; 250 -> 0.
+
+ESTIMATED reading: MDE = (1.96+0.84) x sd / sqrt(n), 5% two-sided, 80% power; "company-months" is a deliberately conservative effective n for clustered events (the by-events figures assume independence, which they are not). abnormal sd is vs the median stock, a crude benchmark. So with 2026 data alone: a ~1-2% abnormal return is detectable at 5-20 sessions, ~4-5% at 60-120 sessions, nothing at 250. Only 28% of buy events have price history in this proxy, so these are lower bounds on the sample the native price layer should give. Single market regime; no hold-out period yet exists. Conclusion: short-horizon (5-20 session) pooled tests are feasible now; any claim at 60+ sessions, or about subgroups (promoter vs director, size buckets), is underpowered.
