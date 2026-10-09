@@ -74,7 +74,7 @@ def render():
             kit.table(rows, [
                 kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'),
                 kit.Col('client_name', 'Client', 'client', sub='counterparties'), kit.Col('side', 'Side', 'side'),
-                kit.Col('quantity', 'Shares', 'num', phone=False), kit.Col('price', 'Price', 'num', phone=False),
+                kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
                 kit.Col('feeds', 'Feed', phone=False)], limit=200, download='deals')
             kit.caption('Same client, stock, day and side are one row; a trade printed in both the bulk and block feed '
@@ -95,6 +95,6 @@ def render():
             kit.table(s.assign(nse_symbol=s['symbol']), [
                 kit.Col('company', 'Company', 'co'), kit.Col('transaction_date', 'Date', 'date'),
                 kit.Col('acquirer_name', 'Acquirer / seller', sub='mode'), kit.Col('action_type', 'Action'),
-                kit.Col('shares_traded', 'Shares', 'num', phone=False),
+                kit.Col('shares_traded', 'Shares', 'shares', phone=False),
                 kit.Col('percent_equity_traded', '% traded', 'spct'), kit.Col('post_stake_pct', 'Stake after', 'pct'),
                 kit.Col('regulation', 'Rule', phone=False)], limit=200, download='sast')

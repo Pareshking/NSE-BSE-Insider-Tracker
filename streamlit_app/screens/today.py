@@ -207,7 +207,7 @@ def render():
                 kit.table(d, [
                     kit.Col('company', 'Company', 'co'), kit.Col('client_name', 'Client', 'client', sub='counterparties'),
                     kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
-                    kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('price', 'Price', 'num')], limit=40)
+                    kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('price', 'Price', 'price')], limit=40)
         else:
             h = hs[hs['large']] if not hs.empty else hs
             if h.empty:

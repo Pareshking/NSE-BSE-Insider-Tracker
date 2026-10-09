@@ -42,13 +42,9 @@ def render():
             if rows.empty:
                 kit.empty('No meetings for these purposes from last week onwards.')
             else:
-                st.dataframe(rows.assign(link=rows['symbol'].map(kit.company_href),
-                                         what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', '))[
-                    ['link', 'meeting_date', 'company', 'what', 'description']], hide_index=True, width='stretch',
-                    height=460, column_config={
-                        'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                        'meeting_date': st.column_config.DateColumn('Meeting', format='DD MMM YYYY'),
-                        'company': 'Company', 'what': 'To consider', 'description': 'As filed'})
+                kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ')), [
+                    kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
+                    kit.Col('what', 'To consider'), kit.Col('description', 'As filed', phone=False)], limit=100)
 
     with kit.card('Corporate actions', 'cr_actions', 'buybacks, rights, bonuses, splits, dividends'):
         a = ctx.actions
@@ -61,14 +57,11 @@ def render():
                              selection_mode='multi', format_func=PURPOSES.get, key='cr_kinds')
             rows = a[a['purpose'].isin(kinds)] if kinds else a
             rows = rows.sort_values('ex_date', ascending=False)
-            st.dataframe(rows.assign(link=rows['symbol'].map(kit.company_href), kind=rows['purpose'].map(PURPOSES))[
-                ['link', 'ex_date', 'company', 'kind', 'subject', 'ratio', 'rights_issue_price', 'dividend_per_share',
-                 'record_date']], hide_index=True, width='stretch', height=460, column_config={
-                    'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                    'ex_date': st.column_config.DateColumn('Ex-date', format='DD MMM YYYY'), 'company': 'Company',
-                    'kind': 'Type', 'subject': 'As filed', 'ratio': 'Ratio',
-                    'rights_issue_price': st.column_config.NumberColumn('Rights price (₹)', format='%.2f'),
-                    'dividend_per_share': st.column_config.NumberColumn('Dividend (₹/sh)', format='%.2f'),
-                    'record_date': st.column_config.DateColumn('Record date', format='DD MMM YYYY')})
+            kit.table(rows.assign(nse_symbol=rows['symbol'], kind=rows['purpose'].map(PURPOSES)), [
+                kit.Col('ex_date', 'Ex-date', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('kind', 'Type'),
+                kit.Col('subject', 'As filed', phone=False), kit.Col('ratio', 'Ratio'),
+                kit.Col('rights_issue_price', 'Rights price', 'price', phone=False),
+                kit.Col('dividend_per_share', 'Dividend/share', 'price', phone=False),
+                kit.Col('record_date', 'Record date', 'date', phone=False)], limit=150, download='corporate_actions')
             kit.caption("Rights price = face value + the premium NSE lists. Buyback price and route (tender or open "
                         "market) are not in NSE's corporate-actions feed; they come from the offer documents later.")

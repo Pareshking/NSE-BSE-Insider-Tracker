@@ -16,8 +16,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, pct, role, rupees, side_tag,
-                    tag)
+from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, indian, pct, price, role, rupees,
+                    shares, side_tag, tag)
 
 FONT_LINKS = ('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
               '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700'
@@ -37,7 +37,7 @@ class Col:
 TAG_TONES = {'Spotlight': 'info', 'Float absorber': 'buy', 'Cluster': 'buy', 'Promoter selling': 'sell',
              'High pledge': 'warn', 'Promoter': 'warn', 'Large': 'info', 'Token': 'mute', 'Late': 'warn'}
 NA = '<span class="na">—</span>'
-RIGHT = ('money', 'smoney', 'pct', 'spct', 'bar', 'num')
+RIGHT = ('money', 'smoney', 'pct', 'spct', 'bar', 'num', 'price', 'shares')
 NUMERIC_SORT = RIGHT + ('range', 'spark', 'date', 'tags')
 
 
@@ -63,12 +63,12 @@ def range_bar(close, low, high) -> str:
     pos = 50.0 if hi == lo else max(0.0, min(100.0, (c - lo) / (hi - lo) * 100))
     off = (c / hi - 1) * 100
     tone = 'hi' if off > -5 else 'lo' if pos < 20 else ''
-    return (f'<div class="rg {tone}" title="52W low ₹{lo:,.2f} · high ₹{hi:,.2f}">'
+    return (f'<div class="rg {tone}" title="52W low {price(lo)} · high {price(hi)}">'
             f'<span class="rg-t"><i style="left:{pos:.1f}%"></i></span>'
-            f'<span class="rg-v">₹{c:,.2f}<em>{off:+.0f}% from high</em></span></div>')
+            f'<span class="rg-v">{price(c)}<em>{off:+.1f}% from high</em></span></div>')
 
 
-def spark(dates, closes, marks=(), days: int = 365, w: int = 132, h: int = 32) -> tuple[str, float | None]:
+def spark(dates, closes, marks=(), days: int = 365, w: int = 116, h: int = 30) -> tuple[str, float | None]:
     """(svg, 1-year % change): the last year's price line with each
     open-market insider buy (green) and sell (red) marked on the day it was
     made public. `marks` is a list of (date, 'BUY' | 'SELL')."""
@@ -99,7 +99,7 @@ def spark(dates, closes, marks=(), days: int = 365, w: int = 132, h: int = 32) -
             continue
         j = min(int(d.searchsorted(t)), len(c) - 1)
         cls = 'b' if side == 'BUY' else 's'
-        dots.append(f'<circle cx="{x(d[j].value):.1f}" cy="{y(c[j]):.1f}" r="2.7" class="{cls}"/>')
+        dots.append(f'<circle cx="{x(d[j].value):.1f}" cy="{y(c[j]):.1f}" r="3.2" class="{cls}"/>')
     chg = float(c[-1] / c[0] - 1) * 100
     tone = 'up' if chg >= 0 else 'down'
     svg = (f'<div class="spw"><svg class="sp" viewBox="0 0 {w} {h}" width="{w}" height="{h}">'
@@ -156,14 +156,19 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
     if k == 'date':
         t = pd.to_datetime(v, errors='coerce')
         ok = pd.notna(t)
-        return (t.strftime('%d %b') if ok else NA), (t.strftime('%Y%m%d') if ok else ''), 'd'
+        return (t.strftime('%d %b %Y') if ok else NA), (t.strftime('%Y%m%d') if ok else ''), 'd'
     if k == 'tags':
         items = v if isinstance(v, (list, tuple)) else [x for x in str(v or '').split(',') if x.strip()]
         return ' '.join(tag(str(x).strip(), _tone(str(x).strip())) for x in items), str(len(items)), 'tags'
     if k == 'num':
         f = _finite(v)
-        shown = NA if f is None else f'{f:,.0f}' if abs(f) >= 100 or f == int(f) else f'{f:,.2f}'
-        return shown, _sv(f), 'r num'
+        return (NA if f is None else indian(f, 0 if f == int(f) else 2)), _sv(f), 'r num'
+    if k == 'price':
+        f = _finite(v)
+        return (NA if f is None else price(f)), _sv(f), 'r num'
+    if k == 'shares':
+        f = _finite(v)
+        return (NA if f is None else shares(f)), _sv(f), 'r num'
     text = '' if v is None or (not isinstance(v, (list, tuple)) and pd.isna(v)) else str(v)
     sub = r.get(c.sub) if c.sub else None
     cell = esc(text) if text else NA
@@ -200,6 +205,9 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
         empty(empty_text)
         return
     shown = rows.head(limit)
+    # A number column with no value in any shown row says nothing: drop it.
+    cols = [c for c in cols if c.kind not in ('pct', 'spct', 'bar', 'money', 'smoney', 'num', 'price', 'shares')
+            or c.key not in shown or pd.to_numeric(shown[c.key], errors='coerce').notna().any()]
     bar_max = {c.key: max(pd.to_numeric(shown[c.key], errors='coerce').abs().max(), 1e-9)
                for c in cols if c.kind == 'bar' and c.key in shown}
     head = ''.join(

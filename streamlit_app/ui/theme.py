@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700'
-         '&family=Geist+Mono:wght@400..700&family=Schibsted+Grotesk:wght@600..800&display=swap" rel="stylesheet">')
+         '&family=Geist+Mono:wght@400..700&display=swap" rel="stylesheet">')
 
 
 @lru_cache(maxsize=1)

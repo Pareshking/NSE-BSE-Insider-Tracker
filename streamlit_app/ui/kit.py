@@ -33,38 +33,81 @@ def blank_text(values, pattern: str) -> pd.Series:
     return s.map(lambda v: '' if pd.isna(v) else pattern.format(v))
 
 
+def indian(v, decimals: int = 0) -> str:
+    """Indian digit grouping: 1,52,57,999 and 4,00,000.50."""
+    f = _finite(v)
+    if f is None:
+        return '—'
+    whole, _, frac = f'{abs(f):.{decimals}f}'.partition('.')
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        groups = []
+        while len(head) > 2:
+            groups.insert(0, head[-2:])
+            head = head[:-2]
+        whole = ','.join(([head] if head else []) + groups + [tail])
+    return ('−' if f < 0 else '') + whole + (f'.{frac}' if frac else '')
+
+
 def rupees(v, signed: bool = False) -> str:
-    """Indian units: Rs. L under one crore, Rs. Cr above. Em dash when unknown."""
+    """Money in Indian units: ₹12.34 Cr, ₹1,234 Cr above a thousand crore,
+    ₹46.50 L under a crore, plain rupees under a lakh. Em dash when unknown."""
     f = _finite(v)
     if f is None:
         return '—'
     sign = ('+' if f > 0 else '−' if f < 0 else '') if signed else ('−' if f < 0 else '')
     a = abs(f)
+    if a >= 1e10:
+        return f'{sign}₹{indian(a / 1e7)} Cr'
     if a >= 1e7:
         return f'{sign}₹{a / 1e7:,.2f} Cr'
-    return f'{sign}₹{a / 1e5:,.2f} L'
+    if a >= 1e5:
+        return f'{sign}₹{a / 1e5:.2f} L'
+    return f'{sign}₹{indian(a)}'
+
+
+def price(v) -> str:
+    """A share price: ₹1,037.50."""
+    f = _finite(v)
+    return '—' if f is None else f'₹{indian(f, 2)}'
+
+
+def shares(v) -> str:
+    f = _finite(v)
+    return '—' if f is None else indian(f)
 
 
 def pct(v, digits: int = 2, signed: bool = False) -> str:
-    """A number that is already a percentage (0.42 -> '0.42%')."""
+    """A number that is already a percentage (0.42 -> '0.42%'); under the
+    last digit shown, '<0.01%' rather than a misleading 0.00%."""
     f = _finite(v)
     if f is None:
         return '—'
     if f != 0 and abs(f) < 0.5 * 10 ** -digits:
         return f'{"−" if f < 0 else "+" if signed else ""}<{10 ** -digits:.{digits}f}%'
-    return f'{f:+.{digits}f}%' if signed else f'{f:.{digits}f}%'
+    out = f'{abs(f):.{digits}f}%'
+    return ('+' if f > 0 else '−' if f < 0 else '') + out if signed else ('−' if f < 0 else '') + out
 
 
-def day(v) -> str:
-    try:
-        return pd.Timestamp(v).strftime('%d %b %Y')
-    except (TypeError, ValueError):
+def day(v, with_year: bool = True) -> str:
+    """09 Oct 2026 (or 09 Oct)."""
+    t = pd.to_datetime(v, errors='coerce')
+    if pd.isna(t):
         return '—'
+    return t.strftime('%d %b %Y' if with_year else '%d %b')
 
 
 def count(v) -> str:
     f = _finite(v)
-    return '—' if f is None else f'{f:,.0f}'
+    return '—' if f is None else indian(f)
+
+
+def sessions_text(n) -> str:
+    f = _finite(n)
+    if f is None:
+        return ''
+    n = int(f)
+    return 'same day' if n == 0 else f'{n} session{"s" if n != 1 else ""}'
 
 
 ROLE_LABELS = {'promoter': 'promoter', 'promoter_group': 'promoter group', 'director': 'director', 'kmp': 'KMP',

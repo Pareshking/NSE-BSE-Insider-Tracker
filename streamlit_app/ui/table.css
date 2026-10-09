@@ -58,9 +58,9 @@ td.tags { min-width: 110px; }
 .rg.hi .rg-v em { color: var(--buy); } .rg.lo .rg-v em { color: var(--sell); }
 /* price line with insider trades marked */
 .spw { display: flex; align-items: center; gap: 8px; } .spw span { font-size: 12px; font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
-.sp polyline { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.sp polyline { fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 .sp polyline.u { stroke: #64748B; } .sp polyline.d { stroke: #94A3B8; }
-.sp circle.b { fill: var(--buy); stroke: #fff; stroke-width: 1; } .sp circle.s { fill: var(--sell); stroke: #fff; stroke-width: 1; }
+.sp circle.b { fill: var(--buy); stroke: #fff; stroke-width: 1.5; } .sp circle.s { fill: var(--sell); stroke: #fff; stroke-width: 1.5; }
 @media (max-width: 640px) {
   .opt { display: none; }
   .tbl { font-size: 13px; } .tbl td, .tbl thead th { padding: 8px 9px; }
