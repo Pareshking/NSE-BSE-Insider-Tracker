@@ -133,4 +133,27 @@ Primary metric: 20-session abnormal return vs size-matched peers. Judged with a 
 
 | Date | Family | Variant | Reason | Reported? |
 |---|---|---|---|---|
-| 2026-10-09 | H1 | C0..C9 conditioned cuts (this section) | owner directive | section I results |
+| 2026-10-09 | H1 | C0..C9 conditioned cuts (this section), run 37925660880 | owner directive | yes, section I.1 |
+
+### I.1 Results (run 37925660880, development sample, standard entry, before costs; VERIFIED as computed)
+
+Mean 20-session abnormal return vs size-matched peers (N / date clusters; 95% CI; adjusted 99.44% CI is the primary test):
+
+| Cut | N / clusters | Mean AR20 | Median | Hit | 95% CI | Adjusted 99.44% CI | AR60 mean (95% CI) |
+|---|---|---|---|---|---|---|---|
+| C0 baseline | 1255 / 107 | -1.41% | -1.63% | 44% | -2.4..-0.4 | -2.8..-0.0 | -2.05% (-3.5..-0.5) |
+| C1 promoter | 970 / 104 | -1.50% | -1.94% | 44% | -2.5..-0.4 | -2.8..+0.1 | -3.22% (-4.7..-1.7) |
+| C2 non-promoter | 285 / 74 | -1.13% | -0.53% | 47% | -2.9..+0.6 | -3.6..+1.4 | +1.99% (-1.7..+6.6) |
+| C3 >= Rs 10 lakh | 850 / 94 | -1.85% | -1.96% | 44% | -3.2..-0.5 | -3.8..+0.2 | -2.09% (-4.0..+0.1) |
+| C4 >= Rs 50 lakh | 436 / 80 | -3.01% | -2.52% | 43% | -4.8..-1.2 | -5.4..-0.5 | -2.89% (-5.5..-0.0) |
+| C5 >= 0.05% of mcap | 460 / 96 | -3.32% | -3.60% | 39% | -5.0..-1.5 | -5.7..-0.7 | -7.16% (-9.7..-4.5) |
+| C6 breadth | 948 / 99 | -2.18% | -2.07% | 42% | -3.3..-1.0 | -3.9..-0.6 | -3.75% (-5.2..-2.3) |
+| C7 drawdown > 20% | 800 / 98 | -0.40% | -0.47% | 48% | -1.5..+0.7 | -2.0..+1.3 | -2.33% (-4.0..-0.6) |
+| C8 promoter and >= 0.05% | 397 / 94 | -3.59% | -3.48% | 39% | -5.4..-1.6 | -6.1..-0.8 | -7.99% (-10.7..-5.0) |
+| C9 promoter and drawdown > 20% | 579 / 96 | -0.40% | -0.49% | 48% | -1.8..+1.1 | -2.5..+1.8 | -2.95% (-4.8..-0.8) |
+
+Against the market proxy: C7 +0.38% (-0.5..+1.4) and C9 +0.38% (-0.7..+1.6) are the only non-negative cut means; C2 is +0.20% (-1.5..+1.8); all others are negative. 5-session size-matched ARs are within about +-1.3% for every cut (C5, C8 negative with CIs excluding zero; the rest straddle zero). MDEs at 20 sessions are 1.1 to 2.8%.
+
+**Verdict (ESTIMATED): no conditioned subset of insider open-market buys shows an edge.** None of the nine cuts has a positive primary interval; the best cuts (drawdown, C2) are indistinguishable from zero and C2/C7/C9 are underpowered relative to realistic effects. Counter to the conviction hypothesis, the cuts that select *larger* purchases (C4, C5, C8: Rs 50 lakh+, 0.05%+ of market cap) and breadth (C6) are significantly *worse* than peers (primary adjusted intervals below zero, 60-session -7% to -8% for C5/C8). HYPOTHESIS, not tested: large purchases relative to market cap in illiquid micro caps are dominated by promoter creeping accumulation and price-support, which show up as a disclosed rise followed by mean reversion; the size-matched benchmark also remains equal-weighted micro-cap. Both need liquidity data (volume, impact) and the non-market-modes split to examine; they are not tuned here.
+
+Not found: drawdown or promoter conviction signals. Not done: costs/impact, liquidity filter, broad index/factor benchmark, regime split (one half-year). No buy signal is generated. Hold-out remains unscored.

@@ -58,3 +58,8 @@
 - VERIFIED: BSE's UDiFF previous-close does not reset on splits (1 of 56 NSE split days both exchanges traded). Decision: dual-listed ISINs inherit the NSE split/bonus factor onto the BSE series (`adjust.inherit_nse`); BSE-only ISINs keep raw prices, flagged, and only a clean-ratio BSE reset (2 seen) is applied. No attempt to reach BSE's blocked corporate-action endpoints.
 - Price backfill finished (52 minutes, success): NSE and BSE 437 of 437 days, market cap 437 of 437, no stored day without a raw file. Final coverage numbers are in `docs/AUDIT.md` addendum 3. Lessons: the first runs printed nothing while running; the script now logs and writes month by month.
 - Temporary push triggers removed from `price-backfill.yml` and `price-coverage.yml` (both dispatch-only now). PR #12 merged under the owner's Gate 2 pre-approval.
+
+## 2026-10-09 (IST): product labelling follows the research
+- Insider market buys and bulk/block deal direction: label "no proven edge" (H1, H8, conditioned cuts C1-C9 all show no positive abnormal return in the Jan-Jun 2026 development sample). No bullish alerts.
+- Insider sells: caution/risk flag only (about -1.5% to -2.4% vs peers at 5-20 sessions, before costs; hold-out still to confirm). Not a trade signal.
+- Conditioned-cut run used a temporary branch push trigger on `research-run.yml` (removed again); `research_conditioned.py` is wired to the dispatch workflow.
