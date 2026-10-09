@@ -41,3 +41,4 @@ jobs:
           path: coverage
           retention-days: 14
 # smoke run on the sample months (Sep-Oct 2026) while the full backfill loads
+# progress check run 10:19Z
