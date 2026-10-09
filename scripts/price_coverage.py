@@ -118,10 +118,14 @@ def main(argv=None) -> int:
         f = adjust.implied_factors(px)
         st = f[f['kind'] == 'split_bonus']
         rep['structural_events'] = {ex: int((st['exchange'] == ex).sum()) for ex in ('NSE', 'BSE')}
-        both = st.pivot_table(index=['isin', 'date'], columns='exchange', values='factor', aggfunc='first').dropna() if len(st) else pd.DataFrame()
-        rep['dual_listed_structural_agreement'] = ({'pairs': int(len(both)),
-                                                    'agree_within_2pct': int(((both['NSE'] / both['BSE'] - 1).abs() < 0.02).sum())}
-                                                   if len(both) else {'pairs': 0})
+        # for every NSE split/bonus, did BSE (if it traded the ISIN that day) show the same reset?
+        nse_ev = st[st['exchange'] == 'NSE'][['isin', 'date', 'factor']]
+        bse_all = f[f['exchange'] == 'BSE'][['isin', 'date', 'factor', 'kind']].rename(columns={'factor': 'bse_factor', 'kind': 'bse_kind'})
+        j = nse_ev.merge(bse_all, on=['isin', 'date'], how='inner')
+        rep['nse_split_bonus_seen_on_bse'] = {
+            'nse_events_also_on_bse': int(len(j)),
+            'bse_same_reset_within_2pct': int(((j['bse_factor'] / j['factor'] - 1).abs() < 0.02).sum()),
+            'bse_kind_counts': {str(k): int(v) for k, v in j['bse_kind'].value_counts().items()}}
         nse_isins = set(px.loc[px['exchange'] == 'NSE', 'isin'])
         sess = adjust.session_frame(px)
         for name in ('insider_trades', 'deals'):

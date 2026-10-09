@@ -18,7 +18,9 @@ Phase 0 audit: approved. Phase 1 data foundation: merged to `main` (PR #11, 14:1
 | Streamlit production | Not verified after the 14:17 IST deploy (no log access); please check the app loads |
 
 ## Price backfill
-Run 37913910522 (started 15:21 IST, limit 120 min). GitHub hides the log of a running job, so progress is read from R2 by the coverage workflow. Latest reading in the section below.
+Run 37913910522 (started 15:21 IST, limit 120 min). GitHub hides the log of a running job, so progress is read from R2 by the coverage workflow.
+Reading at 15:55 IST: NSE prices 437 of 437 days (100%), BSE prices 437 of 437 (100%), NSE market cap 106 of about 437 days (about 24%). Every stored price day has its raw file in `raw_v2` (0 without). Price rows 3.48 million. Insider events with an entry price: 99.3% (250-session history: 8,879 of 9,990). Deals: 97.9% (10,964 of 16,502 with 250 sessions).
+Adjustment events found: 65 clean split/bonus resets (59 NSE, 6 BSE), 1,531 other large resets counted but not applied. Open question: only 6 on BSE against 59 on NSE, so BSE's `prev_close` may not reset on splits; the next coverage run tests every NSE split against BSE's same-day factor.
 
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
