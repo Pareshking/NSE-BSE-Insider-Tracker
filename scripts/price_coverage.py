@@ -78,7 +78,8 @@ def event_coverage(events: pd.DataFrame, sessions: pd.DataFrame, name: str) -> d
     has_isin = ev['isin'].fillna('').astype(str).str.len() > 0
     out = {'events_2026': int(len(ev)), 'with_isin': int(has_isin.sum())}
     by_isin = {k: g['date'].to_numpy() for k, g in sessions.groupby('isin')}
-    entry = hist20 = hist120 = hist250 = 0
+    entry = 0
+    hist = {5: 0, 20: 0, 60: 0, 120: 0, 250: 0}
     for isin, d in zip(ev.loc[has_isin, 'isin'], ev.loc[has_isin, '_d']):
         arr = by_isin.get(isin)
         if arr is None:
@@ -86,12 +87,11 @@ def event_coverage(events: pd.DataFrame, sessions: pd.DataFrame, name: str) -> d
         after = arr[(arr > np.datetime64(d)) & (arr <= np.datetime64(d + pd.Timedelta(days=7)))]
         before = (arr <= np.datetime64(d)).sum()
         entry += len(after) > 0
-        hist20 += before >= 20
-        hist120 += before >= 120
-        hist250 += before >= 250
+        for k in hist:
+            hist[k] += before >= k
     n = max(int(has_isin.sum()), 1)
     out.update({'with_entry_price': int(entry), 'entry_share_of_isin_events': round(entry / n, 3),
-                'history_ge_20_sessions': int(hist20), 'history_ge_120': int(hist120), 'history_ge_250': int(hist250)})
+                **{f'history_ge_{k}_sessions': int(v) for k, v in hist.items()}})
     return out
 
 
