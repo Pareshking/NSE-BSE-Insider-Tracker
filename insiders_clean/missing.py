@@ -39,3 +39,22 @@ def normalise(df: pd.DataFrame) -> pd.DataFrame:
             s = df[col].astype(object)
             df[col] = s.where(~s.map(is_missing), None)
     return df
+
+
+def as_flag(series):
+    """A boolean flag column read back from the archive: real booleans, or
+    the text 'True'/'False' (the archive stores mixed columns as text), or
+    missing. Only an explicit true counts; text 'False' must never be truthy."""
+    import pandas as pd
+    def one(v):
+        if isinstance(v, str):
+            return v.strip().lower() in ('true', '1', 'yes')
+        if v is None or v is pd.NA:
+            return False
+        try:
+            if pd.isna(v):
+                return False
+        except (TypeError, ValueError):
+            pass
+        return bool(v)
+    return series.map(one).astype(bool)

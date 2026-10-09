@@ -19,6 +19,13 @@ same day something is promised, started or finished. Pages follow the data:
   the data map; not merged yet.
 - The overnight cloud run did not start; nothing ran after 02:00 IST.
 
+## Update 09 Oct 2026 (Phase 1; details in `docs/AUDIT.md`, `docs/DECISIONS.md`, `docs/PROGRESS.md`)
+
+- Work is on branch `ccr-27a6c75f-o9ztpa` / draft PR #11; nothing merged to `main` (it deploys production).
+- Deals backfill redone with `--redo`: bulk +6,460 rows (flagged `intraday_round_trip`), block +0; item B's "dropped" counts below are superseded.
+- New: write-once raw layer, nightly raw capture (untested in production), 1 Jan 2026 product window, data-inventory workflow.
+- Open: nightly bulk/block 70-row cap (move to CSV endpoint?), native bhavcopy price layer, revision fields (item 14), `main` nightly clean ignores the round-trip flag until the branch merges.
+
 ## Tomorrow, in this order
 
 | # | Item | Done when |
@@ -42,7 +49,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 10 | Model basket | Waits on 7 |
 | 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
 | 13 | BSE history and BSE events | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
-| 14 | `nse_insider.py` keeps NSE's revision markers | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
+| 14 | ~~`nse_insider.py` keeps NSE's revision markers~~ **Coded 09 Oct, unverified live** | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
 | 15 | Retention deletes for real | Owner sets `R2_RETENTION_DELETE=1` once the archive has been stable; stays a dry run until then |
 | 16 | Named-investor aliases | Curated list maps known investors' and funds' spellings to one name |
 | 18 | NSE block deals BLOCKED in the nightly collection on 07 and 08 Oct | Validator passes again, or the cause is found (history block deals came in fine through the CSV endpoint) |

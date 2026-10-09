@@ -91,6 +91,15 @@ One row per company and quarter; a revised filing replaces the original.
 | `xbrl_status` | `ok`, `pending` (not fetched yet; at most 300 a night), `no_xbrl`, or `failed: ...` |
 | `shareholding_stale` | True when this quarter's XBRL isn't parsed and the pledge figures shown are the company's previous quarter's |
 
+## Archive and raw layer columns (not clean tables)
+
+| Column | Where | Meaning |
+|---|---|---|
+| `intraday_round_trip` | `archive/canonical/.../bulk_deals`, `block_deals` | True when the row is a leg of a same-day, same-client, equal-size buy+sell. Absent on rows written before 09 Oct 2026; may be boolean or text, read with `as_flag` |
+| `canonical_prev_app_id`, `canonical_submission_type`, `canonical_revision_remark` | archive, NSE insider | NSE's own revision markers from the filing list (clean table: `prev_app_id`, `nse_submission_type`, `nse_revision_remark`). Not part of the row id |
+| `first_seen`, `last_seen` | archive | Run dates a row was first and last collected |
+| `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
+
 ## Not yet collected
 
 BSE equivalents of the four event tables (BSE's API needs an in-page fetch).

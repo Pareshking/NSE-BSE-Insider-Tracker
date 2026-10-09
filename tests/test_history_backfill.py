@@ -326,10 +326,11 @@ def test_deals_without_archive_need_explicit_to():
         bf.resolve_range('block', None, None, None)
 
 
-def test_deals_round_trips_dropped_as_the_nightly_writer_does():
+def test_deals_round_trips_flagged_not_dropped():
     rows = deal_rows(csv_bytes('nse_bulk_2024.csv'))
-    frame, dropped = bf.canonical_frame('bulk', rows)
-    assert len(frame) + dropped == len(rows)
+    frame, flagged = bf.canonical_frame('bulk', rows)
+    assert len(frame) == len(rows)  # raw layer keeps every row
+    assert flagged == int(frame['intraday_round_trip'].sum())
 
 
 def test_nightly_clean_keeps_backfill_entry_and_last_merged(monkeypatch, real_nse_rows):
@@ -354,11 +355,12 @@ def test_nightly_clean_keeps_backfill_entry_and_last_merged(monkeypatch, real_ns
 # --- helpers that keep a full-history clean fast give the old answers ---------
 
 def test_day_first_fast_path_matches_the_general_parser():
-    from insiders_clean.dates import to_datetime_day_first
+    from insiders_clean.dates import _ns, to_datetime_day_first
     values = pd.Series(['04-MAR-2024', '07-Mar-2016 18:50', '01-Oct-2026 16:42:04', '27/08/2026', '05-06-2024',
                         '2026-08-27', '31 Aug 2026', '13/25/2024', '01-Mar-3034', '', None, 'garbage',
                         '1-Mar-2016'], dtype=object)
-    expected = pd.to_datetime(values.astype('string'), errors='coerce', dayfirst=True, format='mixed')
+    # pandas 3 keeps year 3034 in a coarser unit; the fast path maps it to NaT (_ns)
+    expected = _ns(pd.to_datetime(values.astype('string'), errors='coerce', dayfirst=True, format='mixed'))
     pd.testing.assert_series_equal(to_datetime_day_first(values), expected, check_names=False)
 
 

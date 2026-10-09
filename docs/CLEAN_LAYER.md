@@ -6,7 +6,12 @@ says where they live, what each rule does, and how storage is kept small.
 ## Nightly order (R2 Storage Write workflow)
 
 1. Collect and validate NSE + BSE (unchanged).
-2. `scripts/r2_writer.py` writes `raw/` and `canonical/` for today (unchanged).
+1b. Every collector saves each response's exact bytes locally at fetch time
+   (`scripts/raw_capture.py`); `scripts/raw_flush.py` then stores them in the
+   write-once `raw_v2/` layer (see "Raw layer"). Not yet exercised in
+   production (09 Oct 2026): the nightly runs from `main`, where this is not merged.
+2. `scripts/r2_writer.py` writes `raw/` and `canonical/` for today. Intraday
+   round-trip deal legs are flagged (`intraday_round_trip`), no longer dropped.
 3. `scripts/update_calendar.py` extends the NSE trading calendar.
 4. `scripts/clean_writer.py` merges today's canonical files into the archive
    and rebuilds the clean tables from the whole archive.
@@ -43,6 +48,45 @@ manifests, the calendar and everything under `archive/` and `clean/`.
 The current Streamlit pages still read dated `canonical/` files through the
 run-date selector; with retention on, that selector offers the last 14 days
 until the pages move to `clean/`.
+
+Nightly bulk and block deals are read from NSE's uncapped CSV export
+(`scripts/nse_deals_csv.py`), not the JSON form (70 rows per call).
+
+## Raw layer (`raw_v2/`, write-once)
+
+`insiders_clean/raw_store.py`. The exact bytes an exchange sent, never
+filtered: round trips, duplicates, amendments and unreadable dates all stay.
+
+| Key | What |
+|---|---|
+| `raw_v2/{source}/{dataset}/blobs/{sha256[:2]}/{sha256}.{ext}` | Response body, byte for byte, named by its own SHA-256 (same bytes = one object) |
+| `raw_v2/{source}/{dataset}/fetches/{YYYY-MM-DD}/{utc timestamp}_{sha12}.json` | One record per fetch: URL, parameters, HTTP status, content type, UTC time, size, hash, collector, git commit, covered date range |
+
+Written with `If-None-Match: *` (never overwrites); no retention job touches
+it. Delete protection in the bucket (R2 object lock / lifecycle) is the
+owner's to set; code cannot prove it. Wired into the NSE history backfill and
+the nightly collectors. A failed raw write fails the backfill chunk; in the
+nightly the flush step goes red.
+
+## Product window
+
+The product holds transactions dated on or after 1 Jan 2026
+(`insiders_clean.pipeline.PRODUCT_START`). Earlier filings (the archive holds
+8 Oct to 31 Dec 2025) stay in the archive for offline research only. The clean
+step removes them with counted reasons `before_product_start` and
+`no_readable_transaction_date` (insider ranges use their last day). Reversible:
+change the constant and rerun the clean step.
+
+## Intraday round trips (deals)
+
+Same client, security and day with equal buy and sell size (within 1%) are
+real trades without a change of ownership. Raw and archive keep them with
+`intraday_round_trip` = true; the clean step excludes them (reason
+`intraday_round_trip`). The archive stores that column as boolean, or as text
+when old rows lack it, so read it with `insiders_clean.missing.as_flag`, never
+`astype(bool)` (`'False'` is truthy). Rows dropped before 09 Oct 2026 in the
+nightly-collected window are lost; the backfilled window was recovered with
+`--redo` (+6,460 bulk rows).
 
 ## Rules
 
@@ -106,7 +150,7 @@ dry run; dry run is the default and writes nothing), or locally:
   needed for insider; deals need `--to`), then
   `--upload-from DIR` with R2 credentials to merge those files into R2.
 - **What it writes**: rows go through `r2_writer.rows_to_parquet_bytes`
-  (intraday round trips dropped, as at night) and `archive.merge_partitioned`
+  (intraday round trips FLAGGED in `intraday_round_trip`, never dropped) and `archive.merge_partitioned`
   with first_seen = last_seen = the run date. `_state.json` gets `records`
   and a `backfill` entry; `last_merged` is never moved (retention reads it),
   and no state file is created where the nightly has not built one.
@@ -115,6 +159,9 @@ dry run; dry run is the default and writes nothing), or locally:
   never set `last_merged`.
 - Rows with impossible dates (a 2024 filing with a trade date in 3034) are
   stored as they came and counted in the report; the cleaner flags them.
+- **`--redo`** (workflow input `redo`) refetches chunks already marked done.
+  The merge is idempotent (same row id: only `last_seen` moves).
+- Raw responses are stored in `raw_v2/` before parsing when writing to R2.
 - Don't run it during the nightly R2 Storage Write run (18:00 UTC): both
   write archive partitions.
 

@@ -187,3 +187,44 @@ def test_removal_breakdown_explains_copies(real_nse_rows, master, calendar, repo
     assert 'broadcastDt' in b['differing_fields']          # re-filed later
     assert 'modeOfAcquisition' in b['differing_fields']    # HCL's correction
     assert len(b['examples']) == 5 and all(e['kept'] != e['removed'] for e in b['examples'])
+
+
+# --- Phase 1: NSE's revision markers ---------------------------------------------
+
+def test_revision_fields_do_not_change_the_row_id():
+    import r2_writer
+    row = {'symbol': 'X', 'appId': '1', 'acqName': 'A', 'buyQuantity': '5'}
+    with_fields = dict(row, prevAppId='', typeOfSubmission='Original', revisionRemark='')
+    assert r2_writer.canonical_event_id('nse', 'insider_trading', row) == \
+        r2_writer.canonical_event_id('nse', 'insider_trading', with_fields)
+    assert r2_writer.canonical_event_id('nse', 'insider_trading', dict(row, appId='2')) != \
+        r2_writer.canonical_event_id('nse', 'insider_trading', row)
+
+
+def test_collector_row_carries_nse_revision_markers():
+    import nse_insider
+    filing = {'appId': '9', 'symbol': 'X', 'broadcastDateTime': '01-Oct-2026 16:42:04',
+              'prevAppId': '3', 'typeOfSubmission': 'Revision', 'revisionRemark': 'rectify mode'}
+    row = nse_insider.to_row({'NameOfThePerson': 'A'}, filing)
+    assert (row['prevAppId'], row['typeOfSubmission'], row['revisionRemark']) == ('3', 'Revision', 'rectify mode')
+    plain = nse_insider.to_row({'NameOfThePerson': 'A'}, {'appId': '9', 'prevAppId': None})
+    assert plain['prevAppId'] == '' and plain['typeOfSubmission'] == ''
+
+
+def test_revision_with_prev_app_id_replaces_the_original_and_blank_markers_do_nothing(
+        real_nse_rows, master, calendar, report):
+    base = next(r for r in real_nse_rows if r['symbol'] == 'HCLTECH')
+    orig = dict(base, appId='3857', prevAppId='', typeOfSubmission='Original', revisionRemark='')
+    rev = dict(base, appId='3999', modeOfAcquisition='Market Sale', prevAppId='3857',
+               typeOfSubmission='Revision', revisionRemark='revised solely to rectify the mode')
+    out = run([orig, rev], master, calendar, report)
+    assert out['app_id'].tolist() == ['3999']
+    k = out.iloc[0]
+    assert k['prev_app_id'] == '3857' and k['nse_submission_type'] == 'Revision' and 'rectify' in k['nse_revision_remark']
+    assert report.data['tables']['insider_trades']['removed']['superseded_by_revision']['count'] == 1
+    # rows with a blank appId and blank prevAppId (backfilled history) never supersede each other
+    a = dict(base, appId='', prevAppId='', acqName='Person One')
+    b = dict(base, appId='', prevAppId='', acqName='Person Two', buyQuantity='1', sellquantity='5')
+    rep2 = type(report)('2026-10-07')
+    out2 = run([a, b], master, calendar, rep2)
+    assert 'superseded_by_revision' not in rep2.data['tables']['insider_trades']['removed']

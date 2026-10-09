@@ -25,6 +25,11 @@ on:
         description: 'To (YYYY-MM-DD). Blank = 02 May 2026 for insider; for deals, the day before the earliest nightly record.'
         required: false
         default: ''
+      redo:
+        description: "'true' = refetch chunks already marked done (idempotent merge); used to recover deal rows an earlier version dropped"
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
       dry_run:
         description: "'true' = fetch and map only, write nothing"
         type: choice
@@ -61,9 +66,11 @@ jobs:
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
           DRY_RUN: ${{ inputs.dry_run }}
+          REDO: ${{ inputs.redo }}
         run: |
           args=(--dataset "$DATASET")
           if [ -n "$FROM" ]; then args+=(--from "$FROM"); fi
           if [ -n "$TO" ]; then args+=(--to "$TO"); fi
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$REDO" = "true" ]; then args+=(--redo); fi
           python scripts/nse_history_backfill.py "${args[@]}"

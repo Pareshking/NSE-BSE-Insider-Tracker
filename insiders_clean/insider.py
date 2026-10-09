@@ -250,6 +250,9 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['exchange'] = raw['exchange'].astype(str).str.lower()
     df['app_id'] = _col(raw, 'canonical_app_id', 'appId').astype('string')
     df['prev_app_id'] = _col(raw, 'canonical_prev_app_id', 'prevAppId').astype('string')
+    df['prev_app_id'] = df['prev_app_id'].where(df['prev_app_id'].str.strip().fillna('') != '', pd.NA)  # blank = not a revision
+    df['nse_submission_type'] = _col(raw, 'canonical_submission_type', 'typeOfSubmission').astype('string')
+    df['nse_revision_remark'] = _col(raw, 'canonical_revision_remark', 'revisionRemark').astype('string')
     df['symbol'] = _col(raw, 'canonical_symbol', 'symbol', 'security_code')
     df['company_raw'] = _col(raw, 'canonical_company', 'companyName', 'company')
     df['person_raw'] = _col(raw, 'canonical_person', 'acqName', 'person')
@@ -326,7 +329,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df = _merge_truncated_names(df)
     df = _fill_missing_roles(df, report)
     keep = pd.Series(True, index=df.index)
-    known_app = set(df['app_id'].dropna())
+    known_app = set(df['app_id'].dropna()) - {''}
     superseded = df['app_id'].isin(set(df['prev_app_id'].dropna()) & known_app)
     report.removed('insider_trades', 'superseded_by_revision', df.loc[superseded, 'source_id'])
     keep &= ~superseded
@@ -395,6 +398,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
         df.loc[grp.index, 'listed_on'] = ','.join(sorted(grp['exchange'].unique()))
 
     cols = ['trade_id', 'source_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'app_id',
+            'prev_app_id', 'nse_submission_type', 'nse_revision_remark',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
             'person_id', 'person_name', 'person_role', 'person_role_source', 'person_category_raw',
             'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw',

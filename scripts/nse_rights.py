@@ -6,6 +6,9 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+import sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 
 TARGET=date.fromisoformat(os.getenv('TARGET_DATE','2026-08-31')); LOOKBACK=int(os.getenv('LOOKBACK_DAYS','90')); URL='https://www.nseindia.com/companies-listing/corporate-filings-RI'; OUT=Path('artifacts/nse_validation/rights'); OUT.mkdir(parents=True,exist_ok=True)
 UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139 Safari/537.36'
@@ -29,6 +32,7 @@ def js_fetch(d,url):
     script="""const url=arguments[0], done=arguments[arguments.length-1]; fetch(url,{credentials:'include',headers:{'Accept':'application/json,text/plain,*/*'}}).then(async r=>done(JSON.stringify({status:r.status,url:r.url,text:await r.text()}))).catch(e=>done(JSON.stringify({status:0,url:url,error:String(e)})));"""
     raw=json.loads(d.execute_async_script(script,url));
     text=raw.get('text','');
+    _raw_capture('nse','rights_issue',text,url=url,status=raw.get('status',0),content_type='application/json')
     try: raw['json']=json.loads(text)
     except Exception: raw['json']=None
     return raw

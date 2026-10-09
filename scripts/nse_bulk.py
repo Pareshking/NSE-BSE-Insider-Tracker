@@ -19,6 +19,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
+from nse_deals_csv import is_csv, rows_from_csv
 
 BASE    = 'https://www.nseindia.com'
 PAGE    = f'{BASE}/report-detail/display-bulk-and-block-deals'
@@ -53,6 +57,7 @@ def browser():
 def js_fetch(d, url):
     raw  = json.loads(d.execute_async_script(_JS, url))
     text = raw.get('text', '')
+    _raw_capture('nse', 'bulk_deals', text, url=url, status=raw.get('status', 0), content_type='application/json')
     try:
         raw['json'] = json.loads(text)
     except Exception as exc:
@@ -60,15 +65,15 @@ def js_fetch(d, url):
         raw['parse_error'] = str(exc)
     return raw
 
-CHUNK = 1  # max days per call -- see fetch_all() docstring below
+CHUNK = 31  # days per call. CSV export has no row cap (the JSON form capped at 70 rows/call; see scripts/nse_deals_csv.py)
 
 def fetch_range(d, start, end, retries=3):
     """Single API call for one [start, end] sub-range. Returns (url, raw, rows, chunk_diag)."""
-    url = f'{BASE}/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from={start:%d-%m-%Y}&to={end:%d-%m-%Y}'
+    url = f'{BASE}/api/historicalOR/bulk-block-short-deals?optionType=bulk_deals&from={start:%d-%m-%Y}&to={end:%d-%m-%Y}&csv=true'
     raw = js_fetch(d, url)
     attempts = 1
     for attempt in range(retries):
-        if raw.get('json') is not None:
+        if is_csv(raw.get('text', '')):
             break
         # Akamai bot-detection HTML page instead of JSON -- reload the page to
         # refresh the session/challenge state, then retry.
@@ -77,12 +82,12 @@ def fetch_range(d, start, end, retries=3):
         time.sleep(6)
         raw = js_fetch(d, url)
         attempts += 1
-    obj  = raw.get('json') or {}
-    rows = obj.get('data', []) if isinstance(obj, dict) else (obj if isinstance(obj, list) else [])
+    got_csv = is_csv(raw.get('text', ''))
+    rows = rows_from_csv(raw['text']) if got_csv else []
     diag = {
         'start': str(start), 'end': str(end), 'attempts': attempts,
         'final_status': raw.get('status'), 'final_bytes': raw.get('bytes'),
-        'mode': 'json' if raw.get('json') is not None else 'non_json', 'count': len(rows),
+        'mode': 'csv' if got_csv else 'non_csv', 'count': len(rows),
     }
     print(f'    [{start}..{end}] attempt {attempts}: status={diag["final_status"]} bytes={diag["final_bytes"]} mode={diag["mode"]} count={diag["count"]}')
     return url, rows, diag
@@ -114,19 +119,19 @@ def fetch_all(d, earliest, latest):
     that run while block, running immediately after in a fresh session,
     succeeded). Fetching once and slicing the combined rows by date for each
     window cuts total calls roughly in half with zero redundant overlap."""
-    urls, rows_by_key, chunks = [], {}, []
+    urls, all_rows, chunks = [], [], []
     cur = earliest
     while cur <= latest:
         chunk_end = min(cur + timedelta(days=CHUNK - 1), latest)
         url, rows, diag = fetch_range(d, cur, chunk_end)
         urls.append(url)
         chunks.append(diag)
-        for r in rows:
-            key = json.dumps(r, sort_keys=True, default=str)
-            rows_by_key[key] = r
+        # keep every CSV row: two identical lines are two trades (the JSON-era
+        # code collapsed them, which under-counted)
+        all_rows.extend(rows)
         cur = chunk_end + timedelta(days=1)
         time.sleep(1)
-    return list(rows_by_key.values()), urls, chunks
+    return all_rows, urls, chunks
 
 def slice_window(name, all_rows, start, end):
     def row_date(r):
@@ -141,7 +146,7 @@ def slice_window(name, all_rows, start, end):
     dates = sorted({str(r.get('BD_DT_DATE') or r.get('mTIMESTAMP') or r.get('date') or '') for r in rows})
     return {
         'name': name, 'start_date': str(start), 'end_date': str(end),
-        'mode': 'json' if rows else 'non_json',
+        'mode': 'csv' if rows else 'non_csv',
         'count': len(rows),
         'columns': sorted(rows[0].keys()) if rows and isinstance(rows[0], dict) else [],
         'distinct_dates': dates,
@@ -172,7 +177,7 @@ def main():
         report = {
             'dataset': 'bulk_deals', 'source': 'NSE',
             'target_date': str(TARGET), 'lookback_days': LOOKBACK,
-            'method': 'NSE historicalOR/bulk-block-short-deals API (browser-native fetch, same one the live report page uses); '
+            'method': 'NSE historicalOR/bulk-block-short-deals csv=true (uncapped; browser-native fetch); '
                       'fetched once as CHUNK-day sub-ranges and sliced per window to avoid redundant overlapping calls',
             'chunk_diagnostics': chunks,
             'request_urls': urls,

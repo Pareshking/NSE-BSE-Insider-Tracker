@@ -36,6 +36,13 @@ across people and time, and measuring what happened after similar signals.
 | Collection pipeline and its validation history | `PROJECT_PLAN.md`, `DATA_ACQUISITION.md`, `VALIDATION_STATUS.md` |
 | The site's code | `streamlit_app/README.md` |
 
+## Project state and mission
+
+`docs/MISSION.md` (the brief, verbatim), `docs/PROGRESS.md` (where we are),
+`docs/DECISIONS.md` (each decision and how to reverse it), `docs/AUDIT.md`
+(Phase 0 findings and data numbers). Agents: read `CLAUDE.md` first.
+Note: `scripts/dev_ui.py` below does not exist on `main` (it is part of PR #4).
+
 ## Running
 
 ```

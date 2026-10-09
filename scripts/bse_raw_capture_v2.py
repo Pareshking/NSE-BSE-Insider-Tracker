@@ -18,6 +18,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 from selenium.webdriver.common.keys import Keys
 
 END   = date.fromisoformat(os.getenv('TARGET_DATE', '').strip()) if os.getenv('TARGET_DATE', '').strip() else date.today()
@@ -85,6 +88,8 @@ def capture_cdp(d, fragment):
                         body = d.execute_cdp_cmd(
                             'Network.getResponseBody', {'requestId': req_id}
                         ).get('body', '')
+                        _raw_capture('bse', re.sub(r'[^a-z0-9]+', '_', fragment.lower()).strip('_')[:40], body,
+                                     url=url, status=status, content_type='application/json')
                         try:
                             obj = json.loads(body)
                         except Exception:

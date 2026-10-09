@@ -30,6 +30,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta, datetime
 from pathlib import Path
 import requests
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 
 BASE     = 'https://www.nseindia.com'
 LIST_URL = f'{BASE}/api/corporates-pit-gg?index=equities'
@@ -75,6 +78,8 @@ session.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plai
 
 def fetch_filing_list():
     r = session.get(LIST_URL, timeout=20)
+    _raw_capture('nse', 'insider_filing_list', r.content, url=LIST_URL, status=r.status_code,
+                 content_type=r.headers.get('Content-Type'))
     r.raise_for_status()
     data = r.json()
     rows = data.get('data', []) if isinstance(data, dict) else []
@@ -113,6 +118,15 @@ def parse_disclosures(xml_text):
     return records
 
 
+REVISION_KEYS = ('prevAppId', 'typeOfSubmission', 'revisionRemark')
+
+
+def revision_fields(filing):
+    """NSE's revision markers from the filing-list entry (empty string when
+    absent). They do not enter the row id (r2_writer.ID_IGNORED_FIELDS)."""
+    return {k: (filing.get(k) or '') for k in REVISION_KEYS}
+
+
 def to_row(rec, filing):
     txn_raw = rec.get('SecuritiesAcquiredOrDisposedTransactionType', '').upper()
     if 'BUY' in txn_raw or 'ACQUI' in txn_raw or 'ALLOT' in txn_raw or 'SUBSCRI' in txn_raw:
@@ -146,6 +160,7 @@ def to_row(rec, filing):
         'intimDt':         rec.get('DateOfIntimationToCompany', ''),
         'broadcastDt':     filing.get('broadcastDateTime', ''),
         'appId':           filing.get('appId', ''),
+        **revision_fields(filing),
     }
 
 
@@ -224,6 +239,8 @@ def fetch_and_parse(filing):
         try:
             r = session.get(url, timeout=12)
             if r.status_code == 200 and r.text:
+                _raw_capture('nse', 'insider_xbrl', r.content, url=url, status=r.status_code,
+                             content_type=r.headers.get('Content-Type'))
                 recs = parse_disclosures(r.text)
                 return [to_row(rec, filing) for rec in recs]
             return []
@@ -309,7 +326,8 @@ def main():
         app_id = str(filing.get('appId') or '').strip()
         cached = cache.get(app_id) if app_id else None
         if cached and isinstance(cached.get('rows'), list):
-            all_rows.extend(cached['rows'])
+            # cached rows predate the revision markers: take them from today's list entry
+            all_rows.extend({**r, **revision_fields(filing)} for r in cached['rows'])
             from_cache += 1
         else:
             to_fetch.append(filing)

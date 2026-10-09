@@ -140,3 +140,92 @@ def test_balanced_high_volume_client_is_labelled_market_maker(master, report):
     assert out.loc[out['client_name'] == 'Fast Desk LLP', 'client_is_market_maker'].all()
     assert not out.loc[out['client_name'] == 'Patient Fund', 'client_is_market_maker'].any()
     assert report.data['tables']['deals']['market_maker_legs'] == 50
+
+
+# --- Phase 1: raw is never thinned; product window is strict --------------------
+
+def test_round_trip_rows_are_excluded_from_clean_but_counted(master, report):
+    rows = [bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0)]
+    raw = canonical('bse', 'bulk_deals', rows)
+    raw['intraday_round_trip'] = [True, True, False]
+    out = clean_deals(raw, master, report, RUN_DATE)
+    assert len(out) == 1 and out.iloc[0]['client_name'].upper().startswith('REAL')
+    assert report.data['tables']['deals']['removed']['intraday_round_trip']['count'] == 2
+
+
+def test_writer_flags_round_trips_and_keeps_every_row():
+    import sys
+    sys.path.insert(0, 'scripts')
+    import r2_writer
+    rows = [bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0)]
+    body, _ = r2_writer.rows_to_parquet_bytes('bse', 'bulk_deals', rows)
+    import io
+    df = pd.read_parquet(io.BytesIO(body))
+    assert len(df) == 3 and df['intraday_round_trip'].tolist() == [True, True, False]
+
+
+def test_product_window_boundary_is_strict():
+    from datetime import date
+
+    from insiders_clean.pipeline import apply_product_window
+    from insiders_clean.report import Report
+    t = pd.DataFrame({'deal_id': list('abcd'), 'exchange': 'nse',
+                      'date': [date(2025, 12, 31), date(2026, 1, 1), None, date(2026, 6, 1)]})
+    r = Report('2026-10-09')
+    out = apply_product_window(t, 'date', 'deals', r, 'deal_id')
+    assert out['deal_id'].tolist() == ['b', 'd']
+    rem = r.data['tables']['deals']['removed']
+    assert rem['before_product_start']['count'] == 1 and rem['no_readable_transaction_date']['count'] == 1
+
+
+def test_flag_stored_as_text_in_the_archive_is_read_back_correctly(master, report):
+    """The archive stores a column that mixes booleans and gaps as text, and
+    bool('False') is True: reading the flag with astype(bool) would have
+    excluded every deal."""
+    from insiders_clean import archive
+    from insiders_clean.missing import as_flag
+    assert as_flag(pd.Series(['True', 'False', None, True, False, 'true', pd.NA, float('nan')])).tolist() == \
+        [True, False, False, True, False, True, False, False]
+    rows = [bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0)]
+    new = canonical('bse', 'bulk_deals', rows)
+    new['intraday_round_trip'] = [False, True, True]
+    old = canonical('bse', 'bulk_deals', rows[:1]).drop(columns=['intraday_round_trip'])  # stored before flags
+    merged, _ = archive.merge(archive.merge(None, old, '2026-10-01')[0], new, '2026-10-09')
+    out = clean_deals(merged.assign(exchange='bse', category='bulk_deals'), master, report, RUN_DATE)
+    assert len(out) == 1 and out.iloc[0]['client_name'].upper().startswith('REAL')
+    text = merged.assign(intraday_round_trip=merged['intraday_round_trip'].astype(str))  # worst case: all text
+    report2 = type(report)(RUN_DATE)
+    out2 = clean_deals(text.assign(exchange='bse', category='bulk_deals'), master, report2, RUN_DATE)
+    assert len(out2) == 1
+
+
+def test_csv_row_replaces_its_older_json_form_copy_but_identical_csv_rows_stay(master, report):
+    rows = [bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 101.0),     # CSV: a second, different trade
+            bse_deal('599999', 'ACMEUNIV', 'real  fund', 'BUY', 5000, 100.0),    # older JSON form, same deal
+            bse_deal('599999', 'ACMEUNIV', 'OTHER FUND', 'BUY', 700, 100.0)]     # older form only: stays
+    raw = canonical('bse', 'bulk_deals', rows)
+    raw['source'] = ['nse_nightly_deals_csv', 'nse_nightly_deals_csv', None, None]
+    out = clean_deals(raw, master, report, RUN_DATE)
+    real = out[out['client_name'].str.upper().str.startswith('REAL')].iloc[0]
+    assert real['quantity'] == 10000 and real['trades'] == 2          # the two CSV trades; JSON copy dropped
+    assert (out['client_name'].str.upper().str.startswith('OTHER')).sum() == 1
+    assert report.data['tables']['deals']['removed']['same_deal_in_older_json_form']['count'] == 1
+
+
+def test_nightly_csv_module_maps_to_the_json_field_names():
+    import sys
+    sys.path.insert(0, 'scripts')
+    import nse_deals_csv as nd
+    from conftest import FIXTURES
+    text = (FIXTURES / 'history' / 'nse_bulk_2024.csv').read_bytes().decode('utf-8-sig')
+    assert nd.is_csv(text) and not nd.is_csv('<html>Access Denied</html>') and not nd.is_csv('')
+    rows = nd.rows_from_csv(text)
+    assert rows and rows[0]['source'] == 'nse_nightly_deals_csv'
+    assert set(rows[0]) >= {'BD_DT_DATE', 'BD_SYMBOL', 'BD_CLIENT_NAME', 'BD_BUY_SELL', 'BD_QTY_TRD', 'BD_TP_WATP'}
