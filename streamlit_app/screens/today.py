@@ -189,15 +189,15 @@ def render():
                 kit.empty('No open-market insider trades in this session.')
             else:
                 rows = rows.assign(impact=rows['pct_of_float'].fillna(rows['pct_of_mcap'])).sort_values('impact', ascending=False)
-                st.dataframe(kit.styled(rows.assign(link=rows['nse_symbol'].map(kit.company_href), role=rows['person_role'].map(kit.role),
-                                                    value_cr=rows['value'] / 1e7)[
+                st.dataframe(rows.assign(link=rows['nse_symbol'].map(kit.company_href), role=rows['person_role'].map(kit.role),
+                                         value_cr=rows['value'] / 1e7,
+                                         pct_of_float=kit.blank_text(rows['pct_of_float'], '{:.3f}%').values)[
                     ['link', 'company', 'person_name', 'role', 'side', 'value_cr', 'pct_of_float', 'pct_of_mcap', 'trades',
-                     'listed_on']], {'value_cr': '{:,.2f}', 'pct_of_float': '{:.3f}%', 'pct_of_mcap': '{:.3f}%', 'trades': '{:.0f}'}),
-                    hide_index=True, width='stretch', column_config={
+                     'listed_on']], hide_index=True, width='stretch', column_config={
                         'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
                         'company': 'Company', 'person_name': 'Person', 'role': 'Role', 'side': 'Side',
                         'value_cr': st.column_config.NumberColumn('Value (₹ Cr)', format='%,.2f'),
-                        'pct_of_float': st.column_config.NumberColumn('% of float', format='%.3f%%'),
+                        'pct_of_float': st.column_config.TextColumn('% of float'),
                         'pct_of_mcap': st.column_config.NumberColumn('% of mcap', format='%.3f%%'),
                         'trades': st.column_config.NumberColumn('Tranches', format='%d'), 'listed_on': 'Exchange'})
         elif chip == 'Bulk deals':

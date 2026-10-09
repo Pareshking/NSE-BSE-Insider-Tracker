@@ -25,12 +25,12 @@ def _finite(v) -> float | None:
     return f if math.isfinite(f) else None
 
 
-def styled(df: pd.DataFrame, formats: dict[str, str]):
-    """A table whose missing numbers show blank, not Streamlit's "None".
-    `formats` maps each numeric column shown to a str.format pattern; with a
-    Styler, Streamlit uses these and ignores column_config number formats.
-    Values stay numeric, so columns still sort as numbers."""
-    return df.style.format({c: f for c, f in formats.items() if c in df.columns}, na_rep='')
+def blank_text(values, pattern: str) -> pd.Series:
+    """Numbers as text with a real blank where missing: st.dataframe writes
+    "None" in an empty number cell whatever the format (a Styler's na_rep
+    included). For sparse columns only; the column then sorts as text."""
+    s = pd.to_numeric(pd.Series(values), errors='coerce')
+    return s.map(lambda v: '' if pd.isna(v) else pattern.format(v))
 
 
 def rupees(v, signed: bool = False) -> str:

@@ -76,8 +76,9 @@ def render():
                                   if not ctx.prices.empty else pd.Series(index=rows.index, dtype=float), errors='coerce') * 100)
     with kit.card(f'{len(rows)} companies', 'screener', f'90 days to {kit.day(ctx.ref)}'):
         cols = ['link', 'company', 'cap_sector', 'signals', 'net_cr', 'float_pct', 'promoter_net_pct', 'who', 'cmp_vs_high']
-        st.dataframe(kit.styled(show[cols], {'net_cr': '{:+,.2f}', 'float_pct': '{:.2f}%', 'promoter_net_pct': '{:+.3f}%',
-                                             'cmp_vs_high': '{:+.1f}%'}),
+        show = show.assign(float_pct=kit.blank_text(show['float_pct'], '{:.2f}%'),
+                           cmp_vs_high=kit.blank_text(show['cmp_vs_high'], '{:+.1f}%'))
+        st.dataframe(show[cols],
                      hide_index=True, width='stretch', height=620, column_config={
                          'link': st.column_config.LinkColumn('', display_text='Open', width='small', pinned=True),
                          'company': st.column_config.TextColumn('Company', pinned=True),
@@ -85,11 +86,11 @@ def render():
                          'signals': 'Signal badges',
                          'net_cr': st.column_config.NumberColumn('Net buy (₹ Cr)', format='%+,.2f',
                                                                  help='Promoter and promoter group, open market, 90 days'),
-                         'float_pct': st.column_config.NumberColumn('% of float', format='%.2f%%',
-                                                                    help='Net buy / (market cap x public holding %)'),
+                         'float_pct': st.column_config.TextColumn('% of float',
+                                                                  help='Net buy / (market cap x public holding %)'),
                          'promoter_net_pct': st.column_config.NumberColumn('% of mcap', format='%+.3f%%'),
                          'who': 'Insider details',
-                         'cmp_vs_high': st.column_config.NumberColumn(
+                         'cmp_vs_high': st.column_config.TextColumn(
                              'CMP vs 52W high', help='Latest close against the highest close of the last 52 weeks, '
                                                      'adjusted for splits and bonuses')})
         kit.caption('% of float is blank where the shareholding pattern is not loaded yet; CMP vs 52W high is blank where '
