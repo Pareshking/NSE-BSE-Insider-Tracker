@@ -4,10 +4,6 @@ name: Price coverage (read-only)
 # stored price day has its raw file in raw_v2. Reads R2 only. Aggregate output only (public repo).
 on:
   workflow_dispatch:
-  # Temporary: lets the working branch start the first run before this file is on main.
-  push:
-    branches: [ccr-27a6c75f-o9ztpa]
-    paths: ['.github/workflows/price-coverage.yml']
 
 permissions:
   contents: read
@@ -40,6 +36,3 @@ jobs:
           name: price-coverage
           path: coverage
           retention-days: 14
-# smoke run on the sample months (Sep-Oct 2026) while the full backfill loads
-# progress check run 10:19Z
-# final coverage run after backfill 10:43Z

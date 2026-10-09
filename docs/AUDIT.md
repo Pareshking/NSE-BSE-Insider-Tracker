@@ -109,3 +109,22 @@ Buys: horizon (sessions) -> complete events / companies / company-months / abnor
 Sells: 5 -> 1,274 / 149 / 312 / 5.2% / 0.4% / 0.8%; 20 -> 1,096 / 137 / 278 / 9.6% / 0.8% / 1.6%; 60 -> 683 / 111 / 191 / 19.8% / 2.1% / 4.0%; 120 -> 387 / 71 / 105 / 23.7% / 3.4% / 6.5%; 250 -> 0.
 
 ESTIMATED reading: MDE = (1.96+0.84) x sd / sqrt(n), 5% two-sided, 80% power; "company-months" is a deliberately conservative effective n for clustered events (the by-events figures assume independence, which they are not). abnormal sd is vs the median stock, a crude benchmark. So with 2026 data alone: a ~1-2% abnormal return is detectable at 5-20 sessions, ~4-5% at 60-120 sessions, nothing at 250. Only 28% of buy events have price history in this proxy, so these are lower bounds on the sample the native price layer should give. Single market regime; no hold-out period yet exists. Conclusion: short-horizon (5-20 session) pooled tests are feasible now; any claim at 60+ sessions, or about subgroups (promoter vs director, size buckets), is underpowered.
+
+## Addendum 3 (09 Oct 2026, 17:00 IST): native price layer coverage (VERIFIED from the final coverage run)
+
+Source: NSE and BSE UDiFF bhavcopy plus NSE's daily `mcap` file, 1 Jan 2025 to 8 Oct 2026, raw bytes first in `raw_v2/`.
+
+| Measure | Result |
+|---|---|
+| Price days stored | NSE 437 of 437, BSE 437 of 437 (100%); 3.48 million rows |
+| Market-cap days stored | 437 of 437 (1.21 million rows) |
+| Raw preserved | 0 stored days without a raw file (BSE holds 453 raw days: extra days are holiday/home-page responses stored as received) |
+| 2026 insider events with an entry price | 9,918 of 9,990 with an ISIN (99.3%) |
+| Insider events with history of at least 5 / 20 / 60 / 120 / 250 sessions | 9,901 / 9,840 / 9,626 / 9,529 / 8,879 of 9,990 |
+| 2026 deal events with an entry price | 16,949 of 17,318 with an ISIN (97.9%) |
+| Deal events with history of at least 5 / 20 / 60 / 120 / 250 sessions | 15,841 / 14,996 / 14,439 / 13,769 / 11,629 of 17,318 |
+| Events in securities with no NSE price | 570 insider, 1,538 deal (BSE price used where it exists) |
+| Split / bonus / consolidation resets found | 65 (59 NSE, 6 BSE); 1,531 other large resets counted, not applied; 12,657 minor (mostly dividends), not applied |
+| BSE resets for NSE splits | BSE showed the same reset on only 1 of 56 NSE split days both traded: BSE's previous-close does NOT reset on splits |
+
+Consequence (decision in `docs/DECISIONS.md`): dual-listed securities inherit the NSE split/bonus factor onto the BSE series; BSE-only securities keep raw prices and are flagged, since BSE's own previous close cannot be relied on to show splits. Deals rose to 17,701 events after the recovery backfill and clean rebuild (was 16,861).

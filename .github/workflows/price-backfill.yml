@@ -14,10 +14,6 @@ on:
       exchange:
         description: 'NSE, BSE, NSE_PR (market cap) or a comma list'
         default: 'NSE,BSE,NSE_PR'
-  # Temporary: lets the working branch start runs before this file is on main. Push runs cover the full window (a one-month sample passed first, run 3).
-  push:
-    branches: [ccr-27a6c75f-o9ztpa]
-    paths: ['.github/workflows/price-backfill.yml']
 
 permissions:
   contents: read

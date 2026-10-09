@@ -1,7 +1,7 @@
 # Progress (09 Oct 2026, times IST)
 
 ## Where we are
-Phase 0 audit: approved. Phase 1 data foundation: merged to `main` (PR #11, 14:17 IST). Phase 1 price layer: on PR #12, backfill running. Phase 2 evidence: started (register + evaluation code), no results yet. Phases 3-5 (product, launch, operate): not started.
+Phase 0 audit: approved. Phase 1 data foundation: merged to `main` (PR #11, 14:17 IST). Phase 1 price layer: backfill complete; PR #12 merged. Phase 2 evidence: started (register + evaluation code), no results yet. Phases 3-5 (product, launch, operate): not started.
 
 | Area | State |
 |---|---|
@@ -17,10 +17,8 @@ Phase 0 audit: approved. Phase 1 data foundation: merged to `main` (PR #11, 14:1
 | H1 / H2 / H8 results | Not run; waits for the price backfill and the PR #12 merge |
 | Streamlit production | Not verified after the 14:17 IST deploy (no log access); please check the app loads |
 
-## Price backfill
-Run 37913910522 (started 15:21 IST, limit 120 min). GitHub hides the log of a running job, so progress is read from R2 by the coverage workflow.
-Reading at 15:55 IST: NSE prices 437 of 437 days (100%), BSE prices 437 of 437 (100%), NSE market cap 106 of about 437 days (about 24%). Every stored price day has its raw file in `raw_v2` (0 without). Price rows 3.48 million. Insider events with an entry price: 99.3% (250-session history: 8,879 of 9,990). Deals: 97.9% (10,964 of 16,502 with 250 sessions).
-Adjustment events found: 65 clean split/bonus resets (59 NSE, 6 BSE), 1,531 other large resets counted but not applied. Open question: only 6 on BSE against 59 on NSE, so BSE's `prev_close` may not reset on splits; the next coverage run tests every NSE split against BSE's same-day factor.
+## Price backfill: COMPLETE (17:00 IST)
+NSE prices 437 of 437 days, BSE 437 of 437, NSE market cap 437 of 437 (100% each), every stored day has its raw file. Coverage of 2026 events: insider entry price 99.3% (250-session history 8,879 of 9,990), deals 97.9% (11,629 of 17,318). Details: `docs/AUDIT.md` addendum 3. BSE does not reset previous-close on splits, so dual-listed securities inherit the NSE factor and BSE-only securities stay on raw prices (flagged).
 
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
