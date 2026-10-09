@@ -180,3 +180,26 @@ def test_product_window_boundary_is_strict():
     assert out['deal_id'].tolist() == ['b', 'd']
     rem = r.data['tables']['deals']['removed']
     assert rem['before_product_start']['count'] == 1 and rem['no_readable_transaction_date']['count'] == 1
+
+
+def test_flag_stored_as_text_in_the_archive_is_read_back_correctly(master, report):
+    """The archive stores a column that mixes booleans and gaps as text, and
+    bool('False') is True: reading the flag with astype(bool) would have
+    excluded every deal."""
+    from insiders_clean import archive
+    from insiders_clean.missing import as_flag
+    assert as_flag(pd.Series(['True', 'False', None, True, False, 'true', pd.NA, float('nan')])).tolist() == \
+        [True, False, False, True, False, True, False, False]
+    rows = [bse_deal('599999', 'ACMEUNIV', 'REAL FUND', 'BUY', 5000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'BUY', 1000, 100.0),
+            bse_deal('599999', 'ACMEUNIV', 'FLIPPER LLP', 'SELL', 1000, 101.0)]
+    new = canonical('bse', 'bulk_deals', rows)
+    new['intraday_round_trip'] = [False, True, True]
+    old = canonical('bse', 'bulk_deals', rows[:1]).drop(columns=['intraday_round_trip'])  # stored before flags
+    merged, _ = archive.merge(archive.merge(None, old, '2026-10-01')[0], new, '2026-10-09')
+    out = clean_deals(merged.assign(exchange='bse', category='bulk_deals'), master, report, RUN_DATE)
+    assert len(out) == 1 and out.iloc[0]['client_name'].upper().startswith('REAL')
+    text = merged.assign(intraday_round_trip=merged['intraday_round_trip'].astype(str))  # worst case: all text
+    report2 = type(report)(RUN_DATE)
+    out2 = clean_deals(text.assign(exchange='bse', category='bulk_deals'), master, report2, RUN_DATE)
+    assert len(out2) == 1

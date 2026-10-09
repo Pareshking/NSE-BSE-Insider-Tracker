@@ -23,6 +23,7 @@ three things the daily snapshots can't:
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from .dates import parse_dates
@@ -47,7 +48,10 @@ def _uniform(df: pd.DataFrame) -> pd.DataFrame:
     canonical numeric columns keep their numeric type."""
     df = df.copy()
     for col in df.columns:
-        if df[col].dtype == object:
+        if df[col].dtype == object and df[col].dropna().map(lambda v: isinstance(v, (bool, np.bool_))).all() \
+                and df[col].notna().any():
+            df[col] = df[col].astype('boolean')  # a flag with gaps (older rows lack it) stays a flag
+        elif df[col].dtype == object:
             df[col] = df[col].map(lambda v: None if is_missing(v) else str(v))
             df[col] = df[col].astype('string')
     return df

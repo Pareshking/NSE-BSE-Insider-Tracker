@@ -32,7 +32,7 @@ import pandas as pd
 from .dates import parse_dates
 from .entities import add_entity_columns, per_group
 from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
-from .missing import present
+from .missing import as_flag, present
 from .securities import SecurityMaster, display_name
 
 MAX_COUNTERPARTIES = 5
@@ -61,7 +61,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     # Intraday round trips are flagged by the writer, never dropped from raw;
     # they are excluded here, counted, and the archive keeps them.
     if 'intraday_round_trip' in raw.columns:
-        rt = raw['intraday_round_trip'].fillna(False).astype(bool)
+        rt = as_flag(raw['intraday_round_trip'])
         if rt.any():
             report.removed('deals', 'intraday_round_trip', _col(raw.loc[rt], 'canonical_event_id'))
             raw = raw.loc[~rt]

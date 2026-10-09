@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import clean_writer  # noqa: E402
 
 from insiders_clean.dates import parse_dates  # noqa: E402
+from insiders_clean.missing import as_flag  # noqa: E402
 
 PRODUCT_START = date(2026, 1, 1)
 HORIZONS = (5, 20, 60, 120, 250)
@@ -75,7 +76,7 @@ def describe_frame(frame: pd.DataFrame, category: str | None) -> dict:
         out['rows_by_month'] = {k: int(v) for k, v in
                                 pd.Series([x.strftime('%Y-%m') for x in ok]).value_counts().sort_index().tail(24).items()}
     if 'intraday_round_trip' in frame.columns:
-        out['intraday_round_trip_flagged'] = int(frame['intraday_round_trip'].fillna(False).astype(bool).sum())
+        out['intraday_round_trip_flagged'] = int(as_flag(frame['intraday_round_trip']).sum())
         out['rows_with_round_trip_flag_set_or_false'] = int(frame['intraday_round_trip'].notna().sum())
     else:
         out['intraday_round_trip_flagged'] = None  # column absent: written before flags existed
