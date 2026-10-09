@@ -89,8 +89,8 @@ def render():
     with kit.card('Net open-market flow by who', 'co_flow', '12 months, ₹'):
         st.html(f'<div class="fl">{bars}</div>')
 
-    hs = signals.handshakes(ctx.deals, ctx.trades, days=365)
-    hs = hs[hs['nse_symbol'].astype(str).str.upper() == sym] if not hs.empty else hs
+    own = ctx.deals[ctx.deals['nse_symbol'].astype(str).str.upper() == sym] if not ctx.deals.empty else ctx.deals
+    hs = signals.handshakes(own, ctx.trades, days=365, ref=ctx.deals['date'].max() if not ctx.deals.empty else None)
     if not hs.empty:
         with kit.card('Handshakes in this stock', 'co_hs', 'who sold, who absorbed it'):
             st.dataframe(hs.assign(value_cr=hs['matched_value'] / 1e7,
