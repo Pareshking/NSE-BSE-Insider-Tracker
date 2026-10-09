@@ -138,3 +138,19 @@ def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed:
 def mde(sd: float, n: int) -> float:
     """Minimum detectable mean at 5% two-sided and 80% power."""
     return float((1.96 + 0.84) * sd / np.sqrt(n)) if n > 0 else float('nan')
+
+
+def size_buckets(mcap: pd.DataFrame, prices: pd.DataFrame, asof: str = '2025-12-31') -> pd.Series:
+    """ISIN -> micro/small/mid/large from NSE market cap on the last day on or before `asof` (before the product
+    window, so no look-ahead). AMFI-style ranks: top 100 large, 101-250 mid, 251-500 small, the rest micro.
+    Indicative only (owner: market cap is a rough size filter). ISINs with no NSE market cap are left out."""
+    m = mcap[(mcap['category'] == 'Listed') & (mcap['date'] <= pd.Timestamp(asof))]
+    if m.empty:
+        return pd.Series(dtype=object)
+    m = m[m['date'] == m['date'].max()]
+    ids = prices.loc[prices['exchange'] == 'NSE', ['symbol', 'isin']].drop_duplicates('symbol')
+    m = m.merge(ids, on='symbol', how='inner').dropna(subset=['market_cap'])
+    m = m.sort_values('market_cap', ascending=False).drop_duplicates('isin')
+    rank = np.arange(1, len(m) + 1)
+    bucket = np.select([rank <= 100, rank <= 250, rank <= 500], ['large', 'mid', 'small'], 'micro')
+    return pd.Series(bucket, index=m['isin'].to_numpy())

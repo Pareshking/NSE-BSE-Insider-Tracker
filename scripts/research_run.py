@@ -37,11 +37,23 @@ def adjusted_panels(px: pd.DataFrame):
     return ev.price_panel(px, 'close'), ev.price_panel(px, 'open')
 
 
-def evaluate(events: pd.DataFrame, close, op, label: str, conservative=False) -> dict:
+def evaluate(events: pd.DataFrame, close, op, label: str, conservative=False, buckets=None) -> dict:
     r = ev.forward_returns(events, close, op, horizons=HZ, conservative=conservative)
     bm = ev.benchmark_returns(close, r['entry_pos'], r['entry_basis'], horizons=HZ)
     r = ev.abnormal(r, bm, horizons=HZ)
     out = {'label': label, 'events': int(len(events)), 'conservative_entry': conservative}
+    if buckets is not None and len(buckets):
+        eg = r['isin'].map(buckets)
+        bs = ev.benchmark_returns(close, r['entry_pos'], r['entry_basis'], horizons=HZ, groups=buckets, event_groups=eg)
+        for h in HZ:
+            r[f'sz_{h}'] = r[f'ret_{h}'] - bs[f'bm_{h}']
+        out['events_with_size_bucket'] = int(eg.notna().sum())
+        out['by_bucket'] = {str(k): int(v) for k, v in eg.value_counts().items()}
+        for h in HZ:
+            s = ev.summarise(r, f'sz_{h}')
+            if s.get('n', 0) > 1:
+                s['mde_5pct_80pwr'] = ev.mde(s['sd'], s['n'])
+            out[f'ar_{h}_vs_size_matched'] = s
     for h in HZ:
         s = ev.summarise(r, f'ar_{h}')
         if s.get('n', 0) > 1:
@@ -61,6 +73,9 @@ def main(argv=None) -> int:
     px = load_prefix(client, bucket, 'prices/daily/')
     px['date'] = pd.to_datetime(px['date'])
     close, op = adjusted_panels(px)
+    mc = load_prefix(client, bucket, 'marketcap/daily/')
+    mc['date'] = pd.to_datetime(mc['date'])
+    buckets = ev.size_buckets(mc, px)
     rd = lambda k: pd.read_parquet(io.BytesIO(client.get_object(Bucket=bucket, Key=k)['Body'].read()))  # noqa: E731
     trades, deals = rd('clean/current/insider_trades.parquet'), rd('clean/current/deals.parquet')
     sets = {'H1 insider market BUY': evm.insider_events(trades, 'BUY'), 'H2 insider market SELL': evm.insider_events(trades, 'SELL'),
@@ -70,7 +85,7 @@ def main(argv=None) -> int:
         dev, hold = evm.split(e)
         use = hold if a.final else dev
         for cons in (False, True):
-            results.append(evaluate(use, close, op, label + (' [HOLD-OUT]' if a.final else ' [dev]'), cons))
+            results.append(evaluate(use, close, op, label + (' [HOLD-OUT]' if a.final else ' [dev]'), cons, buckets))
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'results.json').write_text(json.dumps(results, indent=2, default=str))

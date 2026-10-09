@@ -69,3 +69,13 @@ def test_price_panel_prefers_nse_and_fills_with_bse():
                        'isin': ['X', 'X', 'Y', 'X'], 'close': [10.0, 11.0, 5.0, 12.0], 'value': [1.0, 2.0, 1.0, 1.0]})
     p = ev.price_panel(px, 'close')
     assert p.loc['2026-01-01', 'X'] == 10.0 and p.loc['2026-01-02', 'X'] == 12.0 and p.loc['2026-01-01', 'Y'] == 5.0
+
+
+def test_size_buckets_rank_and_no_lookahead():
+    n = 600
+    mc = pd.DataFrame({'date': pd.Timestamp('2025-12-30'), 'symbol': [f'S{i}' for i in range(n)], 'category': 'Listed',
+                       'market_cap': np.arange(n, 0, -1, dtype=float)})
+    mc = pd.concat([mc, mc.assign(date=pd.Timestamp('2026-02-01'), market_cap=1.0)])
+    px = pd.DataFrame({'exchange': 'NSE', 'symbol': [f'S{i}' for i in range(n)], 'isin': [f'I{i}' for i in range(n)]})
+    b = ev.size_buckets(mc, px)
+    assert b['I0'] == 'large' and b['I99'] == 'large' and b['I100'] == 'mid' and b['I250'] == 'small' and b['I500'] == 'micro'
