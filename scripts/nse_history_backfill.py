@@ -18,8 +18,7 @@ What it fetches (insiders_clean/history.py has the field maps):
   history and nightly data never overlap.
 
 Each chunk is mapped to the nightly row shape, turned into canonical rows by
-r2_writer's own rows_to_parquet_bytes (intraday round trips dropped first,
-as the nightly writer does) and merged into
+r2_writer's own rows_to_parquet_bytes (intraday round trips flagged, not dropped) and merged into
 archive/canonical/nse/{category}/year=YYYY/quarter=Q.parquet with
 first_seen = last_seen = the run date. `last_merged` in _state.json is never
 moved: retention uses it to decide which dated nightly snapshots the archive
@@ -140,7 +139,8 @@ class NseHistory:
     """One browser-like session: warm-up on the home page, one User-Agent for
     the whole run, 4-6 s between calls."""
 
-    def __init__(self, session=None, sleep=time.sleep, rng=None, pace=PACE_SECONDS):
+    def __init__(self, session=None, sleep=time.sleep, rng=None, pace=PACE_SECONDS, raw=None):
+        self.raw = raw  # insiders_clean.raw_store.RawStore or None (dry run / local)
         self.session = session or requests.Session()
         self.session.headers.update(HEADERS)
         self.sleep, self.rng, self.pace = sleep, rng or random.Random(), pace
@@ -151,7 +151,7 @@ class NseHistory:
         if self.calls:
             self.sleep(self.rng.uniform(*self.pace))
 
-    def _get(self, url, params=None, referer=None):
+    def _get(self, url, params=None, referer=None, raw_tag=None):
         headers = {'Referer': referer} if referer else {}
         if params is not None:
             headers['Accept'] = '*/*'
@@ -171,6 +171,14 @@ class NseHistory:
                 continue
             if resp.status_code != 200:
                 raise Stopped(f'HTTP {resp.status_code} from {url}')
+            if self.raw is not None and raw_tag:
+                # exact bytes first, before any parsing or validation
+                try:
+                    self.raw.put('nse', raw_tag[0], resp.content, url=url, params=params,
+                                 status=resp.status_code, content_type=resp.headers.get('Content-Type'),
+                                 covers=raw_tag[1])
+                except Exception as e:  # noqa: BLE001 - never continue without the raw copy
+                    raise Failed(f'raw store write failed: {type(e).__name__}: {e}') from e
             return resp
         raise Failed(f'{last} (after {RETRIES} retries)')
 
@@ -191,7 +199,7 @@ class NseHistory:
     def insider(self, a: date, b: date) -> list[dict]:
         self.warm_up()
         resp = self._get(PIT_URL, {'index': 'equities', 'from_date': nse_date(a), 'to_date': nse_date(b)},
-                         REFERER['insider'])
+                         REFERER['insider'], raw_tag=('insider', {'from': a.isoformat(), 'to': b.isoformat()}))
         try:
             payload = json.loads(resp.content)
         except ValueError:
@@ -204,7 +212,8 @@ class NseHistory:
     def deals(self, option: str, a: date, b: date) -> bytes:
         self.warm_up()
         resp = self._get(DEALS_URL, {'optionType': option, 'from': nse_date(a), 'to': nse_date(b),
-                                     'csv': 'true'}, REFERER['bulk'])
+                                     'csv': 'true'}, REFERER['bulk'],
+                         raw_tag=(option or 'deals', {'from': a.isoformat(), 'to': b.isoformat()}))
         if not is_deals_csv(resp.content):
             raise Stopped(f'not CSV from {DEALS_URL} ({resp.content[:60]!r})')
         return resp.content
@@ -298,15 +307,18 @@ def earliest_nightly_date(client, category) -> date | None:
 class R2Sink:
     """Merges chunks into the archive in R2 and keeps the progress file."""
 
-    def __init__(self, client, dataset, run_date):
-        self.client, self.dataset, self.run_date = client, dataset, run_date
+    def __init__(self, client, dataset, run_date, redo=False):
+        self.client, self.dataset, self.run_date, self.redo = client, dataset, run_date, redo
         self.category = DATASETS[dataset]['category']
         self.prefix = clean_writer.archive_prefix('nse', self.category)
         self.progress = load_json(client, progress_key(dataset)) or {
             'dataset': dataset, 'category': self.category, 'chunks': {}}
 
     def done(self) -> dict:
-        return self.progress['chunks']
+        # --redo refetches chunks already stored (e.g. to recover rows an
+        # earlier version dropped); the archive merge is idempotent, so rows
+        # already there only get last_seen moved.
+        return {} if self.redo else self.progress['chunks']
 
     def store(self, key, a, b, frame, info) -> dict:
         added, parts = 0, []
@@ -482,6 +494,7 @@ def main(argv=None, client=None, http=None):
     ap.add_argument('--dataset', choices=('insider', 'bulk', 'block', 'all'), required=True)
     ap.add_argument('--from', dest='start', type=date.fromisoformat)
     ap.add_argument('--to', dest='end', type=date.fromisoformat)
+    ap.add_argument('--redo', action='store_true', help='refetch chunks already marked done (idempotent merge)')
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument('--dry-run', action='store_true', help='fetch and map; write nothing')
     mode.add_argument('--local-out', metavar='DIR', help='write chunk files locally instead of R2')
@@ -493,7 +506,12 @@ def main(argv=None, client=None, http=None):
     if client is None and (has_r2 or not (args.dry_run or args.local_out)):
         client = r2_writer.r2_client()
     datasets = ORDER if args.dataset == 'all' else (args.dataset,)
-    http = http if http is not None else (None if args.upload_from else NseHistory())
+    if http is None and not args.upload_from:
+        raw = None
+        if client is not None and not (args.dry_run or args.local_out):
+            from insiders_clean.raw_store import RawStore
+            raw = RawStore(client, collector='nse_history_backfill')
+        http = NseHistory(raw=raw)
 
     reports, code = [], 0
     for ds in datasets:
@@ -511,12 +529,12 @@ def main(argv=None, client=None, http=None):
             print(f'{ds}: nothing to do ({start} > {end})')
             continue
         if args.dry_run:
-            done = R2Sink(client, ds, run_date).done() if client is not None else {}
+            done = R2Sink(client, ds, run_date, redo=args.redo).done() if client is not None else {}
             sink = DrySink(done)
         elif args.local_out:
             sink = LocalSink(args.local_out, ds, run_date)
         else:
-            sink = R2Sink(client, ds, run_date)
+            sink = R2Sink(client, ds, run_date, redo=args.redo)
         print(f'{ds}: {start} .. {end}' + (f' ({note})' if note else '')
               + (' [dry run]' if args.dry_run else ''))
         rep = run_dataset(ds, start, end, http, sink, run_date, payloads=payloads)
