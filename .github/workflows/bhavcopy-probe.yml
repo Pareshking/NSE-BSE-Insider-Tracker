@@ -1,0 +1,41 @@
+name: Bhavcopy probe (one-off)
+
+# Downloads one recent and one Jan 2025 daily equity file from NSE and BSE,
+# stores the exact bytes in raw_v2/ (write-once), and reports status, size,
+# zip members, CSV columns, row counts and two sample rows. Public market
+# data only. Output: job summary + 14-day artifact. Hosts are the ones the
+# repo already calls (nsearchives/archives.nseindia.com, www.bseindia.com).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/bhavcopy_probe.py --out probe
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f probe/probe.md ]; then cat probe/probe.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bhavcopy-probe
+          path: probe
+          retention-days: 14
