@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, indian, pct, price, role, rupees,
                     shares, side_tag, tag)
@@ -227,7 +226,7 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
            f'<style>{table_css()}</style></head><body>'
            f'<div class="tbl-wrap" style="height:{h}px"><table class="tbl"><thead><tr>{head}</tr></thead>'
            f'<tbody>{"".join(body)}</tbody></table></div><script>{SORT_JS}</script></body></html>')
-    components.html(doc, height=h + 2, scrolling=False)
+    st.iframe(doc, height=h + 2)
     more = len(rows) - len(shown)
     c1, c2 = st.columns([3, 1], vertical_alignment='center')
     c1.html(f'<p class="cap">{"Top " + format(len(shown), ",") + " of " + format(len(rows), ",") + " shown · " if more > 0 else ""}'

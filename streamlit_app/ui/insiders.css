@@ -36,7 +36,11 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 [data-testid="stDecoration"], [data-testid="stStatusWidget"], footer,
 [data-testid="stAppDeployButton"], .stAppDeployButton { display: none !important; }
 [data-testid="stMainBlockContainer"] { max-width: 1280px; padding: 18px 28px 64px; }
+/* Collapsed sidebar: the logo and expand arrow sit in the header; keep content clear of them and the logo legible. */
+[data-testid="stHeader"] img, [data-testid="stHeaderLogo"], [data-testid="stLogo"] { background: #0B1324; border-radius: 8px; padding: 3px 8px; box-sizing: content-box; }
+[data-testid="stSidebar"] img, [data-testid="stSidebar"] [data-testid="stLogo"] { background: none; padding: 0; }
 @media (max-width: 720px) { [data-testid="stMainBlockContainer"] { padding: 10px 14px 48px; } }
+[data-testid="stMainBlockContainer"] { padding-top: 3.4rem !important; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .num { font-variant-numeric: tabular-nums; }
 
