@@ -73,3 +73,16 @@ def test_odd_large_reset_is_counted_but_not_adjusted():
 def test_bonus_and_consolidation_ratios_count():
     import numpy as np
     assert adjust.is_clean_ratio(np.array([0.5, 2 / 3, 0.2, 5.0, 0.8, 0.93])).tolist() == [True, True, True, True, True, False]
+
+
+def test_bse_inherits_nse_factor_for_dual_listed_and_keeps_own_for_bse_only():
+    rows = []
+    for isin, exs in (('D', ('NSE', 'BSE')), ('B', ('BSE',))):
+        for ex in exs:
+            bse_prev = 99.0 if (isin == 'D' and ex == 'BSE') else 50.0   # BSE's own prev_close for D did NOT reset
+            rows += [('2026-01-05', ex, isin, 'S', 'EQ', 100.0, 99.0, 10), ('2026-01-06', ex, isin, 'S', 'EQ', 50.0, bse_prev if ex == 'BSE' else 50.0, 10)]
+    f = adjust.inherit_nse(adjust.implied_factors(_p(rows)))
+    d_bse = f[(f['isin'] == 'D') & (f['exchange'] == 'BSE') & (f['date'] == '2026-01-06')].iloc[0]
+    b_only = f[(f['isin'] == 'B') & (f['date'] == '2026-01-06')].iloc[0]
+    assert d_bse['kind'] == 'split_bonus' and abs(d_bse['factor'] - 0.5) < 1e-9
+    assert b_only['kind'] == 'split_bonus'

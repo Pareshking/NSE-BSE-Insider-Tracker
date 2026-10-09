@@ -85,3 +85,15 @@ def coverage(factors: pd.DataFrame) -> dict:
             'split_bonus': int((factors['kind'] == 'split_bonus').sum()),
             'other_large_not_adjusted': int((factors['kind'] == 'other_large').sum()), 'minor': int((factors['kind'] == 'minor').sum()),
             'unknown': int((factors['kind'] == 'unknown').sum())}
+
+
+def inherit_nse(factors: pd.DataFrame) -> pd.DataFrame:
+    """Dual-listed ISINs: BSE rows take the NSE factor and kind for the same date (owner directive: one verified
+    adjustment per security). BSE-only ISINs keep their own factors; a BSE reset that is not a clean ratio stays unadjusted."""
+    nse = factors[factors['exchange'] == 'NSE'][['isin', 'date', 'factor', 'kind']].rename(columns={'factor': 'n_factor', 'kind': 'n_kind'})
+    dual = set(nse['isin'])
+    out = factors.merge(nse, on=['isin', 'date'], how='left')
+    take = (out['exchange'] == 'BSE') & out['isin'].isin(dual)
+    out.loc[take, 'factor'] = out.loc[take, 'n_factor']
+    out.loc[take, 'kind'] = out.loc[take, 'n_kind'].fillna('unknown')
+    return out.drop(columns=['n_factor', 'n_kind'])

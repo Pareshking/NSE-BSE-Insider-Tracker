@@ -24,7 +24,7 @@ HZ = (5, 20, 60)
 
 
 def adjusted_panels(px: pd.DataFrame):
-    f = adjust.implied_factors(px)
+    f = adjust.inherit_nse(adjust.implied_factors(px))
     last = px['date'].max()
     closes = px[['exchange', 'isin', 'date', 'close']].dropna()
     adj = adjust.adjust_as_of(f, closes, last)
