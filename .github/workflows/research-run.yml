@@ -1,0 +1,47 @@
+name: Research run (development period, read-only)
+
+# Scores the pre-registered tests (docs/RESEARCH.md) on the development period only; aggregate output only.
+# The hold-out is scored only when 'final' is true, once, at the end. Reads R2; writes nothing to R2.
+# Dispatch from main after the price backfill has loaded.
+on:
+  workflow_dispatch:
+    inputs:
+      final:
+        description: "'true' scores the hold-out (events after 2026-06-30). Single final evaluation only."
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run tests H1, H2, H8
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          FINAL: ${{ inputs.final }}
+        run: |
+          if [ "$FINAL" = "true" ]; then python scripts/research_run.py --out research --final; else python scripts/research_run.py --out research; fi
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f research/results.md ]; then cat research/results.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-results
+          path: research
+          retention-days: 14
