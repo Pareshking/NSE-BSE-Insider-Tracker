@@ -15,7 +15,12 @@ def main():
  for ds,path in specs:
   d=load(path) or {};ws=d.get('windows',[]);ok=False;details={}
   if ds in ('bulk','block'):
-   ok=bool(ws) and all(w.get('count',0)>0 and (w.get('name') not in ('7d','30d','90d') or len(w.get('distinct_dates',[]))>1) for w in ws);rows=[]
+   # Completeness, not window shape: every fetch chunk came back as the uncapped CSV and the 90-day
+   # window holds data on more than one day. A 1-day window is empty before the day's deals are
+   # published and block deals are sparse (a 7-day window can hold one date), so neither is required.
+   chunks=d.get('chunk_diagnostics',[]);w90=next((w for w in ws if w.get('name')=='90d'),{})
+   ok=bool(chunks) and all(c.get('mode')=='csv' for c in chunks) and w90.get('count',0)>0 and len(w90.get('distinct_dates',[]))>1;rows=[]
+   details['chunks']=len(chunks);details['non_csv_chunks']=sum(1 for c in chunks if c.get('mode')!='csv')
    for w in ws: rows.extend(w.get('rows',[]))
   elif ds=='insider':
    multi=[ w for w in ws if w.get('name') not in ('1d',)];ok=bool(ws) and bool(multi) and all(w.get('count',0)>0 and (w.get('distinct_dates') or w.get('distinct_transaction_dates')) for w in multi);rows=[]
