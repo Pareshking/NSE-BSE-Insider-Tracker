@@ -1,0 +1,54 @@
+name: Price backfill (UDiFF bhavcopy)
+
+# Downloads NSE and BSE daily bhavcopy, stores the raw files write-once in raw_v2 and the parsed
+# days in prices/daily/ in R2. Resumable: days already stored are skipped. Aggregate output only.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'From (YYYY-MM-DD)'
+        default: '2025-01-01'
+      to:
+        description: 'To (YYYY-MM-DD). Blank = yesterday.'
+        default: ''
+      exchange:
+        description: 'NSE, BSE or NSE,BSE'
+        default: 'NSE,BSE'
+  # Temporary: lets the working branch start the first run before this file is on main.
+  push:
+    branches: [ccr-27a6c75f-o9ztpa]
+    paths: ['.github/workflows/price-backfill.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Backfill prices
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          FROM: ${{ inputs.from || '2025-01-01' }}
+          TO: ${{ inputs.to }}
+          EXCHANGE: ${{ inputs.exchange || 'NSE,BSE' }}
+        run: python scripts/price_backfill.py --from "$FROM" --to "$TO" --exchange "$EXCHANGE" | tee price_backfill.log
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Price backfill (aggregate)' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(NSE|BSE):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
