@@ -4,9 +4,6 @@ name: Forward ledger update
 # Append-only: existing rows are never changed. Dispatch only; aggregate output only.
 on:
   workflow_dispatch:
-  push:   # TEMPORARY: one-off run from the feature branch; removed in the next commit
-    branches: [feat/phase3-ui-shell]
-    paths: ['.github/workflows/ledger-update.yml']
 
 permissions:
   contents: read
