@@ -55,7 +55,7 @@ SECTIONS = {
     ],
     'Corporate events': [
         st.Page(capital_raises.render, title='Capital raises & actions', icon=M('event'), url_path='capital-raises'),
-        st.Page(coming.render, title='Preferential title='Preferential, rights, warrants' rights', icon=M('hourglass_top'), url_path='coming'),
+        st.Page(coming.render, title='Preferential & rights', icon=M('hourglass_top'), url_path='coming'),
     ],
     'Analytics': [
         st.Page(track_record.render, title='Track record', icon=M('query_stats'), url_path='track-record'),
