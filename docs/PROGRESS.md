@@ -23,6 +23,9 @@ NSE prices 437 of 437 days, BSE 437 of 437, NSE market cap 437 of 437 (100% each
 ## Phase 2 first results (09 Oct 2026, IST)
 PR #12 merged to main (c5ce96b). H1, H2, H8 ran on the development sample: see `docs/RESEARCH.md` section H. Summary: no evidence of an edge for insider market buys (negative vs size peers at 20/60 sessions); insider sells underperform 1.5 to 2.4% at 5 to 20 sessions (short side, before costs); deal buy and sell groups look alike (benchmark and micro-cap skew caveats). Costs not applied; hold-out untouched.
 
+## Conditioned cuts (09 Oct 2026, IST)
+H1 cuts C1..C9 (promoter, size, breadth, drawdown) were pre-registered and run: no cut shows an edge vs size-matched peers; large/relative-size purchases are significantly worse. See `docs/RESEARCH.md` section I. Phase 3 UI not started; product labels decided: insider buys and deals "no proven edge", insider sells a caution flag.
+
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
 2. Remove temporary push triggers from `price-backfill.yml` and `price-coverage.yml`; pytest; squash-merge PR #12 (Gate 2 pre-approved).

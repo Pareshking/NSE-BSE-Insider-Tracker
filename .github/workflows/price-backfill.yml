@@ -12,7 +12,7 @@ on:
         description: 'To (YYYY-MM-DD). Blank = yesterday.'
         default: ''
       exchange:
-        description: 'NSE, BSE, NSE_PR (market cap) or a comma list'
+        description: 'NSE, BSE, NSE_PR (market cap), NSE_IDX (index closes) or a comma list'
         default: 'NSE,BSE,NSE_PR'
 
 permissions:
@@ -47,4 +47,4 @@ jobs:
         if: always()
         run: |
           echo '### Price backfill (aggregate)' >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(NSE|BSE|NSE_PR):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
+          grep -E '^(NSE|BSE|NSE_PR|NSE_IDX):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true

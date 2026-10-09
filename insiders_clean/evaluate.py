@@ -7,9 +7,9 @@ Pure functions on frames, no I/O. Conventions (fixed before any outcome was look
 - Outcome = close `h` sessions after the entry session, on a price series adjusted for structural capital actions
   (splits, bonuses; see adjust.py). Cash dividends are not adjusted, so these are price returns. Outcome windows may
   contain later splits: that is realised information about the outcome, not a feature at signal time.
-- Benchmarks (all reported): the equal-weighted average of every traded security (market proxy built from our own
-  price table; a broad index series is a later addition), and the equal-weighted average of securities in the same size
-  bucket. Only complete windows count.
+- Benchmark (owner directive 9 Oct 2026): one broad index, Nifty 500 closing values from NSE's index archive, next to the
+  absolute return. The earlier equal-weighted and size-matched benchmarks were removed (micro-cap skew). Only complete
+  windows count.
 - Inference clusters by signal date: events disclosed the same day are not independent.
 """
 from __future__ import annotations
@@ -80,44 +80,37 @@ def forward_returns(events: pd.DataFrame, close: pd.DataFrame, open_: pd.DataFra
     return out
 
 
-def benchmark_returns(close: pd.DataFrame, entry_pos: pd.Series, entry_basis: pd.Series, horizons=HORIZONS,
-                      groups: pd.Series | None = None, event_groups: pd.Series | None = None) -> pd.DataFrame:
-    """Equal-weighted peer return over the same window as each event (close-to-close from the entry session;
-    for 'open' entries the benchmark starts at the previous close, a slight overstatement of the benchmark window, stated).
-    `groups` maps ISIN -> bucket; when given with `event_groups`, peers are the same bucket."""
-    daily = close.pct_change(fill_method=None)
-    daily = daily.clip(-0.5, 0.5)
-    cum_cache = {}
+def index_returns(index_close: pd.Series, sessions: pd.DatetimeIndex, entry_pos: pd.Series, entry_basis: pd.Series,
+                  horizons=HORIZONS) -> pd.DataFrame:
+    """Return of a broad index (Nifty 500 closing values) over the same window as each event: from the entry session's
+    close ('close' entries) or the previous session's close ('open' entries, a slight overstatement of the window,
+    stated) to the close `h` sessions after the entry session. NaN if the index is missing on either date."""
+    ix = index_close.reindex(sessions).to_numpy(dtype=float)
     res = pd.DataFrame(index=entry_pos.index, columns=[f'bm_{h}' for h in horizons], dtype=float)
-    for key in ([None] if groups is None else sorted(set(event_groups.dropna()))):
-        cols = close.columns if key is None else [c for c in close.columns if groups.get(c) == key]
-        if len(cols) == 0:
+    for i in entry_pos.index:
+        pos = entry_pos.at[i]
+        if pd.isna(pos):
             continue
-        mkt = daily[cols].mean(axis=1, skipna=True).fillna(0.0)
-        lg = np.log1p(mkt).cumsum().to_numpy()
-        cum_cache[key] = lg
-        rows = entry_pos.index if key is None else event_groups.index[event_groups == key]
-        for i in rows:
-            pos = entry_pos.at[i]
-            if pd.isna(pos):
-                continue
-            pos = int(pos)
-            start = pos - 1 if entry_basis.at[i] == 'open' else pos
-            for h in horizons:
-                end = pos + h
-                if start >= 0 and end < len(lg):
-                    res.at[i, f'bm_{h}'] = np.expm1(lg[end] - lg[start])
+        pos = int(pos)
+        start = pos - 1 if entry_basis.at[i] == 'open' else pos
+        for h in horizons:
+            end = pos + h
+            if start >= 0 and end < len(ix) and np.isfinite(ix[start]) and np.isfinite(ix[end]) and ix[start] > 0:
+                res.at[i, f'bm_{h}'] = ix[end] / ix[start] - 1
     return res
 
 
-def abnormal(df: pd.DataFrame, bm: pd.DataFrame, horizons=HORIZONS) -> pd.DataFrame:
+def excess(df: pd.DataFrame, bm: pd.DataFrame, horizons=HORIZONS) -> pd.DataFrame:
+    """Adds `ex_{h}` = stock return minus index return (simple difference of the two holding-period returns)."""
     out = df.copy()
     for h in horizons:
-        out[f'ar_{h}'] = out[f'ret_{h}'] - bm[f'bm_{h}']
+        out[f'ex_{h}'] = out[f'ret_{h}'] - bm[f'bm_{h}']
+        out[f'idx_{h}'] = bm[f'bm_{h}']
     return out
 
 
-def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed: int = 7, boot: int = 2000) -> dict:
+def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed: int = 7, boot: int = 2000,
+              level: float = 95.0) -> dict:
     """N, mean, median, hit rate, and a date-clustered bootstrap 95% interval of the mean."""
     d = df.dropna(subset=[col])
     n = len(d)
@@ -131,26 +124,11 @@ def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed:
         s, c = g['sum'].to_numpy(), g['count'].to_numpy()
         idx = rng.integers(0, len(g), size=(boot, len(g)))
         means = s[idx].sum(axis=1) / c[idx].sum(axis=1)
-        out['ci95'] = [float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))]
+        tail = (100 - level) / 2
+        out['ci95' if level == 95.0 else f'ci{level:g}'] = [float(np.percentile(means, tail)), float(np.percentile(means, 100 - tail))]
     return out
 
 
 def mde(sd: float, n: int) -> float:
     """Minimum detectable mean at 5% two-sided and 80% power."""
     return float((1.96 + 0.84) * sd / np.sqrt(n)) if n > 0 else float('nan')
-
-
-def size_buckets(mcap: pd.DataFrame, prices: pd.DataFrame, asof: str = '2025-12-31') -> pd.Series:
-    """ISIN -> micro/small/mid/large from NSE market cap on the last day on or before `asof` (before the product
-    window, so no look-ahead). AMFI-style ranks: top 100 large, 101-250 mid, 251-500 small, the rest micro.
-    Indicative only (owner: market cap is a rough size filter). ISINs with no NSE market cap are left out."""
-    m = mcap[(mcap['category'] == 'Listed') & (mcap['date'] <= pd.Timestamp(asof))]
-    if m.empty:
-        return pd.Series(dtype=object)
-    m = m[m['date'] == m['date'].max()]
-    ids = prices.loc[prices['exchange'] == 'NSE', ['symbol', 'isin']].drop_duplicates('symbol')
-    m = m.merge(ids, on='symbol', how='inner').dropna(subset=['market_cap'])
-    m = m.sort_values('market_cap', ascending=False).drop_duplicates('isin')
-    rank = np.arange(1, len(m) + 1)
-    bucket = np.select([rank <= 100, rank <= 250, rank <= 500], ['large', 'mid', 'small'], 'micro')
-    return pd.Series(bucket, index=m['isin'].to_numpy())

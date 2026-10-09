@@ -20,7 +20,7 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import market_cap, prices  # noqa: E402
+from insiders_clean import index_close, market_cap, prices  # noqa: E402
 
 UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0 Safari/537.36'
 # name -> (raw label, url template, parser, output prefix, validator).
@@ -33,9 +33,12 @@ SOURCES = {
             lambda b: prices.parse_udiff(b, 'BSE'), 'prices/daily/bse', prices.validate_day),
     'NSE_PR': ('nse_pr_zip', 'https://archives.nseindia.com/archives/equities/bhavcopy/pr/PR{dmy2}.zip',
                market_cap.parse_mcap, 'marketcap/daily/nse', market_cap.validate),
+    # NSE index closing values (Nifty 500 is the research baseline).
+    'NSE_IDX': ('nse_index_close', 'https://nsearchives.nseindia.com/content/indices/ind_close_all_{dmy}.csv',
+                index_close.parse_index, 'indices/daily/nse', index_close.validate),
 }
 KEYS = {'NSE': ['date', 'exchange', 'isin', 'symbol', 'series'], 'BSE': ['date', 'exchange', 'isin', 'symbol', 'series'],
-        'NSE_PR': ['date', 'symbol', 'series']}
+        'NSE_PR': ['date', 'symbol', 'series'], 'NSE_IDX': ['date', 'symbol']}
 PAUSE = 0.6
 
 
@@ -67,7 +70,7 @@ def load_month(client, bucket, exchange, month):
 
 def fetch(session, store, exchange, day):
     label, tmpl, parse, _, _ = SOURCES[exchange]
-    url = tmpl.format(ymd=f'{day:%Y%m%d}', dmy2=f'{day:%d%m%y}')
+    url = tmpl.format(ymd=f'{day:%Y%m%d}', dmy2=f'{day:%d%m%y}', dmy=f'{day:%d%m%Y}')
     r = session.get(url, timeout=45)
     if r.status_code in (403, 429):
         raise Stop(f'{exchange} {r.status_code}')

@@ -34,3 +34,15 @@ def test_holdout_split_by_disclosure_date():
     e = pd.DataFrame({'broadcast_date': pd.to_datetime(['2025-12-31', '2026-01-01', '2026-06-30', '2026-07-01'])})
     dev, hold = evm.split(e)
     assert len(dev) == 2 and len(hold) == 1
+
+
+def test_prior_buys_and_drawdown():
+    import numpy as np
+    ev = pd.DataFrame({'isin': ['A', 'A', 'B'], 'broadcast_date': pd.to_datetime(['2026-01-05', '2026-01-20', '2026-01-20'])})
+    pb = evm.prior_buys(ev)
+    assert list(pb) == [0, 1, 0]
+    idx = pd.bdate_range('2025-01-01', periods=300)
+    close = pd.DataFrame({'A': np.r_[np.linspace(100, 200, 260), np.linspace(200, 120, 40)]}, index=idx)
+    e2 = pd.DataFrame({'isin': ['A'], 'broadcast_date': [idx[-1]]})
+    assert abs(evm.drawdown_at_signal(e2, close).iloc[0] - (120 / 200 - 1)) < 1e-6
+    assert np.isnan(evm.drawdown_at_signal(pd.DataFrame({'isin': ['A'], 'broadcast_date': [idx[10]]}), close).iloc[0])

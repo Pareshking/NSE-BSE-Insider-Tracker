@@ -45,14 +45,18 @@ def test_incomplete_window_is_not_counted_and_weekend_disclosure_rolls_forward()
     assert r2['entry_pos'][0] == DAYS.searchsorted(pd.Timestamp('2026-01-12'))
 
 
-def test_benchmark_and_abnormal():
+def test_index_returns_and_excess():
     close, op = _panels()
     r = ev.forward_returns(_events(), close, op, horizons=(5,))
-    bm = ev.benchmark_returns(close, r['entry_pos'], r['entry_basis'], horizons=(5,))
-    # equal-weighted market = mean of A (+1%/day) and three flat peers
-    assert 0 < bm['bm_5'][0] < r['ret_5'][0]
-    out = ev.abnormal(r, bm, horizons=(5,))
-    assert abs(out['ar_5'][0] - (r['ret_5'][0] - bm['bm_5'][0])) < 1e-12
+    idx = pd.Series(np.linspace(100, 110, len(close.index)), index=close.index)
+    bm = ev.index_returns(idx, close.index, r['entry_pos'], r['entry_basis'], horizons=(5,))
+    pos = int(r['entry_pos'][0])
+    start = pos - 1 if r['entry_basis'][0] == 'open' else pos
+    assert abs(bm['bm_5'][0] - (idx.iloc[pos + 5] / idx.iloc[start] - 1)) < 1e-12
+    out = ev.excess(r, bm, horizons=(5,))
+    assert abs(out['ex_5'][0] - (r['ret_5'][0] - bm['bm_5'][0])) < 1e-12
+    gap = idx.copy(); gap.iloc[pos + 5] = np.nan
+    assert np.isnan(ev.index_returns(gap, close.index, r['entry_pos'], r['entry_basis'], horizons=(5,))['bm_5'][0])
 
 
 def test_summary_clusters_by_date_and_reports_n():
@@ -69,13 +73,3 @@ def test_price_panel_prefers_nse_and_fills_with_bse():
                        'isin': ['X', 'X', 'Y', 'X'], 'close': [10.0, 11.0, 5.0, 12.0], 'value': [1.0, 2.0, 1.0, 1.0]})
     p = ev.price_panel(px, 'close')
     assert p.loc['2026-01-01', 'X'] == 10.0 and p.loc['2026-01-02', 'X'] == 12.0 and p.loc['2026-01-01', 'Y'] == 5.0
-
-
-def test_size_buckets_rank_and_no_lookahead():
-    n = 600
-    mc = pd.DataFrame({'date': pd.Timestamp('2025-12-30'), 'symbol': [f'S{i}' for i in range(n)], 'category': 'Listed',
-                       'market_cap': np.arange(n, 0, -1, dtype=float)})
-    mc = pd.concat([mc, mc.assign(date=pd.Timestamp('2026-02-01'), market_cap=1.0)])
-    px = pd.DataFrame({'exchange': 'NSE', 'symbol': [f'S{i}' for i in range(n)], 'isin': [f'I{i}' for i in range(n)]})
-    b = ev.size_buckets(mc, px)
-    assert b['I0'] == 'large' and b['I99'] == 'large' and b['I100'] == 'mid' and b['I250'] == 'small' and b['I500'] == 'micro'
