@@ -73,6 +73,8 @@ def fetch(session, store, exchange, day):
         raise Stop(f'{exchange} {r.status_code}')
     if r.status_code == 404 or not r.content:
         return None
+    if 'html' in (r.headers.get('Content-Type') or '').lower() or r.content.lstrip()[:1] == b'<':
+        return None  # BSE answers a missing day with its home page and status 200 (VERIFIED 09 Oct 2026)
     if r.status_code != 200:
         raise RuntimeError(f'{exchange} {day} status {r.status_code}')
     if store is not None:

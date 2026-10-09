@@ -14,7 +14,7 @@ on:
       exchange:
         description: 'NSE, BSE, NSE_PR (market cap) or a comma list'
         default: 'NSE,BSE,NSE_PR'
-  # Temporary: lets the working branch start runs before this file is on main. Push runs use the small sample window below.
+  # Temporary: lets the working branch start runs before this file is on main. Push runs cover the full window (a one-month sample passed first, run 3).
   push:
     branches: [ccr-27a6c75f-o9ztpa]
     paths: ['.github/workflows/price-backfill.yml']
@@ -29,7 +29,7 @@ concurrency:
 jobs:
   prices:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,7 +43,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          FROM: ${{ inputs.from || '2026-09-01' }}
+          FROM: ${{ inputs.from || '2025-01-01' }}
           TO: ${{ inputs.to }}
           EXCHANGE: ${{ inputs.exchange || 'NSE,BSE,NSE_PR' }}
         run: python -u scripts/price_backfill.py --from "$FROM" --to "$TO" --exchange "$EXCHANGE" | tee price_backfill.log

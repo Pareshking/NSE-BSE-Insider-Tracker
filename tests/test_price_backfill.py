@@ -42,3 +42,9 @@ def test_block_stops_run(monkeypatch):
         assert False
     except pb.Stop:
         pass
+
+
+def test_html_page_for_a_missing_day_is_no_file_not_an_error(monkeypatch):
+    monkeypatch.setattr(pb.requests, 'Session', lambda: type('S', (), {'headers': {}, 'get': lambda self, u, timeout=0: Resp(200, b'<!DOCTYPE html><html>', 'text/html')})())
+    t = pb.run(date(2026, 10, 2), date(2026, 10, 2), ['BSE'], sleep=lambda s: None)
+    assert t['BSE']['no_file'] == 1 and t['BSE']['errors'] == 0
