@@ -29,15 +29,15 @@ same day something is promised, started or finished. Pages follow the data:
 | D | PR #17 (was PR #4): on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; screenshots looked at |
 | E | Merge PR #17, then a "Clean only" run (one-year window) | Live insiders.streamlit.app shows the new site on the rebuilt tables |
 | F | Shareholding for every company | `nse-events.yml` run with dataset=shareholding and a wide window (~120 days), repeated until most companies' latest quarter is in (300 XBRL files per run) |
-| G | Prices on the pages | From our own price layer (`artifacts/prices_summary_slim.parquet`, `prices/daily/`): CMP, 52-week high, 200-day average, price paid vs CMP, move since broadcast, and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
+| G | ~~Prices on the pages~~ **Done 09 Oct** (CMP, 52W range, price line with trades, avg paid vs CMP; ICDR minimum waits on H) | From our own price layer (`artifacts/prices_summary_slim.parquet`, `prices/daily/`): CMP, 52-week high, 200-day average, price paid vs CMP, move since broadcast, and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
 | H | Preferential and rights issues cleaned | Offer price, shares allotted, allotment and trading-approval dates, promoter or not; lock-in expiry (promoters 18 months, others 6); Capital raises sections S16-S18 built |
 
 ## Later
 
 | # | Item | Done when |
 |---|---|---|
-| 7 | Signal lab and Track record page | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
-| 8 | Price chart with filings marked (company page) | Waits on G |
+| 7 | ~~Signal lab and Track record page~~ **Measured 09 Oct** (insiders_clean/track.py, nightly; 1W-6M vs Nifty 500, costs, cases; size-matched benchmark still to add) | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
+| 8 | ~~Price chart with filings marked (company page)~~ **Done 09 Oct** | |
 | 9 | Morning brief and watchlist warnings | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
 | 10 | Model basket | Waits on 7 |
 | 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
