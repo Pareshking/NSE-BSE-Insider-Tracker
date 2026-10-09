@@ -73,15 +73,24 @@ def _card(r, ctx, day) -> str:
             f'<div class="spot-badges">{context} {kit.tag(pledge_txt, tone)}</div></div>')
 
 
-def _session(ctx):
+WINDOWS = {'Latest session': 1, 'Last 5 sessions': 5, 'Last 30 days': 22}
+
+
+def _session(ctx, n: int):
+    """Open-market trades made public in the last `n` filing days, one row per
+    company, person and side per day (tranches combined)."""
     e = ctx.eligible
-    day = e['seen'].max().normalize()
-    sess = signals.session_by_company(e, day, ctx.shareholding)
-    if not sess.empty:
-        qty = (e[e['seen'].dt.normalize() == day].assign(q=pd.to_numeric(e['quantity'], errors='coerce'))
-               .groupby(['isin', 'person_id', 'side'])['q'].sum())
-        sess['qty'] = [qty.get((i, p, s)) for i, p, s in zip(sess['isin'], sess['person_id'], sess['side'])]
-    return sess, day
+    days = sorted(e['seen'].dropna().dt.normalize().unique())[-n:]
+    parts = []
+    for day in days:
+        one = signals.session_by_company(e, pd.Timestamp(day), ctx.shareholding)
+        if not one.empty:
+            qty = (e[e['seen'].dt.normalize() == day].assign(q=pd.to_numeric(e['quantity'], errors='coerce'))
+                   .groupby(['isin', 'person_id', 'side'])['q'].sum())
+            one['qty'] = [qty.get((i, p, s)) for i, p, s in zip(one['isin'], one['person_id'], one['side'])]
+            parts.append(one.assign(day=pd.Timestamp(day)))
+    sess = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    return sess, pd.Timestamp(days[0]), pd.Timestamp(days[-1])
 
 
 CATALYSTS = ['fund_raising', 'preferential', 'buyback', 'bonus', 'split', 'rights']
@@ -134,53 +143,55 @@ def _coming_up(ctx):
 
 def render():
     ctx = load()
-    kit.head("Today's pulse", 'Open-market insider trades and big-money deals in the latest session. ESOPs, gifts, '
-                              'pledges and token buys are left out.')
+    kit.head("Today's pulse", 'What insiders and big money did in the market lately. ESOPs, gifts, pledges and token '
+                              'buys are left out.')
     if not need_data(ctx):
         return
-    sess, day = _session(ctx)
+    pick = st.segmented_control('Window', list(WINDOWS), default='Last 5 sessions', key='today_win',
+                                label_visibility='collapsed') or 'Last 5 sessions'
+    sess, first, day = _session(ctx, WINDOWS[pick])
+    when = kit.day(day) if first == day else f'{kit.day(first, with_year=False)}–{kit.day(day)}'
     end = day + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
     prom = sess[sess['person_role'].isin(signals.PROMOTER_ROLES)] if not sess.empty else sess
     net = (prom['value'] * prom['side'].map({'BUY': 1, 'SELL': -1})).sum() if not prom.empty else 0.0
 
-    # A buy filed today by someone whose open-market buying in that company
+    # A buy in the window by someone whose open-market buying in that company
     # over 30 days reaches the spotlight line (docs/SIGNALS.md).
     spot = signals.spotlight(ctx.eligible, end)
     buys = sess[(sess['side'] == 'BUY') & ~sess['is_token']] if not sess.empty else sess
     hc = buys.merge(spot[['isin', 'person_id', 'pct_30d']], on=['isin', 'person_id']) if not buys.empty else buys
-    hc = hc.assign(impact=hc['pct_of_float'].fillna(hc['pct_of_mcap'])).sort_values('impact', ascending=False) \
-        if not hc.empty else hc
+    hc = hc.assign(impact=hc['pct_of_float'].fillna(hc['pct_of_mcap'])).sort_values('impact', ascending=False)         .drop_duplicates(['isin', 'person_id']) if not hc.empty else hc
     clus = signals.clusters(ctx.eligible, end)
-    clus_today = clus[pd.to_datetime(clus['last_seen']).dt.normalize() == day] if not clus.empty else clus
-    hs = signals.handshakes(ctx.deals, ctx.trades, days=1)
+    clus_today = clus[pd.to_datetime(clus['last_seen']).dt.normalize() >= first] if not clus.empty else clus
+    hs = signals.handshakes(ctx.deals, ctx.trades, days=max(1, (day - first).days + 1))
     hs_day = hs['date'].max() if not hs.empty else None
 
     if not hc.empty:
         b = hc.iloc[0]
         share = (kit.pct(b['pct_of_float']) + ' of float') if pd.notna(b['pct_of_float']) else \
             (kit.pct(b['pct_of_mcap']) + ' of mcap')
-        best = kit.Tile('Highest-conviction buy today', str(b['nse_symbol']), f'{kit.rupees(b["value"])} · {share}')
+        best = kit.Tile('Highest-conviction buy', str(b['nse_symbol']), f'{kit.rupees(b["value"])} · {share} · {kit.day(b["day"])}')
     else:
-        best = kit.Tile('Highest-conviction buy today', '—', 'No buy crossed the spotlight line today')
+        best = kit.Tile('Highest-conviction buy', '—', f'No buy crossed the spotlight line, {when}')
     kit.tiles([
         kit.Tile('Net open-market promoter flow', kit.rupees(net, signed=True),
-                 f'{kit.plural(prom["isin"].nunique() if not prom.empty else 0, "company", "companies")} · filed {kit.day(day)}',
+                 f'{kit.plural(prom["isin"].nunique() if not prom.empty else 0, "company", "companies")} · made public {when}',
                  'up' if net > 0 else 'down' if net < 0 else ''),
         best,
-        kit.Tile('Cluster formations', kit.count(len(clus_today)), '2+ insiders buying within 30 days, crossed today'),
+        kit.Tile('Cluster formations', kit.count(len(clus_today)), f'2+ insiders buying within 30 days · {when}'),
         kit.Tile('Institutional handshakes', kit.rupees(hs['matched_value'].sum() if not hs.empty else None),
-                 f'{kit.plural(len(hs), "buyer-seller match", "buyer-seller matches")} on {kit.day(hs_day)} · market makers excluded' if hs_day is not None
+                 f'{kit.plural(len(hs), "buyer-seller match", "buyer-seller matches")} · {when} · market makers excluded' if hs_day is not None
                  else 'No matched deals'),
     ])
 
-    with kit.card('High-conviction buys today', 'spot',
-                  f'filed {kit.day(day)} · {signals.SPOTLIGHT_PCT_30D}%+ of market cap by one person over 30 days'):
+    with kit.card('High-conviction buys', 'spot',
+                  f'made public {when} · {signals.SPOTLIGHT_PCT_30D}%+ of market cap by one person over 30 days'):
         if hc.empty:
-            kit.empty('No open-market buy filed today reaches the high-conviction line.')
+            kit.empty(f'No open-market buy made public {when} reaches the high-conviction line.')
         else:
-            st.html('<div class="spot-grid">' + ''.join(_card(r, ctx, day) for _, r in hc.head(4).iterrows()) + '</div>')
+            st.html('<div class="spot-grid">' + ''.join(_card(r, ctx, r['day']) for _, r in hc.head(6).iterrows()) + '</div>')
 
-    with kit.card('Session feed', 'feed', f'{kit.day(day)} · tranches combined · largest float impact first'):
+    with kit.card('Insider trades and deals', 'feed', f'{when} · tranches combined · largest impact first'):
         chip = st.segmented_control('Show', CHIPS, default='All', label_visibility='collapsed', key='today_chip')
         if chip in ('All', 'Promoter buys only', None):
             rows = sess[~sess['is_token']] if not sess.empty else sess
@@ -194,11 +205,12 @@ def render():
                     kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
                     kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
                     kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('pct_of_float', '% of float', 'pct'),
-                    kit.Col('trades', 'Tranches', 'num', phone=False), kit.Col('range', '52W range · CMP', 'range'),
+                    kit.Col('day', 'Made public', 'date'), kit.Col('trades', 'Tranches', 'num', phone=False),
+                    kit.Col('range', '52W range · CMP', 'range'),
                     kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=40)
         elif chip == 'Bulk deals':
             d = ctx.deals
-            d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & (d['date'] == d['date'].max())] \
+            d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & (d['date'] >= first)] \
                 if not d.empty else d
             if d.empty:
                 kit.empty('No bulk or block deals by real buyers or sellers in the latest session.')
