@@ -68,3 +68,9 @@
 - Owner directive: absolute return and excess vs Nifty 500 only; equal-weighted and size-matched benchmark code removed (`benchmark_returns`, `abnormal`, `size_buckets`, `research_conditioned.py`). Nifty 500 closes come from NSE `ind_close_all_*.csv` (stored raw, parsed to `indices/daily/nse/`).
 - Opus advisor review (RESEARCH.md J.2): Nifty 500 excess is not a valid test for a micro-cap-dominated sample (sells also beat it). Result recorded as descriptive; matched-excess and buys-minus-sells are the next research tests. The product UI keeps only the two owner-approved metrics and must not present Nifty 500 excess as a buy signal.
 - The advisor agent file is `.claude/agents/quant-advisor.md`; it was not registered mid-session, so the persona was run as an Opus general-purpose agent.
+
+## 2026-10-09 (IST): Phase 2 closed; Phase 3 shell wired
+- Owner: econometric expansion halted (no matched baskets, no ISIN-clustered bootstrap); Phase 2 closed (RESEARCH.md section K).
+- Forward ledger (`ledger/forward_ledger.parquet`, rule `promoter_accum_v1`) is populated with promoter open-market buy events (day value >= Rs 25 lakh) disclosed after 30 Jun 2026. Owner-directed. Consequence stated on the page: those events' outcomes are now visible, so the hold-out is no longer unseen for them; the ledger is a monitor, not a test. Ledger rows are never edited (job refuses to change an existing signal); current price and returns are computed from prices when displayed, so splits/bonuses are picked up.
+- Raw disclosure links: the clean insider table now carries `source_url` (NSE's XBRL file link from the filing); takes effect on the next Clean only run. Deals and BSE filings have no per-record link in the data, and the page says so.
+- Pages are wired into `streamlit_app/app.py` navigation on the feature branch only. Merging PR #15 to `main` redeploys production and is approval gate 2; it is not pre-approved.

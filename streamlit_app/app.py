@@ -39,6 +39,11 @@ pg = st.navigation(
         st.Page("views/promoter_activity.py", title="Promoter Activity", icon="\U0001f4c8"),
         st.Page("views/bulk_block_concentration.py", title="Bulk & Block Concentration", icon="\U0001f4ca"),
         st.Page("views/data_quality.py", title="Data Quality", icon="✅"),
+        st.Page("pages/1_Noteworthy_Accumulation.py", title="Noteworthy", icon="\U0001f4cc"),
+        st.Page("pages/2_Company_Deep_Dive.py", title="Company Deep Dive", icon="\U0001f50d"),
+        st.Page("pages/3_Risk_Flags.py", title="Risk Flags", icon="⚠️"),
+        st.Page("pages/4_Forward_Ledger.py", title="Forward Ledger", icon="\U0001f4d2"),
+        st.Page("pages/5_Data_Health.py", title="Data Health", icon="\U0001fa7a"),
     ],
     position="top",
 )

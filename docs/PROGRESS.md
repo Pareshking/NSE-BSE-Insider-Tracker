@@ -26,6 +26,9 @@ PR #12 merged to main (c5ce96b). H1, H2, H8 ran on the development sample: see `
 ## Conditioned cuts (09 Oct 2026, IST)
 H1 cuts C1..C9 (promoter, size, breadth, drawdown) were pre-registered and run: no cut shows an edge vs size-matched peers; large/relative-size purchases are significantly worse. See `docs/RESEARCH.md` section I. Phase 3 UI not started; product labels decided: insider buys and deals "no proven edge", insider sells a caution flag.
 
+## Phase 3 (09 Oct 2026, IST)
+Phase 2 closed (RESEARCH.md K). Five product pages work against real table layouts, are wired into the app navigation on branch `feat/phase3-ui-shell` (draft PR #15) and pass smoke tests. To see the ledger populated: merge, then dispatch 'Forward ledger update' and 'Clean only' (adds the disclosure links).
+
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
 2. Remove temporary push triggers from `price-backfill.yml` and `price-coverage.yml`; pytest; squash-merge PR #12 (Gate 2 pre-approved).

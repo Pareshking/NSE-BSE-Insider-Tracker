@@ -259,6 +259,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['person_category_raw'] = _col(raw, 'canonical_person_category', 'personCategory', 'person_category')
     df['mode_raw'] = _col(raw, 'canonical_mode', 'modeOfAcquisition', 'mode')
     df['transaction_type_raw'] = _col(raw, 'canonical_transaction_type', 'transactionType', 'transaction_type')
+    df['source_url'] = _col(raw, 'canonical_source_url', 'xmlFileName').astype('string')   # NSE's XBRL file for the filing
     df['quantity'] = _num(_col(raw, 'canonical_quantity'))
     df['value'] = _num(_col(raw, 'canonical_value'))
     df['holding_before'] = _num(_col(raw, 'canonical_holding_before'))
@@ -407,7 +408,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             'trade_date_from', 'trade_date_to', 'intimation_date', 'broadcast_date',
             'insider_to_company_sessions', 'insider_filed_late',
             'company_to_exchange_sessions', 'company_filed_late', 'trade_to_public_sessions',
-            'flags', 'needs_review']
+            'source_url', 'flags', 'needs_review']
     out = df[cols].reset_index(drop=True)
     t['output_rows'] += len(out)
     t['by_exchange'] = out['exchange'].value_counts().to_dict()

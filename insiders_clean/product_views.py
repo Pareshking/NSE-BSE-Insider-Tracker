@@ -17,24 +17,32 @@ NO_EDGE_NOTE = ('No proven edge: in the Jan-Jun 2026 development sample promoter
 
 def _window(ev: pd.DataFrame, asof, days: int) -> pd.DataFrame:
     d = pd.to_datetime(ev['broadcast_date'])
-    return ev[(d <= pd.Timestamp(asof)) & (d > pd.Timestamp(asof) - pd.Timedelta(days=days))]
+    return ev[(d <= pd.Timestamp(asof)) & (d > pd.Timestamp(asof) - pd.Timedelta(days=int(days)))]
 
 
-def promoter_accumulation(trades: pd.DataFrame, asof, days: int = 90, min_value: float = 25 * LAKH) -> pd.DataFrame:
-    """Promoter / promoter-group open-market buys per security over the last `days`: total value, buy days, filers.
-    `cluster` = two or more buy days within the window of 30 days (repeat accumulation)."""
+BADGE_ACCUMULATION = 'Contextual Accumulation (No Proven Standalone Edge)'
+MIN_PCT_OF_MCAP = 0.05      # percent of market cap (proxy for share of equity)
+
+
+def promoter_accumulation(trades: pd.DataFrame, asof, days: int = 90, min_value: float = 25 * LAKH,
+                          min_pct: float = MIN_PCT_OF_MCAP) -> pd.DataFrame:
+    """Promoter / promoter-group open-market buys per security over the last `days`. Directors, KMP, designated persons
+    and employees are excluded (token compliance trades). A security is material when its combined value is at least
+    `min_value` or at least `min_pct` percent of market cap. `cluster` = two or more buy days within 30 days of each other."""
     ev = _window(evm.insider_events(trades, 'BUY', roles=evm.PROMOTER_ROLES), asof, days)
+    cols = ['isin', 'company', 'value', 'pct_of_mcap', 'buy_days', 'first', 'last', 'cluster', 'badge']
     if ev.empty:
-        return pd.DataFrame(columns=['isin', 'company', 'value', 'buy_days', 'first', 'last', 'cluster'])
+        return pd.DataFrame(columns=cols)
     names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
-    g = ev.groupby('isin').agg(value=('value', 'sum'), buy_days=('broadcast_date', 'nunique'),
+    g = ev.groupby('isin').agg(value=('value', 'sum'), pct_of_mcap=('pct_of_mcap', 'sum'), buy_days=('broadcast_date', 'nunique'),
                                first=('broadcast_date', 'min'), last=('broadcast_date', 'max')).reset_index()
     d = ev.sort_values('broadcast_date').groupby('isin')['broadcast_date'].apply(
         lambda s: bool((s.diff().dt.days.dropna() <= 30).any()))
     g['cluster'] = g['isin'].map(d).fillna(False)
     g['company'] = g['isin'].map(names) if names is not None else g['isin']
-    g = g[g['value'] >= min_value].sort_values(['cluster', 'value'], ascending=False)
-    return g[['isin', 'company', 'value', 'buy_days', 'first', 'last', 'cluster']].reset_index(drop=True)
+    g['badge'] = BADGE_ACCUMULATION
+    g = g[(g['value'] >= min_value) | (g['pct_of_mcap'] >= min_pct)].sort_values(['cluster', 'value'], ascending=False)
+    return g[cols].reset_index(drop=True)
 
 
 def block_bulk_accumulation(deals: pd.DataFrame, asof, days: int = 90, min_value: float = 1e7) -> pd.DataFrame:
@@ -46,14 +54,38 @@ def block_bulk_accumulation(deals: pd.DataFrame, asof, days: int = 90, min_value
     return g[g['net_value'] >= min_value].sort_values('net_value', ascending=False).reset_index(drop=True)
 
 
-def heavy_selling(trades: pd.DataFrame, asof, days: int = 60, min_value: float = 25 * LAKH) -> pd.DataFrame:
-    """Securities with insider open-market sales above `min_value` in the last `days` (caution flag)."""
+def risk_flags(trades: pd.DataFrame, asof, days: int = 60, min_value: float = 25 * LAKH, rapid_days: int = 3) -> pd.DataFrame:
+    """Caution flags from insider open-market SALES in the last `days`: `heavy` = combined value >= min_value;
+    `rapid` = sales on `rapid_days` or more separate disclosure days; `promoter_selling` = a promoter / promoter-group
+    filer is among the sellers. Sorted by value. A prompt to read the filings, not a trade signal."""
     ev = _window(evm.insider_events(trades, 'SELL'), asof, days)
+    cols = ['isin', 'company', 'value', 'sell_days', 'people', 'promoter_selling', 'heavy', 'rapid']
     if ev.empty:
-        return pd.DataFrame(columns=['isin', 'value', 'sell_days', 'people', 'promoter'])
+        return pd.DataFrame(columns=cols)
+    names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
     g = ev.groupby('isin').agg(value=('value', 'sum'), sell_days=('broadcast_date', 'nunique'),
-                               people=('n_people', 'max'), promoter=('promoter', 'any')).reset_index()
-    return g[g['value'] >= min_value].sort_values('value', ascending=False).reset_index(drop=True)
+                               people=('n_people', 'max'), promoter_selling=('promoter', 'any')).reset_index()
+    g['company'] = g['isin'].map(names) if names is not None else g['isin']
+    g['heavy'] = g['value'] >= min_value
+    g['rapid'] = g['sell_days'] >= rapid_days
+    return g[g['heavy'] | g['rapid']].sort_values('value', ascending=False)[cols].reset_index(drop=True)
+
+
+def audit_table(trades: pd.DataFrame, deals: pd.DataFrame, isin: str) -> pd.DataFrame:
+    """Chronological list of the filings and deals behind the chart for one security, newest first, with the
+    exchange's own file link where the clean layer carries one (NSE insider filings)."""
+    t = trades[trades['isin'] == isin]
+    rows = pd.DataFrame({'date': pd.to_datetime(t['broadcast_date']), 'kind': 'Insider ' + t['side'].fillna('?').astype(str)
+                         + t['is_market'].map(lambda v: '' if str(v).lower() in ('true', '1') else ' (non-market)'),
+                         'who': t.get('person_role'), 'value': t['value'], 'quantity': t['quantity'], 'exchange': t['exchange'],
+                         'link': t['source_url'] if 'source_url' in t else None, 'id': t['trade_id']})
+    d = deals[deals['isin'] == isin]
+    if len(d):
+        dd = pd.DataFrame({'date': pd.to_datetime(d['date']), 'kind': 'Deal ' + d.get('feeds', pd.Series('', index=d.index)).astype(str)
+                           + ' ' + d['side'].fillna('?').astype(str), 'who': d.get('client_name'), 'value': d['value'],
+                           'quantity': d['quantity'], 'exchange': d['exchange'], 'link': None, 'id': d.get('deal_id')})
+        rows = pd.concat([rows, dd], ignore_index=True)
+    return rows.sort_values('date', ascending=False).reset_index(drop=True)
 
 
 def freshness(frames: dict[str, tuple[pd.DataFrame, str]], today=None) -> pd.DataFrame:
