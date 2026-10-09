@@ -24,25 +24,94 @@ BADGE_ACCUMULATION = 'Contextual Accumulation (No Proven Standalone Edge)'
 MIN_PCT_OF_MCAP = 0.05      # percent of market cap (proxy for share of equity)
 
 
-def promoter_accumulation(trades: pd.DataFrame, asof, days: int = 90, min_value: float = 25 * LAKH,
-                          min_pct: float = MIN_PCT_OF_MCAP) -> pd.DataFrame:
-    """Promoter / promoter-group open-market buys per security over the last `days`. Directors, KMP, designated persons
-    and employees are excluded (token compliance trades). A security is material when its combined value is at least
-    `min_value` or at least `min_pct` percent of market cap. `cluster` = two or more buy days within 30 days of each other."""
-    ev = _window(evm.insider_events(trades, 'BUY', roles=evm.PROMOTER_ROLES), asof, days)
-    cols = ['isin', 'company', 'value', 'pct_of_mcap', 'buy_days', 'first', 'last', 'cluster', 'badge']
+
+WINDOWS = (90, 180, 365)    # 1 quarter, 2 quarters (SEBI contra-trade window), trailing year
+CAMPAIGN_GAP_DAYS = 90      # buys separated by no more than a quarter belong to one campaign
+BADGE_ESTIMATE = 'pct_of_mcap is ESTIMATED: value / market cap on the disclosure day, a proxy for share of equity'
+
+
+def _signed_promoter(trades: pd.DataFrame) -> pd.DataFrame:
+    """Promoter / promoter-group open-market events with buys positive and sells negative (value and % of market cap)."""
+    parts = []
+    for side, sign in (('BUY', 1), ('SELL', -1)):
+        e = evm.insider_events(trades, side, roles=evm.PROMOTER_ROLES)
+        parts.append(e.assign(value=e['value'] * sign, pct_of_mcap=e['pct_of_mcap'] * sign))
+    return pd.concat(parts, ignore_index=True)
+
+
+def promoter_absorption(trades: pd.DataFrame, asof, windows=WINDOWS, min_value: float = 25 * LAKH,
+                        min_pct: float = MIN_PCT_OF_MCAP) -> pd.DataFrame:
+    """Cumulative promoter NET open-market flow (buys minus sells) per security over each window, and the net share of
+    market cap absorbed (ESTIMATED proxy). `sustained` = net positive in every window with data. A security shows when
+    any window nets at least `min_value` or `min_pct` percent of market cap. The clean layer starts 1 Jan 2026, so the
+    365-day window covers only the data we hold; `history_days` says how much."""
+    ev = _signed_promoter(trades)
+    cols = ['isin', 'company', *[f'net_{w}d' for w in windows], *[f'pct_{w}d' for w in windows], 'sustained', 'last_buy', 'badge']
     if ev.empty:
         return pd.DataFrame(columns=cols)
+    g = pd.DataFrame({'isin': ev['isin'].unique()})
+    for w in windows:
+        a = _window(ev, asof, w).groupby('isin').agg(**{f'net_{w}d': ('value', 'sum'), f'pct_{w}d': ('pct_of_mcap', 'sum')})
+        g = g.merge(a, left_on='isin', right_index=True, how='left')
+    num = [c for c in g.columns if c != 'isin']
+    g[num] = g[num].fillna(0.0)
     names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
-    g = ev.groupby('isin').agg(value=('value', 'sum'), pct_of_mcap=('pct_of_mcap', 'sum'), buy_days=('broadcast_date', 'nunique'),
-                               first=('broadcast_date', 'min'), last=('broadcast_date', 'max')).reset_index()
-    d = ev.sort_values('broadcast_date').groupby('isin')['broadcast_date'].apply(
-        lambda s: bool((s.diff().dt.days.dropna() <= 30).any()))
-    g['cluster'] = g['isin'].map(d).fillna(False)
     g['company'] = g['isin'].map(names) if names is not None else g['isin']
+    nets = g[[f'net_{w}d' for w in windows]]
+    g['sustained'] = (nets > 0).all(axis=1)
+    lb = ev[ev['value'] > 0].groupby('isin')['broadcast_date'].max()
+    g['last_buy'] = g['isin'].map(lb)
     g['badge'] = BADGE_ACCUMULATION
-    g = g[(g['value'] >= min_value) | (g['pct_of_mcap'] >= min_pct)].sort_values(['cluster', 'value'], ascending=False)
+    big = pd.Series(False, index=g.index)
+    for w in windows:
+        big |= (g[f'net_{w}d'] >= min_value) | (g[f'pct_{w}d'] >= min_pct)
+    g = g[big].sort_values(['sustained', f'net_{windows[-1]}d'], ascending=False)
     return g[cols].reset_index(drop=True)
+
+
+def campaigns(trades: pd.DataFrame, asof, days: int = 365, gap_days: int = CAMPAIGN_GAP_DAYS,
+              min_value: float = 25 * LAKH) -> pd.DataFrame:
+    """Promoter buy events grouped into multi-quarter campaigns: consecutive buy days at most `gap_days` apart share a
+    campaign. Gross buys and the sales inside the campaign span are both shown, so a buy-then-sell is visible."""
+    buys = _window(evm.insider_events(trades, 'BUY', roles=evm.PROMOTER_ROLES), asof, days)
+    sells = _window(evm.insider_events(trades, 'SELL', roles=evm.PROMOTER_ROLES), asof, days)
+    cols = ['isin', 'company', 'start', 'end', 'span_days', 'buy_days', 'bought', 'sold', 'net', 'pct_of_mcap']
+    if buys.empty:
+        return pd.DataFrame(columns=cols)
+    b = buys.sort_values(['isin', 'broadcast_date']).copy()
+    new = b.groupby('isin')['broadcast_date'].diff().dt.days.gt(gap_days).fillna(True)
+    b['cid'] = new.cumsum()
+    rows = []
+    for _, c in b.groupby('cid'):
+        isin, start, end = c['isin'].iloc[0], c['broadcast_date'].min(), c['broadcast_date'].max()
+        s = sells[(sells['isin'] == isin) & (sells['broadcast_date'] >= start) & (sells['broadcast_date'] <= end)]
+        rows.append(dict(isin=isin, start=start, end=end, span_days=int((end - start).days), buy_days=int(c['broadcast_date'].nunique()),
+                         bought=c['value'].sum(), sold=s['value'].sum(), net=c['value'].sum() - s['value'].sum(),
+                         pct_of_mcap=c['pct_of_mcap'].sum() - s['pct_of_mcap'].sum()))
+    out = pd.DataFrame(rows)
+    names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
+    out['company'] = out['isin'].map(names) if names is not None else out['isin']
+    return out[out['net'] >= min_value].sort_values('net', ascending=False)[cols].reset_index(drop=True)
+
+
+def promoter_selling(trades: pd.DataFrame, asof, windows=WINDOWS, min_value: float = 25 * LAKH) -> pd.DataFrame:
+    """Cumulative promoter net SELLING (sales minus buys, positive = net seller) per security over each window."""
+    ev = _signed_promoter(trades)
+    cols = ['isin', 'company', *[f'sold_{w}d' for w in windows], *[f'pct_{w}d' for w in windows]]
+    if ev.empty:
+        return pd.DataFrame(columns=cols)
+    g = pd.DataFrame({'isin': ev['isin'].unique()})
+    for w in windows:
+        a = _window(ev, asof, w).groupby('isin').agg(**{f'sold_{w}d': ('value', lambda s: -s.sum()), f'pct_{w}d': ('pct_of_mcap', lambda s: -s.sum())})
+        g = g.merge(a, left_on='isin', right_index=True, how='left')
+    num = [c for c in g.columns if c != 'isin']
+    g[num] = g[num].fillna(0.0)
+    names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
+    g['company'] = g['isin'].map(names) if names is not None else g['isin']
+    keep = pd.Series(False, index=g.index)
+    for w in windows:
+        keep |= g[f'sold_{w}d'] >= min_value
+    return g[keep].sort_values(f'sold_{windows[-1]}d', ascending=False)[cols].reset_index(drop=True)
 
 
 def block_bulk_accumulation(deals: pd.DataFrame, asof, days: int = 90, min_value: float = 1e7) -> pd.DataFrame:
@@ -52,23 +121,6 @@ def block_bulk_accumulation(deals: pd.DataFrame, asof, days: int = 90, min_value
         return pd.DataFrame(columns=['isin', 'net_value', 'days'])
     g = ev.groupby('isin').agg(net_value=('net_value', 'sum'), days=('broadcast_date', 'nunique')).reset_index()
     return g[g['net_value'] >= min_value].sort_values('net_value', ascending=False).reset_index(drop=True)
-
-
-def risk_flags(trades: pd.DataFrame, asof, days: int = 60, min_value: float = 25 * LAKH, rapid_days: int = 3) -> pd.DataFrame:
-    """Caution flags from insider open-market SALES in the last `days`: `heavy` = combined value >= min_value;
-    `rapid` = sales on `rapid_days` or more separate disclosure days; `promoter_selling` = a promoter / promoter-group
-    filer is among the sellers. Sorted by value. A prompt to read the filings, not a trade signal."""
-    ev = _window(evm.insider_events(trades, 'SELL'), asof, days)
-    cols = ['isin', 'company', 'value', 'sell_days', 'people', 'promoter_selling', 'heavy', 'rapid']
-    if ev.empty:
-        return pd.DataFrame(columns=cols)
-    names = trades.dropna(subset=['isin']).drop_duplicates('isin').set_index('isin')['company'] if 'company' in trades else None
-    g = ev.groupby('isin').agg(value=('value', 'sum'), sell_days=('broadcast_date', 'nunique'),
-                               people=('n_people', 'max'), promoter_selling=('promoter', 'any')).reset_index()
-    g['company'] = g['isin'].map(names) if names is not None else g['isin']
-    g['heavy'] = g['value'] >= min_value
-    g['rapid'] = g['sell_days'] >= rapid_days
-    return g[g['heavy'] | g['rapid']].sort_values('value', ascending=False)[cols].reset_index(drop=True)
 
 
 def audit_table(trades: pd.DataFrame, deals: pd.DataFrame, isin: str) -> pd.DataFrame:

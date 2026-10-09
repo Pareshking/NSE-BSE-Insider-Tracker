@@ -63,3 +63,9 @@ Goal: an executive multi-quarter conviction tracker. Remove every 30-day swing a
 **Main's own 30D defaults (Promoter Activity, Bulk & Block):** not touched by PR #15. Proposal, needing your decision: change the default to 90D and replace 7D/30D options with 90D/180D/365D after checking that the canonical per-run files contain enough history (unverified; they may hold only a recent window, in which case these pages should read the clean tables instead).
 
 **Tests and process:** add unit tests for net-of-sales, campaign gaps (89/91 days), the 365-day cap, missing `holding_change_pct`; extend `test_product_pages.py`; one PR update on `feat/phase3-ui-shell`; no merge until you approve. Open questions for you: (a) OK to start a v2 ledger series; (b) change main's 7D/30D defaults; (c) fold the new pages into the existing section or keep them separate; (d) approve the precomputed price/ledger file approach before deploy.
+
+## 4. Implemented on this branch (not merged)
+- 30-day cluster and "rapid selling" removed. `product_views`: `promoter_absorption` (net buys minus sells, 90/180/365, `sustained`), `campaigns` (gap <= 90 days, sales netted), `promoter_selling`.
+- Noteworthy and Risk Flags use those windows; Promoter Activity and Bulk & Block now offer 90D/180D/365D (default 90D). The 365-day window covers only data from 1 Jan 2026.
+- % of equity absorbed stays the market-cap proxy (ESTIMATED): `holding_change_pct` is a relative change in holding, not equity points, so it was not used.
+- Still open: precomputed slim price/ledger files, navigation grouping, Evidence page, v2 ledger series.
