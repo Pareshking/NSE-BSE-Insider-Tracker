@@ -57,3 +57,16 @@ P1 data foundation (raw-preserve fix, revision fields, bhavcopy, PIT market cap,
 
 ## Not done in Phase 0 (honest gaps)
 Contents of 6 stale branches; official Streamlit limits; source terms; regulation texts and literature (Phase 1/2 RESEARCH.md); live data inventory and power numbers; BSE docs (`BSE_*.md`, `PROJECT_PLAN.md`, `DATA_ACQUISITION.md`) skimmed by name only.
+
+---
+## Addendum 09 Oct 2026 — Paresh price data (read-only, public clone + `data-latest` release)
+
+Method: shallow clone of `Pareshking/paresh` (HEAD c4e68e7, 2026-10-09) and the three public `data-latest` release files, inspected locally. Nothing written to that repo. Coverage below is against our **security master of 01 Sep 2026 (5,287 securities)**, NOT against actual 2026 disclosures — event-level coverage still needs R2 (credentials not yet in session).
+
+- VERIFIED `nse_long_close.parquet`: wide table, 4,647 dates (2008-01-01 to 2026-10-06) x 1,419 NSE symbols, float32 closes; 1,245 symbols have data in 2026. Names say "adjusted"; adjustment method (splits/bonuses via `data/nse_prices/actions.parquet`, 109 actions in the repo copy) is CLAIMED, not independently checked. Symbol renames are tracked in `data/nse_prices/notes.json`.
+- VERIFIED `ss_prices_2026.parquet`: 251,154 rows, 1,375 symbols, 2026-01-01 to 2026-10-08, OHLC as **int32** (sample closes 21208, 21430: looks like paise x100, HYPOTHESIS, must be confirmed before use) plus volume.
+- VERIFIED `bse_daily.parquet`: 15.4M rows, 2008-01-01 to 2026-10-07, columns date, code, name, group, OHLC, prev_close, trades, shares, value, isin; 928,560 rows in 2026. Adjustment status unknown (UNVERIFIED).
+- ESTIMATED coverage vs master: NSE symbols present with 2026 adjusted close 1,184 of 3,116 (38%); in `ss_prices` 1,326 (43%). BSE daily by ISIN: 4,574 of 5,287 (86.5%); of the 2,171 securities without an NSE symbol, 2,160 are in `bse_daily`.
+- Implication (ESTIMATED): the adjusted-close table alone misses most of the universe (the NSE-750-style gap predicted in the prompt). `bse_daily` fills most gaps but needs a corporate-action adjustment layer. Recommendation: build our own PIT price layer from official NSE/BSE bhavcopy archives plus corporate actions; use Paresh files only as an optional cross-check.
+- The security master carries Value Research ratings/scores as of 01 Sep 2026 (single snapshot): must never feed point-in-time features.
+- Still open: R2 inventory, event-level price coverage, forward-window counts, power numbers.
