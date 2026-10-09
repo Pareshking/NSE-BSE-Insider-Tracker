@@ -10,18 +10,15 @@ from lib import clean_data, r2_data, style  # noqa: E402
 from insiders_clean import product_views as pv  # noqa: E402
 
 style.inject_base_css()
-st.title("Risk and caution flags")
-st.info("Insider selling is a caution flag, not a trade signal. In the Jan-Jun 2026 development sample, stocks insiders sold "
-        "lagged peers against equal-weighted and size-matched benchmarks but beat Nifty 500, so the evidence is mixed "
-        "(docs/RESEARCH.md J.1). Use these as a prompt to read the filings.")
+style.head("Promoter selling", "Net promoter selling over 90, 180 and 365 days")
+st.markdown(style.tag("Caution flag · not a trade signal", "Insider sells also beat Nifty 500 in our sample, so the evidence is mixed. Use this to prompt reading the filings. See Research Findings.", "sell"), unsafe_allow_html=True)
 client = clean_data.gate()
 with r2_data.guard("insider trades"):
     trades = clean_data.clean_table(client, 'insider_trades')
 asof = pd.to_datetime(trades['broadcast_date']).max()
 min_lakh = st.select_slider("Net selling at least (Rs lakh) in any window", [10, 25, 50, 100, 500], value=25)
 f = pv.promoter_selling(trades, asof, min_value=min_lakh * pv.LAKH)
-st.caption(f"Data to {asof:%d %b %Y}; the 365-day window covers only the data we hold. Promoter / promoter-group open-market "
-           "sales minus buys (negative = net buyer in that window). Share of market cap is ESTIMATED.")
+st.caption(f"Data to {asof:%d %b %Y} · open-market sales minus buys by promoters (negative = net buyer) · % of market cap is an estimate")
 if f.empty:
     st.info("No security is flagged under these settings.")
 else:

@@ -9,8 +9,8 @@ from lib import clean_data, fields, r2_data, style
 
 style.inject_base_css()
 
-st.title("Evidence & Drill-down")
-st.caption("Every individual transaction, with source fields and cross-match evidence. For rollups and signals, see Overview and Promoter Activity.")
+st.title("All filings")
+st.caption("Every individual filing and deal, with source fields and cross-exchange match evidence.")
 
 client, dates = r2_data.page_gate()
 

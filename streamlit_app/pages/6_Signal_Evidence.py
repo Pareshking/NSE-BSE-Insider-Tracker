@@ -11,7 +11,7 @@ from lib import clean_data, ledger_view, style  # noqa: E402
 
 COST_PP = 0.30      # round-trip friction in percentage points: STT, exchange/turnover charges and slippage (assumption)
 style.inject_base_css()
-st.title("Signal evidence and methodology")
+style.head("Research findings", "What our own data shows, how sure we are, and the forward-test ledger")
 st.error("**Verdict: insufficient evidence of an edge.** Promoter open-market buys beat Nifty 500 in the Jan-Jun 2026 development sample, "
          "but insider SELLS beat it too (+4.4% at 60 sessions), and about 85% of events are micro caps. The excess mostly reflects how "
          "that segment performed in one half-year, not insider information. Nothing here is a validated signal (docs/RESEARCH.md J.3).")

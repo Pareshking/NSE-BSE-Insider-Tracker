@@ -244,11 +244,14 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
     }
 
 
-def _accum_badge(badges: dict, isin) -> str:
-    text = badges.get(str(isin)) if isin else None
-    if not text:
+def _tags(tags: dict, isin) -> str:
+    """Compact pills for the feed: promoter 180-day net value and an active-campaign marker (tooltip carries the caveat)."""
+    t = tags.get(str(isin)) if isin else None
+    if not t:
         return ""
-    return f'<div style="font-size:10.5px;font-weight:400;color:{style.COLORS["text_3"]};">{text}</div>'
+    net, active = t
+    out = style.tag(f"Promoter +₹{net / 1e7:.2f} Cr 180D", "Contextual accumulation: promoter net open-market buying over 180 days. No proven standalone edge.", "prom")
+    return out + (" " + style.tag("Active campaign", "Repeat promoter buying with gaps of at most 90 days", "buy") if active else "")
 
 
 def matches_company(df: pd.DataFrame, query: str) -> pd.DataFrame:
@@ -260,9 +263,10 @@ def matches_company(df: pd.DataFrame, query: str) -> pd.DataFrame:
 client, dates = r2_data.page_gate("Overview")
 
 # --- header bar: title + exchange toggle + date selector + search + certification badges ---
-h1, h2, h3, h5, h4 = st.columns([1.6, 1.4, 1.3, 2.2, 2.1])
+with st.container(key="tb_hdr"):
+    h1, h2, h3, h5, h4 = st.columns([1.9, 2.1, 1.3, 2.0, 2.0])
 with h1:
-    st.markdown("### Overview")
+    st.markdown("### Latest filings")
 with h2:
     exchange_choice = st.radio("Exchange", ["Both", "NSE", "BSE"], horizontal=True, label_visibility="collapsed")
 with h3:
@@ -271,7 +275,7 @@ with h5:
     search_query = st.text_input(
         "Search", placeholder="Search company or symbol…",
         label_visibility="collapsed", key="overview_search",
-        help="Searching by person or fund name? Use Entity Tracker instead -- it looks up a name across every category, not just this page's company filter.",
+        help="Searching by person or fund name? Use Person & Fund Search instead -- it looks up a name across every category, not just this page's company filter.",
     )
 
 with r2_data.guard(f"the {selected_date} run"):
@@ -305,30 +309,31 @@ exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange
 with r2_data.guard(f"the {selected_date} run"):
     agg = overview_aggregates(client, selected_date, exchanges)
 # Multi-quarter context from the clean layer, joined to the feed by ISIN. Empty (no badges) if it cannot be read.
-acc_badges = clean_data.accumulation_badges(client)
-wl_only = watchlist.controls()
+acc_tags = clean_data.accumulation_tags(client)
+wl = watchlist.get()
+with st.container(key="tb_wl"):
+    cw1, cw2, cw3 = st.columns([1, 1.5, 6])
+with cw1:
+    with st.popover("Watchlist", use_container_width=True):
+        watchlist.editor()
+with cw2:
+    wl_only = watchlist.toggle()
 wl = watchlist.get()
 if wl:
     _feed = watchlist.limit(agg["top_transactions"], wl, "canonical_isin", "canonical_symbol")
-    _recent = _feed[pd.to_datetime(_feed["_parsed_date"]) >= pd.to_datetime(_feed["_parsed_date"]).max() - pd.Timedelta(days=7)] if len(_feed) else _feed
-    st.caption(f"Watchlist alerts: {len(wl)} tracked; {len(_feed)} filing(s) in the 90-day feed, {len(_recent)} in the last 7 days"
-               + (f", latest {style.fmt_date(_recent['_date'].iloc[0])}." if len(_recent) else "."))
+    _dates = pd.to_datetime(_feed["_parsed_date"]) if len(_feed) else pd.Series(dtype="datetime64[ns]")
+    _recent = int((_dates >= _dates.max() - pd.Timedelta(days=7)).sum()) if len(_feed) else 0
+    cw3.caption(f"Watchlist: {len(wl)} tracked · {len(_feed)} filings in 90 days · {_recent} in the last 7 days")
 # The category pulse strip that used to sit here (five row counts with a
 # this-week-vs-usual delta) is gone: on mobile its five cards stacked into a
 # full screen of scrolling that had to be got past before reaching anything
 # actionable, and a raw row count per category is closer to a pipeline
 # statistic than a signal. Data Quality already carries the per-run counts.
 
-title_col, link_col = st.columns([3, 1.3])
-with title_col:
-    st.markdown('<div style="font-size:14px;font-weight:700;margin-bottom:8px;">Today\'s Signals</div>', unsafe_allow_html=True)
-with link_col:
-    st.page_link("views/confluence_screener.py", label="Cross-category confluence signals →", icon="🧭")
+feed_box = st.container()
+tab_prom, tab_conc, tab_stake = st.tabs(["Promoter flow", "Concentration", "Stake changes"])
 
-sig1, sig2, sig3 = st.columns([1, 1.3, 1])
-
-with sig1:
-    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Accumulation Signals — Promoters</div>', unsafe_allow_html=True)
+with tab_prom:
     # Ranked by % of market cap, not raw rupees: a promoter quietly building
     # a Rs.25Cr position over several staggered buys in a Rs.100Cr company is
     # a far stronger conviction signal than a Rs.1Cr filing at HDFC Bank --
@@ -360,16 +365,9 @@ with sig1:
                 f'<span style="text-align:right;">{pct_html}<br/><span class="mono">{style.fmt_inr(abs(row["net_val"]))}</span></span></div>',
                 unsafe_allow_html=True,
             )
-    _excluded = agg["non_market_excluded"]
-    st.caption(
-        "Open-market promoter trades only, ranked by % of market cap."
-        + (f" {_excluded} non-market filing(s) (ESOP, pledge, inter-se, gift) excluded."
-           if _excluded else "")
-        + " Full rollup on Promoter Activity."
-    )
 
-with sig2:
-    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Biggest Transactions — All Categories</div>', unsafe_allow_html=True)
+with feed_box:
+    st.markdown('<div style="font-size:13px;font-weight:700;margin:2px 0 6px 0;">Latest filings and deals</div>', unsafe_allow_html=True)
     # A single ranked feed across all 5 categories -- not just insider
     # trading -- since a big bulk deal or preferential allotment is just as
     # much "what happened today" as an insider filing.
@@ -379,43 +377,40 @@ with sig2:
     if combined.empty:
         st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
     else:
-        top_txns = combined.head(12)
+        top_txns = combined.head(20)
         rows_html = []
         for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
             side = r.get("_side")
             mode = str(r.get("_mode") or "")
             market = "MARKET" in mode.upper() and "OFF" not in mode.upper()
-            side_html = style.side_pill(side, market) if side in ("BUY", "SELL") else style.pill("Issuance" if side == "ISSUANCE" else "-")
+            if side in ("BUY", "SELL"):
+                side_html = style.side_pill(side, market).replace('<span class="pill', f'<span title="{mode or "mode not stated"}" class="pill', 1)
+            else:
+                side_html = style.pill("Issuance" if side == "ISSUANCE" else "–")
             qty, price = r.get("_qty"), r.get("_price")
+            symbol = r.get("canonical_symbol") or r.get("canonical_company") or "—"
             rows_html.append(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
-                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}{_accum_badge(acc_badges, r.get("canonical_isin"))}</td>'
+                f'<td><b>{symbol}</b><div style="font-size:10.5px;color:{style.COLORS["text_3"]};">{r.get("canonical_company") or ""} {style.exchange_badge(ex)}</div></td>'
                 f'<td>{r.get("_by") or "—"}</td>'
                 f'<td>{style.category_pill(str(r.get("_cat") or "—").title())}</td>'
-                f'<td style="color:{style.COLORS["text_2"]};">{mode or "—"}</td>'
                 f'<td>{side_html}</td>'
                 f'<td class="mono num">{style.fmt_qty(qty) if pd.notna(qty) else "—"}</td>'
                 f'<td class="mono num">{f"{price:,.2f}" if pd.notna(price) else "—"}</td>'
                 f'<td class="mono num" style="font-weight:600;">{style.fmt_cr(r["_value"])}</td>'
-                f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
+                f'<td>{_tags(acc_tags, r.get("canonical_isin"))}</td></tr>'
             )
         st.markdown(
-            '<div class="table-scroll"><table class="evt-table dense"><tr><th>DATE</th><th>COMPANY</th><th>TRADED BY</th><th>CATEGORY</th>'
-            '<th>MODE</th><th>SIDE</th><th class="num">QTY</th><th class="num">PRICE</th><th class="num">VALUE (₹ CR)</th><th style="text-align:right;">EXCH</th></tr>'
+            '<div class="table-scroll"><table class="evt-table dense"><tr><th>DATE</th><th>SYMBOL</th><th>ENTITY</th><th>CATEGORY</th>'
+            '<th>TRADE</th><th class="num">QTY</th><th class="num">AVG PRICE</th><th class="num">VALUE (₹ CR)</th><th>TAGS</th></tr>'
             + "".join(rows_html) + "</table></div>",
             unsafe_allow_html=True,
         )
         if search_query:
             st.caption(f"{len(combined):,} transactions match “{search_query}”, {len(top_txns)} most recent shown.")
-    st.caption(
-        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. A bracketed badge marks a company whose "
-        "promoters net bought at least Rs 25 lakh over 180 days (clean layer, from 1 Jan 2026); it is context, not a signal. "
-        "Full drill-down on Evidence & Drill-down."
-    )
 
-with sig3:
-    st.markdown('<div style="font-size:12px;font-weight:700;margin-bottom:10px;">Concentration Alerts</div>', unsafe_allow_html=True)
+with tab_conc:
     alert_rows = matches_company(pd.DataFrame(agg["concentration_alerts"]), search_query)
     alert_rows = alert_rows.to_dict("records") if not alert_rows.empty else []
     if not alert_rows:
@@ -441,53 +436,39 @@ with sig3:
                 unsafe_allow_html=True,
             )
         if len(alert_rows) > 4:
-            st.caption(f"{len(alert_rows) - 4} more on Bulk & Block Concentration.")
-    _rt = agg["round_trips_dropped"]
-    st.caption(
-        f"Securities where {CONCENTRATION_MIN_CLIENTS}+ clients traded and the top 3 still took "
-        f"{CONCENTRATION_THRESHOLD:.0%}+ of the value."
-        + (f" {_rt} same-day round-trip leg(s) excluded — a client who ends the day flat took no position."
-           if _rt else "")
-        + " Full view on Bulk & Block Concentration."
-    )
+            st.caption(f"{len(alert_rows) - 4} more on Bulk & Block Deals.")
 
-st.write("")
-st.markdown('<div style="font-size:13px;font-weight:700;margin-bottom:8px;">Biggest Stake Changes — Insider Trading</div>', unsafe_allow_html=True)
-if agg["stake_changes"].empty and not search_query:
-    st.caption("No holding-before/after data this run.")
-else:
-    hdf = matches_company(agg["stake_changes"], search_query)
-    if wl_only:
-        hdf = watchlist.limit(hdf, wl, "canonical_isin", "canonical_symbol")
-    if hdf.empty:
-        st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
+with tab_stake:
+    if agg["stake_changes"].empty and not search_query:
+        st.caption("No holding-before/after data this run.")
     else:
-        top_changes = hdf.head(8)
-        rows_html = []
-        for _, r in top_changes.iterrows():
-            pct = r["_pct_change"]
-            color = "green" if pct >= 0 else "red"
-            rows_html.append(
-                f'<tr><td class="mono">{style.fmt_date(r.get("canonical_transaction_date"))}</td>'
-                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
-                f'<td style="color:{style.COLORS["text_2"]};">{r.get("canonical_person") or "—"}</td>'
-                # The share counts sit next to the percentage on purpose: the
-                # % is against this person's own prior holding, so it is only
-                # interpretable once you can see what that holding was.
-                f'<td class="mono" style="text-align:right;color:{style.COLORS["text_2"]};">'
-                f'{r["_before"]:,.0f} → {r["_after"]:,.0f}</td>'
-                f'<td class="mono" style="text-align:right;color:{style.COLORS[color]};font-weight:600;">{pct:+.1f}%</td>'
-                f'<td style="text-align:right;">{style.exchange_badge(str(r.get("exchange") or ""))}</td></tr>'
+        hdf = matches_company(agg["stake_changes"], search_query)
+        if wl_only:
+            hdf = watchlist.limit(hdf, wl, "canonical_isin", "canonical_symbol")
+        if hdf.empty:
+            st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
+        else:
+            top_changes = hdf.head(8)
+            rows_html = []
+            for _, r in top_changes.iterrows():
+                pct = r["_pct_change"]
+                color = "green" if pct >= 0 else "red"
+                rows_html.append(
+                    f'<tr><td class="mono">{style.fmt_date(r.get("canonical_transaction_date"))}</td>'
+                    f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
+                    f'<td style="color:{style.COLORS["text_2"]};">{r.get("canonical_person") or "—"}</td>'
+                    # The share counts sit next to the percentage on purpose: the
+                    # % is against this person's own prior holding, so it is only
+                    # interpretable once you can see what that holding was.
+                    f'<td class="mono" style="text-align:right;color:{style.COLORS["text_2"]};">'
+                    f'{r["_before"]:,.0f} → {r["_after"]:,.0f}</td>'
+                    f'<td class="mono" style="text-align:right;color:{style.COLORS[color]};font-weight:600;">{pct:+.1f}%</td>'
+                    f'<td style="text-align:right;">{style.exchange_badge(str(r.get("exchange") or ""))}</td></tr>'
+                )
+            st.markdown(
+                '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th>'
+                '<th style="text-align:right;">SHARES</th>'
+                '<th style="text-align:right;">HOLDING Δ</th><th style="text-align:right;">EXCH</th></tr>'
+                + "".join(rows_html) + "</table></div>",
+                unsafe_allow_html=True,
             )
-        st.markdown(
-            '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>PERSON</th>'
-            '<th style="text-align:right;">SHARES</th>'
-            '<th style="text-align:right;">HOLDING Δ</th><th style="text-align:right;">EXCH</th></tr>'
-            + "".join(rows_html) + "</table></div>",
-            unsafe_allow_html=True,
-        )
-    st.caption(
-        f"Change in the individual's own holding, not in the company. Only positions of "
-        f"{MIN_BASE_HOLDING:,}+ shares before the trade, since a smaller base turns an "
-        f"ordinary purchase into a four-digit percentage."
-    )

@@ -127,3 +127,14 @@ def raw_capture_counts(_client) -> pd.DataFrame:
         c = counts.setdefault((parts[1], parts[2]), [0, 0])
         c[0 if parts[3] == 'blobs' else 1] += 1
     return pd.DataFrame([{'source': s, 'dataset': d, 'blobs': b, 'fetch_records': f} for (s, d), (b, f) in sorted(counts.items())])
+
+
+@st.cache_data(ttl=900, max_entries=1, show_spinner=False)
+def accumulation_tags(_client) -> dict:
+    """ISIN -> (180-day promoter net value, active campaign) for the Overview tags. {} when the clean layer is unavailable."""
+    from insiders_clean import product_views as pv
+    try:
+        trades = clean_table(_client, 'insider_trades')
+        return pv.accumulation_tags(trades, pd.to_datetime(trades['broadcast_date']).max())
+    except Exception:  # noqa: BLE001
+        return {}

@@ -24,8 +24,8 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import fields, r2_data, style
 
-st.markdown("### Bulk & Block Concentration")
-st.caption("Client concentration and largest transactions -- not a raw deal list. See Evidence & Drill-down for individual transactions.")
+st.markdown("### Bulk & block deals")
+st.caption("Client concentration and largest transactions -- not a raw deal list. See All Filings for individual transactions.")
 
 client, dates = r2_data.page_gate()
 

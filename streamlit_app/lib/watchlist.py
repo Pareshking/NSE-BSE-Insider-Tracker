@@ -34,19 +34,26 @@ def get() -> set[str]:
     return set(_from_secrets()) | set(st.session_state.get(SESSION_KEY, []))
 
 
-def controls(label: str = "Show my watchlist only") -> bool:
-    """Draw the paste box and the toggle; return True when the page should be limited to the watchlist."""
-    with st.expander("My watchlist", expanded=False):
-        pasted = st.text_area("Symbols or ISINs (this session only, not saved)", value=" ".join(st.session_state.get(SESSION_KEY, [])),
-                              key="watchlist_text", height=70, placeholder="RELIANCE, INE002A01018, ...")
-        st.session_state[SESSION_KEY] = parse(pasted)
-        n_secret = len(_from_secrets())
-        st.caption(f"{n_secret} from the app's private secrets, {len(st.session_state[SESSION_KEY])} pasted. "
-                   "To keep a list between visits, add `watchlist = [...]` to the app's secrets (never to the repo).")
-    only = st.checkbox(label, key=ONLY_KEY)
+def editor() -> None:
+    """The paste box (session only) and a note on keeping a list in secrets."""
+    pasted = st.text_area("Watchlist: symbols or ISINs (this session only, not saved)", value=" ".join(st.session_state.get(SESSION_KEY, [])),
+                          key="watchlist_text", height=70, placeholder="RELIANCE, INE002A01018, ...",
+                          help="Not saved anywhere. To keep a list between visits, add watchlist = [...] to the app's secrets (never to the repo).")
+    st.session_state[SESSION_KEY] = parse(pasted)
+
+
+def toggle(label: str = "My watchlist only") -> bool:
+    only = st.checkbox(label, key=ONLY_KEY, help=f"{len(get())} symbols or ISINs tracked (secrets plus this session's paste box)")
     if only and not get():
-        st.info("Your watchlist is empty. Paste symbols or ISINs above, or add them to the app's secrets.")
+        st.caption("Watchlist is empty: open Watchlist and paste symbols or ISINs.")
     return only
+
+
+def controls(label: str = "My watchlist only") -> bool:
+    """Popover editor plus toggle, in the current container."""
+    with st.popover("Watchlist"):
+        editor()
+    return toggle(label)
 
 
 def mask(df: pd.DataFrame, wl: set[str], isin_col: str | None, symbol_col: str | None) -> pd.Series:
