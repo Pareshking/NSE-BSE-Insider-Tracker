@@ -8,9 +8,6 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import clean_data, r2_data, style  # noqa: E402
 from insiders_clean import ledger as lg  # noqa: E402
-from insiders_clean.index_close import BASELINE  # noqa: E402
-import insiders_clean.evaluate as ev  # noqa: E402
-from insiders_clean import adjust  # noqa: E402
 
 style.inject_base_css()
 st.title("Forward ledger")
@@ -21,22 +18,14 @@ st.info("A monitor, not a test: signals are fixed when disclosed (rule `promoter
 client = clean_data.gate()
 with r2_data.guard("the ledger"):
     led = clean_data.ledger(client)
-    px = clean_data.prices(client)
-    ix = clean_data.index_close(client)
+    m = clean_data.ledger_marks(client)
 if led.empty:
     st.warning("The ledger has not been written yet. Run the 'Forward ledger update' workflow to append the current signals.")
     st.stop()
-px['date'] = pd.to_datetime(px['date'])
-f = adjust.inherit_nse(adjust.implied_factors(px))
-adj = adjust.adjust_as_of(f, px[['exchange', 'isin', 'date', 'close']].dropna(), px['date'].max())
-px = px.merge(adj[['exchange', 'isin', 'date', 'adj_close']], on=['exchange', 'isin', 'date'], how='left')
-ratio = (px['adj_close'] / px['close']).where(px['close'] > 0)
-px['open'] = px['open'] * ratio
-px['close'] = px['adj_close']
-close, op = ev.price_panel(px, 'close'), ev.price_panel(px, 'open')
-ix['date'] = pd.to_datetime(ix['date'])
-nifty = ix[ix['symbol'] == BASELINE].drop_duplicates('date').set_index('date')['close'].sort_index()
-m = lg.mark(led, close, op, nifty)
+if m.empty or len(m) < len(led):
+    st.warning("Ledger marks are missing or older than the ledger (run the 'Precompute slim assets' workflow). Showing entry facts only.")
+    m = led.assign(**{c: float('nan') for c in ['current_price', 'return_to_date', 'excess_to_date_vs_nifty500', 'sessions_since_entry']
+                      + [f'{k}_{h}' for h in lg.HORIZONS for k in ('ret', 'excess')]})
 
 st.metric("Signals in the ledger", len(m))
 cols = ['company', 'isin', 'disclosure_date', 'entry_date', 'entry_basis', 'entry_price', 'current_price', 'return_to_date',

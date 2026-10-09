@@ -35,11 +35,51 @@ def clean_table(_client, name: str) -> pd.DataFrame:
     return _read(_client, f'clean/current/{name}.parquet')
 
 
+SLIM_KEY, MARKS_KEY = 'artifacts/prices_summary_slim.parquet', 'ledger/ledger_marks.parquet'
+
+
+def _optional(client, prefix: str, key: str) -> pd.DataFrame:
+    """A derived artifact written by a batch job: an empty frame if it has not been written yet, an R2ReadError on an outage."""
+    return _read(client, key) if key in _list_keys(client, prefix) else pd.DataFrame()
+
+
 @st.cache_data(ttl=900, max_entries=1, show_spinner=False)
-def prices(_client, exchange: str = 'nse') -> pd.DataFrame:
-    """All stored months of daily prices for one exchange (as printed, unadjusted)."""
-    keys = _list_keys(_client, f'prices/daily/{exchange}/')
-    return pd.concat([_read(_client, k) for k in keys], ignore_index=True) if keys else pd.DataFrame()
+def price_summary(_client) -> pd.DataFrame:
+    """One row per ISIN (adjusted latest close, 52-week range, returns, market-cap bucket), from the batch job
+    `scripts/precompute_slim.py`. Pages use this and never the full price table. Empty if not written yet."""
+    return _optional(_client, 'artifacts/', SLIM_KEY)
+
+
+@st.cache_data(ttl=900, max_entries=1, show_spinner=False)
+def ledger_marks(_client) -> pd.DataFrame:
+    """The forward ledger marked to the latest session, precomputed by the batch job. Empty if not written yet."""
+    return _optional(_client, 'ledger/', MARKS_KEY)
+
+
+@st.cache_data(ttl=900, max_entries=8, show_spinner=False)
+def price_history(_client, isin: str, exchange: str = 'nse') -> pd.DataFrame:
+    """Daily prices for ONE security. Month files are read one at a time and filtered on read (parquet predicate on isin), so peak memory stays at one month's slice, not the whole table."""
+    frames = []
+    for k in _list_keys(_client, f'prices/daily/{exchange}/'):
+        try:
+            body = _client.get_object(Bucket=r2_data._bucket(), Key=k)['Body'].read()
+        except Exception as exc:  # noqa: BLE001
+            raise r2_data.R2ReadError(r2_data._describe(exc, k)) from exc
+        frames.append(pd.read_parquet(io.BytesIO(body), filters=[('isin', '==', isin)]))
+    out = pd.concat([f for f in frames if len(f)], ignore_index=True) if any(len(f) for f in frames) else pd.DataFrame()
+    return out
+
+
+@st.cache_data(ttl=900, max_entries=1, show_spinner=False)
+def accumulation_badges(_client) -> dict:
+    """ISIN -> inline badge text for the Overview and Evidence views. {} when the clean layer is unavailable, so the
+    legacy pages never fail because of it."""
+    from insiders_clean import product_views as pv
+    try:
+        trades = clean_table(_client, 'insider_trades')
+        return pv.accumulation_badges(trades, pd.to_datetime(trades['broadcast_date']).max())
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 @st.cache_data(ttl=900, max_entries=1, show_spinner=False)

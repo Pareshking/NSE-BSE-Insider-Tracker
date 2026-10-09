@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import confluence, dedup, fields, r2_data, style
 
 st.markdown("### Confluence Screener")
-st.caption("Companies where promoters, institutions, and capital-raise events overlap -- ranked by Float Absorption Ratio (FAR), the % of market cap changing hands to informed entities.")
+st.caption("Companies where promoters, institutions, and capital-raise events overlap -- ranked by Float Absorption Ratio (FAR), the % of market cap changing hands through institutional and promoter flow (context, not a proven signal).")
 
 @st.cache_data(ttl=300, max_entries=6, show_spinner="Joining categories by ISIN…")
 def confluence_table(_client, date: str, exchanges: tuple[str, ...]):

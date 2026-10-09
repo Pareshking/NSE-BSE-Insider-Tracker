@@ -46,3 +46,64 @@ def test_selling_windows():
     t = _mk([('S', '2026-01-10', 60e5, 'SELL'), ('S', '2026-05-20', 10e5, 'BUY')])
     out = pv.promoter_selling(t, '2026-06-01').iloc[0]
     assert out['sold_365d'] == 50e5 and out['sold_90d'] == -10e5
+
+
+def _acc():
+    t = _mk([('A', '2026-02-02', 60e5, 'BUY'), ('A', '2026-04-20', 60e5, 'BUY'), ('A', '2026-05-25', 20e5, 'SELL'),
+             ('B', '2026-05-01', 50e5, 'BUY'), ('C', '2026-05-02', 30e5, 'BUY')])
+    return t, pv.promoter_absorption(t, '2026-06-01', min_value=1)
+
+
+def _summary():
+    return pd.DataFrame({'isin': ['A', 'B', 'C'], 'symbol': ['AA', 'BB', 'CC'], 'mcap_bucket': ['Micro', 'Small', 'Large'],
+                         'pct_off_high': [-0.40, -0.10, -0.20]})
+
+
+def test_screen_horizon_filters_and_purity():
+    t, acc = _acc()
+    camps = pv.active_campaigns(t, '2026-06-01')
+    out = pv.screen(acc, _summary(), camps, '180D', min_net=25e5)
+    assert list(out['isin']) == ['A', 'B', 'C'] and out.set_index('isin').at['A', 'net'] == 100e5
+    assert list(pv.screen(acc, _summary(), camps, '180D', exclude_sellers=True)['isin']) == ['B', 'C']   # A sold in window
+    assert list(pv.screen(acc, _summary(), camps, '180D', buckets=['Micro', 'Small'])['isin']) == ['A', 'B']
+    assert list(pv.screen(acc, _summary(), camps, '180D', min_drawdown=0.15)['isin']) == ['A', 'C']
+    assert list(pv.screen(acc, _summary(), camps, '180D', active_only=True)['isin']) == ['A']             # A: 2 buys 77 days apart, last 42d ago
+    assert list(pv.screen(acc, _summary(), camps, 'Sustained')['isin']) == ['A', 'B', 'C']
+
+
+def test_screen_works_without_price_summary():
+    t, acc = _acc()
+    out = pv.screen(acc, None, None, '90D', min_net=25e5)
+    assert 'A' in set(out['isin']) and out['mcap_bucket'].isna().all() and not out['active'].any()
+
+
+def test_campaign_status_and_365_boundary():
+    t = _mk([('A', '2026-01-02', 30e5, 'BUY'), ('A', '2026-02-20', 30e5, 'BUY')])
+    c = pv.active_campaigns(t, '2026-03-30')
+    assert bool(c.at[0, 'active']) and c.at[0, 'campaign_buys'] == 2
+    assert not bool(pv.active_campaigns(t, '2026-07-01').at[0, 'active'])        # last buy > 90 days before asof
+    # data only starts 2026-01-01, so the 365-day window cannot reach back further than the data
+    a = pv.promoter_absorption(t, '2026-12-31', min_value=1)
+    assert a.at[0, 'net_365d'] == 60e5 and a.at[0, 'net_90d'] == 0
+
+
+def test_badge_text_and_map():
+    assert pv.badge_text(12.5e7, True) == '[Promoter Net: +₹12.50 Cr (180D) | Active Campaign | Contextual Accumulation]'
+    t, _ = _acc()
+    b = pv.accumulation_badges(t, '2026-06-01')
+    assert 'Active Campaign' in b['A'] and 'Active Campaign' not in b['B']
+
+
+def test_slim_price_summary_and_bucket():
+    from insiders_clean import slim
+    days = pd.bdate_range('2025-09-01', periods=300)
+    close = pd.DataFrame({'A': range(100, 400), 'B': [50.0] * 300}, index=days).astype(float)
+    close.iloc[-5:, 1] = float('nan')                                 # B stopped trading 5 sessions ago
+    meta = pd.DataFrame({'isin': ['A', 'B'], 'symbol': ['AA', 'BB'], 'name': ['a', 'b'], 'exchange': ['NSE', 'NSE']})
+    factors = pd.DataFrame({'isin': ['A'], 'date': [days[10]], 'factor': [0.5], 'kind': ['split_bonus'], 'exchange': ['NSE']})
+    mc = pd.DataFrame({'symbol': ['AA', 'BB'], 'market_cap': [9e9, 1e9]})
+    s = slim.price_summary(close, meta, factors, mc).set_index('isin')
+    assert s.at['A', 'latest_close'] == 399 and s.at['A', 'high_52w'] == 399 and s.at['A', 'pct_off_high'] == 0
+    assert s.at['B', 'latest_close'] == 50 and s.at['A', 'n_splits'] == 1 and s.at['A', 'last_split_factor'] == 0.5
+    assert s.at['A', 'mcap_bucket'] == 'Large' and s.at['A', 'ret_90d'] > 0
+    assert [slim.bucket(r) for r in (100, 101, 250, 251, 500, 501)] == ['Large', 'Mid', 'Mid', 'Small', 'Small', 'Micro']

@@ -14,14 +14,14 @@ st.title("Data health")
 client = clean_data.gate()
 with r2_data.guard("data freshness"):
     trades, deals = clean_data.clean_table(client, 'insider_trades'), clean_data.clean_table(client, 'deals')
-    px, ix = clean_data.prices(client), clean_data.index_close(client)
+    px, ix = clean_data.price_summary(client), clean_data.index_close(client)
     led = clean_data.ledger(client)
     report = clean_data.cleaning_report(client)
     raw = clean_data.raw_capture_counts(client)
 
 st.subheader("Freshness")
 fresh = pv.freshness({'insider trades (disclosure date)': (trades, 'broadcast_date'), 'bulk/block deals': (deals, 'date'),
-                      'NSE prices': (px, 'date'), 'Nifty indices': (ix, 'date'), 'forward ledger (entry)': (led, 'entry_date')})
+                      'price summary (last session)': (px, 'last_date'), 'Nifty indices': (ix, 'date'), 'forward ledger (entry)': (led, 'entry_date')})
 st.dataframe(fresh, hide_index=True, use_container_width=True,
              column_config={'latest': st.column_config.DateColumn('latest')})
 st.caption("The nightly job runs at 23:30 IST. An age above 3 days in a trading week means a stale pipeline.")

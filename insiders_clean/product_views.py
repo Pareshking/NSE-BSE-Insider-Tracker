@@ -46,12 +46,15 @@ def promoter_absorption(trades: pd.DataFrame, asof, windows=WINDOWS, min_value: 
     any window nets at least `min_value` or `min_pct` percent of market cap. The clean layer starts 1 Jan 2026, so the
     365-day window covers only the data we hold; `history_days` says how much."""
     ev = _signed_promoter(trades)
-    cols = ['isin', 'company', *[f'net_{w}d' for w in windows], *[f'pct_{w}d' for w in windows], 'sustained', 'last_buy', 'badge']
+    cols = ['isin', 'company', *[f'net_{w}d' for w in windows], *[f'pct_{w}d' for w in windows],
+            *[f'gross_sold_{w}d' for w in windows], 'sustained', 'last_buy', 'badge']
     if ev.empty:
         return pd.DataFrame(columns=cols)
     g = pd.DataFrame({'isin': ev['isin'].unique()})
     for w in windows:
-        a = _window(ev, asof, w).groupby('isin').agg(**{f'net_{w}d': ('value', 'sum'), f'pct_{w}d': ('pct_of_mcap', 'sum')})
+        win = _window(ev, asof, w)
+        a = win.groupby('isin').agg(**{f'net_{w}d': ('value', 'sum'), f'pct_{w}d': ('pct_of_mcap', 'sum')})
+        a[f'gross_sold_{w}d'] = -win[win['value'] < 0].groupby('isin')['value'].sum()
         g = g.merge(a, left_on='isin', right_index=True, how='left')
     num = [c for c in g.columns if c != 'isin']
     g[num] = g[num].fillna(0.0)
@@ -149,3 +152,72 @@ def freshness(frames: dict[str, tuple[pd.DataFrame, str]], today=None) -> pd.Dat
         rows.append({'dataset': name, 'rows': 0 if df is None else int(len(df)),
                      'latest': last, 'age_days': None if pd.isna(last) else int((today - last).days)})
     return pd.DataFrame(rows)
+
+
+def active_campaigns(trades: pd.DataFrame, asof, gap_days: int = CAMPAIGN_GAP_DAYS) -> pd.DataFrame:
+    """The latest promoter buying campaign per security (all stored history). `active` = at least two buy days and the
+    last buy within `gap_days` of `asof`, i.e. the campaign could still extend under the same gap rule."""
+    c = campaigns(trades, asof, days=10_000, gap_days=gap_days, min_value=float('-inf'))
+    cols = ['isin', 'campaign_start', 'campaign_end', 'campaign_buys', 'active', 'span']
+    if c.empty:
+        return pd.DataFrame(columns=cols)
+    c = c.sort_values('end').drop_duplicates('isin', keep='last')
+    out = pd.DataFrame({'isin': c['isin'], 'campaign_start': c['start'], 'campaign_end': c['end'], 'campaign_buys': c['buy_days']})
+    out['active'] = (out['campaign_buys'] >= 2) & ((pd.Timestamp(asof) - out['campaign_end']).dt.days <= gap_days)
+    out['span'] = [f"{s:%d %b %y} - {e:%d %b %y} ({n} buy days)" if n > 1 else f"{s:%d %b %y} (1 buy day)"
+                   for s, e, n in zip(out['campaign_start'], out['campaign_end'], out['campaign_buys'])]
+    return out[cols].reset_index(drop=True)
+
+
+HORIZONS = {'90D': 90, '180D': 180, '365D': 365}
+BUCKET_ORDER = ('Large', 'Mid', 'Small', 'Micro')
+
+
+def screen(acc: pd.DataFrame, summary: pd.DataFrame | None, camps: pd.DataFrame | None, horizon: str = '180D',
+           min_net: float = 25 * LAKH, min_pct: float = 0.0, buckets=BUCKET_ORDER, active_only: bool = False,
+           min_drawdown: float = 0.0, exclude_sellers: bool = False) -> pd.DataFrame:
+    """Promoter accumulation screen over the output of `promoter_absorption`. `horizon` is 90D / 180D / 365D, or
+    'Sustained' (net positive in all three windows; the thresholds then apply to the 365-day figures). `min_pct` is in
+    percent of market cap (ESTIMATED proxy). `min_drawdown` is a fraction (0.15 = at least 15% below the 52-week
+    high) and needs the price summary. `exclude_sellers` drops any security with promoter sales in the window."""
+    d = acc.copy()
+    w = 365 if horizon == 'Sustained' else HORIZONS[horizon]
+    if horizon == 'Sustained':
+        d = d[d['sustained']]
+    d['net'], d['pct'], d['sold'] = d[f'net_{w}d'], d[f'pct_{w}d'], d[f'gross_sold_{w}d']
+    d = d[(d['net'] >= min_net) & (d['pct'] >= min_pct)]
+    if exclude_sellers:
+        d = d[d['sold'].fillna(0) <= 0]
+    if summary is not None and len(summary):
+        d = d.merge(summary[['isin', 'symbol', 'mcap_bucket', 'pct_off_high']], on='isin', how='left')
+    else:
+        d['symbol'], d['mcap_bucket'], d['pct_off_high'] = None, None, float('nan')
+    if set(buckets) != set(BUCKET_ORDER):          # all four selected = no filter, so unclassified names stay
+        d = d[d['mcap_bucket'].isin(buckets)]
+    if min_drawdown > 0:
+        d = d[d['pct_off_high'] <= -min_drawdown]
+    if camps is not None and len(camps):
+        d = d.merge(camps, on='isin', how='left')
+    else:
+        d['span'], d['active'] = None, False
+    d['active'] = d['active'].eq(True)
+    if active_only:
+        d = d[d['active']]
+    return d.sort_values('net', ascending=False).reset_index(drop=True)
+
+
+def badge_text(net_180d: float, active: bool) -> str:
+    """Inline badge for feeds: [Promoter Net: +Rs X Cr (180D) | Active Campaign | Contextual Accumulation]."""
+    parts = [f'Promoter Net: {"+" if net_180d >= 0 else "-"}\u20b9{abs(net_180d) / 1e7:.2f} Cr (180D)']
+    if active:
+        parts.append('Active Campaign')
+    parts.append('Contextual Accumulation')
+    return '[' + ' | '.join(parts) + ']'
+
+
+def accumulation_badges(trades: pd.DataFrame, asof, min_net: float = 25 * LAKH) -> dict[str, str]:
+    """ISIN -> badge text for securities with promoter net buying of at least `min_net` over 180 days."""
+    acc = promoter_absorption(trades, asof, min_value=1)
+    acc = acc[acc['net_180d'] >= min_net]
+    camps = active_campaigns(trades, asof).set_index('isin')['active'] if len(acc) else pd.Series(dtype=bool)
+    return {r.isin: badge_text(r.net_180d, bool(camps.get(r.isin, False))) for r in acc.itertuples()}

@@ -13,27 +13,45 @@ from insiders_clean import adjust, events as evm, product_views as pv  # noqa: E
 style.inject_base_css()
 st.title("Company deep dive")
 client = clean_data.gate()
-with r2_data.guard("prices, trades and deals"):
-    px, trades, deals = clean_data.prices(client), clean_data.clean_table(client, 'insider_trades'), clean_data.clean_table(client, 'deals')
-if px.empty:
-    st.warning("No price history is stored yet.")
-    st.stop()
-px['date'] = pd.to_datetime(px['date'])
-cat = (px.dropna(subset=['isin']).sort_values('date').drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name']]
-       .assign(label=lambda d: d['symbol'].astype(str) + ' · ' + d['name'].astype(str) + ' · ' + d['isin']))
+with r2_data.guard("trades, deals and the price summary"):
+    trades, deals = clean_data.clean_table(client, 'insider_trades'), clean_data.clean_table(client, 'deals')
+    summary = clean_data.price_summary(client)
+if summary.empty:       # batch job not run yet: search the companies that have filings; prices still load per company
+    cat = (trades.dropna(subset=['isin', 'company']).drop_duplicates('isin')[['isin', 'company']]
+           .assign(symbol='', name=lambda d: d['company']))
+else:
+    cat = summary[['isin', 'symbol', 'name']]
+cat = cat.assign(label=lambda d: d['symbol'].astype(str) + ' · ' + d['name'].astype(str) + ' · ' + d['isin'])
+isin = st.session_state.get('deep_dive_isin')
 q = st.text_input("Search by symbol, name or ISIN", placeholder="e.g. RELIANCE or INE002A01018").strip().lower()
-hits = cat[cat['label'].str.lower().str.contains(q, regex=False)] if q else cat.head(0)
-if not q:
-    st.info("Type a symbol, company name or ISIN to begin.")
+if q:
+    hits = cat[cat['label'].str.lower().str.contains(q, regex=False)]
+    if hits.empty:
+        st.warning("No company matches that search.")
+        st.stop()
+    label = st.selectbox("Match", hits['label'].head(50))
+    isin = hits.set_index('label').at[label, 'isin']
+    st.session_state['deep_dive_isin'] = isin
+elif not isin:
+    st.info("Type a symbol, company name or ISIN to begin, or open a company from the Promoter Screener.")
     st.stop()
-if hits.empty:
-    st.warning("No company matches that search among stored NSE prices.")
+else:
+    st.caption("Showing " + str(cat.set_index('isin')['label'].get(isin, isin)))
+with r2_data.guard("this company's prices"):
+    p = clean_data.price_history(client, isin)
+if p.empty:
+    st.warning("No stored NSE prices for this company.")
     st.stop()
-label = st.selectbox("Match", hits['label'].head(50))
-isin = hits.set_index('label').at[label, 'isin']
-p = px[px['isin'] == isin].sort_values('date')
+p = p.assign(date=pd.to_datetime(p['date'])).sort_values('date')
+adjusted = st.toggle("Adjust for splits and bonuses", value=True)
+f = adjust.implied_factors(p) if 'prev_close' in p else None      # from the prices as printed, before any adjustment
+if adjusted:
+    if f is not None:
+        a = adjust.adjust_as_of(f, p[['exchange', 'isin', 'date', 'close']].dropna(), p['date'].max())
+        p = p.merge(a[['exchange', 'isin', 'date', 'adj_close']], on=['exchange', 'isin', 'date'], how='left')
+        p['close'] = p['adj_close'].fillna(p['close'])
 
-fig = go.Figure(go.Scatter(x=p['date'], y=p['close'], mode='lines', name='Close (as printed, unadjusted)'))
+fig = go.Figure(go.Scatter(x=p['date'], y=p['close'], mode='lines', name='Close (split/bonus adjusted)' if adjusted else 'Close (as printed)'))
 styles = {'BUY': ('green', 'triangle-up', 'Insider market buy'), 'SELL': ('red', 'triangle-down', 'Insider market sell')}
 for side, (color, symbol, name) in styles.items():
     e = evm.insider_events(trades[trades['isin'] == isin], side)
@@ -47,11 +65,15 @@ fig.add_trace(go.Scatter(x=prom['broadcast_date'], y=prom['close'], mode='marker
 d = evm.deal_events(deals[deals['isin'] == isin]).merge(p[['date', 'close']], left_on='broadcast_date', right_on='date', how='left').dropna(subset=['close'])
 fig.add_trace(go.Scatter(x=d['broadcast_date'], y=d['close'], mode='markers', name='Bulk/block deal day',
                          marker=dict(color='orange', size=8, symbol='diamond')))
-for _, r in (adjust.implied_factors(p)[lambda f: f['kind'] == 'split_bonus'] if 'prev_close' in p else p.iloc[0:0]).iterrows():
+for _, r in (f[f['kind'] == 'split_bonus'] if f is not None else p.iloc[0:0]).iterrows():
     fig.add_vline(x=r['date'], line_dash='dot', annotation_text=f"split/bonus ×{r['factor']:.3g}")
+for _, c in pv.campaigns(trades[trades['isin'] == isin], trades['broadcast_date'].max(), min_value=float('-inf')).iterrows():
+    fig.add_vrect(x0=c['start'], x1=c['end'] + pd.Timedelta(days=1), fillcolor='green', opacity=0.12, line_width=0,
+                  annotation_text=f"campaign: {c['buy_days']} buy day(s)", annotation_position='top left')
 fig.update_layout(height=460, margin=dict(l=8, r=8, t=30, b=8), legend=dict(orientation='h', y=-0.15))
 st.plotly_chart(fig, use_container_width=True)
-st.caption("Prices are as printed: a split or bonus shows as a step at the dotted line. Markers sit on the disclosure date. "
+st.caption("Dotted lines mark detected split/bonus events (adjusted prices remove the step; switch the toggle off to see prices as printed). "
+           "Green bands are promoter buying campaigns (buy days at most 90 days apart). Markers sit on the disclosure date. "
            "Quarterly results dates are not collected yet, so none are shown.")
 
 st.subheader("Audit trail")

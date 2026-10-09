@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import fields, r2_data, style
+from lib import clean_data, fields, r2_data, style
 
 style.inject_base_css()
 
@@ -23,6 +23,7 @@ with top[1]:
 category = st.tabs([r2_data.CATEGORY_LABELS[c] for c in r2_data.CATEGORIES])
 
 exchanges = r2_data.EXCHANGES if exchange_choice == "Both" else [exchange_choice.lower()]
+acc_badges = clean_data.accumulation_badges(client)    # ISIN -> multi-quarter promoter badge; {} if unavailable
 
 # Per-category display column sets, drawn straight from canonicalize()'s
 # output fields in scripts/r2_writer.py -- kept aligned by hand since that's
@@ -144,6 +145,8 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
         if "exchange" in display_df.columns:
             display_df["exchange"] = display_df["exchange"].astype(str).str.upper()
 
+        if acc_badges and "canonical_isin" in filtered.columns:
+            display_df["Accumulation context"] = filtered["canonical_isin"].astype(str).map(acc_badges).fillna("").to_numpy()
         event = st.dataframe(
             display_df,
             hide_index=True,
@@ -169,6 +172,9 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
                     f'{style.badge("Cross-exchange match", "blue", "blue_bg", dot=False) if has_match else style.badge("No match this run", "text_3", "bg_sub", dot=False)}',
                     unsafe_allow_html=True,
                 )
+                _b = acc_badges.get(str(row.get("canonical_isin")))
+                if _b:
+                    st.caption(_b)
                 st.markdown('<div class="sec-title">CANONICAL FIELDS</div>', unsafe_allow_html=True)
                 for col in DISPLAY_COLUMNS[cat]:
                     if col in row.index and pd.notna(row[col]):

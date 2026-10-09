@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import dedup, fields, r2_data, style
+from lib import clean_data, dedup, fields, r2_data, style
 
 # Rights/preferential carry event dates from way earlier (or, for some
 # corporate-action fields, later -- e.g. a record date) in a listing's
@@ -139,10 +139,12 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         # those never take the bulk/block branch.
         df["_qty"] = fields.num_col(df, "canonical_quantity", fill=None)
         df["_price"] = fields.num_col(df, "canonical_price", fill=None)
+        if "canonical_isin" not in df.columns:
+            df["canonical_isin"] = None
         combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price",
-                                 "canonical_company", "exchange"]])
+                                 "canonical_company", "canonical_isin", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
-        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "canonical_company", "exchange"])
+        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "canonical_company", "canonical_isin", "exchange"])
     combined = combined.dropna(subset=["_value"])
     if not combined.empty:
         combined["_parsed_date"] = fields.parse_dates(combined["_date"])
@@ -230,6 +232,13 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
     }
 
 
+def _accum_badge(badges: dict, isin) -> str:
+    text = badges.get(str(isin)) if isin else None
+    if not text:
+        return ""
+    return f'<div style="font-size:10.5px;font-weight:400;color:{style.COLORS["text_3"]};">{text}</div>'
+
+
 def matches_company(df: pd.DataFrame, query: str) -> pd.DataFrame:
     if not query or df.empty:
         return df
@@ -283,6 +292,8 @@ with h4:
 exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange_choice.lower(),)
 with r2_data.guard(f"the {selected_date} run"):
     agg = overview_aggregates(client, selected_date, exchanges)
+# Multi-quarter context from the clean layer, joined to the feed by ISIN. Empty (no badges) if it cannot be read.
+acc_badges = clean_data.accumulation_badges(client)
 # The category pulse strip that used to sit here (five row counts with a
 # this-week-vs-usual delta) is gone: on mobile its five cards stacked into a
 # full screen of scrolling that had to be got past before reaching anything
@@ -360,7 +371,7 @@ with sig2:
                 side_badge = "—"
             rows_html.append(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
-                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
+                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}{_accum_badge(acc_badges, r.get("canonical_isin"))}</td>'
                 f'<td>{style.badge(r2_data.CATEGORY_LABELS.get(r["_category"], r["_category"]), "text_2", "bg_sub", dot=False)}</td>'
                 f'<td>{side_badge}</td>'
                 f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
@@ -375,7 +386,8 @@ with sig2:
         if search_query:
             st.caption(f"{len(combined):,} transactions match “{search_query}”, {len(top_txns)} most recent shown.")
     st.caption(
-        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. "
+        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. A bracketed badge marks a company whose "
+        "promoters net bought at least Rs 25 lakh over 180 days (clean layer, from 1 Jan 2026); it is context, not a signal. "
         "Full drill-down on Evidence & Drill-down."
     )
 
