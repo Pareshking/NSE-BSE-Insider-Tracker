@@ -51,3 +51,32 @@ def price_with_trades(dates, closes, trades: pd.DataFrame, days: int = 365) -> a
     return (alt.layer(*layers).properties(height=300)
             .configure(font='Geist').configure_view(strokeWidth=0)
             .configure_axis(labelFontSize=11))
+
+
+def monthly_flow(df: pd.DataFrame, date_col: str, title: str, months: int = 12) -> alt.Chart | None:
+    """Buys up, sales down, per month, in Rs crore: one panel, one axis.
+    `df` has date_col, side (BUY/SELL) and value in rupees."""
+    if df is None or df.empty:
+        return None
+    x = df[[date_col, 'side', 'value']].copy()
+    x['month'] = pd.to_datetime(x[date_col], errors='coerce').dt.to_period('M').dt.to_timestamp()
+    x = x.dropna(subset=['month'])
+    x = x[x['month'] >= x['month'].max() - pd.DateOffset(months=months - 1)]
+    x['cr'] = pd.to_numeric(x['value'], errors='coerce') / 1e7 * x['side'].map({'BUY': 1, 'SELL': -1})
+    m = x.groupby(['month', 'side'], as_index=False)['cr'].sum()
+    m['what'] = m['side'].map({'BUY': 'Bought', 'SELL': 'Sold'})
+    net = m.groupby('month', as_index=False)['cr'].sum()
+    bars = alt.Chart(m).mark_bar(cornerRadiusEnd=3, size=14).encode(
+        x=alt.X('month:T', title=None, axis=alt.Axis(format='%b', labelColor=INK3, domainColor=LINE, ticks=False, grid=False)),
+        y=alt.Y('cr:Q', title=None, axis=alt.Axis(format=',.0f', labelColor=INK3, gridColor='#F0F2F5', domain=False)),
+        color=alt.Color('what:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=[BUY, SELL]),
+                        legend=alt.Legend(title=None, orient='top', direction='horizontal', labelColor=INK3)),
+        tooltip=[alt.Tooltip('month:T', title='Month', format='%b %Y'), alt.Tooltip('what:N', title=''),
+                 alt.Tooltip('cr:Q', title='₹ Cr', format=',.1f')])
+    dots = alt.Chart(net).mark_point(filled=True, color=INK, size=36, stroke='white', strokeWidth=2).encode(
+        x='month:T', y='cr:Q', tooltip=[alt.Tooltip('month:T', title='Month', format='%b %Y'),
+                                        alt.Tooltip('cr:Q', title='Net ₹ Cr', format=',.1f')])
+    zero = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#C9CFD8', strokeWidth=1).encode(y='y:Q')
+    return (alt.layer(bars, zero, dots).properties(height=230, title=alt.TitleParams(title, anchor='start', fontSize=13,
+                                                                                    fontWeight=600, color=INK))
+            .configure(font='Geist').configure_view(strokeWidth=0))

@@ -24,7 +24,7 @@ def render():
     if not need_data(ctx):
         return
     d = ctx.deals
-    tabs = st.tabs(['Handshakes', 'Small caps being accumulated', 'All deals', 'Big stakes (SAST)'])
+    tabs = st.tabs(['Handshakes', 'Small caps being accumulated', 'All deals'])
 
     with tabs[0]:
         days = st.selectbox('Period', [7, 30, 90], index=1, format_func=lambda x: f'Last {x} days', key='hs_days')
@@ -79,22 +79,3 @@ def render():
                 kit.Col('feeds', 'Feed', phone=False)], limit=200, download='deals')
             kit.caption('Same client, stock, day and side are one row; a trade printed in both the bulk and block feed '
                         'counts once.')
-
-    with tabs[3]:
-        s = ctx.sast
-        if s.empty:
-            kit.empty('SAST filings arrive with the daily NSE events collection.')
-        else:
-            s = s.copy()
-            s['transaction_date'] = pd.to_datetime(s['transaction_date'], errors='coerce')
-            outside = st.toggle('Only outside the promoter group', value=True, key='sast_out',
-                                help='Funds and individuals crossing 5% or moving 2%+; insider filings already cover promoters')
-            if outside:
-                s = s[~s['is_promoter'].astype('boolean').fillna(False)]
-            s = s.sort_values('transaction_date', ascending=False)
-            kit.table(s.assign(nse_symbol=s['symbol']), [
-                kit.Col('company', 'Company', 'co'), kit.Col('transaction_date', 'Date', 'date'),
-                kit.Col('acquirer_name', 'Acquirer / seller', sub='mode'), kit.Col('action_type', 'Action'),
-                kit.Col('shares_traded', 'Shares', 'shares', phone=False),
-                kit.Col('percent_equity_traded', '% traded', 'spct'), kit.Col('post_stake_pct', 'Stake after', 'pct'),
-                kit.Col('regulation', 'Rule', phone=False)], limit=200, download='sast')

@@ -27,7 +27,8 @@
 
 /* ---- Shell: Streamlit's chrome off, one centred column ---- */
 html, body, [class*="css"] { font-family: var(--ui); -webkit-font-smoothing: antialiased; }
-header[data-testid="stHeader"] { display: none; }
+header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
+[data-testid="stToolbar"] { display: none !important; }
 [data-testid="stDecoration"], [data-testid="stStatusWidget"], footer,
 [data-testid="stAppDeployButton"], .stAppDeployButton { display: none !important; }
 [data-testid="stMainBlockContainer"] { max-width: 1280px; padding: 18px 28px 64px; }
@@ -190,3 +191,42 @@ header[data-testid="stHeader"] { display: none; }
 .bl-t i { display: block; height: 100%; border-radius: 4px; background: var(--accent); min-width: 2px; }
 .bl-t i.warn { background: #D9902A; } .bl-t i.sell { background: var(--sell); }
 .bl-v { text-align: right; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* ---- Track record scorecard ---- */
+.sc-wrap { overflow-x: auto; }
+.sc-t { width: 100%; border-collapse: separate; border-spacing: 6px; }
+.sc-t thead th { font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); text-align: center; padding: 2px; }
+.sc-t th.sc-l { text-align: left; font-size: 13.5px; font-weight: 600; color: var(--ink); padding-right: 10px; min-width: 220px; }
+.sc-t td { border-radius: 10px; padding: 9px 10px; text-align: center; min-width: 120px; background: var(--subtle); }
+.sc-t td b { display: block; font-size: 16px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sc-t td span { font-size: 11px; color: var(--ink-3); }
+.sc-t td.up { background: var(--buy-tint); } .sc-t td.up b { color: var(--buy); }
+.sc-t td.down { background: var(--sell-tint); } .sc-t td.down b { color: var(--sell); }
+.sc-t td.few { opacity: .62; }
+.sc-t td.sc-na { color: var(--ink-3); font-size: 12px; background: transparent; border: 1px dashed var(--line-strong); }
+
+/* ---- Sidebar menu: dark, grouped by dataset ---- */
+[data-testid="stSidebar"] { background: #0B1324; border-right: 0; }
+[data-testid="stSidebar"] > div:first-child { background: #0B1324; }
+[data-testid="stSidebarHeader"] { padding: 18px 18px 6px; }
+[data-testid="stLogo"] { height: 34px; max-width: 170px; }
+[data-testid="stSidebarNav"] { padding-top: 4px; }
+[data-testid="stNavSectionHeader"] { color: #7C8AA5 !important; font-size: 10.5px !important; font-weight: 600 !important;
+  text-transform: uppercase; letter-spacing: .08em; padding: 14px 18px 4px !important; }
+[data-testid="stNavSectionHeader"] * { color: #7C8AA5 !important; font-size: 10.5px !important; }
+[data-testid="stSidebarNavLink"] { margin: 1px 10px; padding: 7px 10px !important; border-radius: 8px; }
+[data-testid="stSidebarNavLink"] span, [data-testid="stSidebarNavLink"] p { color: #C8D1E3 !important; font-size: 13.5px !important; font-weight: 500; }
+[data-testid="stSidebarNavLink"] [data-testid="stIconMaterial"] { color: #8A97B1 !important; font-size: 19px !important; }
+[data-testid="stSidebarNavLink"]:hover { background: rgba(255,255,255,0.06) !important; }
+[data-testid="stSidebarNavLink"][aria-current="page"] { background: #4F46E5 !important; }
+[data-testid="stSidebarNavLink"][aria-current="page"] span, [data-testid="stSidebarNavLink"][aria-current="page"] p,
+[data-testid="stSidebarNavLink"][aria-current="page"] [data-testid="stIconMaterial"] { color: #FFFFFF !important; }
+[data-testid="stSidebarNavSeparator"] { display: none; }
+[data-testid="stSidebarCollapseButton"] svg, [data-testid="stSidebarCollapseButton"] span { color: #C8D1E3 !important; }
+.sb-foot { padding: 12px 8px 4px; border-top: 1px solid rgba(255,255,255,.08); margin-top: 8px; }
+.sb-foot .pill { background: rgba(52,211,153,.12); color: #6EE7B7; }
+.sb-foot .pill.warn { background: rgba(245,158,11,.14); color: #FCD34D; }
+.sb-foot p { color: #7C8AA5; font-size: 11.5px; margin: 8px 2px 0; }
+[data-testid="stMainBlockContainer"] { padding-top: 8px; }
+.cm-r { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid #F0F2F5; }
+.cm-r:last-child { border-bottom: 0; } .cm-r b { color: var(--ink); font-size: var(--fs-body); }
+.cm-r p { margin: 3px 0 0; font-size: var(--fs-small); color: var(--ink-3); max-width: 80ch; }

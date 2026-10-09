@@ -32,3 +32,25 @@ Shown as facts, not ranked as signals, until the signal lab measures them.
 |---|---|
 | Breakout buyers | Promoter net open-market buying over 90 days, latest close within 5% of its 52-week high |
 | Turnaround accumulation | Promoter net open-market buying over 90 days, latest close 30% or more below its 52-week high |
+
+## Track record (measured nightly, 09 Oct 2026)
+
+`insiders_clean/track.py`, run by the precompute job; the site only reads
+`artifacts/track_summary.parquet` and `artifacts/track_events.parquet`.
+
+| Rule | Value |
+|---|---|
+| Clock | Day the filing was made public (`broadcast_date`) |
+| Entry | Close of the first session after that day (cautious: not every filing has a time of day) |
+| Horizons | 5, 21, 63, 126 sessions (1W, 1M, 3M, 6M); complete windows only |
+| Benchmark | Nifty 500, same sessions (excess = stock minus index) |
+| Costs | 0.25 percentage points off every return |
+| De-duplication | One event per company per signal per 21 sessions |
+| Minimum size | Rs 25 lakh per trade; token buys excluded |
+| Shown | Median excess, share that beat the index, cases; "few" under 30 cases |
+
+Signals measured: promoter buy; promoter buy within 5% of / 30%+ below the
+52-week high; spotlight; cluster; director or KMP buy; promoter sale;
+director or KMP sale; real-fund net deal buy in small caps. Not yet: a
+size-matched benchmark (small and micro caps against their own indices).
+

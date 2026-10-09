@@ -19,7 +19,8 @@ from playwright.async_api import async_playwright
 
 PAGES = [('', 'today'), ('screener', 'screener'), ('insider-trades', 'insider-trades'), ('deals', 'deals'),
          ('capital-raises', 'capital-raises'), ('track-record', 'track-record'), ('data', 'data'),
-         ('company?symbol=HCLTECH', 'company-hcltech'), ('entity', 'entity')]
+         ('company?symbol=HCLTECH', 'company-hcltech'), ('entity', 'entity'), ('sast', 'sast'),
+         ('transfers', 'transfers'), ('shareholding', 'shareholding'), ('coming', 'coming')]
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
