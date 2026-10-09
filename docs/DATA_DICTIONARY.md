@@ -104,3 +104,13 @@ One row per company and quarter; a revised filing replaces the original.
 
 BSE equivalents of the four event tables (BSE's API needs an in-page fetch).
 Buyback offer price and route, which need the offer documents.
+
+## Prices (derived, `prices/daily/{nse|bse}/{YYYY-MM}.parquet`)
+
+One row per exchange, date, ISIN, symbol, series, as printed in the exchange's UDiFF bhavcopy. Never adjusted. Raw files: `raw_v2/exchange_files/{nse_udiff_cm|bse_udiff_cm}/`.
+
+| Column | Meaning |
+|---|---|
+| `date`, `exchange`, `isin`, `symbol`, `series`, `name`, `instrument_id` | Identity as printed that day (symbols and ISINs can change) |
+| `open`, `high`, `low`, `close`, `last`, `prev_close`, `settle` | Prices in rupees, unadjusted; `prev_close` is the exchange's own previous close |
+| `volume`, `value`, `trades` | Traded quantity, traded value, number of trades |
