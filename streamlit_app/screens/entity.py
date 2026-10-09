@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
-from screens.ctx import load, need_data
+from screens.ctx import load, need_data, with_sparks
 
 
 def render():
@@ -22,8 +22,9 @@ def render():
                                 ctx.deals[['client_id', 'client_name']].rename(columns={'client_id': 'id', 'client_name': 'name'})
                                 if not ctx.deals.empty else pd.DataFrame(columns=['id', 'name'])]).dropna().drop_duplicates('id')
             hits = people[people['name'].str.contains(q, case=False, na=False)].head(30)
-            st.dataframe(hits.assign(link=hits['id'].map(kit.entity_href))[['link', 'name']], hide_index=True, width='stretch',
-                         column_config={'link': st.column_config.LinkColumn('', display_text='Open', width='small'), 'name': 'Name'})
+            st.html('<div class="q-list">' + ''.join(
+                f'<div class="q-row"><a href="{kit.entity_href(i)}" target="_self"><b>{kit.esc(str(n))}</b></a></div>'
+                for i, n in zip(hits['id'], hits['name'])) + '</div>' if len(hits) else '')
         return
     t = ctx.trades[ctx.trades['person_id'] == eid]
     d = ctx.deals[ctx.deals['client_id'] == eid] if not ctx.deals.empty else pd.DataFrame()
@@ -53,22 +54,18 @@ def render():
     if len(t):
         with kit.card('Insider filings', 'en_it'):
             s = t.sort_values('broadcast_date', ascending=False)
-            st.dataframe(s.assign(link=s['nse_symbol'].map(kit.company_href), person_role=s['person_role'].map(kit.role))[
-                ['link', 'company', 'person_role', 'side', 'mode_raw', 'value_cr', 'pct_of_mcap', 'trade_date_to']],
-                hide_index=True, width='stretch', column_config={
-                    'link': st.column_config.LinkColumn('', display_text='Open', width='small'), 'company': 'Company',
-                    'person_role': 'Role', 'side': 'Side', 'mode_raw': 'Mode as filed',
-                    'value_cr': st.column_config.NumberColumn('Value (₹ Cr)', format='%,.2f'),
-                    'pct_of_mcap': st.column_config.NumberColumn('% of mcap', format='%.3f%%'),
-                    'trade_date_to': st.column_config.DateColumn('Traded', format='DD MMM YYYY')})
+            kit.table(with_sparks(s.assign(seen=pd.to_datetime(s['broadcast_date'], errors='coerce'),
+                                           mode=s['mode_raw'].fillna(s['kind'])), ctx), [
+                kit.Col('company', 'Company', 'co'), kit.Col('side', 'Side', 'side'),
+                kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
+                kit.Col('seen', 'Made public', 'date'), kit.Col('mode', 'Mode as filed', phone=False),
+                kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=100, download='person_filings')
     if len(d):
         with kit.card('Deals', 'en_dl'):
             s = d.sort_values('date', ascending=False)
-            st.dataframe(s.assign(link=s['nse_symbol'].map(kit.company_href))[
-                ['link', 'date', 'company', 'side', 'quantity', 'price', 'value_cr', 'feeds']], hide_index=True, width='stretch',
-                column_config={'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                               'date': st.column_config.DateColumn('Date', format='DD MMM YYYY'), 'company': 'Company', 'side': 'Side',
-                               'quantity': st.column_config.NumberColumn('Shares', format='%,.0f'),
-                               'price': st.column_config.NumberColumn('Price', format='%.2f'),
-                               'value_cr': st.column_config.NumberColumn('Value (₹ Cr)', format='%,.2f'), 'feeds': 'Feed'})
+            kit.table(s, [
+                kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'), kit.Col('side', 'Side', 'side'),
+                kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
+                kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
+                kit.Col('feeds', 'Feed', phone=False)], limit=100, download='person_deals')
     kit.caption('What happened after this person\'s or fund\'s past buys arrives with the signal lab.')

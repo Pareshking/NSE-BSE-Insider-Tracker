@@ -22,3 +22,13 @@ Display: 14px card radius, as on paresh.streamlit.app.
 
 Data not yet collected that the blueprint needs: free float %, promoter
 holding %, promoter pledge % (NSE shareholding pattern, quarterly).
+
+## Price presets on the Screener (exploratory, 09 Oct 2026)
+
+Price context from our own NSE/BSE bhavcopy layer (split and bonus adjusted).
+Shown as facts, not ranked as signals, until the signal lab measures them.
+
+| Preset | Rule |
+|---|---|
+| Breakout buyers | Promoter net open-market buying over 90 days, latest close within 5% of its 52-week high |
+| Turnaround accumulation | Promoter net open-market buying over 90 days, latest close 30% or more below its 52-week high |

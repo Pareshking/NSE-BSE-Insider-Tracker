@@ -20,9 +20,11 @@ from playwright.async_api import async_playwright
 PAGES = [('', 'today'), ('screener', 'screener'), ('insider-trades', 'insider-trades'), ('deals', 'deals'),
          ('capital-raises', 'capital-raises'), ('track-record', 'track-record'), ('data', 'data'),
          ('company?symbol=HCLTECH', 'company-hcltech'), ('entity', 'entity')]
-WIDTHS = {'desktop': (1440, 1000), 'phone': (390, 844)}
-# Streamlit shows its status widget ("Running...") only while the script runs.
-RUN_FINISHED = "() => !document.querySelector('[data-testid=\"stStatusWidget\"]')"
+# Tall viewports: Streamlit scrolls inside its own container, so a "full page"
+# screenshot would stop at the first screen.
+WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
+# Streamlit marks the app "notRunning" once a script run has finished.
+RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
 
 

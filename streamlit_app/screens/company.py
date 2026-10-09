@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from ui import kit
+from data import store
+from ui import charts, kit
+from ui.timeline import timeline
 from ui.kit import esc
 
 from insiders_clean import signals
@@ -62,11 +64,18 @@ def render():
     shr = sh[sh['symbol'].astype(str).str.upper() == sym] if not sh.empty else pd.DataFrame()
     pledge = shr['promoter_pledge_pct'].iloc[0] if len(shr) else None
     signed = prom['pct_of_mcap'] * prom['side'].map({'BUY': 1, 'SELL': -1})
+    isin = (rec.get('isin') if rec is not None else None) or (t['isin'].dropna().iloc[0] if t['isin'].notna().any() else None)
+    pr = ctx.prices[ctx.prices['isin'] == isin].iloc[0] if isin and not ctx.prices.empty and (ctx.prices['isin'] == isin).any() else None
+    price_tile = (kit.Tile('Price', f'₹{pr["latest_close"]:,.2f}',
+                           f'{pr["pct_off_high"] * 100:+.0f}% from 52W high ₹{pr["high_52w"]:,.0f} · low ₹{pr["low_52w"]:,.0f}',
+                           'up' if pr['pct_off_high'] > -0.05 else '')
+                  if pr is not None and pd.notna(pr.get('latest_close')) else kit.Tile('Price', '—', 'not in our NSE/BSE price files'))
     kit.tiles([
+        price_tile,
         kit.Tile('Promoter net, 12 months', kit.rupees(prom['signed_value'].sum(), signed=True),
                  f'{kit.pct(signed.sum(), 3, signed=True)} of market cap, open market only',
                  'up' if prom['signed_value'].sum() > 0 else 'down' if prom['signed_value'].sum() < 0 else ''),
-        kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), f'{off["person_id"].nunique()} people'),
+        kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), kit.plural(off['person_id'].nunique(), 'person', 'people')),
         kit.Tile('Deals net, 12 months', kit.rupees(d['signed_value'].sum() if not d.empty else None, signed=True),
                  'bulk/block, market makers excluded'),
         kit.Tile('Promoter holding · pledge',
@@ -74,6 +83,14 @@ def render():
                  (f'free float {kit.pct(shr["public_holding_pct"].iloc[0], 1)} · ' if len(shr) else '')
                  + 'pledge as % of promoter shares, latest quarter'),
     ])
+
+    hist = store.price_history().get(isin) if isin else None
+    with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):
+        chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
+        if chart is None:
+            kit.empty('No price history for this stock in our NSE/BSE price files yet.')
+        else:
+            st.altair_chart(chart, width='stretch')
 
     # Net open-market flow by who, 12 months (owner's spec: promoters vs
     # directors/KMP vs other insiders vs institutional deal buyers).
@@ -93,45 +110,69 @@ def render():
     hs = signals.handshakes(own, ctx.trades, days=365, ref=ctx.deals['date'].max() if not ctx.deals.empty else None)
     if not hs.empty:
         with kit.card('Handshakes in this stock', 'co_hs', 'who sold, who absorbed it'):
-            st.dataframe(hs.assign(value_cr=hs['matched_value'] / 1e7,
-                                   who=hs['seller_is_promoter'].map({True: 'Promoter', False: ''}))[
-                ['date', 'sellers', 'who', 'buyers', 'value_cr', 'pct_of_mcap_sold']], hide_index=True, width='stretch',
-                column_config={'date': st.column_config.DateColumn('Date', format='DD MMM YYYY'), 'sellers': 'Sold by',
-                               'who': 'Seller is', 'buyers': 'Absorbed by',
-                               'value_cr': st.column_config.NumberColumn('Matched (₹ Cr)', format='%,.2f'),
-                               'pct_of_mcap_sold': st.column_config.NumberColumn('% of mcap sold', format='%.2f%%')})
+            kit.table(hs.assign(who=hs['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
+                kit.Col('date', 'Date', 'date'), kit.Col('sellers', 'Sold by'), kit.Col('who', 'Seller', 'tags'),
+                kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
+                kit.Col('pct_of_mcap_sold', '% of mcap sold', 'bar')], limit=30)
 
+    # Timeline: each event with what an investor needs on one line: when it
+    # was traded and made public, how late, price paid, and the move since.
+    px_then = None
+    if hist:
+        hd = pd.Series(hist[1], index=pd.DatetimeIndex(hist[0]))
+        px_then = lambda day: hd.asof(pd.Timestamp(day)) if pd.notna(day) and pd.Timestamp(day) >= hd.index[0] else None  # noqa: E731
+    cmp_now = pr['latest_close'] if pr is not None else None
+    show_all = st.toggle('Include ESOPs, gifts, transfers and pledges', value=False, key='co_tl_all')
     events = []
-    for _, r in t.assign(seen=pd.to_datetime(t['broadcast_date'], errors='coerce')).sort_values('seen', ascending=False).head(60).iterrows():
-        market = bool(r['is_market'])
-        dot = ('buy' if r['side'] == 'BUY' else 'sell') if market else 'warn' if r.get('needs_review') else ''
-        what = f'{r["mode_raw"] or r["kind"]!s}' if not market else ('bought' if r['side'] == 'BUY' else 'sold')
-        events.append((r['seen'], dot, f'<b>{esc(str(r["person_name"]))}</b> ({esc(kit.role(r["person_role"]))}) '
-                                       f'{esc(what)} {kit.rupees(r["value"])}' + ('' if market else ' · not an open-market trade')))
+    tp = t[t['is_primary'].astype('boolean').fillna(False)]  # one event per trade, not one per exchange copy
+    for r in tp.assign(seen=pd.to_datetime(tp['broadcast_date'], errors='coerce')).to_dict('records'):
+        market = bool(r.get('is_market'))
+        if not market and not show_all:
+            continue
+        kind = ('buy' if r['side'] == 'BUY' else 'sell') if market else 'other'
+        verb = ('bought' if r['side'] == 'BUY' else 'sold') if market else esc(str(r.get('mode_raw') or r.get('kind') or 'filed'))
+        paid = r.get('price')
+        then = px_then(r['seen']) if px_then else None
+        since = (cmp_now / then - 1) * 100 if then and cmp_now and pd.notna(then) else None
+        frm, to = pd.to_datetime(r.get('trade_date_from'), errors='coerce'), pd.to_datetime(r.get('trade_date_to'), errors='coerce')
+        traded = (kit.day(to) if pd.isna(frm) or frm == to else f'{frm:%d %b}–{kit.day(to)}') if pd.notna(to) else ''
+        lag = kit.sessions_text(r.get('trade_to_public_sessions'))
+        late = r.get('insider_filed_late') is True or r.get('company_filed_late') is True
+        meta = [f'Traded {traded}' if traded else '',
+                f'made public {kit.day(r["seen"])}' + (f' ({lag} later)' if lag and lag != 'same day' else ''),
+                kit.tag('Filed late', 'warn') if late else '',
+                f'{kit.shares(r.get("quantity"))} sh @ {kit.price(paid)}' if kit._finite(paid) else '',
+                (f'own holding {kit.pct(r.get("holding_change_pct"), 1, signed=True)}' if kit._finite(r.get('holding_change_pct')) is not None else ''),
+                (f'<span class="{"up" if since > 0 else "down" if since < 0 else ""}">{kit.pct(since, 1, signed=True)} since</span>'
+                 if since is not None else '')]
+        events.append({'date': r['seen'], 'kind': kind, 'amount': kit.rupees(r.get('value')), 'meta': meta,
+                       'link': r.get('source_url') if isinstance(r.get('source_url'), str) and r['source_url'].startswith('http') else None,
+                       'title': f'<b>{esc(str(r["person_name"]))}</b> <span class="tlx-role">{esc(kit.role(r["person_role"]))}</span> {verb}'})
     if not d.empty:
-        for _, r in d.sort_values('date', ascending=False).head(30).iterrows():
-            verb = 'bought' if r['side'] == 'BUY' else 'sold'
-            text = (f'<b>{esc(str(r["client_name"]))}</b> {verb} '
-                    f'{kit.rupees(r["value"])} in a {esc(str(r["feeds"]))} deal')
-            events.append((r['date'], 'buy' if r['side'] == 'BUY' else 'sell', text))
-    for frame, date_col, text in ((ctx.actions, 'ex_date', lambda r: f'Corporate action: {esc(str(r["subject"]))}'),
-                                  (ctx.sast, 'transaction_date', lambda r: f'SAST: <b>{esc(str(r["acquirer_name"]))}</b> '
-                                   f'{esc(str(r["action_type"]).lower())}, stake now {kit.pct(r["post_stake_pct"])}'),
-                                  (ctx.meetings, 'meeting_date', lambda r: f'Board meeting to consider {esc(str(r["purposes"]).replace("_", " "))}')):
-        if frame is not None and not frame.empty:
-            for _, r in frame[frame['symbol'].astype(str).str.upper() == sym].iterrows():
-                events.append((pd.to_datetime(r[date_col], errors='coerce'), 'event', text(r)))
-    events = sorted([x for x in events if pd.notna(x[0])], key=lambda x: x[0], reverse=True)
-    with kit.card('Timeline', 'co_tl', 'every event, newest first'):
-        if not events:
-            kit.empty('No filings for this company in the data.')
-        else:
-            st.html('<div class="tl">' + ''.join(
-                f'<div class="tl-row"><span class="tl-d">{pd.Timestamp(dt).strftime("%d %b %y")}</span>'
-                f'<span class="tl-dot {dot}"></span><span class="tl-t">{txt}</span></div>' for dt, dot, txt in events[:80]) + '</div>')
+        for r in d.to_dict('records'):
+            buy = r['side'] == 'BUY'
+            events.append({'date': r['date'], 'kind': 'deal_buy' if buy else 'deal_sell', 'amount': kit.rupees(r.get('value')),
+                           'title': f'<b>{esc(str(r["client_name"]))}</b> {"bought" if buy else "sold"} in a {esc(str(r.get("feeds") or "bulk"))} deal',
+                           'meta': [f'{kit.shares(r.get("quantity"))} sh @ {kit.price(r.get("price"))}',
+                                    f'{kit.pct(r.get("pct_of_mcap"))} of market cap' if kit._finite(r.get('pct_of_mcap')) is not None else '']})
+    own = lambda f: f[f['symbol'].astype(str).str.upper() == sym] if f is not None and not f.empty else pd.DataFrame()  # noqa: E731
+    for r in own(ctx.sast).to_dict('records'):
+        events.append({'date': pd.to_datetime(r.get('transaction_date'), errors='coerce'), 'kind': 'sast',
+                       'title': f'<b>{esc(str(r["acquirer_name"]))}</b> {esc(str(r.get("action_type") or "").lower())}',
+                       'amount': kit.pct(r.get('percent_equity_traded'), 2, signed=True),
+                       'meta': [f'stake now {kit.pct(r.get("post_stake_pct"))}', esc(str(r.get('mode') or ''))]})
+    for r in own(ctx.actions).to_dict('records'):
+        events.append({'date': pd.to_datetime(r.get('ex_date'), errors='coerce'), 'kind': 'action',
+                       'title': esc(str(r.get('subject') or 'Corporate action')),
+                       'meta': [f'record date {kit.day(r.get("record_date"))}' if pd.notna(pd.to_datetime(r.get('record_date'), errors='coerce')) else '']})
+    for r in own(ctx.meetings).to_dict('records'):
+        events.append({'date': pd.to_datetime(r.get('meeting_date'), errors='coerce'), 'kind': 'meeting',
+                       'title': 'Board meeting to consider ' + esc(str(r.get('purposes') or '').replace('_', ' ').replace(',', ', '))})
+    with kit.card('Timeline', 'co_tl', f'{len(events)} events · newest first · open-market trades only unless switched on'):
+        timeline(events)
     q = sym.replace('&', '%26')
     st.html('<p class="cap">Exchange filings: '
             f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" target="_blank">NSE insider trading</a> · '
             f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-sast-regulation-29?symbol={q}" target="_blank">NSE SAST</a> · '
             f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank">NSE quote</a>. '
-            'A price chart with each filing marked at its broadcast date arrives with the price join.</p>')
+            '</p>')

@@ -13,7 +13,7 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean import signals
-from screens.ctx import load, need_data
+from screens.ctx import load, need_data, with_prices, with_sparks
 
 PRESETS = {
     'All with insider buying': None,
@@ -23,25 +23,27 @@ PRESETS = {
     'Promoter selling': 'Promoter selling',
     'High pledge': 'High pledge',
 }
+# Price presets (exploratory, docs/SIGNALS.md): promoter net buying with the
+# latest close within 5% of its 52-week high, or 30%+ below it.
+NEAR_HIGH, FAR_BELOW_HIGH = -0.05, -0.30
+PRICE_PRESETS = {'Breakout buyers (near 52W high)': lambda off: off >= NEAR_HIGH,
+                 'Turnaround accumulation (30%+ below high)': lambda off: off <= FAR_BELOW_HIGH}
 PENDING = {
-    'Breakout buyers (near 52W high)': 'needs the price join (docs/TODO.md G)',
-    'Turnaround accumulation': 'needs the price join (docs/TODO.md G)',
-    'Promoter warrants at premium': 'needs preferential issues cleaned and prices (TODO G, H)',
+    'Promoter warrants at premium': 'needs preferential issues cleaned (docs/TODO.md H)',
 }
 
 
 def render():
     ctx = load()
-    kit.head('High-conviction screener', 'Stocks where promoters and officers are buying in the open market, ranked by '
-                                         'net buying as a share of market cap over 90 days. ESOPs, gifts, transfers and '
-                                         'token buys never count.')
+    kit.head('Screener', 'Where promoters are buying with their own money: 90 days, open market only, ranked by '
+                         'net buying as a share of market cap.')
     if not need_data(ctx):
         return
     board = signals.company_board(ctx.eligible, ctx.deals, ctx.shareholding, ctx.ref)
     if board.empty:
         kit.empty('No insider activity in the last 90 days.')
         return
-    pick = st.pills('Preset', list(PRESETS) + list(PENDING), default='All with insider buying', key='scr_preset',
+    pick = st.pills('Preset', list(PRESETS) + list(PRICE_PRESETS) + list(PENDING), default='All with insider buying', key='scr_preset',
                     label_visibility='collapsed')
     if pick in PENDING:
         kit.note(f'{pick}: not available yet.', f'This preset {PENDING[pick]}.')
@@ -52,6 +54,9 @@ def render():
         rows = board[board['badges'].map(lambda b: any(x.startswith(key) for x in b))]
     elif pick == 'All with insider buying':
         rows = board[board['promoter_net'] > 0]
+    elif pick in PRICE_PRESETS:
+        off = pd.to_numeric(with_prices(board, ctx.prices)['pct_off_high'], errors='coerce')
+        rows = board[(board['promoter_net'] > 0) & off.map(lambda v: pd.notna(v) and PRICE_PRESETS[pick](v))]
     q = st.text_input('Search', placeholder='Company or symbol', key='scr_q', label_visibility='collapsed')
     if q:
         rows = rows[rows['company'].str.contains(q, case=False, na=False)
@@ -63,35 +68,35 @@ def render():
     mcap = pd.to_numeric(rows['market_cap'], errors='coerce')
     net = pd.to_numeric(rows['promoter_net'], errors='coerce')
     sector = rows['isin'].map(sec['sector']) if 'sector' in sec else pd.Series('', index=rows.index)
-    show = rows.assign(
-        link=rows['nse_symbol'].map(kit.company_href),
+    # Average price promoters paid on open-market buys in the window, value-weighted.
+    e = ctx.eligible
+    w = e[(e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)
+          & (e['seen'] > ctx.ref - pd.Timedelta(days=90)) & (e['seen'] <= ctx.ref)]
+    q = pd.to_numeric(w['quantity'], errors='coerce')
+    paid = (w['value'].where(q > 0).groupby(w['isin']).sum() / q.where(q > 0).groupby(w['isin']).sum())
+    last_buy = w.groupby('isin')['seen'].max()
+    show = with_sparks(with_prices(rows, ctx.prices), ctx)
+    show = show.assign(avg_paid=show['isin'].map(paid), last_buy=show['isin'].map(last_buy))
+    show = show.assign(vs_paid=(pd.to_numeric(show['latest_close'], errors='coerce') / show['avg_paid'] - 1) * 100)
+    show = show.assign(
         cap_sector=[f'₹{m / 1e7:,.0f} Cr' + (f' · {s}' if isinstance(s, str) and s else '') if pd.notna(m) else (s or '')
                     for m, s in zip(mcap, sector)],
-        signals=rows['badges'].map(', '.join),
-        net_cr=net / 1e7,
-        float_pct=pd.to_numeric(pd.Series([signals.float_pct(n, m, pub.get(i)) for n, m, i in zip(net, mcap, rows['isin'])],
-                                          index=rows.index, dtype=object), errors='coerce'),
-        who=rows['isin'].map(details),
-        cmp_vs_high=pd.to_numeric(rows['isin'].map(ctx.prices.drop_duplicates('isin').set_index('isin')['pct_off_high'])
-                                  if not ctx.prices.empty else pd.Series(index=rows.index, dtype=float), errors='coerce') * 100)
-    with kit.card(f'{len(rows)} companies', 'screener', f'90 days to {kit.day(ctx.ref)}'):
-        cols = ['link', 'company', 'cap_sector', 'signals', 'net_cr', 'float_pct', 'promoter_net_pct', 'who', 'cmp_vs_high']
-        show = show.assign(float_pct=kit.blank_text(show['float_pct'], '{:.2f}%'),
-                           cmp_vs_high=kit.blank_text(show['cmp_vs_high'], '{:+.1f}%'))
-        st.dataframe(show[cols],
-                     hide_index=True, width='stretch', height=620, column_config={
-                         'link': st.column_config.LinkColumn('', display_text='Open', width='small', pinned=True),
-                         'company': st.column_config.TextColumn('Company', pinned=True),
-                         'cap_sector': 'Market cap / sector',
-                         'signals': 'Signal badges',
-                         'net_cr': st.column_config.NumberColumn('Net buy (₹ Cr)', format='%+,.2f',
-                                                                 help='Promoter and promoter group, open market, 90 days'),
-                         'float_pct': st.column_config.TextColumn('% of float',
-                                                                  help='Net buy / (market cap x public holding %)'),
-                         'promoter_net_pct': st.column_config.NumberColumn('% of mcap', format='%+.3f%%'),
-                         'who': 'Insider details',
-                         'cmp_vs_high': st.column_config.TextColumn(
-                             'CMP vs 52W high', help='Latest close against the highest close of the last 52 weeks, '
-                                                     'adjusted for splits and bonuses')})
-        kit.caption('% of float is blank where the shareholding pattern is not loaded yet; CMP vs 52W high is blank where '
-                    'the stock has no price in our NSE/BSE price files. How each badge performed afterwards will be on Track record once measured.')
+        float_pct=[signals.float_pct(n, m, pub.get(i)) for n, m, i in zip(net, mcap, rows['isin'])],
+        who=rows['isin'].map(details))
+    with kit.card(f'{len(rows)} companies', 'screener', f'90 days to {kit.day(ctx.ref)} · by net buying as % of market cap'):
+        kit.table(show, [
+            kit.Col('company', 'Company', 'co'),
+            kit.Col('badges', 'Signals', 'tags', phone=False),
+            kit.Col('promoter_net', 'Promoter net', 'smoney', help='Promoter and promoter group, open market, 90 days'),
+            kit.Col('promoter_net_pct', '% of mcap', 'bar'),
+            kit.Col('avg_paid', 'Avg paid', 'price', phone=False, help='Value-weighted average price of promoter open-market buys, 90 days'),
+            kit.Col('vs_paid', 'CMP vs paid', 'spct', help='Latest close against the average price promoters paid'),
+            kit.Col('last_buy', 'Last buy', 'date', phone=False, help='Latest promoter buy made public'),
+            kit.Col('float_pct', '% of float', 'pct', phone=False, help='Net buy / (market cap x public holding %)'),
+            kit.Col('range', '52W range · CMP', 'range', help='Latest close between the 52-week low and high (split and bonus adjusted)'),
+            kit.Col('spark', '1Y price · insider trades', 'spark', phone=False, help='Green dots: open-market insider buys; red: sells, on the day made public'),
+            kit.Col('who', 'Who bought', 'text', sub='cap_sector', phone=False),
+        ], limit=80, download='screener')
+        kit.caption('% of float is blank where the shareholding pattern is not loaded yet; the range is blank where the '
+                    'stock has no price in our NSE/BSE price files. How each badge performed afterwards will be on '
+                    'Track record once measured.')
