@@ -3,6 +3,9 @@ name: Price backfill (UDiFF bhavcopy)
 # Downloads NSE and BSE daily bhavcopy, stores the raw files write-once in raw_v2 and the parsed
 # days in prices/daily/ in R2. Resumable: days already stored are skipped. Aggregate output only.
 on:
+  push:   # TEMPORARY: remove before merge
+    branches: [ccr-27a6c75f-o9ztpa]
+    paths: ['insiders_clean/index_close.py']
   workflow_dispatch:
     inputs:
       from:
@@ -12,7 +15,7 @@ on:
         description: 'To (YYYY-MM-DD). Blank = yesterday.'
         default: ''
       exchange:
-        description: 'NSE, BSE, NSE_PR (market cap) or a comma list'
+        description: 'NSE, BSE, NSE_PR (market cap), NSE_IDX (index closes) or a comma list'
         default: 'NSE,BSE,NSE_PR'
 
 permissions:
@@ -41,10 +44,10 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           FROM: ${{ inputs.from || '2025-01-01' }}
           TO: ${{ inputs.to }}
-          EXCHANGE: ${{ inputs.exchange || 'NSE,BSE,NSE_PR' }}
+          EXCHANGE: ${{ github.event_name == 'push' && 'NSE_IDX' || inputs.exchange || 'NSE,BSE,NSE_PR' }}
         run: python -u scripts/price_backfill.py --from "$FROM" --to "$TO" --exchange "$EXCHANGE" | tee price_backfill.log
       - name: Summary
         if: always()
         run: |
           echo '### Price backfill (aggregate)' >> "$GITHUB_STEP_SUMMARY"
-          grep -E '^(NSE|BSE|NSE_PR):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
+          grep -E '^(NSE|BSE|NSE_PR|NSE_IDX):|STOPPED' price_backfill.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true
