@@ -8,16 +8,34 @@ way as NSE ones. An action feed (NSE `bc` files, NSE API, later BSE) classifies 
 
 Adjusted price at t = close_t x product of f_s for every later session s. A feature at signal time T must only use
 factors with s <= T: `adjust_as_of` does this, so a past signal never sees a later split.
-Threshold for a "structural" event (split, bonus, consolidation, demerger-like) is a config value; small moves are
-kept separately as `minor` (cash dividends, rounding), never silently merged.
+A reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` and is the ONLY kind applied. Other large
+resets (`other_large`: rights, demergers, relistings, series moves) and small ones (`minor`, mostly cash dividends) are counted, never applied.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-STRUCTURAL = 0.05      # |f - 1| above this = structural event (config, to be tuned on data)
+STRUCTURAL = 0.05      # |f - 1| above this = a large base-price reset (config)
 MINOR = 0.001          # |f - 1| above this but below STRUCTURAL = minor
+RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts as one
+KIND_ADJUSTED = ('split_bonus',)   # the only kind applied to prices (owner directive: splits and bonuses only)
+
+
+def _clean_ratios() -> np.ndarray:
+    """Factors a split, bonus or consolidation produces: 1/k (split into k), a/(a+b) (bonus b for a), k (consolidation)."""
+    r = {1 / k for k in range(2, 21)} | {float(k) for k in range(2, 21)}
+    r |= {a / (a + b) for a in range(1, 6) for b in range(1, 6)}
+    return np.array(sorted(r))
+
+
+_RATIOS = _clean_ratios()
+
+
+def is_clean_ratio(f: np.ndarray) -> np.ndarray:
+    f = np.asarray(f, dtype=float)
+    d = np.abs(f[:, None] / _RATIOS[None, :] - 1)
+    return np.nanmin(np.where(np.isnan(f)[:, None], np.inf, d), axis=1) <= RATIO_TOL
 
 
 def session_frame(prices: pd.DataFrame) -> pd.DataFrame:
@@ -39,11 +57,14 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10) -> pd.DataFram
     usable = s['last_close'].notna() & s['prev_close'].notna() & (s['last_close'] > 0) & (gap <= max_gap_days)
     s['factor'] = np.where(usable, s['prev_close'] / s['last_close'], np.nan)
     dev = (s['factor'] - 1).abs()
-    s['kind'] = np.select([dev > STRUCTURAL, dev > MINOR, s['factor'].notna()], ['structural', 'minor', 'none'], 'unknown')
+    big = (dev > STRUCTURAL).to_numpy()
+    clean = is_clean_ratio(s['factor'].to_numpy())
+    s['kind'] = np.select([big & clean, big, (dev > MINOR).to_numpy(), s['factor'].notna().to_numpy()],
+                          ['split_bonus', 'other_large', 'minor', 'none'], 'unknown')
     return s[['exchange', 'isin', 'symbol', 'date', 'close', 'prev_close', 'last_close', 'factor', 'kind']]
 
 
-def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=('structural',)) -> pd.DataFrame:
+def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=KIND_ADJUSTED) -> pd.DataFrame:
     """Adjust `closes` (exchange, isin, date, close) using only factors dated <= as_of."""
     f = factors[(factors['date'] <= pd.Timestamp(as_of)) & factors['kind'].isin(kinds)]
     f = f[['exchange', 'isin', 'date', 'factor']]
@@ -61,5 +82,6 @@ def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=('str
 
 def coverage(factors: pd.DataFrame) -> dict:
     return {'sessions': int(len(factors)), 'with_factor': int(factors['factor'].notna().sum()),
-            'structural': int((factors['kind'] == 'structural').sum()), 'minor': int((factors['kind'] == 'minor').sum()),
+            'split_bonus': int((factors['kind'] == 'split_bonus').sum()),
+            'other_large_not_adjusted': int((factors['kind'] == 'other_large').sum()), 'minor': int((factors['kind'] == 'minor').sum()),
             'unknown': int((factors['kind'] == 'unknown').sum())}

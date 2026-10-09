@@ -116,7 +116,7 @@ def main(argv=None) -> int:
             raw = raw_days(client, bucket, label)
             rep.setdefault('raw_preserved', {})[ex] = {'parquet_days': len(stored), 'raw_days': len(raw), 'parquet_days_without_raw': len(stored - raw)}
         f = adjust.implied_factors(px)
-        st = f[f['kind'] == 'structural']
+        st = f[f['kind'] == 'split_bonus']
         rep['structural_events'] = {ex: int((st['exchange'] == ex).sum()) for ex in ('NSE', 'BSE')}
         both = st.pivot_table(index=['isin', 'date'], columns='exchange', values='factor', aggfunc='first').dropna() if len(st) else pd.DataFrame()
         rep['dual_listed_structural_agreement'] = ({'pairs': int(len(both)),

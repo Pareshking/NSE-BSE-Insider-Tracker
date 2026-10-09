@@ -42,7 +42,7 @@ def test_split_detected_on_both_exchanges_and_adjusts_history():
         rows += [('2026-01-05', ex, 'INE1', 'A', 'EQ', 100.0, 99.0, 10), ('2026-01-06', ex, 'INE1', 'A', 'EQ', 51.0, 50.0, 10),
                  ('2026-01-07', ex, 'INE1', 'A', 'EQ', 52.0, 51.0, 10)]
     f = adjust.implied_factors(_p(rows))
-    ev = f[f['kind'] == 'structural']
+    ev = f[f['kind'] == 'split_bonus']
     assert sorted(ev['exchange']) == ['BSE', 'NSE'] and ev['factor'].round(2).eq(0.5).all()
     adj = adjust.adjust_as_of(f, _p(rows)[['date', 'exchange', 'isin', 'close']], '2026-01-07')
     nse = adj[adj['exchange'] == 'NSE'].set_index('date')['adj_close']
@@ -60,3 +60,16 @@ def test_stale_previous_print_gives_unknown_not_a_false_event():
     rows = [('2026-01-05', 'NSE', 'INE1', 'A', 'EQ', 100.0, 99.0, 10), ('2026-03-05', 'NSE', 'INE1', 'A', 'EQ', 60.0, 59.0, 10)]
     f = adjust.implied_factors(_p(rows))
     assert f['kind'].tolist() == ['unknown', 'unknown']
+
+
+def test_odd_large_reset_is_counted_but_not_adjusted():
+    rows = [('2026-01-05', 'NSE', 'INE1', 'A', 'EQ', 100.0, 99.0, 10), ('2026-01-06', 'NSE', 'INE1', 'A', 'EQ', 70.0, 73.0, 10)]
+    f = adjust.implied_factors(_p(rows))
+    assert f['kind'].tolist()[-1] == 'other_large'
+    adj = adjust.adjust_as_of(f, _p(rows)[['date', 'exchange', 'isin', 'close']], '2026-01-06')
+    assert adj['adj_close'].tolist() == [100.0, 70.0]
+
+
+def test_bonus_and_consolidation_ratios_count():
+    import numpy as np
+    assert adjust.is_clean_ratio(np.array([0.5, 2 / 3, 0.2, 5.0, 0.8, 0.93])).tolist() == [True, True, True, True, True, False]
