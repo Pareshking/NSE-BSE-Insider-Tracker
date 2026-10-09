@@ -13,12 +13,13 @@ from .missing import normalise
 from .report import Report
 from .securities import SecurityMaster, bse_list_frame, nse_list_frame
 
-# The product holds transactions dated on or after this day (owner decision,
-# 09 Oct 2026). Earlier filings stay in the raw archive for offline research
-# only and never reach a clean table. Insider ranges use the LAST day of the
-# range (trade_date_to); a filing with no readable date is held out, because
+# The product holds transactions dated on or after this day: the last one
+# year as of 08 Oct 2026, growing daily from there (owner decision, 08 Oct
+# 2026, confirmed 09 Oct). Earlier filings stay in the raw archive and never
+# reach a clean table. Insider ranges use the LAST day of the range
+# (trade_date_to); a filing with no readable date is held out, because
 # nothing proves it is not older.
-PRODUCT_START = date(2026, 1, 1)
+PRODUCT_START = date(2025, 10, 8)
 
 
 def apply_product_window(table: pd.DataFrame, date_col: str, name: str, report, id_col: str) -> pd.DataFrame:

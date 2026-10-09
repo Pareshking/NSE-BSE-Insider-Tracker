@@ -1,63 +1,87 @@
-"""Entry point. Run with: streamlit run streamlit_app/app.py
+"""Insiders: NSE + BSE insider, deal and corporate-event disclosures, cleaned.
 
-Needs R2 read credentials (same ones already used by scripts/r2_writer.py /
-the GitHub Actions R2-storage workflow) either in .streamlit/secrets.toml or
-as env vars: CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
-R2_BUCKET_NAME. Without them the app still runs and explains what's missing
--- it never fabricates numbers to fill the screen.
+    streamlit run streamlit_app/app.py
+
+Reads the clean tables from R2 (clean/current/, written nightly). For local
+work, point INSIDERS_LOCAL_DATA at a folder with the same layout.
 """
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
 
 HERE = Path(__file__).resolve().parent
-# Anchor both import roots by absolute path so `lib` and `insiders_clean` resolve whatever the working directory is
-# (Streamlit Cloud runs from the repo root; `streamlit run streamlit_app/app.py` and tests may not).
-for root in (HERE, HERE.parent):
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-from lib import style
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))  # insiders_clean, shared with the pipeline
 
-st.set_page_config(
-    page_title="Insiders",
-    page_icon="\U0001f4ca",
-    layout="wide",
+st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
+                   initial_sidebar_state='collapsed')
+
+from screens import (
+    capital_raises,
+    company,
+    data_status,
+    deals,
+    entity,
+    insider_trades,
+    screener,
+    today,
+    track_record,
 )
-style.inject_base_css()
-style.top_brand_bar(
-    f"Session as of <span class=\"mono\">{datetime.now(timezone.utc).strftime('%d %b %Y · %H:%M UTC')}</span>"
-)
+from screens.ctx import load
+from ui import kit, theme
 
-# Top nav bar, not a sidebar (mobile). Pages are grouped into three sections, which the top bar shows as menus.
-pg = st.navigation(
-    {
-        "Daily": [
-            st.Page("views/overview.py", title="Latest Filings", icon="\U0001f3e0", default=True),
-            st.Page("pages/1_Promoter_Screener.py", title="Promoter Screener", icon="\U0001f4cc"),
-            st.Page("pages/2_Company_Deep_Dive.py", title="Company Page", icon="\U0001f50d", url_path="deep-dive"),
-            st.Page("pages/3_Risk_Flags.py", title="Promoter Selling", icon="⚠️"),
-        ],
-        "Explore": [
-            st.Page("views/promoter_activity.py", title="Promoter Trades", icon="\U0001f4c8"),
-            st.Page("views/bulk_block_concentration.py", title="Bulk & Block Deals", icon="\U0001f4ca"),
-            st.Page("views/confluence_screener.py", title="Overlapping Activity", icon="\U0001f9ed"),
-            st.Page("views/entity_tracker.py", title="Person & Fund Search", icon="\U0001f464"),
-            st.Page("views/transactions.py", title="All Filings", icon="\U0001f50e"),
-        ],
-        "Research & Data": [
-            st.Page("pages/6_Signal_Evidence.py", title="Research Findings", icon="\U0001f9ea"),
-            st.Page("pages/4_Forward_Ledger.py", title="Tracked Signals", icon="\U0001f4d2"),
-            st.Page("pages/5_Data_Health.py", title="Data Status", icon="\U0001fa7a"),
-            st.Page("views/data_quality.py", title="Run Checks", icon="✅"),
-        ],
-    },
-    position="top",
-)
+theme.inject()
 
-pg.run()
+PAGES = [
+    st.Page(today.render, title='Today', url_path='today', default=True),
+    st.Page(screener.render, title='Screener', url_path='screener'),
+    st.Page(insider_trades.render, title='Insider trades', url_path='insider-trades'),
+    st.Page(deals.render, title='Deals', url_path='deals'),
+    st.Page(capital_raises.render, title='Capital raises', url_path='capital-raises'),
+    st.Page(track_record.render, title='Track record', url_path='track-record'),
+    st.Page(data_status.render, title='Data', url_path='data'),
+]
+# Reached by links (?symbol= / ?id=), not shown in the bar.
+DETAIL = [
+    st.Page(company.render, title='Company', url_path='company'),
+    st.Page(entity.render, title='Person or fund', url_path='entity'),
+]
+# Old addresses keep working.
+MOVED = {'confluence_screener': 'Screener', 'entity_tracker': 'Person or fund', 'transactions': 'Insider trades',
+         'promoter_activity': 'Insider trades', 'bulk_block_concentration': 'Deals', 'data_quality': 'Data'}
 
-# After pg.run() so it sits at the foot of whichever page just rendered --
-# every page, without each one having to remember to call it.
-style.disclaimer_footer()
+
+def _redirect(path: str, target: str):
+    def go():
+        st.switch_page(next(p for p in PAGES + DETAIL if p.title == target))
+    go.__name__ = f'moved_{path}'
+    return st.Page(go, title=f'moved {path}', url_path=path)
+
+
+nav = st.navigation(PAGES + DETAIL + [_redirect(p, t) for p, t in MOVED.items()], position='hidden')
+
+ctx = load()
+if ctx.ref is not None:
+    pill, warn = f'Filings to {kit.day(ctx.ref)}', False
+else:
+    pill, warn = 'No clean data yet', True
+active = nav if nav in PAGES else None
+kit.topbar(PAGES, active, pill, warn)
+
+if not ctx.trades.empty:
+    e = ctx.eligible
+    parts = [f'<b>{len(ctx.trades):,}</b> filings',
+             f'<b>{int(e["is_market"].sum()):,}</b> open-market',
+             f'<b>{int(ctx.trades["needs_review"].astype("boolean").fillna(False).sum()):,}</b> held back',
+             f'deals <b>{len(ctx.deals):,}</b>']
+    if not ctx.shareholding.empty:
+        parts.append(f'shareholding <b>{ctx.shareholding["symbol"].nunique():,}</b> companies')
+    kit.strip(parts)
+
+nav.run()
+
+st.html('<p class="cap" style="margin-top:32px;border-top:1px solid var(--line);padding-top:10px">'
+        'Public NSE and BSE disclosures, cleaned and republished for research. Not investment advice and not a '
+        'recommendation; no relationship with either exchange or SEBI. Filings can be revised or withdrawn at '
+        'source: check the exchange filing before acting on anything here.</p>')

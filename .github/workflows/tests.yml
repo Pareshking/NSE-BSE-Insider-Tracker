@@ -17,5 +17,5 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt pytest
+      - run: pip install -r requirements.txt -r streamlit_app/requirements.txt pytest
       - run: python -m pytest tests -q

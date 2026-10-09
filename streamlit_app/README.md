@@ -1,117 +1,50 @@
-# Streamlit frontend
+# Insiders: the site
 
-Reads directly from the R2 bucket `scripts/r2_writer.py` writes to (no
-separate API layer) -- manifests for run status, canonical Parquet for the
-aligned NSE/BSE fields, raw JSON for evidence drill-down. Never writes to R2.
+> **Status of the old website and app code (08 Oct 2026): demo only, wrong
+> at multiple levels.** The site that ran at insiders.streamlit.app before
+> PR #4, and its code (the old `streamlit_app/views/` pages and their in-app
+> calculations), are a demo. Their page structure, columns and underlying
+> calculations are wrong; do not use them for decisions or as a reference.
+> The collected data is not the problem: the NSE/BSE collection pipeline and
+> the raw/canonical data in R2 are sound. Current direction: `docs/PRODUCT.md`.
 
-## Run locally
-
-```bash
-pip install -r streamlit_app/requirements.txt
-cp streamlit_app/.streamlit/secrets.toml.example streamlit_app/.streamlit/secrets.toml
-# fill in the 4 values -- same ones already in this repo's GitHub Actions
-# secrets (CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY,
-# R2_BUCKET_NAME)
+```
 streamlit run streamlit_app/app.py
 ```
 
-Env vars work the same as secrets.toml if you'd rather not create the file
-(e.g. `export R2_BUCKET_NAME=...`).
+The site reads only the clean tables (`clean/current/*.parquet` in R2), which
+the nightly pipeline writes (`scripts/clean_writer.py`,
+`collectors/nse_events/run_daily.py`). It never cleans data itself: every
+rule lives in `insiders_clean/`, and signal thresholds in
+`insiders_clean/signals.py` (decisions in `docs/SIGNALS.md`).
+
+## Layout
+
+| Path | What |
+|---|---|
+| `app.py` | Page setup, the top bar, routing (old addresses redirect) |
+| `screens/` | One module per page; `ctx.py` loads the tables once per run |
+| `ui/insiders.css`, `ui/theme.py` | The design system: tokens and every class the pages use |
+| `ui/kit.py` | Page parts (bar, strip, head, tiles, cards, tags) and formatting (₹ L / ₹ Cr, dates) |
+| `data/store.py` | Reads clean tables from R2, or from a local folder |
+| `lib/r2_data.py` | R2 client and credentials (`.streamlit/secrets.toml` or env vars) |
+
+Pages: Today, Screener, Insider trades, Deals & big stakes, Capital raises,
+Track record, Data; Company (`/company?symbol=`) and Person or fund
+(`/entity?id=`) are reached from links.
+
+## Local work
+
+Point the site at a folder with the same layout as the bucket
+(`clean/current/*.parquet`, `clean/latest.json`):
+
+```
+python scripts/dev_ui.py PATH_TO_FOLDER
+```
+
+It serves on `localhost` only (`$PORT`, default 8501).
 
 ## Tests
 
-```bash
-python streamlit_app/tests/test_pages.py            # every page renders, under odd data shapes
-python streamlit_app/tests/test_overview_signals.py # Overview's rollups say what they claim
-python scripts/test_round_trip_filter.py            # the round-trip rule (now flags rows; no longer drops them at ingestion)
-python scripts/test_insider_cache.py                # the per-filing cache that keeps NSE calls down
-```
-
-No credentials needed: every page runs headlessly (Streamlit's own
-`AppTest`) against an in-memory fake bucket, under the data shapes real runs
-produce -- including runs where an exchange didn't publish a canonical
-field, and one where R2 itself is unreachable. Also checks that the date
-parser resolves every format seen in `artifacts/` to the right day. Each
-case is a bug that was live at some point, so add one here whenever you fix
-another.
-
-`test_overview_signals.py` covers the rollups rather than the rendering, and
-is built from rows the deployed app actually showed: one bulk/block deal
-arriving as four rows because both counterparties disclose it and it can land
-in both feeds; 493 securities flagged "concentrated" at top3 100%, because a
-security traded by three or fewer clients is trivially 100%; +13,981.7% as a
-headline stake change off a 1,000-share base; and an ESOP filing summed into
-promoter "accumulation" and ranked by % of market cap.
-
-## Pages
-
-- **Overview** -- promoter accumulation ranked by % of
-  market cap, most-recent transactions across all 5 categories, concentration
-  alerts, biggest stake changes.
-- **Confluence Screener** -- per-ISIN join across insider / bulk / block /
-  rights / preferential, ranked by Float Absorption Ratio.
-- **Entity Tracker** -- reverse lookup of one person, fund or client name
-  across every category.
-- **Evidence & Drill-down** -- all 5 categories as tabs, exchange toggle,
-  filters, row selection opens an evidence dialog (canonical fields, native
-  source fields, cross-exchange match basis/confidence when flagged).
-- **Promoter Activity** / **Bulk & Block Concentration** -- net-position and
-  client-concentration rollups.
-- **Data Quality** -- certification matrix straight from the manifest
-  (including datasets skipped as `RATE-LIMITED`/`BLOCKED`/`MISSING` --
-  never hidden), ISIN resolution rate, known limitations.
-
-Evidence & Drill-down, Confluence Screener and Entity Tracker each export
-exactly the rows on screen as CSV, with `canonical_*` values as stored --
-raw numbers and source date strings, not this app's display formatting, so
-an exported figure can be checked against the exchange's own filing.
-
-## Reading the data safely
-
-Two shared helpers exist because getting either wrong was a live bug, so
-prefer them over raw pandas when touching a canonical field:
-
-- `lib.fields.parse_dates` -- the exchanges publish three date conventions
-  (NSE ISO `2026-08-28`, NSE IST-midnight-as-UTC `…T18:30:00.000Z`, BSE
-  day-first `31/08/2026`). Any single blanket `dayfirst` setting reads one
-  of them months off; this picks per value.
-- `lib.dedup` -- three different reasons one event shows up as several rows,
-  handled separately because they are not the same thing: both counterparties
-  disclose a bulk/block trade; the same trade can appear in the bulk feed and
-  the block feed; and NSE and BSE can both carry it (the writer flags those as
-  `cross_exchange_possible_match_id`, and collapsing them is a display choice
-  only -- the data still never merges the exchanges). Separately,
-  `intraday_round_trips` finds one client buying and selling the same size in
-  one day: real trades, but no ownership changed, so they are noise in every
-  accumulation and concentration view.
-- `lib.fields.text_col` / `num_col` -- a canonical column an exchange didn't
-  publish, accessed as `df.get(col, pd.Series(dtype=object))`, yields an
-  unaligned mask and raises `IndexingError`. These stay aligned to
-  `df.index`, so a missing field narrows a page instead of crashing it.
-
-R2 read failures other than "object isn't there" raise
-`r2_data.R2ReadError`; pages wrap their loads in `r2_data.page_gate()` /
-`r2_data.guard()`, which show the reason and stop. Tracebacks stay
-server-side (`.streamlit/config.toml` sets `showErrorDetails = "none"`)
-because they carry the bucket name and endpoint URL.
-
-## Known gaps vs. the design mockup
-
-This intentionally does not chase the published design canvas's pixel
-fidelity (see `FRONTEND_PRODUCT_SPEC.md` / the published Artifact) --
-Streamlit was chosen for speed of iteration over exact visual match. What's
-different: no true slide-in evidence drawer (a modal dialog instead), no
-custom multi-select dropdown chips, simpler charts. Colors, type choices
-(IBM Plex Sans/Mono) and information architecture (Overview / Transactions
-/ Data Quality, canonical field names) follow the mockup directly.
-
-## Not yet tested against the live bucket
-
-Built and verified against a synthetic manifest/parquet shaped exactly like
-what `r2_writer.py` produces (same keys, same `canonical_*` field names, the
-same mixed NSE/BSE date conventions) -- no session so far has had R2
-credentials to test against the real bucket. First real run should be
-checked against actual data before relying on it; the date formats in
-`tests/test_pages.py::DATE_CASES` were taken from `artifacts/`, but a format
-neither that list nor `lib/fields.parse_dates` anticipates would show up as
-an unparsed date string rather than a wrong one.
+`tests/test_ui_pages.py` builds a data folder from real fixtures through
+the production pipeline and renders every page; any exception fails.

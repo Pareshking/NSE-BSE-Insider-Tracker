@@ -294,7 +294,7 @@ def load_market_cap(_client, date: str) -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
-def market_cap_lookup(_client, date: str) -> "pd.Series | None":
+def market_cap_lookup(_client, date: str) -> pd.Series | None:
     """symbol (upper-cased) -> market cap, or None when this run has no
     reference data. Every caller was building this the same way."""
     mcap_df = load_market_cap(_client, date)

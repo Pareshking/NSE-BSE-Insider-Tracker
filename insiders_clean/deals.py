@@ -161,16 +161,27 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     legs['deal_id'] = [_id(p) for p in zip(legs['exchange'], legs['security_key'], legs['client_id'],
                                             legs['date'], legs['side'])]
 
-    # market makers, per client per quarter
-    quarter = pd.to_datetime(legs['date']).dt.to_period('Q').astype(str)
-    side_val = legs.assign(_q=quarter, _buy=legs['value'].where(legs['side'] == 'BUY', 0.0),
+    # Market makers, per client per quarter, each quarter judged on the 91 days
+    # ending at its last day -- or at the latest deal for the quarter still
+    # running. Counting only the quarter's own days failed at a quarter start:
+    # on 07 Oct 2026, seven days into Q4, no desk had 40 legs yet, and QE
+    # Securities, iRage, HRTI and Junomoneta showed up as "handshakes".
+    dates = pd.to_datetime(legs['date'])
+    quarter = dates.dt.to_period('Q')
+    latest = dates.max()
+    side_val = legs.assign(_buy=legs['value'].where(legs['side'] == 'BUY', 0.0),
                            _sell=legs['value'].where(legs['side'] == 'SELL', 0.0))
-    per = side_val.groupby(['client_id', '_q']).agg(n=('deal_id', 'size'), b=('_buy', 'sum'), s=('_sell', 'sum'))
-    balance = per[['b', 's']].min(axis=1) / per[['b', 's']].max(axis=1).replace(0, np.nan)
-    mm = (per['n'] >= MM_MIN_LEGS_PER_QUARTER) & (balance >= MM_MIN_BALANCE)
-    is_mm = mm.to_dict()  # dict lookups: a Series.get per leg is slow on a full history
+    is_mm, mm_clients = {}, set()  # dict lookups: a Series.get per leg is slow on a full history
+    for q in quarter.dropna().unique():
+        end = min(q.end_time.normalize(), latest)
+        win = side_val[(dates > end - pd.Timedelta(days=91)) & (dates <= end)]
+        per = win.groupby('client_id').agg(n=('deal_id', 'size'), b=('_buy', 'sum'), s=('_sell', 'sum'))
+        balance = per[['b', 's']].min(axis=1) / per[['b', 's']].max(axis=1).replace(0, np.nan)
+        for c in per.index[(per['n'] >= MM_MIN_LEGS_PER_QUARTER) & (balance >= MM_MIN_BALANCE)]:
+            is_mm[(c, q)] = True
+            mm_clients.add(c)
     legs['client_is_market_maker'] = [bool(is_mm.get((c, q), False)) for c, q in zip(legs['client_id'], quarter)]
-    t['market_maker_clients'] = sorted({c for (c, _q), v in mm.items() if v})[:50]
+    t['market_maker_clients'] = sorted(mm_clients)[:50]
     t['market_maker_legs'] = int(legs['client_is_market_maker'].sum())
 
     # 4. other side of the tape in that security that day

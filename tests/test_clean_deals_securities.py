@@ -174,7 +174,7 @@ def test_product_window_boundary_is_strict():
     from insiders_clean.pipeline import apply_product_window
     from insiders_clean.report import Report
     t = pd.DataFrame({'deal_id': list('abcd'), 'exchange': 'nse',
-                      'date': [date(2025, 12, 31), date(2026, 1, 1), None, date(2026, 6, 1)]})
+                      'date': [date(2025, 10, 7), date(2025, 10, 8), None, date(2026, 6, 1)]})
     r = Report('2026-10-09')
     out = apply_product_window(t, 'date', 'deals', r, 'deal_id')
     assert out['deal_id'].tolist() == ['b', 'd']
