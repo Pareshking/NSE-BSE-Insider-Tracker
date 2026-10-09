@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from ui import kit
+from ui import charts, kit
 from ui.kit import esc
 
 from insiders_clean import signals
@@ -183,6 +183,19 @@ def render():
                  f'{kit.plural(len(hs), "buyer-seller match", "buyer-seller matches")} · {when} · market makers excluded' if hs_day is not None
                  else 'No matched deals'),
     ])
+
+    with kit.card('Activity over 12 months', 'flow12', '₹ crore per month · bought up, sold down · dot = net'):
+        c1, c2 = st.columns(2)
+        ins = charts.monthly_flow(ctx.eligible[~ctx.eligible['is_token']], 'seen', 'Insiders, open market')
+        dl = ctx.deals
+        if not dl.empty:
+            dl = dl[~dl['client_is_market_maker'].astype('boolean').fillna(False) & dl['is_primary'].astype('boolean').fillna(False)]
+        dch = charts.monthly_flow(dl, 'date', 'Bulk and block deals, market makers excluded')
+        for col, ch in ((c1, ins), (c2, dch)):
+            if ch is None:
+                col.html('<div class="empty">No data yet.</div>')
+            else:
+                col.altair_chart(ch, width='stretch')
 
     with kit.card('High-conviction buys', 'spot',
                   f'made public {when} · {signals.SPOTLIGHT_PCT_30D}%+ of market cap by one person over 30 days'):
