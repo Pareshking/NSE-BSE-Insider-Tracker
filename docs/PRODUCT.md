@@ -23,8 +23,8 @@ current source of truth.
 
 ## Purpose
 
-A free, public, data-first site to help lakhs of small investors in Indian
-equities decide, using NSE and BSE disclosures: spot a stock where insiders are putting real money in, and
+A data-first research tool that helps a small investor in Indian equities
+decide, using NSE and BSE disclosures: spot a stock where insiders are putting real money in, and
 avoid traps. NSE and BSE already publish every row for free, so a copy of
 their tables is worth nothing. The site earns its place only by what a
 reader can't get by scrolling the exchange pages:
@@ -80,16 +80,13 @@ reader can't get by scrolling the exchange pages:
   the backfill (NSE's new system starts 03 May 2026 and the nightly job
   covers it); bulk and block deals up to the first nightly record. Proceed
   with the data in hand; don't wait for all of it. (08 Oct 2026)
-- **Audience: the public** (owner, 09 Oct 2026). The site is free and open
-  to anyone; it is not a personal tool. Consequences: nothing personal is
-  stored in the repo (it is public) or on the server; a watchlist, if built,
-  lives in the reader's own browser.
-- **Facts and measured evidence, not advice** (09 Oct 2026). The site shows
-  what was disclosed, sized and cleaned, and what happened after similar
-  filings with case counts. It does not tell readers to buy or sell, set
-  targets or publish a portfolio to copy. HYPOTHESIS, to check with the SEBI
-  (Research Analysts) Regulations, 2014 before anything like a model basket
-  (TODO 10) is built: recommendations to the public may need registration.
+- **Audience: the owner's own research tool** (owner, 09 Oct 2026). It runs
+  on Streamlit Community Cloud, sized for one reader, not for heavy public
+  traffic. The repo is public, so nothing personal (holdings, watchlists)
+  is committed; a watchlist lives in Streamlit secrets or the browser.
+- **Actionable, with evidence status.** Ranked candidates, plain labels and
+  risk flags, no generic disclaimers; every label says whether it is
+  measured on our data, supported by studies only, or exploratory.
 - **Timing rules for every return we show** (from the 09 Oct brief, adopted):
   the clock starts at the exchange broadcast time, never the trade date or
   the insider's price. Entry is the first price a reader could have traded:

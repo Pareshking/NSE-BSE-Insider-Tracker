@@ -19,8 +19,8 @@ decision) and `docs/TODO.md` (where things stand, what is next) first.
 ## Rules
 1. Data correctness first; the site never cleans, it reads the clean tables.
 2. Pages follow the data (`docs/DATA_TO_PAGES.md`); a section waits for its data rather than being faked.
-3. The site is public and the repo is public: nothing personal in either.
-4. Facts and measured evidence, not buy/sell advice (`docs/PRODUCT.md`).
+3. The repo is public: nothing personal (holdings, watchlists) committed.
+4. Every signal shows its evidence status (`docs/PRODUCT.md`).
 5. Raw is write-once (`raw_v2/`); filtering happens in the clean layer with counted reasons.
 6. Product window: transactions from 8 Oct 2025 (`insiders_clean/pipeline.py`).
 7. Never invent data, columns, endpoints or results; say what is missing.

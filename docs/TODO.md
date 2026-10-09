@@ -39,7 +39,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 7 | Signal lab and Track record page | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
 | 8 | Price chart with filings marked (company page) | Waits on G |
 | 9 | Morning brief and watchlist warnings | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
-| 10 | Model basket | Waits on 7, and on checking the SEBI (Research Analysts) Regulations first: the site is public (docs/PRODUCT.md) |
+| 10 | Model basket | Waits on 7 |
 | 12 | Buyback price and route | Offer price and tender/open-market route attached to every buyback |
 | 13 | BSE history and BSE events | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
 | 14 | ~~`nse_insider.py` keeps NSE's revision markers~~ **Coded 09 Oct; check the first nightly rows carry them** | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |

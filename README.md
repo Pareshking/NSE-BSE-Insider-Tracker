@@ -7,7 +7,7 @@
 
 ## What this is
 
-A free, public, data-first site that helps small investors in Indian equities use NSE and BSE
+A data-first research tool that helps a small investor in Indian equities use NSE and BSE
 disclosures (insider trades, bulk and block deals, SAST stake changes,
 corporate actions, shareholding and pledges) to make decisions, by sizing
 each filing against the company, removing the noise, connecting filings
