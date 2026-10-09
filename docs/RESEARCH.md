@@ -112,3 +112,25 @@ Gross (not abnormal) mean returns: H1 BUY +2.9% at 20 and +10.6% at 60 sessions,
 - **Not done:** transaction costs and slippage (micro-cap impact would make these worse), a broad index or factor benchmark, per-bucket splits, insider category and value-size cuts, volume/liquidity filters.
 
 Decision: nothing here supports a buy/sell signal in the product. The honest current result is "no reliable edge for insider market buys vs size-matched peers in the Jan-Jun 2026 sample". Hold-out is untouched; no tuning of rules after seeing these numbers.
+
+## I. Conditioned cuts of H1 (registered 9 Oct 2026 IST, before any cut outcome was computed)
+
+Owner directive: test whether conditioning isolates conviction from noise in insider market buys. Development sample only (events before 1 Jul 2026), standard entry. Nine cuts, fixed here:
+
+| Cut | Rule |
+|---|---|
+| C1 | any filer in the day's event is Promoter or Promoter Group |
+| C2 | no promoter filer (director, KMP, designated person, other, missing) |
+| C3 | combined day value >= Rs 10 lakh |
+| C4 | combined day value >= Rs 50 lakh |
+| C5 | combined value >= 0.05% of market cap (market cap from the clean layer; proxy for share of equity) |
+| C6 | breadth: 2+ distinct insiders that day, or another buy event in the same security in the prior 30 days (the clean layer starts 1 Jan 2026, so January events have a shorter look-back) |
+| C7 | close at signal more than 20% below its trailing 252-session high (needs 250 sessions of history; others excluded and counted) |
+| C8 | C1 and C5 |
+| C9 | C1 and C7 |
+
+Primary metric: 20-session abnormal return vs size-matched peers. Judged with a Bonferroni-adjusted interval for the 9 cuts (99.44% date-clustered bootstrap); the usual 95% intervals and all other horizons/benchmarks are reported but are secondary. Cuts overlap, so they are not independent tests. A cut is called a robust edge only if its primary adjusted interval is above zero, N and clusters are adequate versus the MDE, and the sign holds in the conservative-entry run and against the market proxy. Otherwise: "no edge" / "insufficient evidence". The hold-out is not scored here. Median-heavy skew caveat from section H applies.
+
+| Date | Family | Variant | Reason | Reported? |
+|---|---|---|---|---|
+| 2026-10-09 | H1 | C0..C9 conditioned cuts (this section) | owner directive | section I results |

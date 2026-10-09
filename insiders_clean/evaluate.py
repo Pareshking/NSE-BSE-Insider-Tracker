@@ -117,7 +117,8 @@ def abnormal(df: pd.DataFrame, bm: pd.DataFrame, horizons=HORIZONS) -> pd.DataFr
     return out
 
 
-def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed: int = 7, boot: int = 2000) -> dict:
+def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed: int = 7, boot: int = 2000,
+              level: float = 95.0) -> dict:
     """N, mean, median, hit rate, and a date-clustered bootstrap 95% interval of the mean."""
     d = df.dropna(subset=[col])
     n = len(d)
@@ -131,7 +132,8 @@ def summarise(df: pd.DataFrame, col: str, cluster: str = 'broadcast_date', seed:
         s, c = g['sum'].to_numpy(), g['count'].to_numpy()
         idx = rng.integers(0, len(g), size=(boot, len(g)))
         means = s[idx].sum(axis=1) / c[idx].sum(axis=1)
-        out['ci95'] = [float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))]
+        tail = (100 - level) / 2
+        out['ci95' if level == 95.0 else f'ci{level:g}'] = [float(np.percentile(means, tail)), float(np.percentile(means, 100 - tail))]
     return out
 
 
