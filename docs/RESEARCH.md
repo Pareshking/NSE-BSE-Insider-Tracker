@@ -134,7 +134,7 @@ Primary metric: 20-session abnormal return vs size-matched peers. Judged with a 
 | Date | Family | Variant | Reason | Reported? |
 |---|---|---|---|---|
 | 2026-10-09 | H1 | C0..C9 conditioned cuts (this section), run 37925660880 | owner directive | yes, section I.1 (SUPERSEDED benchmark, see J) |
-| 2026-10-09 | H1/H2 | section J: promoter cuts P1-P5 at 60/120 sessions vs Nifty 500 | owner realignment | section J.1 |
+| 2026-10-09 | H1/H2 | section J: promoter cuts P1-P5 at 60/120 sessions vs Nifty 500, run 37929257064. Benchmark was changed after earlier results were weak; the advisor counts that as a post-hoc choice | owner realignment | yes, section J.1 (descriptive only) |
 
 ### I.1 Results (run 37925660880, development sample, standard entry, before costs; VERIFIED as computed)
 
@@ -176,3 +176,59 @@ Fixed rules: development sample (disclosures 1 Jan to 30 Jun 2026), open-market 
 | H2 | insider open-market sells at 20/60/120 sessions (risk flag check on the new baseline) |
 
 Five related cuts are not independent; the primary reading is P2 and P3 excess return at 60 sessions, and a cut is called an edge only if its excess-return CI is above zero at both 60 and 120 sessions or is clearly above zero at 60 with 120 pending. Otherwise: "no edge" or "insufficient evidence". Hold-out untouched.
+
+### J.1 Results vs Nifty 500 (run 37929257064, development sample, before costs; VERIFIED as computed)
+
+Excess return = stock return minus Nifty 500 return over the same window. Mean / median, N (date clusters), 95% CI of the mean. 120 sessions: **PRELIMINARY — SAMPLE MATURING IN 2026** (January to April disclosures only).
+
+| Cut | 60s absolute | 60s excess | 60s hit vs Nifty | 120s excess [PRELIMINARY] | 120s hit vs Nifty |
+|---|---|---|---|---|---|
+| P1 promoter buys | +9.3% / +5.9% | +7.3% / +3.2%, N 1039 (103), CI +5.7..+8.9 | 59% | +11.8% / +2.6%, N 861 (84), CI +8.9..+14.8 | 56% |
+| P2 >= Rs 25 lakh | +11.8% / +7.2% | +9.2% / +4.5%, N 488 (89), CI +7.0..+11.4 | 60% | +12.3% / +3.3%, N 396 (71), CI +8.1..+16.0 | 57% |
+| P3 >= Rs 50 lakh | +11.6% / +7.0% | +8.8% / +3.0%, N 344 (80), CI +6.3..+11.6 | 58% | +10.7% / +2.2%, N 272 (62), CI +6.3..+15.3 | 54% |
+| P4 repeat in 30 days | +7.5% / +5.3% | +5.4% / +2.3%, N 721 (95), CI +4.0..+6.8 | 56% | +9.8% / +2.3%, N 626 (78), CI +7.0..+12.9 | 55% |
+| P5 repeat and >= Rs 25 lakh | +9.9% / +6.4% | +6.9% / +2.0%, N 301 (74), CI +4.6..+9.5 | 57% | +9.4% / +0.7%, N 256 (59), CI +5.6..+13.6 | 53% |
+| R0 all insider market buys | +10.6% / +7.2% | +8.7% / +4.8%, N 1350 (107), CI +7.1..+10.2 | 61% | +14.6% / +6.7%, N 1124 (86), CI +11.6..+17.5 | 60% |
+| H2 control: insider market SELLS | +5.4% / +1.0% | +4.4% / -0.2%, N 528 (94), CI +1.1..+7.7 | 50% | +6.9% / +3.8%, N 326 (68), CI +2.7..+11.1 | 57% |
+
+Nifty 500 itself returned +1.9% (mean) over the 60-session windows and +3.8% over the 120-session windows. Standard deviations of excess return are 24 to 41%. 20-session H2: excess +0.5% (CI -1.0..+1.8). The 120-session Nifty 500 hit-rate and spread are not meaningful (windows overlap heavily in one regime).
+
+### J.2 Opus advisor review (Opus agent following `.claude/agents/quant-advisor.md`; verbatim; model output, not a user decision)
+
+The `/advisor` command and the registered `quant-advisor` subagent type were not available mid-session (the agent file is read only at session start), so the same persona was run as an Opus general-purpose agent. Report, verbatim:
+
+> **Verdict: the result is not recordable as an insider edge.** Excess return vs Nifty 500 measures how micro caps did against large caps in H1 2026. It does not isolate what the insiders knew. The sells control comes out positive (+4.4% at 60 sessions, CI +1.1..+7.7; +6.9% at 120 sessions), and on its own that is enough to show segment beta or a micro-cap rally running through the whole sample (ESTIMATED). The superseded equal-weighted and size-matched runs gave about zero or negative for the same buys (−2.1% vs size-matched at 60 sessions). That points the same way. Record the numbers as descriptive returns only. The Section J rule ("CI above zero" means edge) should be treated as invalid, because its benchmark cannot separate signal from segment.
+>
+> **(1) Is Nifty 500 a valid test?** No, not for the inference. About 85% of events are micro caps, and Nifty 500 holds almost none of them. Under no information, the expected excess is micro-cap minus large-cap return plus any extra beta, not zero. Sells lose to the market but buys rise even more, so a buys-minus-sells gap of about +3–4 points at 60 sessions might be real. Its CI has not been computed (HYPOTHESIS). Mean far above median (+7.3% vs +3.2%) means a few big winners drive the mean, so it is fragile.
+>
+> **(2) Biases.**
+> - Survivorship: if the price table only has ISINs still trading, delisted or suspended names are silently dropped. `evaluate.py` returns NaN for incomplete windows, so they are dropped rather than marked down. That pushes returns upward.
+> - Look-ahead: rankings by market cap, any later-dated listing data, and the 14:00 cut-off timestamp source all need checking.
+> - Overlapping windows: repeat buys in the same stock overlap. Clustering by date does not handle the same stock across dates, so CIs are too narrow.
+> - One regime, about 100 dates, five cuts plus R0/H2, and benchmarks swapped after weak results all count as data snooping. The benchmark change was a post-hoc choice and must be logged as a variant.
+>
+> **(3) Minimal fix.** The UI keeps absolute and Nifty 500 excess. Research adds one control:
+> - (a) Matched excess: AR_i = r_i − mean(r_j over K=5 non-event stocks in the same market-cap decile and turnover tercile, same entry date and horizon), with the ranks taken at month-end before the event.
+> - (b) Buys minus sells: D = mean(AR_buys) − mean(AR_sells). Use a bootstrap clustered by date and resample both groups together.
+> - (c) Optional robustness check: r_i − r_f = a + b·(Nifty500 − r_f) + s·(SmallMinusBig) + e, run on daily returns over the window. Report a.
+>
+> Call it an edge only if (a) and (b) both have CI > 0 at 60 sessions.
+>
+> **(4) Labels.**
+> - May conclude: "Promoter buys in H1 2026 beat Nifty 500 on average (VERIFIED as computed); so did insider sells."
+> - May not conclude: insider information, an edge, tradability (results are before costs and in illiquid names), or anything negative.
+> - 120-session results: "PRELIMINARY — SAMPLE MATURING IN 2026", N≈861 from Jan–Apr only, no inference.
+>
+> **(5) SEBI PIT.** What I can confirm from memory (CLAIMED until checked): the PIT Regulations 2015 Schedule B (Minimum Standards for the Code of Conduct) has a contra-trade clause. Designated persons who buy or sell may not do the opposite trade for 6 months, the compliance officer can grant a waiver, and profits from a breach go to the SEBI IPEF. What I cannot confirm: whether promoters are covered unless they are designated persons, current amendments, and exemptions such as ESOP exercise.
+>
+> Check these in the current consolidated PIT Regulations on sebi.gov.in: Reg 9 and Schedule B, the clause on contra trades; the definition of "designated person" in Reg 9(4); the amendments from 2019 onward. Until then, keep the description labelled CLAIMED in Section J. The rule supports 1–2 quarter horizons, but it is not a reason for a Nifty 500 benchmark.
+>
+> **Directives for the executor:** (1) RESEARCH.md §J: add results subsection with the conclusion text below; mark the edge rule superseded and log the benchmark change in §G as a variant; append only. (2) `insiders_clean/evaluate.py`: add `matched_excess()` per (a) and `buys_minus_sells()` per (b) as research-only outputs; keep the UI on absolute and Nifty 500 excess. (3) Price table: count events whose window is cut short by delisting or suspension; report N dropped by reason and, as a sensitivity check, value the exit at the last price or −100%. (4) `scripts/research_run.py`: add a robustness cluster by ISIN alongside the date-clustered bootstrap; report how many windows overlap. (5) Hold-out untouched, no pre-2026 data, no pushes to main, PR stays a draft.
+>
+> **Recommended conclusion text:** "J.1 Reading (ESTIMATED). Over the development sample, promoter open-market buys beat Nifty 500 at 60 sessions (P1 +7.3% mean, +3.2% median, CI +5.7..+8.9; VERIFIED as computed, before costs). Insider sells also beat Nifty 500 (+4.4%, CI +1.1..+7.7), and about 85% of events are micro caps, so this excess mainly reflects how the segment performed in one half-year, not insider information. Earlier size-matched results were about zero or negative. Conclusion: insufficient evidence of an edge; the Nifty 500 excess is descriptive only. Next test: size- and liquidity-matched excess and buys minus sells. 120-session figures: PRELIMINARY — SAMPLE MATURING IN 2026. Possible survivorship bias (delisted names missing) not yet measured."
+
+### J.3 Conclusion (supersedes the edge rule in section J; ESTIMATED)
+
+Insufficient evidence of an edge. Promoter buys beat Nifty 500 (VERIFIED as computed, before costs), but insider sells beat it too, about 85% of events are micro caps, and the earlier size-matched results were about zero or negative. The Nifty 500 excess is descriptive of the micro-cap segment in one half-year, not of insider information. The "CI above zero means edge" rule written in section J is withdrawn. 120-session figures are PRELIMINARY — SAMPLE MATURING IN 2026. The 6-month contra-trade description stays CLAIMED until Reg 9 / Schedule B and the "designated person" definition are read in the current SEBI text; it supports 1 to 2 quarter horizons but is not a reason for the Nifty 500 benchmark. Earlier sections H and I (equal-weighted and size-matched benchmarks, 5 to 60 sessions) are kept as the record; their near-zero or negative abnormal returns are consistent with this reading but were not designed as the final test.
+
+Next tests, not yet run (advisor directives 2 to 4): size- and turnover-matched excess (K=5 non-event stocks, ranks at the prior month-end), buys minus sells with a date-clustered bootstrap, delisting/suspension sensitivity, ISIN-clustered CIs and a count of overlapping windows. An edge is called only if matched excess and buys-minus-sells both have a CI above zero at 60 sessions.

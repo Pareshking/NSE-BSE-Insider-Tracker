@@ -63,3 +63,8 @@
 - Insider market buys and bulk/block deal direction: label "no proven edge" (H1, H8, conditioned cuts C1-C9 all show no positive abnormal return in the Jan-Jun 2026 development sample). No bullish alerts.
 - Insider sells: caution/risk flag only (about -1.5% to -2.4% vs peers at 5-20 sessions, before costs; hold-out still to confirm). Not a trade signal.
 - Conditioned-cut run used a temporary branch push trigger on `research-run.yml` (removed again); `research_conditioned.py` is wired to the dispatch workflow.
+
+## 2026-10-09 (IST): benchmark simplified to Nifty 500, advisor review
+- Owner directive: absolute return and excess vs Nifty 500 only; equal-weighted and size-matched benchmark code removed (`benchmark_returns`, `abnormal`, `size_buckets`, `research_conditioned.py`). Nifty 500 closes come from NSE `ind_close_all_*.csv` (stored raw, parsed to `indices/daily/nse/`).
+- Opus advisor review (RESEARCH.md J.2): Nifty 500 excess is not a valid test for a micro-cap-dominated sample (sells also beat it). Result recorded as descriptive; matched-excess and buys-minus-sells are the next research tests. The product UI keeps only the two owner-approved metrics and must not present Nifty 500 excess as a buy signal.
+- The advisor agent file is `.claude/agents/quant-advisor.md`; it was not registered mid-session, so the persona was run as an Opus general-purpose agent.

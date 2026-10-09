@@ -4,9 +4,6 @@ name: Research run (development period, read-only)
 # The hold-out is scored only when 'final' is true, once, at the end. Reads R2; writes nothing to R2.
 # Dispatch from main after the price backfill has loaded.
 on:
-  push:   # TEMPORARY: remove before merge
-    branches: [ccr-27a6c75f-o9ztpa]
-    paths: ['scripts/research_run.py']
   workflow_dispatch:
     inputs:
       final:
