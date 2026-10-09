@@ -114,3 +114,17 @@ One row per exchange, date, ISIN, symbol, series, as printed in the exchange's U
 | `date`, `exchange`, `isin`, `symbol`, `series`, `name`, `instrument_id` | Identity as printed that day (symbols and ISINs can change) |
 | `open`, `high`, `low`, `close`, `last`, `prev_close`, `settle` | Prices in rupees, unadjusted; `prev_close` is the exchange's own previous close |
 | `volume`, `value`, `trades` | Traded quantity, traded value, number of trades |
+
+## Market cap (derived, `marketcap/daily/nse/{YYYY-MM}.parquet`)
+
+NSE's daily `mcap` file from the PR zip. One row per date, symbol, series. Raw: `raw_v2/exchange_files/nse_pr_zip/`.
+
+| Column | Meaning |
+|---|---|
+| `date`, `symbol`, `series`, `name`, `category` | Identity that day; category is Listed or Permitted |
+| `face_value`, `issue_size` | Face value and shares in issue on that day |
+| `close`, `market_cap` | Close in rupees; market cap = issue size x close (31 and 12 rows on the two sample days differ and are kept) |
+
+## Adjustment factors (computed, not stored yet)
+
+`insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `structural`, `minor`, `none` or `unknown`. Adjusted price at T uses only factors dated up to T.
