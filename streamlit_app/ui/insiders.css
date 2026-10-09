@@ -28,7 +28,11 @@
 /* ---- Shell: Streamlit's chrome off, one centred column ---- */
 html, body, [class*="css"] { font-family: var(--ui); -webkit-font-smoothing: antialiased; }
 header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
-[data-testid="stToolbar"] { display: none !important; }
+/* Keep the toolbar itself: newer Streamlit renders the "expand sidebar" button inside it,
+   so hiding it left no way to reopen a collapsed sidebar. Hide only its actions. */
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"] { display: none !important; }
+[data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {
+  display: flex !important; visibility: visible !important; color: var(--ink) !important; }
 [data-testid="stDecoration"], [data-testid="stStatusWidget"], footer,
 [data-testid="stAppDeployButton"], .stAppDeployButton { display: none !important; }
 [data-testid="stMainBlockContainer"] { max-width: 1280px; padding: 18px 28px 64px; }
