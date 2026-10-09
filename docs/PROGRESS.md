@@ -20,6 +20,9 @@ Phase 0 audit: approved. Phase 1 data foundation: merged to `main` (PR #11, 14:1
 ## Price backfill: COMPLETE (17:00 IST)
 NSE prices 437 of 437 days, BSE 437 of 437, NSE market cap 437 of 437 (100% each), every stored day has its raw file. Coverage of 2026 events: insider entry price 99.3% (250-session history 8,879 of 9,990), deals 97.9% (11,629 of 17,318). Details: `docs/AUDIT.md` addendum 3. BSE does not reset previous-close on splits, so dual-listed securities inherit the NSE factor and BSE-only securities stay on raw prices (flagged).
 
+## Phase 2 first results (09 Oct 2026, IST)
+PR #12 merged to main (c5ce96b). H1, H2, H8 ran on the development sample: see `docs/RESEARCH.md` section H. Summary: no evidence of an edge for insider market buys (negative vs size peers at 20/60 sessions); insider sells underperform 1.5 to 2.4% at 5 to 20 sessions (short side, before costs); deal buy and sell groups look alike (benchmark and micro-cap skew caveats). Costs not applied; hold-out untouched.
+
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
 2. Remove temporary push triggers from `price-backfill.yml` and `price-coverage.yml`; pytest; squash-merge PR #12 (Gate 2 pre-approved).

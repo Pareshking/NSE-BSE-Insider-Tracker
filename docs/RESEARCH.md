@@ -67,4 +67,48 @@ Append-only (mission 11.4). Each generated signal: timestamp, rule version, inpu
 
 | Date | Family | Variant | Reason | Reported? |
 |---|---|---|---|---|
-| (none run) | | | | |
+| 2026-10-09 | H1/H2/H8 | v1 run, workflow run 37924031150 (main c5ce96b), development period 2026-01-01..2026-06-30, standard and conservative entry, vs equal-weighted market proxy and size buckets | first pre-registered run, no parameter tuning | yes, section H |
+
+## H. Results, development sample (VERIFIED as computed; interpretation ESTIMATED)
+
+Run 37924031150, 9 Oct 2026 (IST), events before 1 Jul 2026 only; the hold-out was not touched. Returns are **before transaction costs**. Abnormal return (AR) = stock return minus benchmark over 5/20/60 sessions from the entry point. CI = 95% date-clustered bootstrap. Full detail in the `research-results` artifact (kept 14 days). Rows below are standard entry (disclosure before 14:00 IST enters at that close, otherwise next open); conservative entry (next close) is in the artifact and gives the same conclusions.
+
+| Test | Bench | Horizon | N | Clusters | Mean AR | Median AR | Hit rate | 95% CI | MDE |
+|---|---|---|---|---|---|---|---|---|---|
+| H1 insider market BUY | market | 5 | 1354 | 107 | -0.06% | -0.22% | 49.0% | -0.54%..+0.37% | 0.56% |
+| | | 20 | 1343 | 108 | -0.54% | -1.05% | 45.0% | -1.21%..+0.12% | 1.07% |
+| | | 60 | 1350 | 107 | +0.49% | -3.16% | 41.3% | -1.05%..+2.10% | 2.05% |
+| | size | 5 | 1264 | 106 | -0.10% | -0.17% | 48.5% | -0.69%..+0.43% | 0.59% |
+| | size | 20 | 1255 | 107 | -1.41% | -1.63% | 44.4% | -2.38%..-0.40% | 1.13% |
+| | size | 60 | 1260 | 106 | -2.05% | -6.30% | 35.3% | -3.50%..-0.48% | 2.11% |
+| H2 insider market SELL | market | 5 | 529 | 94 | -1.51% | -1.16% | 41.2% | -2.44%..-0.68% | 1.22% |
+| | | 20 | 532 | 94 | -1.78% | -1.87% | 42.1% | -3.21%..-0.41% | 2.04% |
+| | | 60 | 528 | 94 | -2.59% | -7.61% | 32.8% | -5.99%..+0.72% | 5.03% |
+| | size | 5 | 486 | 93 | -1.68% | -1.17% | 38.3% | -2.61%..-0.80% | 1.29% |
+| | size | 20 | 489 | 93 | -2.36% | -2.41% | 40.5% | -3.84%..-0.95% | 2.15% |
+| | size | 60 | 485 | 93 | -2.34% | -7.66% | 35.7% | -6.09%..+1.37% | 5.36% |
+| H8 deals net BUY | market | 5 | 944 | 120 | -0.56% | -1.76% | 42.6% | -1.31%..+0.27% | 1.02% |
+| | | 20 | 928 | 120 | -1.18% | -2.60% | 42.1% | -2.46%..+0.15% | 1.76% |
+| | | 60 | 915 | 120 | -2.08% | -7.76% | 38.5% | -4.35%..+0.28% | 3.44% |
+| | size | 20 | 788 | 120 | -1.82% | -3.61% | 39.1% | -3.11%..-0.55% | 1.77% |
+| | size | 60 | 785 | 120 | -4.04% | -9.91% | 33.0% | -6.45%..-1.48% | 3.75% |
+| H8 deals net SELL | market | 5 | 1039 | 120 | -0.12% | -1.09% | 45.7% | -0.86%..+0.57% | 1.00% |
+| | | 20 | 1024 | 120 | -1.81% | -2.83% | 42.0% | -2.91%..-0.71% | 1.75% |
+| | | 60 | 1008 | 120 | -2.79% | -7.46% | 36.0% | -5.05%..-0.53% | 3.55% |
+| | size | 20 | 918 | 120 | -2.12% | -3.13% | 40.7% | -3.32%..-0.92% | 1.84% |
+| | size | 60 | 907 | 120 | -4.31% | -9.19% | 34.6% | -6.68%..-1.86% | 3.75% |
+
+(H8 BUY and SELL size-matched 5-session rows: -0.80% [-1.60%, +0.04%] and -0.33% [-1.10%, +0.44%].)
+
+Gross (not abnormal) mean returns: H1 BUY +2.9% at 20 and +10.6% at 60 sessions, median +1.4% and +7.2%; H2 SELL +0.4% at 20 and +5.4% at 60; H8 BUY +1.2% and +5.1%; H8 SELL +0.3% and +3.6%.
+
+### Reading (ESTIMATED, not a conclusion)
+
+- **H1 (insider market buys): no evidence of an edge.** Against the market proxy no horizon is distinguishable from zero. Against size-matched peers the 20- and 60-session mean AR is *negative* (-1.4%, -2.1%) and the median is worse (-6.3% at 60), so the typical event underperformed. The large gross 60-session return (+10.6%) is the 2026 market and micro-cap rally, not insider information.
+- **H2 (insider sells): no tradeable signal for a long-only investor.** Sellers' stocks underperformed by about 1.5 to 2.4% over 5 to 20 sessions (CIs exclude zero), which is the direction the hypothesis predicted, but it is a short signal and costs and shorting constraints are not applied.
+- **H8 (bulk/block net direction): both BUY and SELL net-direction events show negative AR; the buy and the sell groups look alike.** That is not a directional signal. It suggests the benchmark is the problem or that all deal-flagged names are weak (micro caps; BUY 822 of 837 and SELL 919 of 957 sized events are micro).
+- **Benchmark caveat (important).** The market proxy is an equal-weighted average of all our listed names and the size benchmark is dominated by micro caps. Micro-cap return distributions are right-skewed: mean beats median by 3 to 7 points at 60 sessions. Positive means with negative medians and hit rates of 33 to 45% mean a few large winners drive averages. Results are most informative about direction vs peers, not about a tradeable strategy.
+- **Power:** 5-session tests can detect about 0.6% (H1) and 1.0 to 1.3% (H2, H8); 60-session tests are weaker (2 to 5%). Clusters are about 93 to 120 disclosure dates, so every result rests on one half-year; effective independent observations are fewer than N (date-clustered CIs account for that, not for a single regime).
+- **Not done:** transaction costs and slippage (micro-cap impact would make these worse), a broad index or factor benchmark, per-bucket splits, insider category and value-size cuts, volume/liquidity filters.
+
+Decision: nothing here supports a buy/sell signal in the product. The honest current result is "no reliable edge for insider market buys vs size-matched peers in the Jan-Jun 2026 sample". Hold-out is untouched; no tuning of rules after seeing these numbers.
