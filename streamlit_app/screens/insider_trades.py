@@ -36,11 +36,14 @@ def _table(rows: pd.DataFrame, ctx, name: str):
     rows = rows.sort_values('seen', ascending=False)
     rows = with_sparks(with_prices(rows.assign(late=[late_text(r) for _, r in rows.iterrows()],
                                                mode=rows['mode_raw'].fillna(rows['kind'])), ctx.prices), ctx)
+    rows = rows.assign(vs_paid=(pd.to_numeric(rows['latest_close'], errors='coerce')
+                                / pd.to_numeric(rows['price'], errors='coerce') - 1) * 100)
     kit.table(rows, [
         kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
         kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
         kit.Col('pct_of_mcap', '% of mcap', 'bar'),
         kit.Col('holding_change_pct', 'Own holding Δ', 'spct', phone=False, help="Change in the person's own holding"),
+        kit.Col('price', 'Paid', 'price', phone=False), kit.Col('vs_paid', 'CMP vs paid', 'spct'),
         kit.Col('seen', 'Made public', 'date'), kit.Col('mode', 'Mode as filed', 'text', sub='late', phone=False),
         kit.Col('range', '52W range · CMP', 'range', phone=False),
         kit.Col('spark', '1Y price · insider trades', 'spark', phone=False),

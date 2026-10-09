@@ -73,9 +73,7 @@ PRICE_COLS = ['latest_close', 'low_52w', 'high_52w', 'pct_off_high', 'mcap_bucke
 def with_prices(df: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     """Adds the latest close and 52-week range by ISIN (blank where the stock
     has no price in our NSE/BSE files)."""
-    if df.empty:
-        return df
-    if prices.empty or 'isin' not in df:
+    if df.empty or prices.empty or 'isin' not in df:
         return df.assign(**{c: None for c in PRICE_COLS})
     p = prices.drop_duplicates('isin').set_index('isin')
     return df.assign(**{c: df['isin'].map(p[c]) if c in p else None for c in PRICE_COLS})

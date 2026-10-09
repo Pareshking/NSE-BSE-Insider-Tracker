@@ -181,3 +181,12 @@ header[data-testid="stHeader"] { display: none; }
 .tlx-src { color: var(--accent-ink) !important; text-decoration: none; font-weight: 500; }
 @media (max-width: 720px) { .tlx-i { grid-template-columns: 34px 26px 1fr; gap: 0 8px; } .tlx-i::before { left: 54px; }
   .tlx-m { padding-left: 60px; } .tlx-amt { margin-left: 0; } }
+/* ---- Bar lists (kit.bar_list) ---- */
+.bl-h { font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); margin: 12px 0 6px; }
+.bl { display: flex; flex-direction: column; gap: 7px; }
+.bl-r { display: grid; grid-template-columns: minmax(150px, 1.4fr) 1fr 70px; gap: 12px; align-items: center; font-size: 13px; }
+.bl-l { color: var(--ink-2); }
+.bl-t { height: 8px; background: var(--subtle); border-radius: 4px; overflow: hidden; }
+.bl-t i { display: block; height: 100%; border-radius: 4px; background: var(--accent); min-width: 2px; }
+.bl-t i.warn { background: #D9902A; } .bl-t i.sell { background: var(--sell); }
+.bl-v { text-align: right; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }

@@ -128,7 +128,7 @@ def _coming_up(ctx):
             kit.empty('No board meetings on fund raising, preferential issues, buybacks, bonuses, splits or rights '
                       'in the next 10 days.')
             return
-        kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ')), [
+        kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ').str.capitalize()), [
             kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
             kit.Col('what', 'To consider')], limit=20)
 

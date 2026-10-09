@@ -42,7 +42,7 @@ def render():
             if rows.empty:
                 kit.empty('No meetings for these purposes from last week onwards.')
             else:
-                kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ')), [
+                kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ').str.capitalize()), [
                     kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
                     kit.Col('what', 'To consider'), kit.Col('description', 'As filed', phone=False)], limit=100)
 

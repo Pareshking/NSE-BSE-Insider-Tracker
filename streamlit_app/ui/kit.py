@@ -212,3 +212,14 @@ def strip(parts: list[str]) -> None:
 
 # Tables live in ui/table.py; re-exported so pages keep one import.
 from ui.table import Col, range_bar, spark, table  # noqa: E402,F401
+
+
+def bar_list(items: list[tuple[str, float, str]], unit: str = '') -> str:
+    """Label, bar and count per row, longest first; `tone` is '', 'sell' or 'warn'."""
+    if not items:
+        return '<div class="empty">Nothing.</div>'
+    top = max(abs(v) for _, v, _ in items) or 1
+    return '<div class="bl">' + ''.join(
+        f'<div class="bl-r"><span class="bl-l">{esc(label)}</span><span class="bl-t"><i class="{tone}" '
+        f'style="width:{abs(v) / top * 100:.1f}%"></i></span><span class="bl-v">{indian(v)}{esc(unit)}</span></div>'
+        for label, v, tone in sorted(items, key=lambda x: -abs(x[1]))) + '</div>'

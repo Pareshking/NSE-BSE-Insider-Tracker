@@ -68,7 +68,17 @@ def render():
     mcap = pd.to_numeric(rows['market_cap'], errors='coerce')
     net = pd.to_numeric(rows['promoter_net'], errors='coerce')
     sector = rows['isin'].map(sec['sector']) if 'sector' in sec else pd.Series('', index=rows.index)
-    show = with_sparks(with_prices(rows, ctx.prices), ctx).assign(
+    # Average price promoters paid on open-market buys in the window, value-weighted.
+    e = ctx.eligible
+    w = e[(e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)
+          & (e['seen'] > ctx.ref - pd.Timedelta(days=90)) & (e['seen'] <= ctx.ref)]
+    q = pd.to_numeric(w['quantity'], errors='coerce')
+    paid = (w['value'].where(q > 0).groupby(w['isin']).sum() / q.where(q > 0).groupby(w['isin']).sum())
+    last_buy = w.groupby('isin')['seen'].max()
+    show = with_sparks(with_prices(rows, ctx.prices), ctx)
+    show = show.assign(avg_paid=show['isin'].map(paid), last_buy=show['isin'].map(last_buy))
+    show = show.assign(vs_paid=(pd.to_numeric(show['latest_close'], errors='coerce') / show['avg_paid'] - 1) * 100)
+    show = show.assign(
         cap_sector=[f'₹{m / 1e7:,.0f} Cr' + (f' · {s}' if isinstance(s, str) and s else '') if pd.notna(m) else (s or '')
                     for m, s in zip(mcap, sector)],
         float_pct=[signals.float_pct(n, m, pub.get(i)) for n, m, i in zip(net, mcap, rows['isin'])],
@@ -79,6 +89,9 @@ def render():
             kit.Col('badges', 'Signals', 'tags', phone=False),
             kit.Col('promoter_net', 'Promoter net', 'smoney', help='Promoter and promoter group, open market, 90 days'),
             kit.Col('promoter_net_pct', '% of mcap', 'bar'),
+            kit.Col('avg_paid', 'Avg paid', 'price', phone=False, help='Value-weighted average price of promoter open-market buys, 90 days'),
+            kit.Col('vs_paid', 'CMP vs paid', 'spct', help='Latest close against the average price promoters paid'),
+            kit.Col('last_buy', 'Last buy', 'date', phone=False, help='Latest promoter buy made public'),
             kit.Col('float_pct', '% of float', 'pct', phone=False, help='Net buy / (market cap x public holding %)'),
             kit.Col('range', '52W range · CMP', 'range', help='Latest close between the 52-week low and high (split and bonus adjusted)'),
             kit.Col('spark', '1Y price · insider trades', 'spark', phone=False, help='Green dots: open-market insider buys; red: sells, on the day made public'),
