@@ -27,7 +27,7 @@ PR #12 merged to main (c5ce96b). H1, H2, H8 ran on the development sample: see `
 H1 cuts C1..C9 (promoter, size, breadth, drawdown) were pre-registered and run: no cut shows an edge vs size-matched peers; large/relative-size purchases are significantly worse. See `docs/RESEARCH.md` section I. Phase 3 UI not started; product labels decided: insider buys and deals "no proven edge", insider sells a caution flag.
 
 ## Phase 3 (09 Oct 2026, IST)
-Phase 2 closed (RESEARCH.md K). Five product pages work against real table layouts, are wired into the app navigation on branch `feat/phase3-ui-shell` (draft PR #15) and pass smoke tests. To see the ledger populated: merge, then dispatch 'Forward ledger update' and 'Clean only' (adds the disclosure links).
+Phase 2 closed (RESEARCH.md K). Five product pages work against real table layouts, are wired into the app navigation on branch `feat/phase3-ui-shell` (draft PR #15) and pass smoke tests. The forward ledger was populated once from the branch (252 signals, append-only); after merge, dispatch 'Forward ledger update' to add new signals and 'Clean only' to add the disclosure links.
 
 ## Pending / next (autonomous order)
 1. Backfill finishes -> coverage report -> record numbers here and in `docs/AUDIT.md`.
