@@ -19,6 +19,13 @@ same day something is promised, started or finished. Pages follow the data:
   the data map; not merged yet.
 - The overnight cloud run did not start; nothing ran after 02:00 IST.
 
+## Update 09 Oct 2026 (Phase 1; details in `docs/AUDIT.md`, `docs/DECISIONS.md`, `docs/PROGRESS.md`)
+
+- Work is on branch `ccr-27a6c75f-o9ztpa` / draft PR #11; nothing merged to `main` (it deploys production).
+- Deals backfill redone with `--redo`: bulk +6,460 rows (flagged `intraday_round_trip`), block +0; item B's "dropped" counts below are superseded.
+- New: write-once raw layer, nightly raw capture (untested in production), 1 Jan 2026 product window, data-inventory workflow.
+- Open: nightly bulk/block 70-row cap (move to CSV endpoint?), native bhavcopy price layer, revision fields (item 14), `main` nightly clean ignores the round-trip flag until the branch merges.
+
 ## Tomorrow, in this order
 
 | # | Item | Done when |

@@ -23,7 +23,7 @@ Env vars work the same as secrets.toml if you'd rather not create the file
 ```bash
 python streamlit_app/tests/test_pages.py            # every page renders, under odd data shapes
 python streamlit_app/tests/test_overview_signals.py # Overview's rollups say what they claim
-python scripts/test_round_trip_filter.py            # the pipeline's ingestion-time round-trip filter
+python scripts/test_round_trip_filter.py            # the round-trip rule (now flags rows; no longer drops them at ingestion)
 python scripts/test_insider_cache.py                # the per-filing cache that keeps NSE calls down
 ```
 
