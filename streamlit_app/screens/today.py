@@ -13,7 +13,7 @@ from ui import kit
 from ui.kit import esc
 
 from insiders_clean import signals
-from screens.ctx import load, need_data
+from screens.ctx import load, need_data, with_prices, with_sparks
 
 CHIPS = ['All', 'Promoter buys only', 'Bulk deals', 'Large handshakes']
 REASONS = {'value_over_25pct_of_mcap': "value is over 25% of the company's market cap",
@@ -53,8 +53,16 @@ def _card(r, ctx, day) -> str:
         pledge_txt, tone = f'Promoter pledge {pledge:.1f}%', 'warn' if pledge > signals.HIGH_PLEDGE_PCT else 'mute'
     who = f'{kit.role(r["person_role"]).capitalize()} {r["person_name"]}'
     tranches = f' across {int(r["trades"])} tranches' if r['trades'] > 1 else ''
-    price_line = (f'Price paid <b class="num">₹{price:,.2f}</b> · current price and 52W high come with the price join'
-                  if price else 'Price paid not in the filing')
+    pr = ctx.prices[ctx.prices['isin'] == r['isin']] if not ctx.prices.empty else ctx.prices
+    cmp_ = pr['latest_close'].iloc[0] if len(pr) else None
+    if price and cmp_ is not None and pd.notna(cmp_):
+        move = (cmp_ / price - 1) * 100
+        price_line = (f'Paid <b class="num">₹{price:,.2f}</b> · now <b class="num">₹{cmp_:,.2f}</b> '
+                      f'<span class="{"up" if move >= 0 else "down"}">({move:+.1f}%)</span>')
+    else:
+        price_line = f'Paid <b class="num">₹{price:,.2f}</b>' if price else 'Price paid not in the filing'
+    if len(pr):
+        price_line += kit.range_bar(cmp_, pr['low_52w'].iloc[0], pr['high_52w'].iloc[0])
     context = kit.tag(f'Buy #{nth} in 14 days', 'info') if nth > 1 else kit.tag('First buy in 14 days', 'mute')
     return (f'<div class="spot"><div class="spot-h"><a href="{kit.company_href(sym)}" target="_self">{esc(str(company))}</a>'
             f'<span class="spot-sym">{esc(sym)}</span></div>'
@@ -95,13 +103,10 @@ def _outside_holders(ctx):
         if s.empty:
             kit.empty('No SAST filings by outside investors on the latest filing day.')
             return
-        st.dataframe(s.assign(link=s['symbol'].map(kit.company_href))[
-            ['link', 'company', 'acquirer_name', 'action_type', 'mode', 'percent_equity_traded', 'post_stake_pct']],
-            hide_index=True, width='stretch', column_config={
-                'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                'company': 'Company', 'acquirer_name': 'Investor', 'action_type': 'Action', 'mode': 'Mode',
-                'percent_equity_traded': st.column_config.NumberColumn('% traded', format='%+.2f%%'),
-                'post_stake_pct': st.column_config.NumberColumn('Stake after', format='%.2f%%')})
+        kit.table(s.assign(nse_symbol=s['symbol']), [
+            kit.Col('company', 'Company', 'co'), kit.Col('acquirer_name', 'Investor', 'text', sub='mode'),
+            kit.Col('action_type', 'Action'), kit.Col('percent_equity_traded', '% traded', 'spct'),
+            kit.Col('post_stake_pct', 'Stake after', 'pct')], limit=15)
         kit.caption(f'Filed {kit.day(latest)}. Promoters are left out here: their trades are in the insider filings above.')
 
 
@@ -123,18 +128,14 @@ def _coming_up(ctx):
             kit.empty('No board meetings on fund raising, preferential issues, buybacks, bonuses, splits or rights '
                       'in the next 10 days.')
             return
-        st.dataframe(rows.assign(link=rows['symbol'].map(kit.company_href),
-                                 what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', '))[
-            ['link', 'meeting_date', 'company', 'what']], hide_index=True, width='stretch', column_config={
-                'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                'meeting_date': st.column_config.DateColumn('Meeting', format='DD MMM YYYY'),
-                'company': 'Company', 'what': 'To consider'})
-
+        kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ')), [
+            kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
+            kit.Col('what', 'To consider')], limit=20)
 
 def render():
     ctx = load()
-    kit.head("Today's pulse", 'Did promoters, directors or big funds take a high-conviction position in the latest '
-                              'session? ESOPs, gifts, pledges, transfers and token buys are left out.')
+    kit.head("Today's pulse", 'Open-market insider trades and big-money deals in the latest session. ESOPs, gifts, '
+                              'pledges and token buys are left out.')
     if not need_data(ctx):
         return
     sess, day = _session(ctx)
@@ -189,17 +190,12 @@ def render():
                 kit.empty('No open-market insider trades in this session.')
             else:
                 rows = rows.assign(impact=rows['pct_of_float'].fillna(rows['pct_of_mcap'])).sort_values('impact', ascending=False)
-                st.dataframe(rows.assign(link=rows['nse_symbol'].map(kit.company_href), role=rows['person_role'].map(kit.role),
-                                         value_cr=rows['value'] / 1e7,
-                                         pct_of_float=kit.blank_text(rows['pct_of_float'], '{:.3f}%').values)[
-                    ['link', 'company', 'person_name', 'role', 'side', 'value_cr', 'pct_of_float', 'pct_of_mcap', 'trades',
-                     'listed_on']], hide_index=True, width='stretch', column_config={
-                        'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                        'company': 'Company', 'person_name': 'Person', 'role': 'Role', 'side': 'Side',
-                        'value_cr': st.column_config.NumberColumn('Value (₹ Cr)', format='%,.2f'),
-                        'pct_of_float': st.column_config.TextColumn('% of float'),
-                        'pct_of_mcap': st.column_config.NumberColumn('% of mcap', format='%.3f%%'),
-                        'trades': st.column_config.NumberColumn('Tranches', format='%d'), 'listed_on': 'Exchange'})
+                kit.table(with_sparks(with_prices(rows, ctx.prices), ctx), [
+                    kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
+                    kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
+                    kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('pct_of_float', '% of float', 'pct'),
+                    kit.Col('trades', 'Tranches', 'num', phone=False), kit.Col('range', '52W range · CMP', 'range'),
+                    kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=40)
         elif chip == 'Bulk deals':
             d = ctx.deals
             d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & (d['date'] == d['date'].max())] \
@@ -208,28 +204,19 @@ def render():
                 kit.empty('No bulk or block deals by real buyers or sellers in the latest session.')
             else:
                 d = d.sort_values('value', ascending=False)
-                st.dataframe(d.assign(link=d['nse_symbol'].map(kit.company_href))[
-                    ['link', 'company', 'client_name', 'side', 'value_cr', 'price', 'pct_of_mcap', 'trades', 'counterparties']],
-                    hide_index=True, width='stretch', column_config={
-                        'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                        'company': 'Company', 'client_name': 'Client', 'side': 'Side',
-                        'value_cr': st.column_config.NumberColumn('Value (₹ Cr)', format='%,.2f'),
-                        'price': st.column_config.NumberColumn('Price', format='%.2f'),
-                        'pct_of_mcap': st.column_config.NumberColumn('% of mcap', format='%.2f%%'),
-                        'trades': st.column_config.NumberColumn('Tranches', format='%d'), 'counterparties': 'Other side'})
+                kit.table(d, [
+                    kit.Col('company', 'Company', 'co'), kit.Col('client_name', 'Client', 'client', sub='counterparties'),
+                    kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
+                    kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('price', 'Price', 'num')], limit=40)
         else:
             h = hs[hs['large']] if not hs.empty else hs
             if h.empty:
                 kit.empty('No large handshakes (₹10 Cr+ or 0.5%+ of market cap) in the latest deal session.')
             else:
-                st.dataframe(h.assign(link=h['nse_symbol'].map(kit.company_href), value_cr=h['matched_value'] / 1e7,
-                                      who=h['seller_is_promoter'].map({True: 'Promoter', False: ''}))[
-                    ['link', 'company', 'sellers', 'who', 'buyers', 'value_cr', 'pct_of_mcap_sold']],
-                    hide_index=True, width='stretch', column_config={
-                        'link': st.column_config.LinkColumn('', display_text='Open', width='small'),
-                        'company': 'Company', 'sellers': 'Sold by', 'who': 'Seller is', 'buyers': 'Absorbed by',
-                        'value_cr': st.column_config.NumberColumn('Matched (₹ Cr)', format='%,.2f'),
-                        'pct_of_mcap_sold': st.column_config.NumberColumn('% of mcap sold', format='%.2f%%')})
+                kit.table(h.assign(who=h['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
+                    kit.Col('company', 'Company', 'co'), kit.Col('sellers', 'Sold by'), kit.Col('who', '', 'tags'),
+                    kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
+                    kit.Col('pct_of_mcap_sold', '% of mcap sold', 'pct')], limit=40)
         kit.caption("Token buys (under ₹25 L in companies above ₹5,000 Cr) and market makers are left out. "
                     "% of float needs the company's shareholding pattern; where it isn't loaded yet the column is blank.")
 

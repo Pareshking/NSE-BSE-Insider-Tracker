@@ -21,8 +21,8 @@ PAGES = [('', 'today'), ('screener', 'screener'), ('insider-trades', 'insider-tr
          ('capital-raises', 'capital-raises'), ('track-record', 'track-record'), ('data', 'data'),
          ('company?symbol=HCLTECH', 'company-hcltech'), ('entity', 'entity')]
 WIDTHS = {'desktop': (1440, 1000), 'phone': (390, 844)}
-# Streamlit shows its status widget ("Running...") only while the script runs.
-RUN_FINISHED = "() => !document.querySelector('[data-testid=\"stStatusWidget\"]')"
+# Streamlit marks the app "notRunning" once a script run has finished.
+RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
 
 

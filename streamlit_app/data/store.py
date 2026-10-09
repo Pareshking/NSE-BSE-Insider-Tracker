@@ -53,6 +53,24 @@ def prices() -> pd.DataFrame:
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def price_history() -> dict:
+    """ISIN -> (dates, closes) for the stocks in our filings, last ~400 days,
+    split and bonus adjusted (artifacts/price_history.parquet)."""
+    body = _read('artifacts/price_history.parquet')
+    if not body:
+        return {}
+    h = pd.read_parquet(io.BytesIO(body))
+    h['date'] = pd.to_datetime(h['date'])
+    return {i: (g['date'].to_numpy(), g['close'].to_numpy(dtype='float64')) for i, g in h.groupby('isin', sort=False)}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def market_strip() -> list:
+    body = _read('artifacts/market_strip.json')
+    return json.loads(body) if body else []
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def latest() -> dict:
     body = _read('clean/latest.json')

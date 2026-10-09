@@ -21,6 +21,7 @@
   --shadow: 0 1px 2px rgba(14, 23, 38, 0.04);
   --ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: 'Schibsted Grotesk', var(--ui);
 }
 
 /* ---- Shell: Streamlit's chrome off, one centred column ---- */
@@ -57,18 +58,21 @@ header[data-testid="stHeader"] { display: none; }
   border-radius: 10px; margin: 8px 0 4px; font-size: 12.5px; color: var(--ink-3); overflow: hidden; }
 .strip > span { padding: 6px 12px; border-right: 1px solid var(--line); white-space: nowrap; }
 .strip > span:last-child { border-right: 0; }
-.strip b { color: var(--ink); font-weight: 600; }
+.strip > span:has(> .opt) { } @media (max-width: 720px) { .strip > span:has(> .opt) { display: none; } .strip > span { padding: 5px 10px; } }
+.strip b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.strip em { font-style: normal; font-weight: 600; } .strip em.up { color: var(--buy); } .strip em.down { color: var(--sell); }
+.foot { margin: 36px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
 
 /* ---- Page head and reading tiles ---- */
 .head { margin: 18px 0 10px; }
-.head h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 0; line-height: 1.15; }
+.head h1 { font-family: var(--display); font-size: 32px; font-weight: 800; letter-spacing: -0.025em; margin: 0; line-height: 1.1; }
 .head p { margin: 4px 0 0; font-size: 14.5px; color: var(--ink-2); max-width: 75ch; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin: 6px 0 14px; }
 .tile { padding: 14px 18px; border-right: 1px solid #EDEFF3; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile:last-child { border-right: 0; }
 .tile .k { font-size: 12.5px; font-weight: 600; color: var(--ink-3); }
-.tile .v { font-size: 24px; font-weight: 700; line-height: 1.15; color: var(--ink); }
+.tile .v { font-family: var(--display); font-size: 25px; font-weight: 700; line-height: 1.15; color: var(--ink); font-variant-numeric: tabular-nums; }
 .tile .s { font-size: 12.5px; color: var(--ink-2); line-height: 1.4; }
 .tile .v.up { color: var(--buy); } .tile .v.down { color: var(--sell); }
 @media (max-width: 720px) { .tile { border-right: 0; border-bottom: 1px solid #EDEFF3; } .tile .v { font-size: 20px; } }
@@ -77,7 +81,7 @@ header[data-testid="stHeader"] { display: none; }
 [class*="st-key-card_"] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 16px 18px; }
 .card-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-.card-h h2 { font-size: 15.5px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.card-h h2 { font-family: var(--display); font-size: 16.5px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
 .card-h span { font-size: 12.5px; color: var(--ink-3); }
 .cap { margin: 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
 .note { background: var(--warn-tint); color: var(--warn-ink); border-radius: 10px; padding: 9px 12px; font-size: 13.5px; }
@@ -136,3 +140,10 @@ header[data-testid="stHeader"] { display: none; }
 .fl-track i.neg { right: 50%; background: var(--sell); }
 .fl-v { text-align: right; color: var(--ink); font-weight: 600; }
 @media (max-width: 720px) { .fl-row { grid-template-columns: 1fr; gap: 4px; } .fl-v { text-align: left; } }
+/* range bar and moves inside cards (same look as the tables) */
+.spot .up { color: var(--buy); font-weight: 600; } .spot .down { color: var(--sell); font-weight: 600; }
+.spot .rg { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.spot .rg-t { position: relative; flex: 1; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #F2D4D0, #E6E9EE 50%, #CBEAD9); }
+.spot .rg-t i { position: absolute; top: -4px; width: 3px; height: 12px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
+.spot .rg-v { font-size: 12px; white-space: nowrap; text-align: right; color: var(--ink); }
+.spot .rg-v em { font-style: normal; display: block; font-size: 10.5px; color: var(--ink-3); }

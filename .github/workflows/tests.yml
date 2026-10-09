@@ -19,3 +19,14 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt -r streamlit_app/requirements.txt pytest
       - run: python -m pytest tests -q
+
+  # Streamlit Cloud runs the site on Python 3.11 (streamlit_app/runtime.txt),
+  # which rejects f-string forms 3.12 accepts. Compile the site's code on 3.11.
+  py311-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m compileall -q streamlit_app insiders_clean collectors

@@ -65,3 +65,38 @@ def need_data(ctx: Ctx) -> bool:
                  'R2 credentials are not configured for this app (see .streamlit/secrets.toml.example).')
         return False
     return True
+
+
+PRICE_COLS = ['latest_close', 'low_52w', 'high_52w', 'pct_off_high', 'mcap_bucket']
+
+
+def with_prices(df: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """Adds the latest close and 52-week range by ISIN (blank where the stock
+    has no price in our NSE/BSE files)."""
+    if df.empty:
+        return df
+    if prices.empty or 'isin' not in df:
+        return df.assign(**{c: None for c in PRICE_COLS})
+    p = prices.drop_duplicates('isin').set_index('isin')
+    return df.assign(**{c: df['isin'].map(p[c]) if c in p else None for c in PRICE_COLS})
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _marks(eligible: pd.DataFrame) -> dict:
+    """ISIN -> [(day made public, side)] for open-market insider trades."""
+    if eligible.empty:
+        return {}
+    e = eligible.dropna(subset=['isin', 'seen'])
+    return {i: list(zip(g['seen'], g['side'])) for i, g in e.groupby('isin', sort=False)}
+
+
+def with_sparks(df: pd.DataFrame, ctx: Ctx) -> pd.DataFrame:
+    """Adds `_spark` (the year's price line, insider trades marked) and
+    `_chg_1y` by ISIN."""
+    from ui import kit
+    if df.empty or 'isin' not in df:
+        return df
+    hist, marks = store.price_history(), _marks(ctx.eligible)
+    drawn = [kit.spark(*hist[i], marks.get(i, ())) if isinstance(i, str) and i in hist else (None, None)
+             for i in df['isin']]
+    return df.assign(_spark=[s for s, _ in drawn], _chg_1y=[c for _, c in drawn])

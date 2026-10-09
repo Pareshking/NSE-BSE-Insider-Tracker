@@ -76,3 +76,31 @@ def price_summary(close: pd.DataFrame, meta: pd.DataFrame, factors: pd.DataFrame
         out['mcap_rank'] = out['symbol'].map(m['mcap_rank'])
     out['mcap_bucket'] = out['mcap_rank'].map(bucket)
     return out.reindex(columns=COLUMNS)
+
+
+def price_history(close: pd.DataFrame, isins, days: int = 400) -> pd.DataFrame:
+    """Long table (isin, date, close) of adjusted closes over the last `days`
+    calendar days for the given ISINs: the price lines on the site's pages."""
+    keep = [i for i in pd.unique(pd.Series(list(isins)).dropna()) if i in close.columns]
+    if not keep:
+        return pd.DataFrame(columns=['isin', 'date', 'close'])
+    win = close.loc[close.index.max() - pd.Timedelta(days=days):, keep]
+    out = win.reset_index().melt(id_vars=win.index.name or 'date', var_name='isin', value_name='close')
+    out = out.rename(columns={win.index.name or 'date': 'date'}).dropna(subset=['close'])
+    out['close'] = out['close'].astype('float32')
+    return out[['isin', 'date', 'close']].sort_values(['isin', 'date']).reset_index(drop=True)
+
+
+def market_strip(ix: pd.DataFrame, names=('Nifty 500', 'Nifty Smallcap 250', 'Nifty Microcap 250')) -> list[dict]:
+    """Per broad index: last close and date, distance from the 200-session
+    average, and the 1-month (21-session) change."""
+    out = []
+    for name in names:
+        s = ix[ix['symbol'] == name].drop_duplicates('date').set_index('date')['close'].sort_index().dropna()
+        if len(s) < 22:
+            continue
+        ma = s.tail(200).mean() if len(s) >= 200 else float('nan')
+        out.append({'index': name, 'date': s.index[-1].strftime('%Y-%m-%d'), 'close': float(s.iloc[-1]),
+                    'vs_200d': float(s.iloc[-1] / ma - 1) if ma == ma else None,
+                    'chg_1m': float(s.iloc[-1] / s.iloc[-22] - 1)})
+    return out

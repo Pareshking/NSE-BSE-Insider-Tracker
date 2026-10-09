@@ -29,6 +29,7 @@ from screens import (
     track_record,
 )
 from screens.ctx import load
+from data import store
 from ui import kit, theme
 
 theme.inject()
@@ -71,17 +72,18 @@ kit.topbar(PAGES, active, pill, warn)
 
 if not ctx.trades.empty:
     e = ctx.eligible
-    parts = [f'<b>{len(ctx.trades):,}</b> filings',
-             f'<b>{int(e["is_market"].sum()):,}</b> open-market',
-             f'<b>{int(ctx.trades["needs_review"].astype("boolean").fillna(False).sum()):,}</b> held back',
-             f'deals <b>{len(ctx.deals):,}</b>']
-    if not ctx.shareholding.empty:
-        parts.append(f'shareholding <b>{ctx.shareholding["symbol"].nunique():,}</b> companies')
+    parts = []
+    for m in store.market_strip()[:3]:
+        vs = m.get('vs_200d')
+        tone = 'up' if vs is not None and vs >= 0 else 'down'
+        parts.append(f'{kit.esc(m["index"].replace("Nifty Smallcap", "Smallcap").replace("Nifty Microcap", "Microcap"))} <b>{m["close"]:,.0f}</b>'
+                     + (f' <em class="{tone}">{vs * 100:+.1f}% vs 200D</em>' if vs is not None else ''))
+    parts += [f'<span class="opt"><b>{len(ctx.trades):,}</b> filings</span>',
+              f'<span class="opt"><b>{int(e["is_market"].sum()):,}</b> open-market</span>',
+              f'<span class="opt"><b>{len(ctx.deals):,}</b> deals</span>']
     kit.strip(parts)
 
 nav.run()
 
-st.html('<p class="cap" style="margin-top:32px;border-top:1px solid var(--line);padding-top:10px">'
-        'Public NSE and BSE disclosures, cleaned and republished for research. Not investment advice and not a '
-        'recommendation; no relationship with either exchange or SEBI. Filings can be revised or withdrawn at '
-        'source: check the exchange filing before acting on anything here.</p>')
+st.html('<p class="foot">NSE and BSE disclosures, cleaned nightly · prices from the NSE and BSE daily bhavcopy, '
+        'split and bonus adjusted · check the exchange filing before acting.</p>')

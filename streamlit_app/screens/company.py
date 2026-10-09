@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from ui import kit
+from data import store
+from ui import charts, kit
 from ui.kit import esc
 
 from insiders_clean import signals
@@ -62,7 +63,14 @@ def render():
     shr = sh[sh['symbol'].astype(str).str.upper() == sym] if not sh.empty else pd.DataFrame()
     pledge = shr['promoter_pledge_pct'].iloc[0] if len(shr) else None
     signed = prom['pct_of_mcap'] * prom['side'].map({'BUY': 1, 'SELL': -1})
+    isin = (rec.get('isin') if rec is not None else None) or (t['isin'].dropna().iloc[0] if t['isin'].notna().any() else None)
+    pr = ctx.prices[ctx.prices['isin'] == isin].iloc[0] if isin and not ctx.prices.empty and (ctx.prices['isin'] == isin).any() else None
+    price_tile = (kit.Tile('Price', f'₹{pr["latest_close"]:,.2f}',
+                           f'{pr["pct_off_high"] * 100:+.0f}% from 52W high ₹{pr["high_52w"]:,.0f} · low ₹{pr["low_52w"]:,.0f}',
+                           'up' if pr['pct_off_high'] > -0.05 else '')
+                  if pr is not None and pd.notna(pr.get('latest_close')) else kit.Tile('Price', '—', 'not in our NSE/BSE price files'))
     kit.tiles([
+        price_tile,
         kit.Tile('Promoter net, 12 months', kit.rupees(prom['signed_value'].sum(), signed=True),
                  f'{kit.pct(signed.sum(), 3, signed=True)} of market cap, open market only',
                  'up' if prom['signed_value'].sum() > 0 else 'down' if prom['signed_value'].sum() < 0 else ''),
@@ -74,6 +82,14 @@ def render():
                  (f'free float {kit.pct(shr["public_holding_pct"].iloc[0], 1)} · ' if len(shr) else '')
                  + 'pledge as % of promoter shares, latest quarter'),
     ])
+
+    hist = store.price_history().get(isin) if isin else None
+    with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):
+        chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
+        if chart is None:
+            kit.empty('No price history for this stock in our NSE/BSE price files yet.')
+        else:
+            st.altair_chart(chart, width='stretch')
 
     # Net open-market flow by who, 12 months (owner's spec: promoters vs
     # directors/KMP vs other insiders vs institutional deal buyers).
@@ -93,13 +109,10 @@ def render():
     hs = signals.handshakes(own, ctx.trades, days=365, ref=ctx.deals['date'].max() if not ctx.deals.empty else None)
     if not hs.empty:
         with kit.card('Handshakes in this stock', 'co_hs', 'who sold, who absorbed it'):
-            st.dataframe(hs.assign(value_cr=hs['matched_value'] / 1e7,
-                                   who=hs['seller_is_promoter'].map({True: 'Promoter', False: ''}))[
-                ['date', 'sellers', 'who', 'buyers', 'value_cr', 'pct_of_mcap_sold']], hide_index=True, width='stretch',
-                column_config={'date': st.column_config.DateColumn('Date', format='DD MMM YYYY'), 'sellers': 'Sold by',
-                               'who': 'Seller is', 'buyers': 'Absorbed by',
-                               'value_cr': st.column_config.NumberColumn('Matched (₹ Cr)', format='%,.2f'),
-                               'pct_of_mcap_sold': st.column_config.NumberColumn('% of mcap sold', format='%.2f%%')})
+            kit.table(hs.assign(who=hs['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
+                kit.Col('date', 'Date', 'date'), kit.Col('sellers', 'Sold by'), kit.Col('who', 'Seller', 'tags'),
+                kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
+                kit.Col('pct_of_mcap_sold', '% of mcap sold', 'bar')], limit=30)
 
     events = []
     for _, r in t.assign(seen=pd.to_datetime(t['broadcast_date'], errors='coerce')).sort_values('seen', ascending=False).head(60).iterrows():
@@ -134,4 +147,4 @@ def render():
             f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" target="_blank">NSE insider trading</a> · '
             f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-sast-regulation-29?symbol={q}" target="_blank">NSE SAST</a> · '
             f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank">NSE quote</a>. '
-            'A price chart with each filing marked at its broadcast date arrives with the price join.</p>')
+            '</p>')

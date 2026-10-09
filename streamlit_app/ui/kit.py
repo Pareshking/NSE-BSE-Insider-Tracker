@@ -50,6 +50,8 @@ def pct(v, digits: int = 2, signed: bool = False) -> str:
     f = _finite(v)
     if f is None:
         return '—'
+    if f != 0 and abs(f) < 0.5 * 10 ** -digits:
+        return f'{"−" if f < 0 else "+" if signed else ""}<{10 ** -digits:.{digits}f}%'
     return f'{f:+.{digits}f}%' if signed else f'{f:.{digits}f}%'
 
 
@@ -161,3 +163,9 @@ def topbar(pages: list, active, pill_text: str, pill_warn: bool = False) -> None
 def strip(parts: list[str]) -> None:
     """The data line under the bar: each part is trusted HTML built by the caller."""
     st.html('<div class="strip">' + ''.join(f'<span>{p}</span>' for p in parts) + '</div>')
+
+
+
+
+# Tables live in ui/table.py; re-exported so pages keep one import.
+from ui.table import Col, range_bar, spark, table  # noqa: E402,F401
