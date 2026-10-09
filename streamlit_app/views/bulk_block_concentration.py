@@ -101,7 +101,7 @@ for tab, tab_name in zip(deal_type, CATEGORY_BY_TAB):
         else:
             df["_market_cap"] = pd.NA
 
-        window_label = st.radio("Window", ["7D", "30D", "90D"], index=1, horizontal=True, key=f"win-{category}")
+        window_label = st.radio("Window", ["7D", "30D", "90D"], index=2, horizontal=True, key=f"win-{category}")
         window_days = {"7D": 7, "30D": 30, "90D": 90}[window_label]
         cutoff = run_date - pd.Timedelta(days=window_days - 1)
         win_df = df[(df["_date"] >= cutoff) & (df["_date"] <= run_date)]

@@ -52,7 +52,7 @@ df.loc[is_disposal, ["_signed_qty", "_signed_val"]] *= -1
 unrecognized = (~is_disposal & ~is_acq).sum()
 
 WINDOWS = {"7D": 7, "30D": 30, "90D": 90}
-window_label = st.radio("Window", list(WINDOWS.keys()), index=1, horizontal=True)
+window_label = st.radio("Window", list(WINDOWS.keys()), index=2, horizontal=True)
 window_days = WINDOWS[window_label]
 cutoff = run_date - pd.Timedelta(days=window_days - 1)
 win_df = df[(df["_date"] >= cutoff) & (df["_date"] <= run_date)]

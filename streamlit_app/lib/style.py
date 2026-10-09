@@ -13,20 +13,20 @@ import streamlit as st
 from . import fields
 
 COLORS = {
-    "bg": "#ffffff",
-    "bg_sub": "#f8fafc",
-    "border": "#e2e8f0",
-    "text": "#0f172a",
-    "text_2": "#64748b",
-    "text_3": "#94a3b8",
-    "blue": "#2563eb",
-    "blue_bg": "#eff6ff",
-    "green": "#059669",
-    "green_bg": "#ecfdf5",
-    "amber": "#b45309",
-    "amber_bg": "#fffbeb",
-    "red": "#dc2626",
-    "red_bg": "#fef2f2",
+    "bg": "#FFFFFF",
+    "bg_sub": "#F4F5F8",
+    "border": "#E3E6EB",
+    "text": "#0E1726",
+    "text_2": "#3C4657",
+    "text_3": "#5E6878",
+    "blue": "#4F46E5",
+    "blue_bg": "#EEF0FF",
+    "green": "#067647",
+    "green_bg": "#E8F5EE",
+    "amber": "#B54708",
+    "amber_bg": "#FEF6EA",
+    "red": "#B42318",
+    "red_bg": "#FDEDEB",
     "nse": "#6d28d9",
     "nse_bg": "#f5f3ff",
     "bse": "#0e7490",
@@ -70,9 +70,9 @@ def inject_base_css():
     st.markdown(
         f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
-.mono {{ font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }}
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..700&display=swap');
+html, body, [class*="css"] {{ font-family: 'Geist', -apple-system, 'Segoe UI', Roboto, sans-serif; }}
+.mono {{ font-family: 'Geist Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }}
 .badge {{
     display: inline-flex; align-items: center; gap: 5px;
     padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 600;
@@ -84,7 +84,7 @@ html, body, [class*="css"] {{ font-family: 'IBM Plex Sans', sans-serif; }}
     border-radius: 10px; padding: 16px;
 }}
 .kpi-label {{ font-size: 10.5px; font-weight: 600; color: {COLORS['text_3']}; letter-spacing: .04em; }}
-.kpi-value {{ font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 8px; }}
+.kpi-value {{ font-family: 'Geist Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 8px; }}
 .kv-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid {COLORS['border']}; font-size: 12.5px; }}
 .sec-title {{ font-size: 11px; font-weight: 700; color: {COLORS['text_3']}; letter-spacing: .05em; margin: 18px 0 4px 0; }}
 
@@ -127,7 +127,21 @@ a[href*="streamlit.io"] {{ display: none !important; }}
    tightening. 1.2rem (the value here while the stylesheet was being
    silently dropped, so nobody saw it apply) clips "Insiders" and the
    session timestamp behind the 60px header. */
-[data-testid="stMainBlockContainer"] {{ padding-top: 4.5rem; }}
+[data-testid="stMainBlockContainer"] {{ padding-top: 4.5rem; padding-left: 1.25rem; padding-right: 1.25rem; max-width: 100%; }}
+@media (max-width: 640px) {{ [data-testid="stMainBlockContainer"] {{ padding-left: .5rem; padding-right: .5rem; }} }}
+/* Dense, financial-grade type: tighter headings and vertical rhythm, tabular numerals in tables. */
+h1 {{ font-size: 1.55rem !important; letter-spacing: -0.02em; margin-bottom: .25rem; }}
+h2, h3 {{ letter-spacing: -0.02em; }}
+[data-testid="stVerticalBlock"] {{ gap: .65rem; }}
+[data-testid="stDataFrame"] {{ font-variant-numeric: tabular-nums; }}
+.pill {{ display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }}
+.pill-buy {{ background: {COLORS['green_bg']}; color: {COLORS['green']}; }}
+.pill-sell {{ background: {COLORS['red_bg']}; color: {COLORS['red']}; }}
+.pill-tag {{ background: {COLORS['bg_sub']}; color: {COLORS['text_2']}; border: 1px solid {COLORS['border']}; }}
+.pill-prom {{ background: {COLORS['blue_bg']}; color: #4338CA; }}
+.evt-table td.num, .evt-table th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+.evt-table.dense td {{ padding: 5px 8px; }}
+.evt-table.dense th {{ padding: 6px 8px; }}
 
 /* ---- Top nav bar (position="top"), not a sidebar -- this app is
    used on mobile, where a sidebar drawer costs a tap and half the
@@ -138,7 +152,7 @@ a[href*="streamlit.io"] {{ display: none !important; }}
     color: {COLORS['text_2']};
 }}
 [data-testid="stTopNavLink"][aria-current="page"] {{
-    background: {COLORS['blue_bg']}; color: #1d4ed8; font-weight: 600;
+    background: {COLORS['blue_bg']}; color: #4338CA; font-weight: 600;
 }}
 .top-brand {{
     display: flex; align-items: baseline; justify-content: space-between;
@@ -335,3 +349,43 @@ def kpi_card(label: str, value: str, sub_html: str = "") -> str:
         f'<div class="kpi-card"><div class="kpi-label">{label}</div>'
         f'<div class="kpi-value">{value}</div>{sub_html}</div>'
     )
+
+
+def pill(text: str, kind: str = "tag") -> str:
+    """Soft pill: kind is buy (green), sell (muted rose), prom (indigo, promoter) or tag (neutral)."""
+    return f'<span class="pill pill-{kind}">{text}</span>'
+
+
+def side_pill(side, market: bool | None = None) -> str:
+    s = str(side).upper()
+    if s == "BUY":
+        return pill("Market Buy" if market else "Buy", "buy")
+    if s == "SELL":
+        return pill("Market Sell" if market else "Sell", "sell")
+    return pill(s if s not in ("NONE", "NAN", "") else "-", "tag")
+
+
+def category_pill(label: str) -> str:
+    return pill(label, "prom" if "romoter" in str(label) else "tag")
+
+
+def fmt_cr(value) -> str:
+    """Rupees as crore with 2 decimals (Screener.in trade-hub style); '-' when missing."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    return "-" if v != v else f"{v / 1e7:,.2f}"
+
+
+def paginate(df: "pd.DataFrame", key: str, page_size: int = 50) -> tuple["pd.DataFrame", int]:
+    """Slice `df` for the current page and draw a compact pager. Returns (page rows, row offset of the page)."""
+    n = len(df)
+    pages = max(1, -(-n // page_size))
+    if pages == 1:
+        return df, 0
+    c1, c2 = st.columns([1, 5])
+    page = c1.number_input("Page", min_value=1, max_value=pages, value=1, step=1, key=f"{key}-page", label_visibility="collapsed")
+    c2.caption(f"Page {page} of {pages} · rows {(page - 1) * page_size + 1:,}-{min(page * page_size, n):,} of {n:,}")
+    start = (int(page) - 1) * page_size
+    return df.iloc[start:start + page_size], start

@@ -1,0 +1,36 @@
+name: Precompute slim assets
+
+# Writes artifacts/prices_summary_slim.parquet and ledger/ledger_marks.parquet (derived, rewritten each run). Dispatch only; aggregate output only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  slim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Precompute
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/precompute_slim.py | tee slim.log
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Slim assets (aggregate)' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(slim|marks):' slim.log | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY" || true

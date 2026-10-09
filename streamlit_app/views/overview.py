@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib import dedup, fields, r2_data, style
+from lib import clean_data, dedup, fields, r2_data, style, watchlist
 
 # Rights/preferential carry event dates from way earlier (or, for some
 # corporate-action fields, later -- e.g. a record date) in a listing's
@@ -125,24 +125,38 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
             df["_date"] = df.get("canonical_transaction_date")
             ttype = fields.text_col(df, "canonical_transaction_type", upper=True)
             df["_side"] = ttype.map(lambda t: "BUY" if "ACQUI" in t else ("SELL" if "DISPOS" in t else None))
+            df["_by"] = df.get("canonical_person")
+            df["_cat"] = df.get("canonical_person_category")
+            df["_mode"] = df.get("canonical_mode")
         elif category in ("bulk_deals", "block_deals"):
             df["_value"] = fields.num_col(df, "canonical_quantity", fill=None) * fields.num_col(df, "canonical_price", fill=None)
             df["_date"] = df.get("canonical_event_date")
             df["_side"] = fields.text_col(df, "canonical_side", upper=True).where(lambda s: s.isin(["BUY", "SELL"]))
+            df["_by"] = df.get("canonical_client")
+            df["_cat"] = "Bulk deal" if category == "bulk_deals" else "Block deal"
+            df["_mode"] = None
         else:
             df["_value"] = fields.num_col(df, "canonical_amount_raised", fill=None)
             df["_date"] = df.get("canonical_event_date")
             df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
+            df["_by"] = None
+            df["_cat"] = r2_data.CATEGORY_LABELS.get(category, category)
+            df["_mode"] = df.get("canonical_stage")
         df["_category"] = category
         # Quantity/price identify the underlying trade for the dedup below;
         # they are meaningless for the issuance categories, which is fine --
         # those never take the bulk/block branch.
         df["_qty"] = fields.num_col(df, "canonical_quantity", fill=None)
         df["_price"] = fields.num_col(df, "canonical_price", fill=None)
-        combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price",
-                                 "canonical_company", "exchange"]])
+        if "canonical_isin" not in df.columns:
+            df["canonical_isin"] = None
+        for extra in ("_by", "_cat", "_mode", "canonical_symbol"):
+            if extra not in df.columns:
+                df[extra] = None
+        combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode",
+                                 "canonical_company", "canonical_isin", "canonical_symbol", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
-        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "canonical_company", "exchange"])
+        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode", "canonical_company", "canonical_isin", "canonical_symbol", "exchange"])
     combined = combined.dropna(subset=["_value"])
     if not combined.empty:
         combined["_parsed_date"] = fields.parse_dates(combined["_date"])
@@ -230,6 +244,13 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
     }
 
 
+def _accum_badge(badges: dict, isin) -> str:
+    text = badges.get(str(isin)) if isin else None
+    if not text:
+        return ""
+    return f'<div style="font-size:10.5px;font-weight:400;color:{style.COLORS["text_3"]};">{text}</div>'
+
+
 def matches_company(df: pd.DataFrame, query: str) -> pd.DataFrame:
     if not query or df.empty:
         return df
@@ -283,6 +304,15 @@ with h4:
 exchanges = tuple(r2_data.EXCHANGES) if exchange_choice == "Both" else (exchange_choice.lower(),)
 with r2_data.guard(f"the {selected_date} run"):
     agg = overview_aggregates(client, selected_date, exchanges)
+# Multi-quarter context from the clean layer, joined to the feed by ISIN. Empty (no badges) if it cannot be read.
+acc_badges = clean_data.accumulation_badges(client)
+wl_only = watchlist.controls()
+wl = watchlist.get()
+if wl:
+    _feed = watchlist.limit(agg["top_transactions"], wl, "canonical_isin", "canonical_symbol")
+    _recent = _feed[pd.to_datetime(_feed["_parsed_date"]) >= pd.to_datetime(_feed["_parsed_date"]).max() - pd.Timedelta(days=7)] if len(_feed) else _feed
+    st.caption(f"Watchlist alerts: {len(wl)} tracked; {len(_feed)} filing(s) in the 90-day feed, {len(_recent)} in the last 7 days"
+               + (f", latest {style.fmt_date(_recent['_date'].iloc[0])}." if len(_recent) else "."))
 # The category pulse strip that used to sit here (five row counts with a
 # this-week-vs-usual delta) is gone: on mobile its five cards stacked into a
 # full screen of scrolling that had to be got past before reaching anything
@@ -311,6 +341,8 @@ with sig1:
         st.caption("No insider-trading data.")
     else:
         ranked = agg["promoter_ranking"]
+        if wl_only:
+            ranked = watchlist.limit(ranked, wl, None, "symbol")
         buyers = ranked[ranked["net_val"] > 0].head(4)
         sellers = ranked[ranked["net_val"] < 0].head(2)
         if buyers.empty and sellers.empty:
@@ -342,40 +374,43 @@ with sig2:
     # trading -- since a big bulk deal or preferential allotment is just as
     # much "what happened today" as an insider filing.
     combined = matches_company(agg["top_transactions"], search_query)
+    if wl_only:
+        combined = watchlist.limit(combined, wl, "canonical_isin", "canonical_symbol")
     if combined.empty:
         st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
     else:
-        top_txns = combined.head(8)
+        top_txns = combined.head(12)
         rows_html = []
         for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
             side = r.get("_side")
-            if side == "BUY":
-                side_badge = style.badge("BUY", "green", "green_bg", dot=False)
-            elif side == "SELL":
-                side_badge = style.badge("SELL", "red", "red_bg", dot=False)
-            elif side == "ISSUANCE":
-                side_badge = style.badge("ISSUANCE", "text_2", "bg_sub", dot=False)
-            else:
-                side_badge = "—"
+            mode = str(r.get("_mode") or "")
+            market = "MARKET" in mode.upper() and "OFF" not in mode.upper()
+            side_html = style.side_pill(side, market) if side in ("BUY", "SELL") else style.pill("Issuance" if side == "ISSUANCE" else "-")
+            qty, price = r.get("_qty"), r.get("_price")
             rows_html.append(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
-                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}</td>'
-                f'<td>{style.badge(r2_data.CATEGORY_LABELS.get(r["_category"], r["_category"]), "text_2", "bg_sub", dot=False)}</td>'
-                f'<td>{side_badge}</td>'
-                f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
+                f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}{_accum_badge(acc_badges, r.get("canonical_isin"))}</td>'
+                f'<td>{r.get("_by") or "—"}</td>'
+                f'<td>{style.category_pill(str(r.get("_cat") or "—").title())}</td>'
+                f'<td style="color:{style.COLORS["text_2"]};">{mode or "—"}</td>'
+                f'<td>{side_html}</td>'
+                f'<td class="mono num">{style.fmt_qty(qty) if pd.notna(qty) else "—"}</td>'
+                f'<td class="mono num">{f"{price:,.2f}" if pd.notna(price) else "—"}</td>'
+                f'<td class="mono num" style="font-weight:600;">{style.fmt_cr(r["_value"])}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
             )
         st.markdown(
-            '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th><th>SIDE</th>'
-            '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
+            '<div class="table-scroll"><table class="evt-table dense"><tr><th>DATE</th><th>COMPANY</th><th>TRADED BY</th><th>CATEGORY</th>'
+            '<th>MODE</th><th>SIDE</th><th class="num">QTY</th><th class="num">PRICE</th><th class="num">VALUE (₹ CR)</th><th style="text-align:right;">EXCH</th></tr>'
             + "".join(rows_html) + "</table></div>",
             unsafe_allow_html=True,
         )
         if search_query:
             st.caption(f"{len(combined):,} transactions match “{search_query}”, {len(top_txns)} most recent shown.")
     st.caption(
-        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. "
+        "Most recent first, last 90 days. Both sides of a bulk/block deal are one row. A bracketed badge marks a company whose "
+        "promoters net bought at least Rs 25 lakh over 180 days (clean layer, from 1 Jan 2026); it is context, not a signal. "
         "Full drill-down on Evidence & Drill-down."
     )
 
@@ -422,6 +457,8 @@ if agg["stake_changes"].empty and not search_query:
     st.caption("No holding-before/after data this run.")
 else:
     hdf = matches_company(agg["stake_changes"], search_query)
+    if wl_only:
+        hdf = watchlist.limit(hdf, wl, "canonical_isin", "canonical_symbol")
     if hdf.empty:
         st.caption(f"No stake changes match “{search_query}”." if search_query else "No stake changes with a reliable base holding this run.")
     else:
