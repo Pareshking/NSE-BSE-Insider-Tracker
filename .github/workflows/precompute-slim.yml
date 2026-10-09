@@ -3,9 +3,6 @@ name: Precompute slim assets
 # Writes artifacts/prices_summary_slim.parquet and ledger/ledger_marks.parquet (derived, rewritten each run). Dispatch only; aggregate output only.
 on:
   workflow_dispatch:
-  push:   # TEMPORARY: one-off run from the feature branch; removed in the next commit
-    branches: [feat/phase3-ui-shell]
-    paths: ['.github/workflows/precompute-slim.yml']
 
 permissions:
   contents: read
