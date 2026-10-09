@@ -30,6 +30,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta, datetime
 from pathlib import Path
 import requests
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 
 BASE     = 'https://www.nseindia.com'
 LIST_URL = f'{BASE}/api/corporates-pit-gg?index=equities'
@@ -75,6 +78,8 @@ session.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plai
 
 def fetch_filing_list():
     r = session.get(LIST_URL, timeout=20)
+    _raw_capture('nse', 'insider_filing_list', r.content, url=LIST_URL, status=r.status_code,
+                 content_type=r.headers.get('Content-Type'))
     r.raise_for_status()
     data = r.json()
     rows = data.get('data', []) if isinstance(data, dict) else []
@@ -224,6 +229,8 @@ def fetch_and_parse(filing):
         try:
             r = session.get(url, timeout=12)
             if r.status_code == 200 and r.text:
+                _raw_capture('nse', 'insider_xbrl', r.content, url=url, status=r.status_code,
+                             content_type=r.headers.get('Content-Type'))
                 recs = parse_disclosures(r.text)
                 return [to_row(rec, filing) for rec in recs]
             return []

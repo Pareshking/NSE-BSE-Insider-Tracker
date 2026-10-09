@@ -19,6 +19,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 
 BASE    = 'https://www.nseindia.com'
 PAGE    = f'{BASE}/report-detail/display-bulk-and-block-deals'
@@ -53,6 +56,7 @@ def browser():
 def js_fetch(d, url):
     raw  = json.loads(d.execute_async_script(_JS, url))
     text = raw.get('text', '')
+    _raw_capture('nse', 'bulk_deals', text, url=url, status=raw.get('status', 0), content_type='application/json')
     try:
         raw['json'] = json.loads(text)
     except Exception as exc:

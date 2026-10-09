@@ -127,3 +127,39 @@ def test_redo_refetches_done_chunks_and_adds_nothing_twice():
     redo = run(True)
     assert first['rows_added'] > 0 and again['chunks_skipped_done'] == 1 and again['chunks_done'] == 0
     assert redo['chunks_done'] == 1 and redo['rows_added'] == 0  # idempotent merge
+
+
+def test_capture_then_flush_stores_exact_bytes_with_original_fetch_time(tmp_path, monkeypatch):
+    import raw_capture
+    import raw_flush
+    monkeypatch.setattr(raw_capture, 'DIR', tmp_path)
+    body = '{"data": [{"x": 1}]}'
+    name = raw_capture.capture('nse', 'bulk_deals', body, url='https://nse/api', status=200,
+                              content_type='application/json', covers={'from': '2026-10-08'})
+    assert name and len(list(tmp_path.iterdir())) == 2
+    r2 = OnceR2()
+    res = raw_flush.flush(r2, tmp_path, bucket='b')
+    assert (res['found'], res['stored'], res['failed']) == (1, 1, 0) and not list(tmp_path.iterdir())
+    blob = next(k for k in r2.objects if '/blobs/' in k)
+    assert r2.objects[blob] == body.encode()
+    meta = json.loads(next(v for k, v in r2.objects.items() if '/fetches/' in k))
+    assert meta['url'] == 'https://nse/api' and meta['covers'] == {'from': '2026-10-08'}
+    assert meta['fetched_at_utc'].startswith('20')
+
+
+def test_flush_keeps_a_capture_that_could_not_be_stored(tmp_path, monkeypatch):
+    import raw_capture
+    import raw_flush
+    monkeypatch.setattr(raw_capture, 'DIR', tmp_path)
+    raw_capture.capture('bse', 'bulk', b'[1]', url='u')
+
+    class Down(OnceR2):
+        def put_object(self, *a, **k):
+            raise RuntimeError('R2 down')
+    res = raw_flush.flush(Down(), tmp_path, bucket='b')
+    assert res['failed'] == 1 and res['stored'] == 0 and len(list(tmp_path.iterdir())) == 2  # nothing lost
+
+
+def test_flush_of_a_missing_folder_is_not_an_error(tmp_path):
+    import raw_flush
+    assert raw_flush.flush(OnceR2(), tmp_path / 'nope', bucket='b')['found'] == 0

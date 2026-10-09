@@ -87,11 +87,12 @@ class RawStore:
         return True
 
     def put(self, source: str, dataset: str, body: bytes, *, url: str, params: dict | None = None,
-            status: int = 200, content_type: str | None = None, covers: dict | None = None) -> dict:
+            status: int = 200, content_type: str | None = None, covers: dict | None = None,
+            fetched_at: datetime | None = None) -> dict:
         """Store one response. Returns the fetch record (with `blob_key`, `fetch_key`)."""
         digest = sha256_hex(body)
         ext = _ext(content_type, body)
-        now = self.clock()
+        now = fetched_at or self.clock()
         blob_key = f'{PREFIX}/{source}/{dataset}/blobs/{digest[:2]}/{digest}.{ext}'
         if self._put_once(blob_key, body, content_type or 'application/octet-stream'):
             self.written += 1

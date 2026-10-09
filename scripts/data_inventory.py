@@ -76,6 +76,7 @@ def describe_frame(frame: pd.DataFrame, category: str | None) -> dict:
                                 pd.Series([x.strftime('%Y-%m') for x in ok]).value_counts().sort_index().tail(24).items()}
     if 'intraday_round_trip' in frame.columns:
         out['intraday_round_trip_flagged'] = int(frame['intraday_round_trip'].fillna(False).astype(bool).sum())
+        out['rows_with_round_trip_flag_set_or_false'] = int(frame['intraday_round_trip'].notna().sum())
     else:
         out['intraday_round_trip_flagged'] = None  # column absent: written before flags existed
     for c in ('first_seen', 'last_seen'):

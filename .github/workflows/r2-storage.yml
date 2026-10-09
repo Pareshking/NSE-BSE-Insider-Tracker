@@ -136,6 +136,18 @@ jobs:
         run: python scripts/bse_validate.py
 
       # --- Write only VERIFIED categories to R2 ---
+      - name: Store raw responses (write-once)
+        # Everything the collectors above fetched, byte for byte, into
+        # raw_v2/ in R2 (insiders_clean/raw_store.py). Goes red if any
+        # capture could not be stored.
+        if: always()
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/raw_flush.py
+
       - name: Write validated datasets to R2
         if: always()
         env:

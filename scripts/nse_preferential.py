@@ -5,6 +5,9 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+import sys
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
+from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 from selenium.webdriver.common.by import By
 
 TARGET=date.fromisoformat(os.getenv('TARGET_DATE','2026-08-31')); LOOKBACK=int(os.getenv('LOOKBACK_DAYS','90')); URL='https://www.nseindia.com/companies-listing/corporate-filings-PREF'; OUT=Path('artifacts/nse_validation/preferential'); OUT.mkdir(parents=True,exist_ok=True)
@@ -28,6 +31,7 @@ def tables(d):
 def js_fetch(d,url):
     script="""const url=arguments[0], done=arguments[arguments.length-1]; fetch(url,{credentials:'include',headers:{'Accept':'application/json,text/plain,*/*'}}).then(async r=>done(JSON.stringify({status:r.status,url:r.url,text:await r.text()}))).catch(e=>done(JSON.stringify({status:0,url:url,error:String(e)})));"""
     raw=json.loads(d.execute_async_script(script,url));
+    _raw_capture('nse','preferential_issue',raw.get('text',''),url=url,status=raw.get('status',0),content_type='application/json')
     try: raw['json']=json.loads(raw.get('text',''))
     except Exception: raw['json']=None
     return raw
