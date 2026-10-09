@@ -133,7 +133,8 @@ Primary metric: 20-session abnormal return vs size-matched peers. Judged with a 
 
 | Date | Family | Variant | Reason | Reported? |
 |---|---|---|---|---|
-| 2026-10-09 | H1 | C0..C9 conditioned cuts (this section), run 37925660880 | owner directive | yes, section I.1 |
+| 2026-10-09 | H1 | C0..C9 conditioned cuts (this section), run 37925660880 | owner directive | yes, section I.1 (SUPERSEDED benchmark, see J) |
+| 2026-10-09 | H1/H2 | section J: promoter cuts P1-P5 at 60/120 sessions vs Nifty 500 | owner realignment | section J.1 |
 
 ### I.1 Results (run 37925660880, development sample, standard entry, before costs; VERIFIED as computed)
 
@@ -157,3 +158,21 @@ Against the market proxy: C7 +0.38% (-0.5..+1.4) and C9 +0.38% (-0.7..+1.6) are 
 **Verdict (ESTIMATED): no conditioned subset of insider open-market buys shows an edge.** None of the nine cuts has a positive primary interval; the best cuts (drawdown, C2) are indistinguishable from zero and C2/C7/C9 are underpowered relative to realistic effects. Counter to the conviction hypothesis, the cuts that select *larger* purchases (C4, C5, C8: Rs 50 lakh+, 0.05%+ of market cap) and breadth (C6) are significantly *worse* than peers (primary adjusted intervals below zero, 60-session -7% to -8% for C5/C8). HYPOTHESIS, not tested: large purchases relative to market cap in illiquid micro caps are dominated by promoter creeping accumulation and price-support, which show up as a disclosed rise followed by mean reversion; the size-matched benchmark also remains equal-weighted micro-cap. Both need liquidity data (volume, impact) and the non-market-modes split to examine; they are not tuned here.
 
 Not found: drawdown or promoter conviction signals. Not done: costs/impact, liquidity filter, broad index/factor benchmark, regime split (one half-year). No buy signal is generated. Hold-out remains unscored.
+
+## J. Realignment: multi-quarter horizons, one baseline (registered 9 Oct 2026 IST, before any section J outcome was computed)
+
+Owner directive: purchases should be judged over one to two quarters, not days, because promoters and designated persons face SEBI (PIT) contra-trade restrictions and fundamentals take quarters to show. (The regulatory description is CLAIMED, from the owner; not independently verified here.) Benchmarks are simplified to two numbers: absolute return and excess return vs **Nifty 500** closing values from NSE's index archive (`ind_close_all_*.csv`, stored raw in `raw_v2/` and parsed to `indices/daily/nse/`). The equal-weighted market proxy and size-matched benchmarks were removed from the code. Sections H and I used them and remain as the earlier record, now **superseded for decisions**. My earlier reading that micro-cap skew distorted those benchmarks is ESTIMATED, not proven; the new baseline tests it directly.
+
+Fixed rules: development sample (disclosures 1 Jan to 30 Jun 2026), open-market purchases only, standard entry (same close if disclosed before 14:00 IST, otherwise next open), benchmark window from the entry close (previous close for open entries). 60 sessions on all complete windows; 120 sessions on January to April disclosures only, labelled PRELIMINARY — SAMPLE MATURING. 250 sessions not run (no mature sample). Reported: N, date clusters, mean, median, hit rate (absolute: share above 0; excess: share beating Nifty 500), standard deviation, date-clustered bootstrap 95% CI of the mean, MDE.
+
+| Cut | Rule (promoter filings only, day combined) |
+|---|---|
+| P1 | Promoter / Promoter Group open-market buys (excludes directors, KMP, designated persons) |
+| P2 | P1 with combined day value >= Rs 25 lakh |
+| P3 | P1 with combined day value >= Rs 50 lakh |
+| P4 | P1 with another buy event in the same security in the prior 30 days (clean layer starts 1 Jan 2026, so early January sees a short look-back) |
+| P5 | P4 and >= Rs 25 lakh |
+| R0 | reference: all insider open-market buys |
+| H2 | insider open-market sells at 20/60/120 sessions (risk flag check on the new baseline) |
+
+Five related cuts are not independent; the primary reading is P2 and P3 excess return at 60 sessions, and a cut is called an edge only if its excess-return CI is above zero at both 60 and 120 sessions or is clearly above zero at 60 with 120 pending. Otherwise: "no edge" or "insufficient evidence". Hold-out untouched.

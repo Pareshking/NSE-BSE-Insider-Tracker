@@ -13,8 +13,11 @@ def _flag(s: pd.Series) -> pd.Series:
     return s.astype(str).str.lower().isin(['true', '1', 'yes'])
 
 
-def insider_events(trades: pd.DataFrame, side: str, market_only: bool = True) -> pd.DataFrame:
+def insider_events(trades: pd.DataFrame, side: str, market_only: bool = True, roles: tuple | None = None) -> pd.DataFrame:
+    """`roles` keeps only filings by those person roles (e.g. PROMOTER_ROLES), before the day is combined."""
     d = trades.copy()
+    if roles is not None:
+        d = d[d['person_role'].isin(roles)]
     d = d[_flag(d['is_primary'])] if 'is_primary' in d else d
     d = d[d['side'] == side]
     if market_only:
