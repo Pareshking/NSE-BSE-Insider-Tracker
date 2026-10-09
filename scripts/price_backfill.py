@@ -81,48 +81,63 @@ def fetch(session, store, exchange, day):
     return parse(r.content)
 
 
+def months(start: date, end: date):
+    """Weekdays grouped by calendar month, oldest first."""
+    cur, out = None, []
+    for d in weekdays(start, end):
+        m = f'{d:%Y-%m}'
+        if m != cur and out:
+            yield cur, out
+            out = []
+        cur = m
+        out.append(d)
+    if out:
+        yield cur, out
+
+
 def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep):
+    """One month at a time: fetch, then write that month's parquet and print progress right away,
+    so an interrupted run keeps what it finished and the log shows where it is."""
     s = requests.Session()
     s.headers.update({'User-Agent': UA, 'Accept': '*/*'})
     totals = {}
     for ex in exchanges:
         t = {'sessions': 0, 'no_file': 0, 'rows': 0, 'already': 0, 'errors': 0, 'problems': {}}
-        have, new = {}, {}
-        for day in weekdays(start, end):
-            month = f'{day:%Y-%m}'
-            if month not in have:
-                have[month] = load_month(client, bucket, ex, month) if client is not None else None
-            old = have[month]
-            if old is not None and (old['date'] == pd.Timestamp(day)).any():
-                t['already'] += 1
-                continue
-            try:
-                df = fetch(s, store, ex, day)
-            except Stop:
-                raise
-            except Exception as e:  # noqa: BLE001
-                t['errors'] += 1
-                print(f'  {ex} {day}: {type(e).__name__}')
-                continue
-            sleep(PAUSE)
-            if df is None:
-                t['no_file'] += 1
-                continue
-            t['sessions'] += 1
-            t['rows'] += len(df)
-            for k, v in SOURCES[ex][4](df).items():
-                if k not in ('rows', 'listed') and v:
-                    t['problems'][k] = t['problems'].get(k, 0) + v
-            new.setdefault(month, []).append(df)
-        for month, frames in new.items():
-            merged = pd.concat([have[month], *frames]) if have[month] is not None else pd.concat(frames)
-            merged = merged.drop_duplicates(KEYS[ex]).sort_values(['date', 'symbol'])
-            if not dry and client is not None:
-                buf = io.BytesIO()
-                merged.to_parquet(buf, index=False)
-                client.put_object(Bucket=bucket, Key=key(ex, month), Body=buf.getvalue())
+        for month, days in months(start, end):
+            old = load_month(client, bucket, ex, month) if client is not None else None
+            frames = []
+            for day in days:
+                if old is not None and (old['date'] == pd.Timestamp(day)).any():
+                    t['already'] += 1
+                    continue
+                try:
+                    df = fetch(s, store, ex, day)
+                except Stop:
+                    raise
+                except Exception as e:  # noqa: BLE001
+                    t['errors'] += 1
+                    print(f'  {ex} {day}: {type(e).__name__}', flush=True)
+                    continue
+                sleep(PAUSE)
+                if df is None:
+                    t['no_file'] += 1
+                    continue
+                t['sessions'] += 1
+                t['rows'] += len(df)
+                for k, v in SOURCES[ex][4](df).items():
+                    if k not in ('rows', 'listed') and v:
+                        t['problems'][k] = t['problems'].get(k, 0) + v
+                frames.append(df)
+            if frames:
+                merged = pd.concat([old, *frames]) if old is not None else pd.concat(frames)
+                merged = merged.drop_duplicates(KEYS[ex]).sort_values(['date', 'symbol'])
+                if not dry and client is not None:
+                    buf = io.BytesIO()
+                    merged.to_parquet(buf, index=False)
+                    client.put_object(Bucket=bucket, Key=key(ex, month), Body=buf.getvalue())
+            print(f'  {ex} {month}: new days {len(frames)} of {len(days)}', flush=True)
         totals[ex] = t
-        print(f'{ex}: {t}')
+        print(f'{ex}: {t}', flush=True)
     return totals
 
 
