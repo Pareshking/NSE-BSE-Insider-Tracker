@@ -23,10 +23,13 @@ PRESETS = {
     'Promoter selling': 'Promoter selling',
     'High pledge': 'High pledge',
 }
+# Price presets (exploratory, docs/SIGNALS.md): promoter net buying with the
+# latest close within 5% of its 52-week high, or 30%+ below it.
+NEAR_HIGH, FAR_BELOW_HIGH = -0.05, -0.30
+PRICE_PRESETS = {'Breakout buyers (near 52W high)': lambda off: off >= NEAR_HIGH,
+                 'Turnaround accumulation (30%+ below high)': lambda off: off <= FAR_BELOW_HIGH}
 PENDING = {
-    'Breakout buyers (near 52W high)': 'needs the price join (docs/TODO.md G)',
-    'Turnaround accumulation': 'needs the price join (docs/TODO.md G)',
-    'Promoter warrants at premium': 'needs preferential issues cleaned and prices (TODO G, H)',
+    'Promoter warrants at premium': 'needs preferential issues cleaned (docs/TODO.md H)',
 }
 
 
@@ -40,7 +43,7 @@ def render():
     if board.empty:
         kit.empty('No insider activity in the last 90 days.')
         return
-    pick = st.pills('Preset', list(PRESETS) + list(PENDING), default='All with insider buying', key='scr_preset',
+    pick = st.pills('Preset', list(PRESETS) + list(PRICE_PRESETS) + list(PENDING), default='All with insider buying', key='scr_preset',
                     label_visibility='collapsed')
     if pick in PENDING:
         kit.note(f'{pick}: not available yet.', f'This preset {PENDING[pick]}.')
@@ -51,6 +54,9 @@ def render():
         rows = board[board['badges'].map(lambda b: any(x.startswith(key) for x in b))]
     elif pick == 'All with insider buying':
         rows = board[board['promoter_net'] > 0]
+    elif pick in PRICE_PRESETS:
+        off = pd.to_numeric(with_prices(board, ctx.prices)['pct_off_high'], errors='coerce')
+        rows = board[(board['promoter_net'] > 0) & off.map(lambda v: pd.notna(v) and PRICE_PRESETS[pick](v))]
     q = st.text_input('Search', placeholder='Company or symbol', key='scr_q', label_visibility='collapsed')
     if q:
         rows = rows[rows['company'].str.contains(q, case=False, na=False)
