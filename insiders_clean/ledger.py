@@ -19,14 +19,16 @@ import pandas as pd
 from . import evaluate as ev, events as evm
 
 RULE = 'promoter_accum_v1'
+RULE_V2 = 'promoter_campaign_v2'
+CAMPAIGN_GAP_DAYS = 90
 MIN_VALUE = 25e5
 HORIZONS = (60, 120, 250)
 COLUMNS = ['signal_id', 'rule', 'isin', 'company', 'disclosure_date', 'entry_date', 'entry_basis', 'entry_price',
-           'value', 'n_filings', 'created_at']
+           'value', 'n_filings', 'created_at', 'campaign_start', 'campaign_buys']
 
 
-def signal_id(isin: str, date) -> str:
-    return hashlib.sha1(f'{RULE}|{isin}|{pd.Timestamp(date):%Y-%m-%d}'.encode()).hexdigest()[:16]
+def signal_id(isin: str, date, rule: str = RULE) -> str:
+    return hashlib.sha1(f'{rule}|{isin}|{pd.Timestamp(date):%Y-%m-%d}'.encode()).hexdigest()[:16]
 
 
 def new_signals(trades: pd.DataFrame) -> pd.DataFrame:
@@ -36,7 +38,39 @@ def new_signals(trades: pd.DataFrame) -> pd.DataFrame:
     return e
 
 
-def entries_for(sig: pd.DataFrame, close: pd.DataFrame, open_: pd.DataFrame, names: pd.Series, now) -> pd.DataFrame:
+def new_campaign_signals(trades: pd.DataFrame, gap_days: int = CAMPAIGN_GAP_DAYS, min_net: float = MIN_VALUE) -> pd.DataFrame:
+    """Rule `promoter_campaign_v2`: promoter open-market buy days after 2026-06-30 are grouped into campaigns (consecutive
+    buy days at most `gap_days` apart). A campaign becomes a signal on the first buy day, from the second on, at which its
+    cumulative buying NET of promoter open-market sales since the campaign started is at least `min_net`. The signal is
+    fixed at that disclosure (entry facts never change); later buys extend the campaign but do not edit or re-enter it.
+    The id is the campaign start, so a campaign is recorded once."""
+    buys = evm.insider_events(trades, 'BUY', roles=evm.PROMOTER_ROLES)
+    sells = evm.insider_events(trades, 'SELL', roles=evm.PROMOTER_ROLES)
+    buys = buys[pd.to_datetime(buys['broadcast_date']) > evm.DEV_END].sort_values(['isin', 'broadcast_date'])
+    rows = []
+    for isin, g in buys.groupby('isin'):
+        s = sells[sells['isin'] == isin]
+        start = last = None
+        cum, n, fired = 0.0, 0, False
+        for r in g.itertuples():
+            d = r.broadcast_date
+            if last is None or (d - last).days > gap_days:
+                start, cum, n, fired = d, 0.0, 0, False
+            n += 1
+            cum += r.value
+            last = d
+            if not fired and n >= 2:
+                sold = s.loc[(s['broadcast_date'] >= start) & (s['broadcast_date'] <= d), 'value'].sum()
+                if cum - sold >= min_net:
+                    rows.append({'isin': isin, 'broadcast_date': d, 'broadcast_ts': r.broadcast_ts, 'value': cum - sold,
+                                 'n_filings': n, 'campaign_start': start, 'campaign_buys': n,
+                                 'signal_id': signal_id(isin, start, RULE_V2)})
+                    fired = True
+    return pd.DataFrame(rows, columns=['isin', 'broadcast_date', 'broadcast_ts', 'value', 'n_filings', 'campaign_start',
+                                       'campaign_buys', 'signal_id'])
+
+
+def entries_for(sig: pd.DataFrame, close: pd.DataFrame, open_: pd.DataFrame, names: pd.Series, now, rule: str = RULE) -> pd.DataFrame:
     """Entry date, basis and reference price (as printed on the entry day) for signals whose entry session exists."""
     ep = ev.entry_points(sig, close.index)
     rows = []
@@ -47,10 +81,11 @@ def entries_for(sig: pd.DataFrame, close: pd.DataFrame, open_: pd.DataFrame, nam
         price = open_.at[close.index[pos], r['isin']] if basis == 'open' else close.at[close.index[pos], r['isin']]
         if not np.isfinite(price) or price <= 0:
             continue
-        rows.append({'signal_id': r['signal_id'], 'rule': RULE, 'isin': r['isin'], 'company': names.get(r['isin'], r['isin']),
+        rows.append({'signal_id': r['signal_id'], 'rule': rule, 'isin': r['isin'], 'company': names.get(r['isin'], r['isin']),
                      'disclosure_date': pd.Timestamp(r['broadcast_date']), 'entry_date': close.index[pos], 'entry_basis': basis,
                      'entry_price': float(price), 'value': float(r['value']), 'n_filings': int(r['n_filings']),
-                     'created_at': pd.Timestamp(now)})
+                     'created_at': pd.Timestamp(now), 'campaign_start': r.get('campaign_start', pd.NaT),
+                     'campaign_buys': r.get('campaign_buys', np.nan)})
     return pd.DataFrame(rows, columns=COLUMNS)
 
 

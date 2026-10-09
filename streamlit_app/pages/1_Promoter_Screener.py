@@ -7,7 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import clean_data, r2_data, style  # noqa: E402
-from insiders_clean import product_views as pv  # noqa: E402
+from insiders_clean import product_views as pv, trade_table as tt  # noqa: E402
 
 CR = 1e7
 style.inject_base_css()
@@ -15,7 +15,7 @@ st.title("Promoter accumulation screener")
 st.info(pv.NO_EDGE_NOTE)
 client = clean_data.gate()
 with r2_data.guard("insider trades and price summary"):
-    trades = clean_data.clean_table(client, 'insider_trades')
+    trades, deals = clean_data.clean_table(client, 'insider_trades'), clean_data.clean_table(client, 'deals')
     summary = clean_data.price_summary(client)
 asof = pd.to_datetime(trades['broadcast_date']).max()
 first = pd.to_datetime(trades['broadcast_date']).min()
@@ -45,6 +45,10 @@ dd_min = {"Any": 0.0}.get(dd_label, 0.15 if "15%" in dd_label else 0.30)
 acc = pv.promoter_absorption(trades, asof, min_value=1, min_pct=0)
 camps = pv.active_campaigns(trades, asof)
 res = pv.screen(acc, summary if have_prices else None, camps, horizon, net_min, pct_min, buckets or pv.BUCKET_ORDER, active_only, dd_min, pure)
+if len(res):
+    res = res.merge(pv.deal_alignment(deals, camps, asof), on='isin', how='left')
+else:
+    res = res.assign(deal_net=pd.Series(dtype=float), deal_days=pd.Series(dtype=float), deal_coincides=pd.Series(dtype=bool))
 
 st.caption(f"Data {first:%d %b %Y} to {asof:%d %b %Y}: the 365-day window covers only the data we hold. Promoter / promoter-group "
            "open-market flow, buys minus sells; director, KMP, designated-person and employee filings are left out. "
@@ -54,16 +58,34 @@ if res.empty:
     st.info("Nothing clears these filters.")
     st.stop()
 grid = pd.DataFrame({
-    'Symbol': res['symbol'].fillna(res['company']), 'Market cap': res['mcap_bucket'].fillna('n/a'),
-    **{f'{w} net (Rs Cr)': (res[f'net_{w}d'] / CR).round(2) for w in pv.HORIZONS.values()},
-    '% absorbed (est.)': res['pct'].round(3), 'Campaign span': res['span'].fillna('-'), 'Active': res['active'],
-    '% off 52W high': (res['pct_off_high'] * 100).round(1)})
-event = st.dataframe(grid, hide_index=True, use_container_width=True, on_select="rerun", selection_mode="single-row", key="screener_grid")
-st.caption(f"{pv.BADGE_ACCUMULATION}. Select a row to open the company.")
+    'Symbol': res['symbol'].fillna(res['company']), 'Company': res['company'], 'Cap': res['mcap_bucket'].fillna('n/a'),
+    **{f'{w}D net (₹ Cr)': (res[f'net_{w}d'] / CR) for w in pv.HORIZONS.values()},
+    '% absorbed (est.)': res['pct'], 'Campaign': res['span'].fillna('-'), 'Active': res['active'],
+    'Bulk/block in campaign (₹ Cr)': res['deal_net'] / CR, 'Deals align': res['deal_coincides'].fillna(False).map({True: 'Net buying', False: '-'}),
+    '% off 52W high': res['pct_off_high'] * 100}).sort_values(f'{pv.HORIZONS.get(horizon, 365)}D net (₹ Cr)', ascending=False)
+res = res.loc[grid.index].reset_index(drop=True)
+grid = grid.reset_index(drop=True)
+num = lambda label, fmt: st.column_config.NumberColumn(label, format=fmt)       # noqa: E731 -- right-aligned numerics
+cfg = {**{f'{w}D net (₹ Cr)': num(f'{w}D net (₹ Cr)', '%.2f') for w in pv.HORIZONS.values()}, '% absorbed (est.)': num('% absorbed (est.)', '%.3f'),
+       'Bulk/block in campaign (₹ Cr)': num('Bulk/block (₹ Cr)', '%.2f'), '% off 52W high': num('% off 52W high', '%.1f'),
+       'Symbol': st.column_config.TextColumn(width='small'), 'Cap': st.column_config.TextColumn(width='small'),
+       'Campaign': st.column_config.TextColumn(width='medium'), 'Active': st.column_config.CheckboxColumn(width='small')}
+page, off = style.paginate(grid, 'screener', 50)
+event = st.dataframe(page, hide_index=True, use_container_width=True, on_select="rerun", selection_mode="single-row",
+                     key="screener_grid", column_config=cfg)
+st.caption(f"{pv.BADGE_ACCUMULATION}. Sorted by the selected horizon, largest first. 'Deals align' = bulk/block net buying (market makers "
+           "excluded) inside the campaign window; deals carry no reliable FII/DII label. Select a row for its filings.")
 sel = event.selection.rows if event and event.selection else []
 if sel:
-    row = res.iloc[sel[0]]
+    row = res.iloc[off + sel[0]]
     if st.button(f"Open {row['symbol'] or row['company']} in Company Deep Dive", type="primary"):
         st.session_state['deep_dive_isin'] = row['isin']
         st.switch_page("pages/2_Company_Deep_Dive.py")
+    st.subheader(f"Filings: {row['company']}")
+    rows = tt.insider_rows(trades, row['isin'])
+    st.dataframe(rows.drop(columns=['Symbol', 'Company']), hide_index=True, use_container_width=True, column_config={
+        'Date': st.column_config.DateColumn('Date', format='DD MMM YY', width='small'),
+        'Qty': num('Qty', '%d'), 'Avg Price': num('Avg Price', '%.2f'), 'Value (₹ Cr)': num('Value (₹ Cr)', '%.2f'),
+        '% of mcap (est.)': num('% of mcap (est.)', '%.3f'), 'Holding Δ %': num('Holding Δ %', '%.1f'),
+        'File': st.column_config.LinkColumn('File', display_text='open')})
 style.download_csv(grid, "promoter_screener.csv", key="screener_csv")

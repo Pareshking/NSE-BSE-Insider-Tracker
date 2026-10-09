@@ -27,7 +27,11 @@ def main() -> int:
     from insiders_clean import evaluate as ev
     raw_close, raw_open = ev.price_panel(px, 'close'), ev.price_panel(px, 'open')
     names = trades.dropna(subset=['isin', 'company']).drop_duplicates('isin').set_index('isin')['company']
-    new = lg.entries_for(lg.new_signals(trades), raw_close, raw_open, names, pd.Timestamp.now(tz='UTC').tz_localize(None))
+    now = pd.Timestamp.now(tz='UTC').tz_localize(None)
+    v1 = lg.entries_for(lg.new_signals(trades), raw_close, raw_open, names, now)
+    v2 = lg.entries_for(lg.new_campaign_signals(trades), raw_close, raw_open, names, now, rule=lg.RULE_V2)
+    print(f'ledger: v1 candidates {len(v1)}, v2 candidate campaigns {len(v2)}')
+    new = pd.concat([v1, v2], ignore_index=True)
     try:
         existing = rd(KEY)
     except Exception as e:  # noqa: BLE001

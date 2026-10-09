@@ -107,3 +107,22 @@ def test_slim_price_summary_and_bucket():
     assert s.at['B', 'latest_close'] == 50 and s.at['A', 'n_splits'] == 1 and s.at['A', 'last_split_factor'] == 0.5
     assert s.at['A', 'mcap_bucket'] == 'Large' and s.at['A', 'ret_90d'] > 0
     assert [slim.bucket(r) for r in (100, 101, 250, 251, 500, 501)] == ['Large', 'Mid', 'Mid', 'Small', 'Small', 'Micro']
+
+
+def test_trade_table_columns_and_order():
+    from insiders_clean import trade_table as tt
+    t = _mk([('A', '2026-04-01', 50e5, 'BUY'), ('A', '2026-05-01', 90e5, 'SELL')])
+    t['person_name'], t['mode_raw'], t['quantity'], t['price'], t['symbol'] = 'X Promoter', 'Market Purchase', 1000, 50.0, 'AA'
+    out = tt.insider_rows(t)
+    assert list(out['Value (₹ Cr)']) == [0.9, 0.5] and out.iloc[0]['Side'] == '🔴 Market Sell' and out.iloc[0]['Category'] == 'Promoter'
+    assert list(out.columns)[:6] == ['Date', 'Symbol', 'Company', 'Traded By', 'Category', 'Mode']
+    assert tt.insider_rows(t, 'ZZZ').empty
+
+
+def test_deal_alignment_inside_campaign_window():
+    t = _mk([('A', '2026-02-02', 60e5, 'BUY'), ('A', '2026-04-20', 60e5, 'BUY')])
+    camps = pv.active_campaigns(t, '2026-06-01')
+    d = pd.DataFrame([dict(isin='A', date='2026-03-10', is_primary=True, value=5e7, signed_value=5e7, client_is_market_maker=False),
+                      dict(isin='A', date='2026-01-10', is_primary=True, value=9e7, signed_value=-9e7, client_is_market_maker=False)])
+    out = pv.deal_alignment(d, camps, '2026-06-01').set_index('isin')
+    assert out.at['A', 'deal_net'] == 5e7 and out.at['A', 'deal_days'] == 1 and bool(out.at['A', 'deal_coincides'])

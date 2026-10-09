@@ -8,7 +8,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import clean_data, r2_data, style  # noqa: E402
-from insiders_clean import adjust, events as evm, product_views as pv  # noqa: E402
+from insiders_clean import adjust, events as evm, product_views as pv, trade_table as tt  # noqa: E402
 
 style.inject_base_css()
 st.title("Company deep dive")
@@ -76,13 +76,41 @@ st.caption("Dotted lines mark detected split/bonus events (adjusted prices remov
            "Green bands are promoter buying campaigns (buy days at most 90 days apart). Markers sit on the disclosure date. "
            "Quarterly results dates are not collected yet, so none are shown.")
 
-st.subheader("Audit trail")
-audit = pv.audit_table(trades, deals, isin)
-if audit.empty:
-    st.info("No insider filings or deals for this company in the product window (from 1 Jan 2026).")
-else:
-    st.dataframe(audit, hide_index=True, use_container_width=True,
-                 column_config={'link': st.column_config.LinkColumn('exchange file', display_text='open'),
-                                'date': st.column_config.DateColumn('date'), 'value': st.column_config.NumberColumn('value (Rs)', format='%.0f')})
-    st.caption("`exchange file` is the exchange's own XBRL disclosure where the filing carries one (NSE insider filings). "
-               "Bulk/block deals and BSE filings have no per-record link in the data; the id column traces them to the raw archive.")
+# --- campaign context: latest promoter campaign and whether large bulk/block buying coincided with it
+asof_t = pd.to_datetime(trades['broadcast_date']).max()
+camp = pv.active_campaigns(trades[trades['isin'] == isin], asof_t)
+if len(camp):
+    c = camp.iloc[0]
+    al = pv.deal_alignment(deals, camp, asof_t)
+    deal_txt = ("bulk/block net buying coincided: ₹{:.2f} Cr over {} deal day(s)".format(al.iloc[0]['deal_net'] / 1e7, int(al.iloc[0]['deal_days']))
+                if len(al) and al.iloc[0]['deal_coincides'] else "no bulk/block net buying inside the campaign window")
+    st.markdown(f"**Latest promoter campaign:** {c['span']} · {'**active**' if c['active'] else 'ended'} · {deal_txt}. "
+                f"{pv.BADGE_ACCUMULATION}.")
+
+num = lambda label, fmt: st.column_config.NumberColumn(label, format=fmt)       # noqa: E731
+st.subheader("Filings and deals")
+t1, t2 = st.tabs(["Insider filings", "Bulk & block deals"])
+with t1:
+    rows = tt.insider_rows(trades, isin)
+    if rows.empty:
+        st.info("No insider filings for this company in the product window (from 1 Jan 2026).")
+    else:
+        page, _ = style.paginate(rows.drop(columns=['Symbol', 'Company']), 'dd-ins', 50)
+        st.dataframe(page, hide_index=True, use_container_width=True, column_config={
+            'Date': st.column_config.DateColumn('Date', format='DD MMM YY', width='small'), 'Qty': num('Qty', '%d'),
+            'Avg Price': num('Avg Price', '%.2f'), 'Value (₹ Cr)': num('Value (₹ Cr)', '%.2f'),
+            '% of mcap (est.)': num('% of mcap (est.)', '%.3f'), 'Holding Δ %': num('Holding Δ %', '%.1f'),
+            'File': st.column_config.LinkColumn('File', display_text='open')})
+        style.download_csv(rows, f"{isin}_insider_filings.csv", key="dd_ins_csv")
+        st.caption("`File` is the exchange's own XBRL disclosure where the filing carries one (NSE insider filings). The clean data has no "
+                   "post-transaction shareholding percentage, so equity is the ESTIMATED value / market cap and Holding Δ is the change in the filer's own holding.")
+with t2:
+    drows = tt.deal_rows(deals, isin)
+    if drows.empty:
+        st.info("No bulk or block deals for this company in the product window.")
+    else:
+        page, _ = style.paginate(drows.drop(columns=['Symbol', 'Company']), 'dd-deal', 50)
+        st.dataframe(page, hide_index=True, use_container_width=True, column_config={
+            'Date': st.column_config.DateColumn('Date', format='DD MMM YY', width='small'), 'Qty': num('Qty', '%d'),
+            'Avg Price': num('Avg Price', '%.2f'), 'Value (₹ Cr)': num('Value (₹ Cr)', '%.2f'), '% of mcap (est.)': num('% of mcap (est.)', '%.3f')})
+        st.caption("Bulk and block deals have no per-record exchange link in the data; the deal id traces them to the raw archive.")

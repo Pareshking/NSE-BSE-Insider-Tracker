@@ -31,17 +31,17 @@ acc_badges = clean_data.accumulation_badges(client)    # ISIN -> multi-quarter p
 DISPLAY_COLUMNS = {
     "insider_trading": [
         "canonical_transaction_date", "canonical_company", "canonical_symbol",
-        "canonical_person", "canonical_person_category", "canonical_transaction_type",
-        "canonical_quantity", "canonical_value", "canonical_isin", "exchange",
+        "canonical_person", "canonical_person_category", "canonical_mode", "canonical_transaction_type",
+        "canonical_quantity", "canonical_price", "canonical_value", "canonical_isin", "exchange",
     ],
     "bulk_deals": [
         "canonical_event_date", "canonical_company", "canonical_symbol",
-        "canonical_client", "canonical_side", "canonical_quantity", "canonical_price",
+        "canonical_client", "canonical_side", "canonical_quantity", "canonical_price", "canonical_value",
         "canonical_isin", "exchange",
     ],
     "block_deals": [
         "canonical_event_date", "canonical_company", "canonical_symbol",
-        "canonical_client", "canonical_side", "canonical_quantity", "canonical_price",
+        "canonical_client", "canonical_side", "canonical_quantity", "canonical_price", "canonical_value",
         "canonical_isin", "exchange",
     ],
     "rights_issue": [
@@ -67,7 +67,8 @@ FILTERABLE = {
 # Columns formatted as compact currency (style.fmt_inr) rather than shown as
 # raw numbers -- keeps this table visually consistent with every other page's
 # currency display instead of reading as an unstyled dump of canonical_* rows.
-CURRENCY_COLUMNS = {"canonical_value", "canonical_price", "canonical_amount_raised"}
+CURRENCY_COLUMNS = {"canonical_value", "canonical_amount_raised"}      # shown as numeric Rs Cr, right-aligned
+PRICE_COLUMNS = {"canonical_price"}
 QUANTITY_COLUMNS = {"canonical_quantity"}
 
 
@@ -133,35 +134,52 @@ for tab, cat in zip(category, r2_data.CATEGORIES):
                 label="Export rows", key=f"dl-{cat}",
             )
 
-        show_cols = [c for c in DISPLAY_COLUMNS[cat] if c in filtered.columns]
-        display_df = filtered[show_cols].copy()
+        show_cols = [c for c in DISPLAY_COLUMNS[cat] if c in filtered.columns or c == "canonical_value"]
+        display_df = filtered.reindex(columns=show_cols).copy()
+        if "canonical_value" in show_cols and display_df["canonical_value"].isna().all() and {"canonical_quantity", "canonical_price"} <= set(filtered.columns):
+            display_df["canonical_value"] = fields.num_col(filtered, "canonical_quantity") * fields.num_col(filtered, "canonical_price")
         date_col = "canonical_transaction_date" if "canonical_transaction_date" in display_df.columns else "canonical_event_date"
         if date_col in display_df.columns:
-            display_df[date_col] = style.fmt_date_col(display_df[date_col])
+            display_df[date_col] = fields.parse_dates(display_df[date_col])
         for col in CURRENCY_COLUMNS & set(display_df.columns):
-            display_df[col] = display_df[col].map(style.fmt_inr)
-        for col in QUANTITY_COLUMNS & set(display_df.columns):
-            display_df[col] = display_df[col].map(style.fmt_qty)
+            display_df[col] = fields.num_col(display_df, col, fill=None) / 1e7
+        for col in (QUANTITY_COLUMNS | PRICE_COLUMNS) & set(display_df.columns):
+            display_df[col] = fields.num_col(display_df, col, fill=None)
         if "exchange" in display_df.columns:
             display_df["exchange"] = display_df["exchange"].astype(str).str.upper()
-
+        for col in ("canonical_transaction_type", "canonical_side"):
+            if col in display_df.columns:
+                display_df[col] = display_df[col].astype(str).map(
+                    lambda v: "🟢 Buy" if "ACQUI" in v.upper() or v.upper() == "BUY" else "🔴 Sell" if "DISPOS" in v.upper() or v.upper() == "SELL" else v)
         if acc_badges and "canonical_isin" in filtered.columns:
             display_df["Accumulation context"] = filtered["canonical_isin"].astype(str).map(acc_badges).fillna("").to_numpy()
+        labels = {col: pretty_label(col) for col in display_df.columns}
+        labels.update({"canonical_value": "Value (₹ Cr)", "canonical_amount_raised": "Amount raised (₹ Cr)", "canonical_person": "Traded By",
+                       "canonical_person_category": "Category", "canonical_quantity": "Qty", "canonical_price": "Avg Price",
+                       "canonical_transaction_date": "Date", "canonical_event_date": "Date"})
+        config = {col: st.column_config.Column(label=labels[col]) for col in display_df.columns}
+        for col in CURRENCY_COLUMNS & set(display_df.columns):
+            config[col] = st.column_config.NumberColumn(labels[col], format="%.2f")
+        for col in QUANTITY_COLUMNS & set(display_df.columns):
+            config[col] = st.column_config.NumberColumn(labels[col], format="%d")
+        for col in PRICE_COLUMNS & set(display_df.columns):
+            config[col] = st.column_config.NumberColumn(labels[col], format="%.2f")
+        if date_col in display_df.columns:
+            config[date_col] = st.column_config.DateColumn("Date", format="DD MMM YY", width="small")
+        page_df, page_off = style.paginate(display_df, f"pg-{cat}", 100)
         event = st.dataframe(
-            display_df,
+            page_df,
             hide_index=True,
             use_container_width=True,
             on_select="rerun",
             selection_mode="single-row",
             key=f"table-{cat}",
-            column_config={
-                col: st.column_config.Column(label=pretty_label(col)) for col in display_df.columns
-            },
+            column_config=config,
         )
 
         selected_rows = event.selection.rows if event and event.selection else []
         if selected_rows:
-            row = filtered.iloc[selected_rows[0]]
+            row = filtered.iloc[page_off + selected_rows[0]]
 
             has_match = pd.notna(row.get("cross_exchange_possible_match_id"))
 

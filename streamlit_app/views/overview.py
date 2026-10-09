@@ -125,14 +125,23 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
             df["_date"] = df.get("canonical_transaction_date")
             ttype = fields.text_col(df, "canonical_transaction_type", upper=True)
             df["_side"] = ttype.map(lambda t: "BUY" if "ACQUI" in t else ("SELL" if "DISPOS" in t else None))
+            df["_by"] = df.get("canonical_person")
+            df["_cat"] = df.get("canonical_person_category")
+            df["_mode"] = df.get("canonical_mode")
         elif category in ("bulk_deals", "block_deals"):
             df["_value"] = fields.num_col(df, "canonical_quantity", fill=None) * fields.num_col(df, "canonical_price", fill=None)
             df["_date"] = df.get("canonical_event_date")
             df["_side"] = fields.text_col(df, "canonical_side", upper=True).where(lambda s: s.isin(["BUY", "SELL"]))
+            df["_by"] = df.get("canonical_client")
+            df["_cat"] = "Bulk deal" if category == "bulk_deals" else "Block deal"
+            df["_mode"] = None
         else:
             df["_value"] = fields.num_col(df, "canonical_amount_raised", fill=None)
             df["_date"] = df.get("canonical_event_date")
             df["_side"] = "ISSUANCE"  # capital raise, not a buy/sell trade -- never fabricate a side for these
+            df["_by"] = None
+            df["_cat"] = r2_data.CATEGORY_LABELS.get(category, category)
+            df["_mode"] = df.get("canonical_stage")
         df["_category"] = category
         # Quantity/price identify the underlying trade for the dedup below;
         # they are meaningless for the issuance categories, which is fine --
@@ -141,10 +150,13 @@ def overview_aggregates(_client, date: str, exchanges: tuple[str, ...]) -> dict:
         df["_price"] = fields.num_col(df, "canonical_price", fill=None)
         if "canonical_isin" not in df.columns:
             df["canonical_isin"] = None
-        combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price",
+        for extra in ("_by", "_cat", "_mode"):
+            if extra not in df.columns:
+                df[extra] = None
+        combined_rows.append(df[["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode",
                                  "canonical_company", "canonical_isin", "exchange"]])
     combined = pd.concat(combined_rows, ignore_index=True) if combined_rows else pd.DataFrame(
-        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "canonical_company", "canonical_isin", "exchange"])
+        columns=["_value", "_date", "_category", "_side", "_qty", "_price", "_by", "_cat", "_mode", "canonical_company", "canonical_isin", "exchange"])
     combined = combined.dropna(subset=["_value"])
     if not combined.empty:
         combined["_parsed_date"] = fields.parse_dates(combined["_date"])
@@ -356,30 +368,30 @@ with sig2:
     if combined.empty:
         st.caption(f"No transactions match “{search_query}”." if search_query else "No transactions this run.")
     else:
-        top_txns = combined.head(8)
+        top_txns = combined.head(12)
         rows_html = []
         for _, r in top_txns.iterrows():
             ex = str(r.get("exchange") or "")
             side = r.get("_side")
-            if side == "BUY":
-                side_badge = style.badge("BUY", "green", "green_bg", dot=False)
-            elif side == "SELL":
-                side_badge = style.badge("SELL", "red", "red_bg", dot=False)
-            elif side == "ISSUANCE":
-                side_badge = style.badge("ISSUANCE", "text_2", "bg_sub", dot=False)
-            else:
-                side_badge = "—"
+            mode = str(r.get("_mode") or "")
+            market = "MARKET" in mode.upper() and "OFF" not in mode.upper()
+            side_html = style.side_pill(side, market) if side in ("BUY", "SELL") else style.pill("Issuance" if side == "ISSUANCE" else "-")
+            qty, price = r.get("_qty"), r.get("_price")
             rows_html.append(
                 f'<tr><td class="mono">{style.fmt_date(r["_date"])}</td>'
                 f'<td style="font-weight:500;">{r.get("canonical_company") or "—"}{_accum_badge(acc_badges, r.get("canonical_isin"))}</td>'
-                f'<td>{style.badge(r2_data.CATEGORY_LABELS.get(r["_category"], r["_category"]), "text_2", "bg_sub", dot=False)}</td>'
-                f'<td>{side_badge}</td>'
-                f'<td class="mono" style="text-align:right;">{style.fmt_inr(r["_value"])}</td>'
+                f'<td>{r.get("_by") or "—"}</td>'
+                f'<td>{style.category_pill(str(r.get("_cat") or "—").title())}</td>'
+                f'<td style="color:{style.COLORS["text_2"]};">{mode or "—"}</td>'
+                f'<td>{side_html}</td>'
+                f'<td class="mono num">{style.fmt_qty(qty) if pd.notna(qty) else "—"}</td>'
+                f'<td class="mono num">{f"{price:,.2f}" if pd.notna(price) else "—"}</td>'
+                f'<td class="mono num" style="font-weight:600;">{style.fmt_cr(r["_value"])}</td>'
                 f'<td style="text-align:right;">{style.exchange_badge(ex)}</td></tr>'
             )
         st.markdown(
-            '<div class="table-scroll"><table class="evt-table"><tr><th>DATE</th><th>COMPANY</th><th>CATEGORY</th><th>SIDE</th>'
-            '<th style="text-align:right;">VALUE</th><th style="text-align:right;">EXCH</th></tr>'
+            '<div class="table-scroll"><table class="evt-table dense"><tr><th>DATE</th><th>COMPANY</th><th>TRADED BY</th><th>CATEGORY</th>'
+            '<th>MODE</th><th>SIDE</th><th class="num">QTY</th><th class="num">PRICE</th><th class="num">VALUE (₹ CR)</th><th style="text-align:right;">EXCH</th></tr>'
             + "".join(rows_html) + "</table></div>",
             unsafe_allow_html=True,
         )

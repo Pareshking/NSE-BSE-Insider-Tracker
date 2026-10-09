@@ -221,3 +221,25 @@ def accumulation_badges(trades: pd.DataFrame, asof, min_net: float = 25 * LAKH) 
     acc = acc[acc['net_180d'] >= min_net]
     camps = active_campaigns(trades, asof).set_index('isin')['active'] if len(acc) else pd.Series(dtype=bool)
     return {r.isin: badge_text(r.net_180d, bool(camps.get(r.isin, False))) for r in acc.itertuples()}
+
+
+def deal_alignment(deals: pd.DataFrame, camps: pd.DataFrame, asof) -> pd.DataFrame:
+    """Does bulk/block net buying coincide with the latest promoter campaign? Per security: net deal value (market makers
+    excluded, buys positive) on deal days from the campaign start to its end (to `asof` while the campaign is active), and
+    the number of deal days. Deals carry no reliable FII/DII label, so this says only that large deals coincided."""
+    cols = ['isin', 'deal_net', 'deal_days', 'deal_coincides']
+    if camps is None or camps.empty or deals is None or deals.empty:
+        return pd.DataFrame(columns=cols)
+    ev = evm.deal_events(deals)
+    c = camps.set_index('isin')
+    ev = ev[ev['isin'].isin(c.index)].copy()
+    if ev.empty:
+        return pd.DataFrame(columns=cols)
+    ev['lo'] = ev['isin'].map(c['campaign_start'])
+    ev['hi'] = [pd.Timestamp(asof) if c.at[i, 'active'] else c.at[i, 'campaign_end'] for i in ev['isin']]
+    ev = ev[(ev['broadcast_date'] >= ev['lo']) & (ev['broadcast_date'] <= ev['hi'])]
+    if ev.empty:
+        return pd.DataFrame(columns=cols)
+    g = ev.groupby('isin').agg(deal_net=('net_value', 'sum'), deal_days=('broadcast_date', 'nunique')).reset_index()
+    g['deal_coincides'] = g['deal_net'] > 0
+    return g[cols]

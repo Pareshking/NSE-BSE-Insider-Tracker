@@ -36,3 +36,35 @@ def test_mark_returns_to_date_and_matured_horizon():
     assert abs(m['return_to_date'][0] - 0.7) < 1e-9 and abs(m['excess_to_date_vs_nifty500'][0] - (0.7 - 0.07)) < 1e-9
     assert abs(m['ret_60'][0] - (close['A'].iloc[60] / 100 - 1)) < 1e-9
     assert np.isnan(m['ret_120'][0]) and m['sessions_since_entry'][0] == 69
+
+
+def _v2_trades(rows):
+    import pandas as pd
+    return pd.DataFrame([dict(trade_id=f'{i}', isin=i_, company=i_, broadcast_date=pd.Timestamp(d), broadcast_ts=pd.Timestamp(d) + pd.Timedelta(hours=10),
+                              value=v, side=sd, person_role='promoter', person_id='p', is_market=True, is_primary=True, pct_of_mcap=0.01)
+                         for i, (i_, d, v, sd) in enumerate(rows)])
+
+
+def test_campaign_signal_fires_at_second_buy_net_of_sales():
+    t = _v2_trades([('A', '2026-07-06', 20e5, 'BUY'), ('A', '2026-08-20', 20e5, 'BUY'),            # 45 days apart: confirms at 40L net
+                    ('B', '2026-07-06', 30e5, 'BUY'),                                              # single buy: no campaign signal
+                    ('C', '2026-07-06', 20e5, 'BUY'), ('C', '2026-08-01', 20e5, 'SELL'), ('C', '2026-08-20', 20e5, 'BUY'),   # net 20L: not yet
+                    ('D', '2026-07-06', 30e5, 'BUY'), ('D', '2026-10-20', 30e5, 'BUY')])           # 106-day gap: two campaigns of one buy
+    s = lg.new_campaign_signals(t).set_index('isin')
+    assert list(s.index) == ['A'] and s.at['A', 'value'] == 40e5 and s.at['A', 'campaign_buys'] == 2
+    assert str(s.at['A', 'broadcast_date'])[:10] == '2026-08-20' and str(s.at['A', 'campaign_start'])[:10] == '2026-07-06'
+
+
+def test_campaign_signal_waits_for_net_threshold_and_ignores_june():
+    t = _v2_trades([('C', '2026-07-06', 20e5, 'BUY'), ('C', '2026-08-01', 20e5, 'SELL'), ('C', '2026-08-20', 20e5, 'BUY'),
+                    ('C', '2026-09-15', 20e5, 'BUY'),                                              # net 40L-20L... = 40L at the third buy
+                    ('J', '2026-06-20', 50e5, 'BUY'), ('J', '2026-06-25', 50e5, 'BUY')])           # before the hold-out start
+    s = lg.new_campaign_signals(t)
+    assert list(s['isin']) == ['C'] and str(s.iloc[0]['broadcast_date'])[:10] == '2026-09-15' and s.iloc[0]['value'] == 40e5
+
+
+def test_campaign_id_stable_and_distinct_from_v1():
+    t = _v2_trades([('A', '2026-07-06', 20e5, 'BUY'), ('A', '2026-08-20', 20e5, 'BUY')])
+    a, b = lg.new_campaign_signals(t), lg.new_campaign_signals(t)
+    assert a.iloc[0]['signal_id'] == b.iloc[0]['signal_id']
+    assert lg.signal_id('A', '2026-07-06') != lg.signal_id('A', '2026-07-06', lg.RULE_V2)

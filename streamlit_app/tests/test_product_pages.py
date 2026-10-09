@@ -58,7 +58,11 @@ def objects(with_ledger=True, with_slim=True):
     if with_ledger:
         led = pd.DataFrame([dict(signal_id="s1", rule="promoter_accum_v1", isin="INE000A01010", company="ABC Ltd",
                                  disclosure_date=pd.Timestamp("2026-07-06"), entry_date=days[27], entry_basis="close", entry_price=108.0,
-                                 value=30e5, n_filings=1, created_at=pd.Timestamp("2026-10-09"))])
+                                 value=30e5, n_filings=1, created_at=pd.Timestamp("2026-10-09")),
+                          dict(signal_id="c1", rule="promoter_campaign_v2", isin="INE000A01010", company="ABC Ltd",
+                               disclosure_date=pd.Timestamp("2026-07-20"), entry_date=days[40], entry_basis="close", entry_price=115.0,
+                               value=60e5, n_filings=2, created_at=pd.Timestamp("2026-10-09"),
+                               campaign_start=pd.Timestamp("2026-07-06"), campaign_buys=2)])
         o["ledger/forward_ledger.parquet"] = _pq(led)
         if with_slim:
             o["ledger/ledger_marks.parquet"] = _pq(led.assign(sessions_since_entry=62, current_price=130.0, return_to_date=0.2, excess_to_date_vs_nifty500=0.1,
@@ -132,3 +136,17 @@ def test_deep_dive_prefills_from_screener_and_loads_one_isin():
     app.session_state["deep_dive_isin"] = "INE000A01010"
     app.run()
     assert not app.exception and len(app.dataframe) >= 1
+
+
+def test_ledger_toggle_switches_between_series():
+    app = run("4_Forward_Ledger", objects())
+    assert not app.exception and app.metric[0].value == "1"
+    app.radio[0].set_value("Multi-quarter campaigns (promoter_campaign_v2)").run()
+    assert not app.exception and app.metric[0].value == "1"
+    assert "campaign_start" in list(app.dataframe[0].value.columns)
+
+
+def test_screener_shows_deal_alignment_and_filings_table():
+    app = run("1_Promoter_Screener", objects())
+    cols = list(app.dataframe[0].value.columns)
+    assert "Deals align" in cols and "Bulk/block in campaign (₹ Cr)" in cols and "Campaign" in cols
