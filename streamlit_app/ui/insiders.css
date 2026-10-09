@@ -190,3 +190,15 @@ header[data-testid="stHeader"] { display: none; }
 .bl-t i { display: block; height: 100%; border-radius: 4px; background: var(--accent); min-width: 2px; }
 .bl-t i.warn { background: #D9902A; } .bl-t i.sell { background: var(--sell); }
 .bl-v { text-align: right; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* ---- Track record scorecard ---- */
+.sc-wrap { overflow-x: auto; }
+.sc-t { width: 100%; border-collapse: separate; border-spacing: 6px; }
+.sc-t thead th { font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); text-align: center; padding: 2px; }
+.sc-t th.sc-l { text-align: left; font-size: 13.5px; font-weight: 600; color: var(--ink); padding-right: 10px; min-width: 220px; }
+.sc-t td { border-radius: 10px; padding: 9px 10px; text-align: center; min-width: 120px; background: var(--subtle); }
+.sc-t td b { display: block; font-size: 16px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sc-t td span { font-size: 11px; color: var(--ink-3); }
+.sc-t td.up { background: var(--buy-tint); } .sc-t td.up b { color: var(--buy); }
+.sc-t td.down { background: var(--sell-tint); } .sc-t td.down b { color: var(--sell); }
+.sc-t td.few { opacity: .62; }
+.sc-t td.sc-na { color: var(--ink-3); font-size: 12px; background: transparent; border: 1px dashed var(--line-strong); }

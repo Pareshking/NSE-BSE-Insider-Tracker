@@ -66,6 +66,13 @@ def price_history() -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def artifact(key: str) -> pd.DataFrame:
+    """A parquet the precompute job writes under artifacts/ (empty if absent)."""
+    body = _read(key)
+    return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def market_strip() -> list:
     body = _read('artifacts/market_strip.json')
     return json.loads(body) if body else []
