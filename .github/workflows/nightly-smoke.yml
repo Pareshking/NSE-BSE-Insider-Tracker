@@ -40,7 +40,15 @@ jobs:
         id: target
         run: |
           if [ -n "${{ inputs.target_date }}" ]; then echo "date=${{ inputs.target_date }}" >> "$GITHUB_OUTPUT"
-          else echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"; fi
+          else
+            # weekend: use the last weekday, so the 1-day window is a trading day
+            case "$(date -u +%u)" in
+              6) d=$(date -u -d '1 day ago' +%F) ;;
+              7) d=$(date -u -d '2 days ago' +%F) ;;
+              *) d=$(date -u +%F) ;;
+            esac
+            echo "date=$d" >> "$GITHUB_OUTPUT"
+          fi
       - name: Clear old collector outputs
         run: rm -rf artifacts/nse_insider artifacts/nse_bulk artifacts/nse_block artifacts/nse_validation artifacts/bse_validation artifacts/data_validation_v5
       - { name: NSE Insider, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_insider.py }
@@ -65,11 +73,11 @@ jobs:
           print(f'target {want}, window {os.environ["LOOKBACK_DAYS"]} days')
           n = load('artifacts/nse_validation/certification_report.json') or {}
           for ds, v in (n.get('datasets') or {}).items():
-              print(f'  NSE {ds:13s} {v["status"]:9s}', {k: x for k, x in v.items() if k not in ('status', 'windows')}); bad += v['status'] != 'VERIFIED'
+              print(f'  NSE {ds:13s} {v["status"]:9s}', {k: x for k, x in v.items() if k not in ('status', 'windows')}, [(w[0], w[1], len(w[2] or [])) for w in v.get('windows', [])]); bad += v['status'] != 'VERIFIED'
           if not n: print('  NSE: no certification report'); bad += 1
           b = load('artifacts/bse_validation/certification_report.json') or load('artifacts/bse_validation/report.json') or {}
           for ds, v in (b.get('datasets') or {}).items():
-              print(f'  BSE {ds:18s}', v.get('status'), 'rows', v.get('row_count', v.get('rows'))); bad += v.get('status') != 'VERIFIED'
+              print(f'  BSE {ds:18s}', v.get('status'), {k: x for k, x in v.items() if isinstance(x, (int, str)) and k != 'status'}); bad += v.get('status') != 'VERIFIED'
           if not b: print('  BSE: no report'); bad += 1
           print('ALL VERIFIED' if not bad else f'{bad} dataset(s) not verified')
           raise SystemExit(1 if bad else 0)
