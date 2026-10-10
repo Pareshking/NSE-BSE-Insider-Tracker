@@ -3,7 +3,7 @@ name: Nightly smoke test (short window, no R2 writes)
 # Runs the same collectors and validators as the nightly on a short window
 # (default 90 days) and prints, per dataset, what was fetched and whether it
 # certified. It has no R2 credentials and writes nothing outside the runner.
-# The push trigger is temporary, for testing this workflow from its branch.
+# Run it from the Actions tab (workflow_dispatch) with a short window to check a change quickly.
 
 on:
   workflow_dispatch:
@@ -16,9 +16,6 @@ on:
         description: 'Target date YYYY-MM-DD (blank = today UTC)'
         required: false
         default: ''
-  push:
-    branches: [ccr-d8fff3f9-npgfmg]
-    paths: ['.github/workflows/nightly-smoke.yml']
 
 permissions:
   contents: read
