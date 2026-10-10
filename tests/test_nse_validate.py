@@ -8,7 +8,7 @@ import nse_validate
 
 
 def report(chunks, w90_dates=3, w90_count=10):
-    return {'chunk_diagnostics': chunks,
+    return {'target_date': nse_validate.TARGET, 'chunk_diagnostics': chunks,
             'windows': [{'name': '1d', 'count': 0, 'distinct_dates': []},
                         {'name': '7d', 'count': 1, 'distinct_dates': ['08-OCT-2026']},
                         {'name': '90d', 'count': w90_count, 'distinct_dates': [f'0{i}-OCT-2026' for i in range(w90_dates)]}]}

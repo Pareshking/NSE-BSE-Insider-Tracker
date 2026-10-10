@@ -76,8 +76,18 @@ session = requests.Session()
 session.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plain, */*'})
 
 
-def fetch_filing_list():
-    r = session.get(LIST_URL, timeout=20)
+def fetch_filing_list(attempts=4):
+    # One slow answer from NSE used to end the whole run (9 Oct 2026: read timeout).
+    for n in range(1, attempts + 1):
+        try:
+            r = session.get(LIST_URL, timeout=30)
+            break
+        except requests.exceptions.RequestException as exc:
+            if n == attempts:
+                raise
+            wait = 5 * 2 ** (n - 1)
+            print(f'  filing list attempt {n}/{attempts} failed ({type(exc).__name__}); retrying in {wait}s')
+            time.sleep(wait)
     _raw_capture('nse', 'insider_filing_list', r.content, url=LIST_URL, status=r.status_code,
                  content_type=r.headers.get('Content-Type'))
     r.raise_for_status()

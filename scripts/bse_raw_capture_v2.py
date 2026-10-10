@@ -106,6 +106,31 @@ def capture_cdp(d, fragment):
     return results
 
 
+def capture_until(d, fragment, wait=45, poll=3):
+    """Drain the CDP log until BSE's own data call shows up, or `wait` runs out.
+    A slow page used to look the same as an empty one (fixed 9 s sleep, one try)."""
+    got, t0 = [], time.time()
+    while time.time() - t0 < wait:
+        got.extend(capture_cdp(d, fragment))
+        if got:
+            time.sleep(4)  # let any further pages of the same call land
+            got.extend(capture_cdp(d, fragment))
+            break
+        time.sleep(poll)
+    return got
+
+
+def load_and_capture(d, page_url, fragment, attempts=3):
+    for n in range(1, attempts + 1):
+        d.get(page_url)
+        got = capture_until(d, fragment)
+        if got:
+            return got
+        print(f'  attempt {n}/{attempts}: no {fragment} call seen' + ('; reloading' if n < attempts else ''))
+        time.sleep(5)
+    return []
+
+
 def try_set_dates(d):
     """Fill BSE date picker inputs and click search; return True if search was clicked."""
     try:
@@ -252,10 +277,7 @@ def main():
             print(f'\n=== {category} ===')
             print(f'  page: {page_url}')
 
-            d.get(page_url)
-            time.sleep(9)
-
-            captured = capture_cdp(d, fragment)
+            captured = load_and_capture(d, page_url, fragment)
             hist_status = 'default'
 
             if not captured:

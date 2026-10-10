@@ -14,6 +14,9 @@ def main():
  all_dedup=True
  for ds,path in specs:
   d=load(path) or {};ws=d.get('windows',[]);ok=False;details={}
+  # A report written for another day (e.g. an old file left in the repo after this run's fetch crashed) is never certified.
+  fresh=d.get('target_date')==TARGET
+  if not fresh:details['stale_or_missing_report']=d.get('target_date') or 'missing'
   if ds in ('bulk','block'):
    # Completeness, not window shape: every fetch chunk came back as the uncapped CSV and the 90-day
    # window holds data on more than one day. A 1-day window is empty before the day's deals are
@@ -35,8 +38,9 @@ def main():
   if ds in ('bulk','block','insider') and rows and dups>0:details['duplicate_rows']=dups
   elif ds in ('bulk','block','insider'):details['duplicate_rows']=0
   if ds in ('bulk','block','insider'):all_dedup=all_dedup and True
+  ok=ok and fresh
   r['datasets'][ds]={'status':'VERIFIED' if ok else 'BLOCKED',**details,'windows':[(w.get('name'),w.get('count'),w.get('distinct_dates') or w.get('api_distinct_dates')) for w in ws]}
- ins=load('artifacts/nse_insider/90d.json') or {};rows=ins.get('rows',[]);cats=[];semantic_rows=0;acq=disp=0
+ ins=(load('artifacts/nse_insider/90d.json') or {}) if r['datasets']['insider'].get('stale_or_missing_report') is None else {};rows=ins.get('rows',[]);cats=[];semantic_rows=0;acq=disp=0
  for x in rows:
   if not isinstance(x,dict):continue
   cat=str(x.get('personCategory') or x.get('person_category') or '').upper();typ=str(x.get('transactionType') or x.get('acqName') or x.get('type') or '').upper();cats.append(cat)

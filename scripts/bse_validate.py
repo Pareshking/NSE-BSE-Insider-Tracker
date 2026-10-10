@@ -5,7 +5,7 @@ Supports two acquisition modes:
   api     – BSE direct API fetch (rows as positional string arrays, api_windows for counts)
 """
 from __future__ import annotations
-import hashlib, json, re
+import hashlib, json, os, re
 from datetime import datetime
 from pathlib import Path
 
@@ -125,6 +125,9 @@ def main():
         raise SystemExit(f'Missing {RAW}')
 
     src    = json.loads(RAW.read_text(encoding='utf-8'))
+    want = os.environ.get('TARGET_DATE', '').strip()
+    if want and src.get('target_date') != want:
+        raise SystemExit(f"Stale BSE capture: file is for {src.get('target_date')}, run is for {want}")
     report = {
         'source':       'BSE',
         'capture_start': src.get('start_date'),

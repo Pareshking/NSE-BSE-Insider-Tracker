@@ -1,0 +1,89 @@
+name: Nightly smoke test (short window, no R2 writes)
+
+# Runs the same collectors and validators as the nightly on a short window
+# (default 7 days) and prints, per dataset, what was fetched and whether it
+# certified. It has no R2 credentials and writes nothing outside the runner.
+# The push trigger is temporary, for testing this workflow from its branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: 'Window in days (1 = just the target day)'
+        required: false
+        default: '7'
+      target_date:
+        description: 'Target date YYYY-MM-DD (blank = today UTC)'
+        required: false
+        default: ''
+  push:
+    branches: [ccr-d8fff3f9-npgfmg]
+    paths: ['.github/workflows/nightly-smoke.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Target date
+        id: target
+        run: |
+          if [ -n "${{ inputs.target_date }}" ]; then echo "date=${{ inputs.target_date }}" >> "$GITHUB_OUTPUT"
+          else echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"; fi
+      - name: Clear old collector outputs
+        run: rm -rf artifacts/nse_insider artifacts/nse_bulk artifacts/nse_block artifacts/nse_validation artifacts/bse_validation artifacts/data_validation_v5
+      - { name: NSE Insider, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_insider.py }
+      - { name: NSE Bulk, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_bulk.py }
+      - { name: NSE Block, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_block.py }
+      - { name: NSE Rights, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_rights.py }
+      - { name: NSE Preferential, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_preferential.py }
+      - { name: NSE evidence validation, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/nse_validate.py }
+      - { name: BSE raw acquisition, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/bse_raw_capture_v2.py }
+      - { name: BSE evidence validation, if: always(), env: { TARGET_DATE: '${{ steps.target.outputs.date }}' }, run: python scripts/bse_validate.py }
+      - name: Summary
+        if: always()
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          want = os.environ['TARGET_DATE']; bad = 0
+          def load(p):
+              f = Path(p); return json.loads(f.read_text()) if f.exists() else None
+          print(f'target {want}, window {os.environ["LOOKBACK_DAYS"]} days')
+          n = load('artifacts/nse_validation/certification_report.json') or {}
+          for ds, v in (n.get('datasets') or {}).items():
+              print(f'  NSE {ds:13s} {v["status"]:9s}', {k: x for k, x in v.items() if k not in ('status', 'windows')}); bad += v['status'] != 'VERIFIED'
+          if not n: print('  NSE: no certification report'); bad += 1
+          b = load('artifacts/bse_validation/certification_report.json') or load('artifacts/bse_validation/report.json') or {}
+          for ds, v in (b.get('datasets') or {}).items():
+              print(f'  BSE {ds:18s}', v.get('status'), 'rows', v.get('row_count', v.get('rows'))); bad += v.get('status') != 'VERIFIED'
+          if not b: print('  BSE: no report'); bad += 1
+          print('ALL VERIFIED' if not bad else f'{bad} dataset(s) not verified')
+          raise SystemExit(1 if bad else 0)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-run-evidence
+          path: |
+            artifacts/nse_insider
+            artifacts/nse_bulk
+            artifacts/nse_block
+            artifacts/nse_validation
+            artifacts/bse_validation
+            artifacts/data_validation_v5
+          retention-days: 7
+          if-no-files-found: warn

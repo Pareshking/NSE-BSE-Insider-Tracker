@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
 from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
 TARGET=date.fromisoformat(os.getenv('TARGET_DATE','2026-08-31')); LOOKBACK=int(os.getenv('LOOKBACK_DAYS','90')); URL='https://www.nseindia.com/companies-listing/corporate-filings-PREF'; OUT=Path('artifacts/nse_validation/preferential'); OUT.mkdir(parents=True,exist_ok=True)
 UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139 Safari/537.36'
@@ -19,7 +20,7 @@ def browser():
     for x in ['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1920,1080','--lang=en-US',f'--user-agent={UA}']: o.add_argument(x)
     o.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'}); return webdriver.Chrome(options=o)
 def clean(v): return re.sub(r'\s+',' ',v or '').strip()
-def tables(d):
+def _tables(d):
     out=[]
     for t in d.find_elements(By.TAG_NAME,'table'):
         rs=[]
@@ -28,13 +29,25 @@ def tables(d):
             if any(cells): rs.append(cells)
         if rs: out.append({'rows':rs,'row_count':max(0,len(rs)-1),'columns':rs[0]})
     return out
-def js_fetch(d,url):
+def _js_fetch_once(d,url):
     script="""const url=arguments[0], done=arguments[arguments.length-1]; fetch(url,{credentials:'include',headers:{'Accept':'application/json,text/plain,*/*'}}).then(async r=>done(JSON.stringify({status:r.status,url:r.url,text:await r.text()}))).catch(e=>done(JSON.stringify({status:0,url:url,error:String(e)})));"""
     raw=json.loads(d.execute_async_script(script,url));
     _raw_capture('nse','preferential_issue',raw.get('text',''),url=url,status=raw.get('status',0),content_type='application/json')
     try: raw['json']=json.loads(raw.get('text',''))
     except Exception: raw['json']=None
     return raw
+def tables(d):
+    # Diagnostic only (the API rows are the evidence): the page re-renders while cells are read.
+    for _ in range(3):
+        try: return _tables(d)
+        except StaleElementReferenceException: time.sleep(2)
+    return []
+def js_fetch(d,url):
+    d.set_script_timeout(60)
+    for n in range(3):
+        try: return _js_fetch_once(d,url)
+        except TimeoutException: time.sleep(5*(n+1))
+    return {'status':0,'url':url,'text':'','json':None,'error':'script timeout after 3 attempts'}
 def flatten(obj):
     if isinstance(obj,list):
         if obj and all(isinstance(x,dict) for x in obj): return obj
