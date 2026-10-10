@@ -67,6 +67,13 @@ jobs:
             echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
           fi
 
+      # Old collector outputs are committed in the repo (artifacts/nse_insider,
+      # artifacts/nse_bulk from 31 Aug). If a fetch crashes, the validator must
+      # find nothing, not last month's file. (The validators also check the
+      # report's target_date.)
+      - name: Clear old collector outputs
+        run: rm -rf artifacts/nse_insider artifacts/nse_bulk artifacts/nse_block artifacts/nse_validation artifacts/bse_validation artifacts/data_validation_v5
+
       # --- Market cap reference data, both exchanges, whole-file downloads
       # only (no per-symbol lookups -- see scripts/*_market_cap.py). Neither
       # depends on any transaction data having been fetched first, so both
