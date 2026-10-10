@@ -1,7 +1,7 @@
 name: Nightly smoke test (short window, no R2 writes)
 
 # Runs the same collectors and validators as the nightly on a short window
-# (default 7 days) and prints, per dataset, what was fetched and whether it
+# (default 30 days) and prints, per dataset, what was fetched and whether it
 # certified. It has no R2 credentials and writes nothing outside the runner.
 # The push trigger is temporary, for testing this workflow from its branch.
 
@@ -11,7 +11,7 @@ on:
       lookback_days:
         description: 'Window in days (1 = just the target day)'
         required: false
-        default: '7'
+        default: '30'
       target_date:
         description: 'Target date YYYY-MM-DD (blank = today UTC)'
         required: false
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      LOOKBACK_DAYS: ${{ inputs.lookback_days || '7' }}
+      LOOKBACK_DAYS: ${{ inputs.lookback_days || '30' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
