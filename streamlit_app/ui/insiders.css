@@ -134,6 +134,9 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .q-row { padding: 8px 0; border-bottom: 1px solid #EDEFF3; font-size: 13.5px; color: var(--ink-2); }
 .q-row:last-child { border-bottom: 0; } .q-row b { color: var(--ink); }
 .ident { font-size: 13px; color: var(--ink-3); margin-top: 2px; } .ident .mono { font-family: var(--mono); }
+/* tradability flags (ASM/GSM/ESM, T2T, SME, tight band, circuit days): amber, explanation on hover */
+.tf { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; } .tf .tg { margin: 0; cursor: help; }
+.flags { margin-top: 6px; }
 
 /* ---- Native widgets in the same voice ---- */
 [data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }

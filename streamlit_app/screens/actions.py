@@ -14,7 +14,7 @@ from ui.kit import esc
 
 from insiders_clean import actions, evidence, signals
 from screens.capital_raises import lock_in_calendar
-from screens.ctx import load, need_data, with_prices
+from screens.ctx import load, need_data, with_flags, with_prices
 
 ROWS = 6
 LOCK_AHEAD_DAYS = 60
@@ -37,7 +37,7 @@ def _section(title: str, key: str, aside: str, rows: pd.DataFrame, cols: list, s
             _evidence_line(summ, signal, extra)
         elif note:
             st.html(f'<p class="evl">{esc(note)}</p>')
-        kit.table(rows.head(ROWS), cols, limit=ROWS, height=ROWS * 56 + 52)
+        kit.table(with_flags(rows.head(ROWS)), cols, limit=ROWS, height=ROWS * 56 + 52)
     return True
 
 

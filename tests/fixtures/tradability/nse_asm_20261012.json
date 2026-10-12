@@ -1,0 +1,76 @@
+{
+ "longterm": {
+  "data": [
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "12-Oct-2026",
+    "companyName": "A2Z Infra Engineering Limited",
+    "isin": "INE619I01012",
+    "series": null,
+    "survCode": "LTASM - I (13)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage I",
+    "symbol": "A2ZINFRA",
+    "srno": 1
+   },
+   {
+    "asmSurvIndicator": "Stage IV",
+    "asmTime": "12-Oct-2026",
+    "companyName": "Bliss GVS Pharma Limited",
+    "isin": "INE416D01022",
+    "series": null,
+    "survCode": "LTASM - IV (16)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage IV",
+    "symbol": "BLISSGVS",
+    "srno": 20
+   },
+   {
+    "asmSurvIndicator": "Stage II",
+    "asmTime": "12-Oct-2026",
+    "companyName": "D. P. Abhushan Limited",
+    "isin": "INE266Y01019",
+    "series": null,
+    "survCode": "LTASM - II (14)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage II",
+    "symbol": "DPABHUSHAN",
+    "srno": 28
+   },
+   {
+    "asmSurvIndicator": "Stage III",
+    "asmTime": "12-Oct-2026",
+    "companyName": "Twamev Construction and Infrastructure Limited",
+    "isin": "INE388G01026",
+    "series": null,
+    "survCode": "LTASM - III (15)",
+    "survDesc": "Long Term Additional Surveillance Measure (LTASM) - Stage III",
+    "symbol": "TICL",
+    "srno": 111
+   }
+  ]
+ },
+ "shortterm": {
+  "data": [
+   {
+    "asmSurvIndicator": "Stage I",
+    "asmTime": "12-Oct-2026",
+    "companyName": "ABH Healthcare Limited",
+    "isin": "INE1R2M01019",
+    "series": null,
+    "survCode": "STASM - I (11)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage I",
+    "symbol": "ABH",
+    "srno": 1
+   },
+   {
+    "asmSurvIndicator": "Stage II",
+    "asmTime": "12-Oct-2026",
+    "companyName": "Skytech Infinite Platform Limited",
+    "isin": "INE0VFE01017",
+    "series": null,
+    "survCode": "STASM - II (12)",
+    "survDesc": "Short Term Additional Surveillance Measure (STASM) - Stage II",
+    "symbol": "SKYTECH",
+    "srno": 53
+   }
+  ]
+ }
+}

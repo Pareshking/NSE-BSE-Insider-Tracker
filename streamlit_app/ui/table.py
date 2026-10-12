@@ -15,7 +15,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, indian, pct, price, role, rupees,
+from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, flag_tags, indian, pct, price, role, rupees,
                     shares, side_tag, tag)
 
 FONT_LINKS = ('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
@@ -118,7 +118,8 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
         extra = r.get(c.sub) if c.sub else None
         if isinstance(extra, str) and extra:
             sub += f'<span class="ctx">{esc(extra)}</span>'
-        return f'{_a(company_href(sym), esc(name))}<div class="sub">{sub}</div>', name, 'co'
+        flags = flag_tags(r.get('trade_flags'), r.get('trade_flag_notes'))
+        return f'{_a(company_href(sym), esc(name))}<div class="sub">{sub}</div>{flags}', name, 'co'
     if k in ('person', 'client'):
         pid = r.get('person_id' if k == 'person' else 'client_id')
         sub = role(r.get('person_role')) if k == 'person' else str(r.get(c.sub) or '') if c.sub else ''
@@ -232,7 +233,9 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
             inner, sv, cls = _cell(c, r, bar_max)
             cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}">{inner}</td>')
         body.append('<tr>' + ''.join(cells) + '</tr>')
-    h = min(height, 40 + row_px * len(shown) + 6)
+    # Rows with tradability flags carry one more line under the company name.
+    flagged = int(shown['trade_flags'].map(lambda v: v is not None and not isinstance(v, float) and len(v) > 0).sum())         if 'trade_flags' in shown and any(c.kind == 'co' for c in cols) else 0
+    h = min(height + 18 * flagged, 40 + row_px * len(shown) + 18 * flagged + 6)
     doc = (f'<!doctype html><html><head><meta charset="utf-8">'
            f'<meta name="viewport" content="width=device-width, initial-scale=1">{FONT_LINKS}'
            f'<style>{table_css()}</style></head><body>'

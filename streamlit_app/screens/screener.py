@@ -13,7 +13,7 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean import signals
-from screens.ctx import load, need_data, split_since, with_prices, with_sparks
+from screens.ctx import load, need_data, split_since, with_flags, with_prices, with_sparks
 
 PRESETS = {
     'All with promoter buying': None,
@@ -74,7 +74,7 @@ def render():
     q = pd.to_numeric(w['quantity'], errors='coerce') / split_since(w, ctx.prices)
     paid = (w['value'].where(q > 0).groupby(w['isin']).sum() / q.where(q > 0).groupby(w['isin']).sum())
     last_buy = w.groupby('isin')['seen'].max()
-    show = with_sparks(with_prices(rows, ctx.prices), ctx)
+    show = with_flags(with_sparks(with_prices(rows, ctx.prices), ctx))
     show = show.assign(avg_paid=show['isin'].map(paid), last_buy=show['isin'].map(last_buy))
     show = show.assign(vs_paid=(pd.to_numeric(show['latest_close'], errors='coerce') / show['avg_paid'] - 1) * 100)
     show = show.assign(

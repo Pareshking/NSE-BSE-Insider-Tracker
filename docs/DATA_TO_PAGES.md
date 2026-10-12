@@ -29,6 +29,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In; not yet shown on pages (TODO G) |
 | D12 | Trading calendar | NSE sessions, special sessions | from 30 Sep 2024, extends nightly | In |
 | D13 | Measured outcomes | returns after each signal from broadcast time, after costs, with case counts | from D1h + D2h + D11 | Pending (TODO 7) |
+| D15 | Tradability | NSE ASM / GSM / ESM stage, IBC code, trade for trade, SME, price band, circuit-locked days (20 sessions) | NSE, daily snapshots from 12 Oct 2026; series and circuit days from the bhavcopy | In (no suspended list: NSE's ends in 2012) |
 | D14 | Named-investor aliases | curated list mapping spellings of known investors and funds to one name | — | Pending (to add to TODO) |
 
 ## Step 2: what the data can answer
@@ -81,6 +82,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | S22 Data health: removed, held back, unmatched, calendar | cleaning report | In |
 | S23 Held back for a look, with reasons | D1 flags | In |
 | S24 Named-investor tracking | D2, D3, D14 | Pending |
+| S25 Tradability badges: amber flags under the company name on Screener, Actions, Latest session and Company; a column for signals, never a filter | D15 | In |
 
 ## Step 4: pages, grouped by when and why an investor opens them
 
