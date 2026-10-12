@@ -37,10 +37,10 @@ reader can't get by scrolling the exchange pages:
 3. **Connect it**: one person's many small buys are one decision; several
    insiders buying together is a cluster; a fund's footprint across stocks.
 4. **Put the price next to it**: price paid vs today, distance from the
-   52-week high and 200-day average (pending the price join).
+   52-week high and 200-day average, from our own NSE/BSE price layer.
 5. **Show what happened next**: returns after each kind of signal, measured
-   from the broadcast time, after costs, with the number of cases (pending
-   the backfill and the signal lab).
+   from the broadcast time, after costs, with the number of cases (Track
+   record, measured nightly; a forward record that is never edited).
 6. **Look ahead and warn**: board meetings to consider fund raising or a
    buyback, pledges, promoter selling, late filings.
 
@@ -88,6 +88,8 @@ reader can't get by scrolling the exchange pages:
   the backfill (NSE's new system starts 03 May 2026 and the nightly job
   covers it); bulk and block deals up to the first nightly record. Proceed
   with the data in hand; don't wait for all of it. (08 Oct 2026)
+- **Morning brief is a page on the site** (owner, 12 Oct 2026): no email or
+  messages; the watchlist comes from Streamlit secrets or the page address.
 - **Audience: the owner's own research tool** (owner, 09 Oct 2026). It runs
   on Streamlit Community Cloud, sized for one reader, not for heavy public
   traffic. The repo is public, so nothing personal (holdings, watchlists)
@@ -124,14 +126,14 @@ reader can't get by scrolling the exchange pages:
 | Deals & big stakes | Bulk/block deals by real buyers and sellers, the most active buyers |
 | Other filings | SAST Reg 29 stake changes; gifts, inter-se and off-market transfers, ESOPs, pledges (two tabs) |
 | Capital raises | Upcoming board meetings (fund raising, preferential, buyback), corporate actions |
-| Track record | What happened after each signal (shows nothing until measured) |
+| Morning brief `/brief` (12 Oct) | Before the 09:15 open: what the last session's filings brought, the week's board meetings and lock-ins, and warnings on a watchlist (secrets or `?watch=`; never committed) |
+| Track record | What happened after each signal: against Nifty 500 or the size-matched index, tradable-only, the move before the filing was public; the forward record and the model basket below it |
 | Data quality (footer link, not in the menu) | What the last cleaning run removed, held back and could not place |
 | Company `/company?symbol=` | Everything about one company on one page |
 | Person or fund `/entity?id=` | Everything one insider or fund did, across companies |
 
-Still to add (see `docs/TODO.md`): price chart with filings marked, price
-context columns, morning brief and watchlist warnings, a public model
-basket, the measured track record.
+Still to add (see `docs/TODO.md`): BSE board meetings and shareholding, a
+Company page for BSE-only companies, named-investor aliases as names are checked.
 
 ## What the research found (leads, not proof)
 
