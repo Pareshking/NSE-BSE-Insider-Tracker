@@ -32,6 +32,8 @@ same day something is promised, started or finished. Pages follow the data:
 | G | ~~Prices on the pages~~ **Done 09 Oct** (CMP, 52W range, price line with trades, avg paid vs CMP; ICDR minimum waits on H) | From our own price layer (`artifacts/prices_summary_slim.parquet`, `prices/daily/`): CMP, 52-week high, 200-day average, price paid vs CMP, move since broadcast, and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
 | H | Preferential and rights issues cleaned (**coded 12 Oct; Clean only wrote the tables and the Capital raises page and the Company page's Capital raises tab read them; check the first nightly output**: `insiders_clean/issues.py`, tables `clean/current/preferential.parquet` and `rights.parquet`, Capital raises sections S16-S18 and rights; the ICDR minimum price still needs VWAP) | Offer price, shares allotted, allotment and trading-approval dates, promoter or not; lock-in expiry (promoters 18 months, others 6); Capital raises sections S16-S18 built |
 
+| P | ~~Prices every night~~ **Fixed 12 Oct**: no workflow appended prices after the manual backfill, so the site's prices stopped at 08 Oct. Price backfill run on 12 Oct from 01 Oct; the nightly now fetches the last 10 days (NSE, BSE, NSE market cap, NSE indices) before Precompute | `slim: ... last session` in the Precompute log is the latest trading day |
+
 ## Later
 
 | # | Item | Done when |
