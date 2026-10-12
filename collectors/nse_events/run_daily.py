@@ -1,6 +1,7 @@
 """Nightly: NSE corporate events for the last 10 days -> archive/ and clean/.
 
-    python -m collectors.nse_events.run_daily [--days 10] [--dataset all|sast|actions|meetings|shareholding]
+    python -m collectors.nse_events.run_daily [--days 10] [--dataset all|sast|actions|meetings|shareholding|tenders|daily_buybacks]
+    python -m collectors.nse_events.run_daily --dataset meetings --from 2025-07-01   # one-off backfill
 
 For each stream it fetches [today - days, today], so filings NSE adds late
 are still picked up, and merges into
@@ -14,6 +15,18 @@ promoter pledge comes from each filing's XBRL, fetched once per filing (at
 most MAX_XBRL_PER_RUN a night; the rest wait for the next night). If a
 quarter's XBRL can't be parsed, the company's previous quarter's pledge
 figures are carried forward with shareholding_stale = true.
+
+Buybacks (TODO 12): NSE's tender-offer list (every buyback tender with its
+offer price) and the daily buyback reports of open-market buybacks are
+collected as streams `tenders` and `daily_buybacks`; with the corporate
+actions they make clean/current/buybacks.parquet (insiders_clean/buybacks.py).
+
+Board meetings backfill (TODO 25): `--from DATE` with dataset meetings fetches
+past meetings one calendar month per call from DATE, so the results dates of
+the whole product year are in (NSE answers past ranges; Feb 2026 held 3,472
+rows, the same as its two halves together). Meetings, tenders and daily
+buyback reports are stored byte for byte in raw_v2/nse/{stream}/ first
+(insiders_clean/raw_store.py) when the run is given a raw store.
 
 A 401/403/429 from NSE stops all further NSE calls for the night; what was
 already fetched is still stored.
@@ -37,12 +50,13 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive
+from insiders_clean import archive, buybacks
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
-STREAMS = ('sast', 'actions', 'meetings', 'shareholding')
+STREAMS = ('sast', 'actions', 'meetings', 'shareholding', 'tenders', 'daily_buybacks')
 DATE_COLUMN = {'sast': 'trade_date_to', 'actions': 'ex_date', 'meetings': 'meeting_date',
-               'shareholding': 'quarter_end'}
+               'shareholding': 'quarter_end', 'tenders': 'offer_open', 'daily_buybacks': 'report_date'}
+RAW_STREAMS = ('meetings', 'tenders', 'daily_buybacks')  # kept byte for byte in raw_v2/
 MAX_XBRL_PER_RUN = 300
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -185,16 +199,68 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
     return listing
 
 
-def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN) -> dict:
+def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
+    """Calendar months covering [start, end], clipped to it."""
+    out, cur = [], start
+    while cur <= end:
+        nxt = date(cur.year + (cur.month == 12), cur.month % 12 + 1, 1)
+        out.append((cur, min(nxt - timedelta(days=1), end)))
+        cur = nxt
+    return out
+
+
+def raw_hook(raw, stream, covers):
+    """on_response for the NSE client: the exact bytes into raw_v2/ before
+    anything is parsed. A failed raw write fails the stream (rule 5)."""
+    def hook(url, resp):
+        raw.put('nse', stream, resp.content, url=url, status=resp.status_code,
+                content_type=resp.headers.get('Content-Type'), covers=covers)
+    return hook
+
+
+def fetch_meetings(nse, start: date, today: date, raw=None, backfill_from: date | None = None):
+    """(meetings, dropped). Meetings are announced ahead, so the window
+    looks 60 days forward; a backfill goes one calendar month per call."""
+    end = today + timedelta(days=60)
+    spans = month_chunks(backfill_from, end) if backfill_from else [(start, end)]
+    frames, dropped = [], 0
+    for a, b in spans:
+        if raw is not None:
+            nse.on_response = raw_hook(raw, 'meetings', {'from': a.isoformat(), 'to': b.isoformat()})
+        df, n = parsers.parse_board_meetings(nse.board_meetings(a, b))
+        frames.append(df)
+        dropped += n
+    full = [f for f in frames if not f.empty]
+    df = pd.concat(full, ignore_index=True).drop_duplicates('event_id', keep='last') if full else frames[0]
+    return df, dropped
+
+
+def build_buybacks(r2, master, run_date, report) -> None:
+    """clean/current/buybacks.parquet from tenders, daily reports and corporate actions."""
+    arch = {s: merge_into_archive(r2, s, None, run_date)[0] for s in ('tenders', 'daily_buybacks', 'actions')}
+    if all(a is None or a.empty for a in arch.values()):
+        return
+    bb, rep = buybacks.build(arch['tenders'], arch['daily_buybacks'], arch['actions'])
+    report['buybacks'] = rep
+    if not bb.empty:
+        put_parquet(r2, 'clean/current/buybacks.parquet', add_identity(bb, master))
+
+
+def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
+        raw=None, backfill_from: date | None = None) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
+    if backfill_from:
+        report['meetings_backfill_from'] = backfill_from.isoformat()
     master = security_master(r2, run_date, report['notes'])
     blocked = False
     for stream in streams:
         entry = report['streams'].setdefault(stream, {})
         new = None
         if not blocked:
+            nse.on_response = (raw_hook(raw, stream, {'from': start.isoformat(), 'to': run_date})
+                               if raw is not None and stream in RAW_STREAMS else None)
             try:
                 if stream == 'sast':
                     new = parsers.parse_sast(nse.sast_reg29(start, today))
@@ -202,9 +268,11 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                     new, entry['dropped_other_purposes'] = parsers.parse_corporate_actions(
                         nse.corporate_actions(start, today))
                 elif stream == 'meetings':
-                    # Meetings are announced ahead: look forward too.
-                    new, entry['dropped_routine'] = parsers.parse_board_meetings(
-                        nse.board_meetings(start, today + timedelta(days=60)))
+                    new, entry['dropped_routine'] = fetch_meetings(nse, start, today, raw, backfill_from)
+                elif stream == 'tenders':
+                    new = parsers.parse_tender_offers(nse.tender_offers_past(), nse.tender_offers_active())
+                elif stream == 'daily_buybacks':
+                    new = parsers.parse_daily_buybacks(nse.daily_buybacks(start, today))
                 else:
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
                     known = merge_into_archive(r2, stream, None, run_date)[0]
@@ -228,6 +296,12 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['clean_rows'] = len(clean)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
+    nse.on_response = None
+    if {'tenders', 'daily_buybacks', 'actions'} & set(streams):
+        try:  # a failure here must never stop the event tables
+            build_buybacks(r2, master, run_date, report)
+        except Exception as exc:  # noqa: BLE001
+            report['notes'].append(f'buybacks: failed ({type(exc).__name__}: {exc})')
     report['nse_calls'] = nse.calls
     put(r2, f'clean/reports/nse_events/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),
         'application/json')
@@ -240,10 +314,17 @@ def main(argv=None):
     ap.add_argument('--dataset', choices=('all',) + STREAMS, default='all')
     ap.add_argument('--max-xbrl', type=int, default=MAX_XBRL_PER_RUN,
                     help='shareholding pledge files to fetch this run (NSE rate-limits by IP)')
+    ap.add_argument('--from', dest='backfill_from', type=date.fromisoformat, default=None,
+                    help='board meetings only: backfill month by month from this date (YYYY-MM-DD)')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
-    report = run(r2_client(), NSEClient(), today, args.days, streams, args.max_xbrl)
+    if args.backfill_from and streams != ('meetings',):
+        ap.error('--from needs --dataset meetings')
+    from insiders_clean.raw_store import RawStore
+    r2 = r2_client()
+    report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
+                 raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')

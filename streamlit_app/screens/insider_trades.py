@@ -11,6 +11,7 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
+from insiders_clean.trading_window import WINDOW_OPEN_SESSIONS
 from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 ROLE_FILTER = ['promoter', 'promoter_group', 'director', 'kmp', 'designated_person', 'immediate_relative', 'other',
@@ -29,11 +30,22 @@ def late_text(r) -> str:
     return '; '.join(parts)
 
 
+def window_text(r) -> str:
+    """'2 sessions after the trading window reopened (results 15 Oct)' for a marked buy, or ''."""
+    v = r.get('window_open_buy')
+    if not (pd.notna(v) and bool(v)):
+        return ''
+    n = int(r['sessions_since_window_open'])
+    when = 'First session' if n == 0 else f'{n} session{"s" if n != 1 else ""}'
+    return f'{when} after the trading window reopened (results {kit.day(r.get("results_date"), with_year=False)})'
+
+
 def _table(rows: pd.DataFrame, ctx, name: str):
     if rows.empty:
         kit.empty('Nothing here for these filters.')
         return
     rows = rows.sort_values('seen', ascending=False)
+    rows = rows.assign(window=[window_text(r) for _, r in rows.iterrows()]) if 'window_open_buy' in rows else rows
     rows = with_sparks(with_prices(rows.assign(late=[late_text(r) for _, r in rows.iterrows()],
                                                mode=rows['mode_raw'].fillna(rows['kind'])), ctx.prices), ctx)
     # Price paid vs now only means something for an open-market buy: a sale's gain is the seller's
@@ -43,7 +55,7 @@ def _table(rows: pd.DataFrame, ctx, name: str):
     buy = rows['is_market'].astype('boolean').fillna(False) & (rows['side'] == 'BUY')
     rows = rows.assign(vs_paid=vs.where(buy))
     kit.table(rows, [
-        kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
+        kit.Col('company', 'Company', 'co', sub='window'), kit.Col('person_name', 'Person', 'person'),
         kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
         kit.Col('pct_of_mcap', '% of mcap', 'bar'),
         kit.Col('holding_change_pct', 'Own holding Δ', 'spct', phone=False, help="Change in the person's own holding"),
@@ -72,6 +84,11 @@ def render():
                            placeholder='Everyone', label_visibility='collapsed')
     q = c3.text_input('Search', placeholder='Search company, symbol or person', key='it_q', label_visibility='collapsed')
     t = t[t['seen'] > ctx.ref - pd.Timedelta(days=days)]
+    if 'window_open_buy' in t and t['window_open_buy'].astype('boolean').fillna(False).any() and st.toggle(
+            f'Only buys in the first {WINDOW_OPEN_SESSIONS} sessions after the trading window opened', key='it_window',
+            help='SEBI PIT closes the window from quarter end until 48 hours after the results. Results day = the '
+                 'NSE board meeting on results. A fact, not a measured signal.'):
+        t = t[t['window_open_buy'].astype('boolean').fillna(False)]
     if roles:
         t = t[t['person_role'].isin(roles)]
     if q:

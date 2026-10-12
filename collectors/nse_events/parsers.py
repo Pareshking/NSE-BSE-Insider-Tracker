@@ -281,3 +281,68 @@ def parse_shp_xbrl(xml: str) -> dict:
         'promoter_holding_pct_xbrl': round(promoter / total * 100, 4),
         'public_holding_pct_xbrl': round(public / total * 100, 4) if public is not None else None,
     }
+
+
+# --- Buybacks: tender offers and daily open-market reports ------------------------
+
+TENDER_COLUMNS = ['event_id', 'symbol', 'company', 'series', 'offer_type', 'offer_type_raw', 'issue_type',
+                  'offer_price', 'shares_sought', 'shares_tendered', 'times_tendered', 'accepted_price',
+                  'offer_open', 'offer_close', 'status', 'raw_json']
+
+
+def tender_kind(offer_type) -> str:
+    s = str(offer_type or '').lower()
+    if re.search(r'buy\s*-?\s*back', s):
+        return 'buyback'
+    if 'delist' in s:
+        return 'delisting'
+    if re.search(r'take\s*-?\s*over', s):
+        return 'takeover'
+    return 'other'
+
+
+def parse_tender_offers(past: list[dict], active: list[dict] = ()) -> pd.DataFrame:
+    """NSE's tender-offer list -> one row per offer. NSE spells the type five
+    ways ('Buy back', 'BuyBack', ...); offer_type is the normalised kind.
+    offer_price is NSE's 'band' (past) or 'floorPrice' (active): the fixed
+    buyback price, or the floor of a reverse book building."""
+    out = []
+    for r, status in [(r, 'past') for r in past or []] + [(r, 'active') for r in active or []]:
+        sym = (r.get('symbol') or '').strip().upper() or None
+        opened = r.get('offerDate') or r.get('todStartDate')
+        out.append({
+            'event_id': _id('tender', sym, r.get('series'), opened),
+            'symbol': sym, 'company': r.get('company'), 'series': r.get('series'),
+            'offer_type': tender_kind(r.get('offerType')), 'offer_type_raw': r.get('offerType'),
+            'issue_type': r.get('issueType'),
+            'offer_price': _num(r.get('band') if 'band' in r else r.get('floorPrice')),
+            'shares_sought': _num(r.get('issueSize')),
+            'shares_tendered': _num(r.get('totQty')),
+            'times_tendered': _num(r.get('numberOfTimes') if 'numberOfTimes' in r else r.get('numberOfTImes')),
+            'accepted_price': _num(r.get('allocatedPrice')),
+            'offer_open': opened, 'offer_close': r.get('offerEndDate') or r.get('todEndDate'),
+            'status': status,
+            'raw_json': _raw({k: v for k, v in r.items() if k not in ('demand', 'bidDetails')}),
+        })
+    df = _frame(out, TENDER_COLUMNS)
+    for c in ('offer_open', 'offer_close'):
+        df[c] = parse_dates(df[c])
+    # An offer that is still open is in both lists on its last day; the active row is newer.
+    return df.drop_duplicates('event_id', keep='last').reset_index(drop=True)[TENDER_COLUMNS]
+
+
+DAILY_BB_COLUMNS = ['event_id', 'symbol', 'company', 'report_ts', 'report_date', 'text', 'attachment', 'raw_json']
+
+
+def parse_daily_buybacks(rows: list[dict]) -> pd.DataFrame:
+    """Daily buyback reports, as filed. The share counts are only in the
+    free text (and NSE does not say whether they are the day's or the total),
+    so they are kept as text, not read into a number."""
+    out = [{'event_id': _id('dbb', r.get('symbol'), r.get('exchdisstime') or r.get('an_dt'), r.get('attchmntFile')),
+            'symbol': (r.get('symbol') or '').strip().upper() or None, 'company': r.get('sm_name'),
+            'report_ts': r.get('exchdisstime') or r.get('an_dt'), 'report_date': r.get('exchdisstime') or r.get('an_dt'),
+            'text': r.get('attchmntText'), 'attachment': r.get('attchmntFile'), 'raw_json': _raw(r)}
+           for r in rows or []]
+    df = _frame(out, DAILY_BB_COLUMNS)
+    df['report_date'] = parse_dates(df['report_date'].astype('string').str[:11])
+    return df.drop_duplicates('event_id').reset_index(drop=True)

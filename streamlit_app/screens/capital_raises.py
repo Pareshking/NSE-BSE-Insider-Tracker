@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from data import store
 from ui import kit
 
 from screens.ctx import load, with_prices
@@ -169,6 +170,9 @@ def render():
                     kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
                     kit.Col('what', 'To consider'), kit.Col('description', 'As filed', phone=False)], limit=100)
 
+    from screens import buybacks  # buyback price and route (TODO 12)
+    buybacks.card(store.table('buybacks'), ctx.prices)
+
     with kit.card('Corporate actions', 'cr_actions', 'buybacks, rights, bonuses, splits, dividends'):
         a = ctx.actions
         if a.empty:
@@ -186,5 +190,5 @@ def render():
                 kit.Col('rights_issue_price', 'Rights price', 'price', phone=False),
                 kit.Col('dividend_per_share', 'Dividend/share', 'price', phone=False),
                 kit.Col('record_date', 'Record date', 'date', phone=False)], limit=150, download='corporate_actions')
-            kit.caption("Rights price = face value + the premium NSE lists. Buyback price and route (tender or open "
-                        "market) are not in NSE's corporate-actions feed; they come from the offer documents later.")
+            kit.caption("Rights price = face value + the premium NSE lists. Buyback price and route are not in NSE's "
+                        "corporate-actions feed; the Buybacks list above takes them from NSE's tender-offer list and daily buyback reports.")

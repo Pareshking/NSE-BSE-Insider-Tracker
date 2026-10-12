@@ -14,6 +14,9 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 | `clean/current/tradability.parquet` | One ISIN (NSE equity series, or on an NSE surveillance list) | NSE `/api/reportASM`, `/api/reportGSM`, `/api/reportESM`, `sec_list.csv`, NSE bhavcopy | Nightly (R2 Storage Write; also Tradability flags) |
+| `clean/current/tenders.parquet` | One tender offer (buyback, takeover, delisting) | NSE `/api/liveTenderPast-issues` + `liveTenderActive-issues` | Daily |
+| `clean/current/daily_buybacks.parquet` | One daily buyback report | NSE `/api/corporates-daily-buyback` | Daily |
+| `clean/current/buybacks.parquet` | One buyback, with price and route | tenders + daily buyback reports + corporate actions (`insiders_clean/buybacks.py`) | Daily |
 
 ## insider_trades: data-check columns
 
@@ -45,7 +48,9 @@ The cleaning report counts rows by type and confidence under `tables.deals.parti
 ## NSE corporate events (`collectors/nse_events/`)
 
 Every run fetches the last 10 days (board meetings: up to 60 days ahead as
-well), so filings NSE adds late are still caught. Rows are merged into
+well; the tender-offer list whole), so filings NSE adds late are still caught.
+Board meetings, tender offers and daily buyback reports are also kept byte for
+byte in `raw_v2/nse/{meetings|tenders|daily_buybacks}/` before parsing. Rows are merged into
 `archive/nse_events/{table}/year=YYYY.parquet` by `event_id`, a hash of the
 fields that identify the event; fetching an event again never adds it twice.
 The year is the event's own date. Each row keeps NSE's payload in
@@ -89,7 +94,7 @@ report: interest payments, unit distributions, demergers, other schemes.
 | `face_value`, `rights_premium`, `rights_issue_price` | NSE writes the premium over face value; issue price = face value + premium |
 | `dividend_per_share` | Rupees; ordinary + special when both are in one action |
 | `face_value_from`, `face_value_to` | Split |
-| `needs_price_gap` | True for buybacks and rights. Buyback price and route (tender vs open market) are not in this feed |
+| `needs_price_gap` | True for buybacks and rights. Buyback price and route are not in this feed: see `buybacks` |
 
 ### meetings — board meetings
 
@@ -104,6 +109,50 @@ are both read, and all notices for one meeting are combined.
 | `purposes` | Comma list of the flags below |
 | `results`, `dividend`, `buyback`, `bonus`, `fund_raising`, `split`, `rights`, `preferential` | True when the meeting considers it |
 | `description`, `intimation_ts` | NSE's text and the latest notice time |
+
+Past meetings: NSE's API answers past date ranges (checked 12 Oct 2026: Oct
+2025 and Jan-Feb 2026; Feb 2026 whole = 3,472 rows = its two halves
+together, so no cap at that size). `run_daily --dataset meetings --from
+2025-07-01` fills the product year one month per call; the nightly window
+then keeps it current. A postponed meeting arrives as a separate NSE row
+("Board meeting Rescheduled") with the original date; it stays in
+`raw_json` and the trading-window join skips that date.
+
+### tenders — NSE tender offers
+
+NSE's tender-offer list (market data, "Tender Offer", past and active):
+every buyback, takeover and delisting tender since Aug 2015 (225 on 12 Oct
+2026, 131 of them buybacks). No date parameters; the whole list each night.
+
+| Column | Meaning |
+|---|---|
+| `offer_type` | `buyback`, `takeover`, `delisting` or `other`; `offer_type_raw` keeps NSE's spelling (`Buy back`, `BuyBack`, `Buyback`, ...) |
+| `offer_price` | NSE's `band` (past) or `floorPrice` (active): the fixed buyback price, or a reverse book building's floor |
+| `shares_sought`, `shares_tendered`, `times_tendered` | `issueSize`, `totQty`, `numberOfTimes` |
+| `accepted_price` | `allocatedPrice`, where NSE has it |
+| `offer_open`, `offer_close`, `status` | Tender window; `past` or `active` |
+
+### daily_buybacks — daily buyback reports
+
+Filed each day a company buys back shares on the market (open-market
+route). NSE's answer held the last two months whatever dates were asked
+(12 Oct 2026: 153 reports from 13 Aug, 6 companies), so the archive builds
+the history night by night. The share count is only in NSE's free text, which
+does not say whether it is the day's or the running total, so `text` is kept
+as filed and no number is read from it.
+
+### buybacks — one row per buyback
+
+`insiders_clean/buybacks.py`, rebuilt each night from the three sources.
+
+| Column | Meaning |
+|---|---|
+| `route` | `tender offer` (an NSE tender record), `open market` (daily buyback reports filed), or empty: a 'Buy Back' corporate action with no NSE tender record (e.g. TEAMLEASE, record date 03 Jul 2026) |
+| `offer_price`, `shares_sought`, `offer_value` | Tender offers only; `offer_value` = price x shares sought. An open-market buyback's maximum price is only in its PDF announcement, so it is empty |
+| `shares_tendered`, `times_tendered`, `offer_open`, `offer_close` | From the tender record |
+| `record_date`, `ex_date` | From the corporate action, when there is one. A tender is matched to it when it is the same symbol and opens on or after the record date, within 60 days |
+| `daily_reports`, `first_report`, `last_report` | Open market: reports in one run (a gap over 90 days starts a new buyback) |
+| `source` | Which of the three lists the row comes from |
 
 ### shareholding — quarterly shareholding pattern
 
@@ -177,10 +226,28 @@ have no row.
 | `first_seen`, `last_seen` | archive | Run dates a row was first and last collected |
 | `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
 
+## Insider trades: results dates and the trading window
+
+Added by `scripts/clean_writer.py` from `clean/current/meetings.parquet`
+(`insiders_clean/trading_window.py`); blank when the company has no results
+meeting in our data in the 100 days before the trade.
+
+| Column | Meaning |
+|---|---|
+| `results_date` | The latest board meeting on results (not postponed) whose window had reopened by the first trade day |
+| `window_open_date` | `results_date` + 2 calendar days: SEBI PIT closes the window until 48 hours after the results. NSE gives the meeting date, not the time results were filed; results filed after midnight reopen it a day later than this |
+| `sessions_since_window_open` | NSE sessions from `window_open_date` to the first trade day; 0 = the first session the window was open |
+| `window_open_buy` | An open-market buy with `sessions_since_window_open` below 5 (`WINDOW_OPEN_SESSIONS`) |
+
 ## Not yet collected
 
 BSE equivalents of the four event tables (BSE's API needs an in-page fetch).
-Buyback offer price and route, which need the offer documents.
+The time results were filed (NSE's `corporates-financial-results` API answers
+only for filings in its old format: 59 for Oct-Dec 2025; quarterly results
+now go through integrated filing, whose API is not confirmed), so the
+trading window is dated from the meeting day.
+A buyback's maximum price on the open-market route, and tender buybacks run
+only on BSE: neither is in NSE's structured lists.
 
 ## Prices (derived, `prices/daily/{nse|bse}/{YYYY-MM}.parquet`)
 

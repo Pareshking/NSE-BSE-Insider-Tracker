@@ -20,6 +20,11 @@ says where they live, what each rule does, and how storage is kept small.
    and rebuilds the clean tables from the whole archive. It also reads (never
    writes) the price layer `prices/daily/` for the insider price check.
 
+   and rebuilds the clean tables from the whole archive. Insider trades then
+   get the results date and trading-window columns from the NSE events
+   collector's `clean/current/meetings.parquet` (`insiders_clean/trading_window.py`;
+   a failure there is a note in the report, never a missing table).
+
 Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 
 ## R2 layout
@@ -67,6 +72,11 @@ filtered: round trips, duplicates, amendments and unreadable dates all stay.
 |---|---|
 | `raw_v2/{source}/{dataset}/blobs/{sha256[:2]}/{sha256}.{ext}` | Response body, byte for byte, named by its own SHA-256 (same bytes = one object) |
 | `raw_v2/{source}/{dataset}/fetches/{YYYY-MM-DD}/{utc timestamp}_{sha12}.json` | One record per fetch: URL, parameters, HTTP status, content type, UTC time, size, hash, collector, git commit, covered date range |
+
+The NSE events collector stores board meetings, tender offers and daily
+buyback reports here too (`raw_v2/nse/{meetings|tenders|daily_buybacks}/`),
+through the client's `on_response` hook before parsing; a failed raw write
+fails that stream for the night.
 
 Written with `If-None-Match: *` (never overwrites); no retention job touches
 it. Delete protection in the bucket (R2 object lock / lifecycle) is the
@@ -210,6 +220,15 @@ dry run; dry run is the default and writes nothing), or locally:
 The clean step was measured on a synthetic full history (154k insider
 filings, 510k bulk/block rows): 19 s and 1.9 GB peak for the whole
 process (136 s and 2.7 GB before the per-group Python calls were removed).
+
+### Board meetings (results dates)
+
+Actions -> **NSE Corporate Events (daily)** with dataset `meetings` and
+`from` = `2025-07-01`: one call per calendar month from that day to 60 days
+ahead (18 months from a mid-October run, about 2 minutes), each response into `raw_v2/` first, then
+merged by `event_id`. Starting in July 2025 covers the results season before
+the product window (08 Oct 2025), so October 2025 trades have their window.
+Then run **Clean only** so insider trades get the trading-window columns.
 
 ## Trading calendar
 
