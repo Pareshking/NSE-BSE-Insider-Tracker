@@ -16,7 +16,7 @@ from insiders_clean import signals
 from screens.ctx import load, need_data, with_prices, with_sparks
 
 PRESETS = {
-    'All with insider buying': None,
+    'All with promoter buying': None,
     'Cluster buys': 'Cluster',
     'Float absorbers (0.5%+ in 90 days)': 'Float absorber',
     'Spotlight (0.15%+ in 30 days)': 'Spotlight',
@@ -26,11 +26,9 @@ PRESETS = {
 # Price presets (exploratory, docs/SIGNALS.md): promoter net buying with the
 # latest close within 5% of its 52-week high, or 30%+ below it.
 NEAR_HIGH, FAR_BELOW_HIGH = -0.05, -0.30
-PRICE_PRESETS = {'Breakout buyers (near 52W high)': lambda off: off >= NEAR_HIGH,
-                 'Turnaround accumulation (30%+ below high)': lambda off: off <= FAR_BELOW_HIGH}
-PENDING = {
-    'Promoter warrants at premium': 'needs preferential issues cleaned (docs/TODO.md H)',
-}
+PRICE_PRESETS = {'Promoters buying near the 52W high': lambda off: off >= NEAR_HIGH,
+                 'Promoters buying 30%+ below the high': lambda off: off <= FAR_BELOW_HIGH}
+PENDING: dict[str, str] = {}   # presets waiting on data; none now (a preset is added when its data exists)
 
 
 def render():
@@ -43,7 +41,7 @@ def render():
     if board.empty:
         kit.empty('No insider activity in the last 90 days.')
         return
-    pick = st.pills('Preset', list(PRESETS) + list(PRICE_PRESETS) + list(PENDING), default='All with insider buying', key='scr_preset',
+    pick = st.pills('Preset', list(PRESETS) + list(PRICE_PRESETS) + list(PENDING), default='All with promoter buying', key='scr_preset',
                     label_visibility='collapsed')
     if pick in PENDING:
         kit.note(f'{pick}: not available yet.', f'This preset {PENDING[pick]}.')
@@ -52,7 +50,7 @@ def render():
     key = PRESETS.get(pick) if pick else None
     if key:
         rows = board[board['badges'].map(lambda b: any(x.startswith(key) for x in b))]
-    elif pick == 'All with insider buying':
+    elif pick == 'All with promoter buying':
         rows = board[board['promoter_net'] > 0]
     elif pick in PRICE_PRESETS:
         off = pd.to_numeric(with_prices(board, ctx.prices)['pct_off_high'], errors='coerce')
@@ -98,5 +96,5 @@ def render():
             kit.Col('who', 'Who bought', 'text', sub='cap_sector', phone=False),
         ], limit=80, download='screener')
         kit.caption('% of float is blank where the shareholding pattern is not loaded yet; the range is blank where the '
-                    'stock has no price in our NSE/BSE price files. How each badge performed afterwards will be on '
-                    'Track record once measured.')
+                    'stock has no price in our NSE/BSE price files. How each kind of buy has done afterwards is on '
+                    'Track record, as an early read.')

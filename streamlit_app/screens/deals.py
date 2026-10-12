@@ -19,7 +19,7 @@ from screens.ctx import load, need_data, with_prices, with_sparks
 
 def render():
     ctx = load()
-    kit.head('Deals & big stakes', 'Who sold, who absorbed it, and where real funds are accumulating. Market '
+    kit.head('Bulk & block deals', 'Who sold, who absorbed it, and where real funds are accumulating. Market '
                                    'makers, who buy and sell in equal measure, are left out.')
     if not need_data(ctx):
         return

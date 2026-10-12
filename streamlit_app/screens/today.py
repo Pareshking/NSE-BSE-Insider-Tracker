@@ -145,7 +145,7 @@ def _coming_up(ctx):
 
 def render():
     ctx = load()
-    kit.head("Today's pulse", 'What insiders and big money did in the market lately. ESOPs, gifts, pledges and token '
+    kit.head("Latest session", 'What insiders and big money did in the market lately. ESOPs, gifts, pledges and token '
                               'buys are left out.')
     if not need_data(ctx):
         return
@@ -175,9 +175,9 @@ def render():
         b = hc.iloc[0]
         share = (kit.pct(b['pct_of_float']) + ' of float') if pd.notna(b['pct_of_float']) else \
             (kit.pct(b['pct_of_mcap']) + ' of mcap')
-        best = kit.Tile('Highest-conviction buy', str(b['nse_symbol']), f'{kit.rupees(b["value"])} · {share} · {kit.day(b["day"])}')
+        best = kit.Tile('Largest spotlight buy', str(b['nse_symbol']), f'{kit.rupees(b["value"])} · {share} · {kit.day(b["day"])}')
     else:
-        best = kit.Tile('Highest-conviction buy', '—', f'No buy crossed the spotlight line, {when}')
+        best = kit.Tile('Largest spotlight buy', '—', f'No buy crossed the spotlight line, {when}')
     kit.tiles([
         kit.Tile('Net open-market promoter flow', kit.rupees(net, signed=True),
                  f'{kit.plural(prom["isin"].nunique() if not prom.empty else 0, "company", "companies")} · made public {when}',
@@ -202,10 +202,10 @@ def render():
             else:
                 col.altair_chart(ch, width='stretch')
 
-    with kit.card('High-conviction buys', 'spot',
+    with kit.card('Spotlight buys (0.15%+ of market cap)', 'spot',
                   f'made public {when} · {signals.SPOTLIGHT_PCT_30D}%+ of market cap by one person over 30 days'):
         if hc.empty:
-            kit.empty(f'No open-market buy made public {when} reaches the high-conviction line.')
+            kit.empty(f'No open-market buy made public {when} reaches the spotlight line (0.15% of market cap).')
         else:
             st.html('<div class="spot-grid">' + ''.join(_card(r, ctx, r['day']) for _, r in hc.head(6).iterrows()) + '</div>')
 

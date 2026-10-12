@@ -55,7 +55,7 @@ def _table(rows: pd.DataFrame, ctx, name: str):
 
 def render():
     ctx = load()
-    kit.head('Insider trades', 'Every SEBI PIT filing, one row per trade: repeats and corrections removed.')
+    kit.head('Insider & promoter trades', 'Every SEBI PIT filing, one row per trade: repeats and corrections removed.')
     if not need_data(ctx):
         return
     t = ctx.trades.copy()

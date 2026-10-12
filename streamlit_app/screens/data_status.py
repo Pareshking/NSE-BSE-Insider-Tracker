@@ -24,7 +24,7 @@ REASONS = {
 def render():
     ctx = load()
     rep = store.report()
-    kit.head('Data status', 'What the last cleaning run took in, removed and held back, so every number on the '
+    kit.head('Data quality', 'What the last cleaning run took in, removed and held back, so every number on the '
                             'site can be traced.')
     if not rep:
         kit.note('No cleaning report yet.', 'The nightly run writes clean/reports/{date}.json.')
