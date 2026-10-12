@@ -19,6 +19,7 @@ st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
 
 from screens import (
     actions,
+    brief,
     capital_raises,
     coming,
     company,
@@ -42,6 +43,7 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 SECTIONS = {
     'Signals': [
         st.Page(actions.render, title='Actions', icon=M('bolt'), url_path='actions', default=True),
+        st.Page(brief.render, title='Morning brief', icon=M('wb_sunny'), url_path='brief'),
         st.Page(screener.render, title='Screener', icon=M('filter_alt'), url_path='screener'),
         st.Page(track_record.render, title='Track record', icon=M('query_stats'), url_path='track-record'),
     ],
