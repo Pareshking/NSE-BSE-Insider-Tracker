@@ -40,8 +40,8 @@ def render(head: bool = True):
     q = c2.text_input('Search', placeholder='Search company or acquirer', key='sast_q', label_visibility='collapsed')
     rows = s[~prom] if who == 'Outside investors' else s[prom] if who == 'Promoter group' else s
     if q:
-        rows = rows[rows['company'].str.contains(q, case=False, na=False)
-                    | rows['acquirer_name'].str.contains(q, case=False, na=False)]
+        rows = rows[rows['company'].str.contains(q, case=False, na=False, regex=False)
+                    | rows['acquirer_name'].str.contains(q, case=False, na=False, regex=False)]
     with kit.card(f'{kit.plural(len(rows), "disclosure")}', 'sast_tbl', 'newest first · % of share capital as filed'):
         kit.table(rows.sort_values('seen', ascending=False).assign(nse_symbol=rows['symbol']), [
             kit.Col('company', 'Company', 'co'), kit.Col('seen', 'Made public', 'date'),

@@ -37,6 +37,10 @@ def render():
     t = ctx.trades[ctx.trades['nse_symbol'].astype(str).str.upper() == sym].copy()
     sec = ctx.securities[ctx.securities['nse_symbol'].astype(str).str.upper() == sym] if not ctx.securities.empty else pd.DataFrame()
     rec = sec.iloc[0] if len(sec) else (t.iloc[0] if len(t) else None)
+    if rec is None:
+        kit.head('Company', '')
+        kit.empty(f'No company with the symbol {sym} in our data. Open one from any table, or check the spelling.')
+        return
     name = (rec.get('display_name') if rec is not None and 'display_name' in rec else None) or \
            (t['company'].iloc[0] if len(t) else sym)
     kit.head(str(name), '')

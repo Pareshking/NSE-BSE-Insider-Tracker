@@ -59,8 +59,8 @@ def render():
         rows = board[(board['promoter_net'] > 0) & off.map(lambda v: pd.notna(v) and PRICE_PRESETS[pick](v))]
     q = st.text_input('Search', placeholder='Company or symbol', key='scr_q', label_visibility='collapsed')
     if q:
-        rows = rows[rows['company'].str.contains(q, case=False, na=False)
-                    | rows['nse_symbol'].astype(str).str.contains(q, case=False)]
+        rows = rows[rows['company'].str.contains(q, case=False, na=False, regex=False)
+                    | rows['nse_symbol'].astype(str).str.contains(q, case=False, regex=False)]
 
     sec = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
     pub = signals.public_pct_by_isin(ctx.shareholding)
