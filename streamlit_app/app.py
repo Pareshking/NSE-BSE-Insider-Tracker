@@ -14,6 +14,30 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))  # insiders_clean, shared with the pipeline
 
+
+def _reload_changed_pipeline_modules():
+    """Streamlit Cloud re-runs the changed files under streamlit_app/ after a
+    push but keeps modules imported from the repo root (insiders_clean) as
+    first loaded, so a page calling a function added in the same push fails
+    until the app restarts (12 Oct 2026: signals.with_tradability on every
+    page with badges). Reload each one this process has not checked yet or
+    whose file changed since; the dates live on `sys`, which outlives reruns."""
+    import importlib
+    import os
+    seen = sys.__dict__.setdefault('_insiders_clean_mtimes', {})
+    for name in sorted(n for n in list(sys.modules) if n == 'insiders_clean' or n.startswith('insiders_clean.')):
+        path = getattr(sys.modules.get(name), '__file__', None)
+        if not path or not os.path.exists(path) or seen.get(name) == os.path.getmtime(path):
+            continue
+        try:
+            importlib.reload(sys.modules[name])
+        except Exception:  # noqa: BLE001 -- a file mid-update: tried again on the next run
+            continue
+        seen[name] = os.path.getmtime(path)
+
+
+_reload_changed_pipeline_modules()
+
 st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
                    initial_sidebar_state='expanded')
 
