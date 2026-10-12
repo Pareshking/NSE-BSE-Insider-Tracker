@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  actions: write   # only to start Precompute slim assets at the end
 
 # Shared with the history backfill: both write archive/ partitions, so they
 # never run at the same time; whichever starts second waits. (GitHub keeps one
@@ -216,3 +217,14 @@ jobs:
             artifacts/data_validation_v5
           retention-days: 14
           if-no-files-found: warn
+
+      # Precompute (price summary, market strip, track record) used to start
+      # from a workflow_run trigger, which has not fired after any run since
+      # 9 Oct. Starting it from here is certain; it waits in the shared
+      # concurrency group until this run is done. Runs even when a collector
+      # step failed: the price layer does not depend on them.
+      - name: Start Precompute slim assets
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run precompute-slim.yml --ref "${{ github.ref_name }}"
