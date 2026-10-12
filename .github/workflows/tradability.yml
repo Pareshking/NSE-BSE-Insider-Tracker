@@ -1,0 +1,43 @@
+name: Tradability flags (NSE surveillance)
+
+# The same step the nightly R2 Storage Write run has, on its own: NSE's ASM,
+# GSM and ESM lists and the security list with price bands, stored write-once
+# in raw_v2/, one parsed snapshot a day in archive/tradability/, and
+# clean/current/tradability.parquet rebuilt (scripts/nse_surveillance.py).
+# For a first run after a change, or a day the nightly missed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  tradability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Surveillance lists and flags
+        run: python -u scripts/nse_surveillance.py | tee tradability.log
+      - name: Store raw responses (write-once)
+        if: always()
+        run: python scripts/raw_flush.py
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Tradability (aggregate)' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' tradability.log >> "$GITHUB_STEP_SUMMARY" || true

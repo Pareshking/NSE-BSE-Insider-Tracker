@@ -139,6 +139,18 @@ def side_tag(side) -> str:
     return tag('BUY', 'buy') if side == 'BUY' else tag('SELL', 'sell') if side == 'SELL' else ''
 
 
+def flag_tags(flags, notes=None) -> str:
+    """Tradability flags (ASM/GSM/ESM stage, T2T, SME, tight band, circuit-locked days) as small amber badges,
+    the explanation on hover. Empty when there are none."""
+    flags = [] if flags is None or isinstance(flags, float) else list(flags)
+    notes = [] if notes is None or isinstance(notes, float) else list(notes)
+    if not flags:
+        return ''
+    return '<span class="tf">' + ''.join(
+        f'<span class="tg tg-warn" title="{esc(n, quote=True)}">{esc(f)}</span>'
+        for f, n in zip(flags, notes + [''] * (len(flags) - len(notes)))) + '</span>'
+
+
 def exchange_tags(listed_on) -> str:
     return ' '.join(f'<span class="ex ex-{e}">{e.upper()}</span>'
                     for e in str(listed_on or '').split(',') if e in ('nse', 'bse'))

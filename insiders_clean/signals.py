@@ -323,3 +323,18 @@ def insider_details(t: pd.DataFrame, ref: pd.Timestamp, days: int = 90) -> pd.Se
         parts = [f'{n} {r}' + ('s' if n > 1 and r != 'KMP' else '') for r, n in people.items()]
         out[isin] = f'{", ".join(parts)} · {len(g)} trade' + ('s' if len(g) != 1 else '')
     return pd.Series(out, dtype=object)
+
+
+def with_tradability(df: pd.DataFrame, trad: pd.DataFrame | None) -> pd.DataFrame:
+    """Adds `trade_flags` and `trade_flag_notes` (lists, empty when NSE shows nothing) by ISIN from
+    clean/current/tradability.parquet. A column, never a filter: surveillance, trade-for-trade, SME, a tight band or
+    circuit-locked days are for the reader (and the lab) to weigh. Blank (None) where the ISIN is not in the table
+    (BSE-only names, or no table yet). Today's flags only: they say nothing about the day of an older filing."""
+    if df is None or df.empty or 'isin' not in df:
+        return df
+    if trad is None or trad.empty:
+        return df.assign(trade_flags=None, trade_flag_notes=None)
+    t = trad.drop_duplicates('isin').set_index('isin')
+    as_list = lambda v: list(v) if v is not None and not isinstance(v, float) else None  # noqa: E731
+    return df.assign(trade_flags=df['isin'].map(t['trade_flags']).map(as_list),
+                     trade_flag_notes=df['isin'].map(t['trade_flag_notes']).map(as_list))

@@ -13,7 +13,7 @@ from ui import charts, kit
 from ui.kit import esc
 
 from insiders_clean import signals
-from screens.ctx import load, need_data, with_prices, with_sparks
+from screens.ctx import load, need_data, with_flags, with_prices, with_sparks
 
 CHIPS = ['All', 'Promoter buys only', 'Bulk deals', 'Large handshakes']
 REASONS = {'value_over_25pct_of_mcap': "value is over 25% of the company's market cap",
@@ -77,7 +77,7 @@ def _card(r, ctx, day) -> str:
             + f'<div class="spot-line"><b>{esc(who)}</b> bought <b class="num">{kit.rupees(r["value"])}</b> '
             f'({esc(share)}) in the open market{tranches}.</div>'
             f'<div class="spot-line">{price_line}</div>'
-            f'<div class="spot-badges">{context} {kit.tag(pledge_txt, tone)}</div></div>')
+            f'<div class="spot-badges">{context} {kit.tag(pledge_txt, tone)} {kit.flag_tags(r.get("trade_flags"), r.get("trade_flag_notes"))}</div></div>')
 
 
 WINDOWS = {'Latest session': 1, 'Last 5 sessions': 5, 'Last 30 days': 22}
@@ -121,7 +121,7 @@ def _outside_holders(ctx):
         if s.empty:
             kit.empty('No SAST filings by outside investors on the latest filing day.')
             return
-        kit.table(s.assign(nse_symbol=s['symbol']), [
+        kit.table(with_flags(s.assign(nse_symbol=s['symbol'])), [
             kit.Col('company', 'Company', 'co'), kit.Col('acquirer_name', 'Investor', 'text', sub='mode'),
             kit.Col('action_type', 'Action'), kit.Col('percent_equity_traded', '% traded', 'spct'),
             kit.Col('post_stake_pct', 'Stake after', 'pct')], limit=15)
@@ -146,7 +146,7 @@ def _coming_up(ctx):
             kit.empty('No board meetings on fund raising, preferential issues, buybacks, bonuses, splits or rights '
                       'in the next 10 days.')
             return
-        kit.table(rows.assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ').str.capitalize()), [
+        kit.table(with_flags(rows).assign(nse_symbol=rows['symbol'], what=rows['purposes'].str.replace('_', ' ').str.replace(',', ', ').str.capitalize()), [
             kit.Col('meeting_date', 'Meeting', 'date'), kit.Col('company', 'Company', 'co'),
             kit.Col('what', 'To consider')], limit=20)
 
@@ -159,6 +159,7 @@ def render():
     pick = st.segmented_control('Window', list(WINDOWS), default='Last 5 sessions', key='today_win',
                                 label_visibility='collapsed') or 'Last 5 sessions'
     sess, first, day = _session(ctx, WINDOWS[pick])
+    sess = with_flags(sess)
     if day is None:
         kit.empty('No dated insider filings in the data yet.')
         return
@@ -241,7 +242,7 @@ def render():
                 kit.empty('No bulk or block deals by real buyers or sellers in the latest session.')
             else:
                 d = d.sort_values('value', ascending=False)
-                kit.table(d, [
+                kit.table(with_flags(d), [
                     kit.Col('company', 'Company', 'co'), kit.Col('client_name', 'Client', 'client', sub='counterparties'),
                     kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
                     kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('price', 'Price', 'price')], limit=40)
@@ -250,7 +251,7 @@ def render():
             if h.empty:
                 kit.empty('No large handshakes (₹10 Cr+ or 0.5%+ of market cap) in the latest deal session.')
             else:
-                kit.table(h.assign(who=h['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
+                kit.table(with_flags(h.assign(who=h['seller_is_promoter'].map({True: ['Promoter'], False: []}))), [
                     kit.Col('company', 'Company', 'co'), kit.Col('sellers', 'Sold by'), kit.Col('who', '', 'tags'),
                     kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
                     kit.Col('pct_of_mcap_sold', '% of mcap sold', 'pct')], limit=40)

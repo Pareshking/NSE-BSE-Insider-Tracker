@@ -13,6 +13,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/actions.parquet` | One corporate action | NSE `/api/corporates-corporateActions` | Daily |
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
+| `clean/current/tradability.parquet` | One ISIN (NSE equity series, or on an NSE surveillance list) | NSE `/api/reportASM`, `/api/reportGSM`, `/api/reportESM`, `sec_list.csv`, NSE bhavcopy | Nightly (R2 Storage Write; also Tradability flags) |
 
 ## insider_trades: data-check columns
 
@@ -119,6 +120,38 @@ NSE returns the latest 100 records of each stage a day, so the table is every da
 | `lock_in_promoter_until`, `lock_in_other_until` | Preferential only, linked records with a trading-approval date: +18 months for promoters, +6 for others; a `MIXED` allotment gets both because the split is not filed |
 
 BSE's rights and preferential rows carry only company, scrip code and two stage dates, so they are not used here.
+
+## Tradability flags (`clean/current/tradability.parquet`)
+
+Can the stock be traded the normal way today? `scripts/nse_surveillance.py`, rules in
+`insiders_clean/tradability.py` (thresholds in its `Config`). Flags only: no page or signal drops a row for them.
+Sources confirmed with real answers on 12 Oct 2026 (fixtures in `tests/fixtures/tradability/`).
+
+| Column | Meaning |
+|---|---|
+| `isin`, `symbol`, `series`, `last_price_date` | From the latest NSE bhavcopy row (equity series EQ, BE, BZ, SM, ST, SZ); an ISIN on a surveillance list but not in the bhavcopy keeps a row with its listed symbol |
+| `as_of` | Day of the surveillance snapshot used |
+| `asm_lt_stage`, `asm_st_stage` | Long- and short-term ASM stage (`I`-`IV`), from NSE's `asmSurvIndicator` |
+| `gsm_stage` | GSM stage (`0`-`VI`), read from `survCode` (`GSM - 0 (99)`, `GSM III & IBC - Receipt (65)`). NSE's own `gsmStage` field is not the stage: it holds the code number in Roman numerals (`LXII` for code 62) |
+| `esm_stage` | ESM stage (`I`, `II`), from `esmSurvIndicator` |
+| `ibc_stage` | Insolvency code on NSE's GSM list: `Receipt` (IBC receipt of disclosure) or `I` (ASM IBC stage I) |
+| `{list}_since`, `{list}_since_floor` | First snapshot of the unbroken run in today's stage. Snapshots start 12 Oct 2026; when the run reaches our first snapshot, `_since_floor` is true and the date reads "since at least" |
+| `surveillance_codes` | NSE's `survCode`s, joined |
+| `trade_for_trade`, `t2t_since`, `t2t_since_floor` | Series BE, BZ or ST in the bhavcopy (every trade settled by delivery); since = first day of the unbroken run in the last 3 months of prices loaded |
+| `sme` | Series SM, ST or SZ (NSE Emerge) |
+| `band_pct`, `band_text`, `sec_list_date` | Price band from NSE's `sec_list.csv` (2, 5, 10, 20, 40; `No Band` = blank, F&O names), matched by symbol and series |
+| `circuit_days`, `circuit_last`, `circuit_last_side`, `circuit_window` | Sessions in the last 20 where the stock traded at one price all day (open = high = low = close, volume > 0) at the band: move from the previous close at least the band less 0.1 point and one paisa for the tick. Judged on today's band, so a band change inside the window can add or miss a day; names without a band are not judged |
+| `trade_flags`, `trade_flag_notes` | Short labels (`GSM 0`, `ESM I`, `LT-ASM I`, `ST-ASM II`, `IBC`, `T2T`, `SME`, `5% band`, `Circuit 3/20`) and a one-line explanation each; a band is flagged at 5% or tighter |
+
+Snapshots: `archive/tradability/surveillance/year=YYYY.parquet` (date, list, isin, symbol, company, stage, code,
+description, listed_at) and `archive/tradability/sec_list/year=YYYY.parquet` (date, symbol, series, band), one per
+day (a rerun replaces the day). Raw answers: `raw_v2/nse/{asm|gsm|esm|sec_list}/`. Report:
+`clean/reports/tradability/{date}.json`.
+
+Not available: **suspended** securities. NSE's `content/equities/suspension.csv` answers, but its newest entry is
+16 Jul 2012, so it is not used; a suspended stock simply has no bhavcopy row. Bands before 12 Oct 2026 and
+surveillance stages before that day are not known. BSE's own surveillance lists are not collected; BSE-only names
+have no row.
 
 ## Archive and raw layer columns (not clean tables)
 

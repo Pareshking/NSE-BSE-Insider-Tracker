@@ -11,7 +11,7 @@ from ui.kit import esc
 
 from insiders_clean import signals
 from screens.capital_raises import issue_rows, rights_rows
-from screens.ctx import load, need_data
+from screens.ctx import load, need_data, with_flags
 
 
 def _pick_symbol(ctx) -> str | None:
@@ -56,6 +56,10 @@ def render():
         if 'market_cap' in rec and pd.notna(rec.get('market_cap')):
             parts.append(f'Mkt cap {kit.rupees(rec.get("market_cap"))}')
         st.html(f'<div class="ident">{" · ".join(parts)}</div>')
+        fl = with_flags(pd.DataFrame({'isin': [rec.get('isin')]})) if pd.notna(rec.get('isin')) else pd.DataFrame()
+        if 'trade_flags' in fl and fl['trade_flags'].iloc[0]:  # NSE surveillance, T2T, SME, band, circuit days
+            f, n = fl['trade_flags'].iloc[0], fl['trade_flag_notes'].iloc[0]
+            st.html(f'<div class="flags">{kit.flag_tags(f, n)}<p class="cap">{esc(" · ".join(n))}</p></div>')
 
     e = ctx.eligible[ctx.eligible['nse_symbol'].astype(str).str.upper() == sym]
     win = e[e['seen'] > ctx.ref - pd.Timedelta(days=365)]

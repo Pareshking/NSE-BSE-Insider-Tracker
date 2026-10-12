@@ -6,6 +6,10 @@ says where they live, what each rule does, and how storage is kept small.
 ## Nightly order (R2 Storage Write workflow)
 
 1. Collect and validate NSE + BSE (unchanged).
+1a. `scripts/nse_surveillance.py` fetches NSE's ASM, GSM and ESM lists and `sec_list.csv` (price bands), keeps one
+   snapshot a day in `archive/tradability/`, and rebuilds `clean/current/tradability.parquet` with the last three
+   months of NSE bhavcopy (`continue-on-error`; also its own workflow, Tradability flags). Flags only, never a
+   filter (`docs/DATA_DICTIONARY.md`).
 1b. Every collector saves each response's exact bytes locally at fetch time
    (`scripts/raw_capture.py`); `scripts/raw_flush.py` then stores them in the
    write-once `raw_v2/` layer (see "Raw layer").
@@ -27,6 +31,8 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 | `clean/current/insider_trades.parquet` | One row per filing, cleaned, full history | Rewritten nightly |
 | `clean/current/deals.parquet` | One row per client, security, day, side | Rewritten nightly |
 | `clean/current/securities.parquet` | One row per security used | Rewritten nightly |
+| `clean/current/tradability.parquet` | One row per ISIN: surveillance stage, T2T, SME, band, circuit days | Rewritten nightly |
+| `archive/tradability/{surveillance,sec_list}/year=YYYY.parquet` | One parsed snapshot a day of NSE's surveillance lists and price bands | Forever |
 | `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
 | `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
 | `archive/_backfill/nse_{dataset}.json` | Backfill progress: chunks done, with row counts | Forever (small) |

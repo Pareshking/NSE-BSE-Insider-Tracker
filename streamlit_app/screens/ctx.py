@@ -99,6 +99,12 @@ def split_since(df: pd.DataFrame, prices: pd.DataFrame) -> pd.Series:
     return one.where(~after, f).where(~(after & (when.isna() | (n > 1))))
 
 
+def with_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """Adds today's tradability flags by ISIN (NSE surveillance stage, trade for trade, SME, tight band,
+    circuit-locked days), drawn as amber badges under the company name. Flags, never a filter."""
+    return signals.with_tradability(df, store.table('tradability'))
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _marks(eligible: pd.DataFrame) -> dict:
     """ISIN -> [(day made public, side)] for open-market insider trades."""

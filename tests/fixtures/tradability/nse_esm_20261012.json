@@ -1,0 +1,42 @@
+[
+ {
+  "companyName": "3i Infotech Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "12-Oct-2026",
+  "isin": "INE748C01038",
+  "survCode": "ESM - I (34)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage I",
+  "symbol": "3IINFOLTD",
+  "srno": 1
+ },
+ {
+  "companyName": "Acs Technologies Limited",
+  "esmSurvIndicator": "Stage II",
+  "esmTime": "12-Oct-2026",
+  "isin": "INE366C01021",
+  "survCode": "ESM - II (35)",
+  "survDesc": "Enhanced Surveillance Measure (ESM) - Stage II",
+  "symbol": "ACSTECH",
+  "srno": 9
+ },
+ {
+  "companyName": "Flexituff Ventures International Limited",
+  "esmSurvIndicator": "Stage II",
+  "esmTime": "12-Oct-2026",
+  "isin": "INE060J01017",
+  "survCode": "ESM II & GSM 0 (37)",
+  "survDesc": "ESM Stage II and GSM Stage 0",
+  "symbol": "FLEXITUFF",
+  "srno": 67
+ },
+ {
+  "companyName": "Jalan Transolutions (India) Limited",
+  "esmSurvIndicator": "Stage I",
+  "esmTime": "12-Oct-2026",
+  "isin": "INE349X01015",
+  "survCode": "ESM I & GSM 0 (36)",
+  "survDesc": "ESM Stage I and GSM Stage 0",
+  "symbol": "JALAN",
+  "srno": 97
+ }
+]
