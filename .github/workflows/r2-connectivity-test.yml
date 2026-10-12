@@ -1,9 +1,7 @@
 name: R2 Connectivity Test
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main]
+  workflow_dispatch:  # manual only (12 Oct 2026); every nightly and Precompute run proves R2 works
 
 permissions:
   contents: read

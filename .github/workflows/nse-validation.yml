@@ -1,8 +1,9 @@
 name: NSE Validation Only
 
 on:
-  push:
-    branches: [main]
+  # Manual only (12 Oct 2026): on every push to main it re-ran the NSE collectors from
+  # GitHub's runner, a dozen times on a busy day, risking NSE's rate limit before the
+  # nightly. The nightly R2 Storage Write runs the same validation (scripts/nse_validate.py).
   workflow_dispatch:
     inputs:
       target_date:
