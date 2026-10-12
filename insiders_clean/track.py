@@ -227,3 +227,50 @@ def new_ledger_rows(ev: pd.DataFrame, ledger: pd.DataFrame, close: pd.DataFrame,
     if 'value' not in fresh:
         fresh['value'] = np.nan
     return fresh[LEDGER_COLS].reset_index(drop=True)
+
+
+# --- Tradability on the event day ------------------------------------------
+# The research says leave out stocks a reader could not trade freely. Judged
+# from the bhavcopy as it stood on the day made public, so no look-ahead:
+# trade-for-trade or SME series that day, and locked days in the 20 sessions
+# up to it (one price all day with a move of LOCK_MIN_MOVE% or more: NSE's
+# narrowest band is 2%, so such a day is a band lock). Today's surveillance
+# lists are not used here: their history starts on 12 Oct 2026.
+T2T_SERIES, SME_SERIES = ('BE', 'BZ', 'ST'), ('SM', 'ST', 'SZ')
+LOCK_WINDOW, LOCK_MIN_MOVE = 20, 1.9
+
+
+def restrictions(ev: pd.DataFrame, px: pd.DataFrame | None) -> pd.DataFrame:
+    """Adds `restriction` (plain words, '' when none) and `restricted` per
+    event from NSE price rows (date, isin, series, open, high, low, close,
+    prev_close, volume)."""
+    out = ev.copy()
+    out['restriction'] = ''
+    if out.empty or px is None or px.empty:
+        out['restricted'] = False
+        return out
+    p = px[['date', 'isin', 'series', 'open', 'high', 'low', 'close', 'prev_close', 'volume']].dropna(subset=['isin', 'date']).copy()
+    p['date'] = pd.to_datetime(p['date'])
+    move = (p['close'] / p['prev_close'].where(p['prev_close'] > 0) - 1).abs() * 100
+    p['locked'] = ((p['open'] == p['high']) & (p['high'] == p['low']) & (p['low'] == p['close'])
+                   & (p['volume'] > 0) & (move >= LOCK_MIN_MOVE)).fillna(False)
+    by = {i: g.sort_values('date') for i, g in p.groupby('isin', sort=False)}
+    why = []
+    for i, day in zip(out['isin'], pd.to_datetime(out['day'])):
+        g = by.get(i)
+        upto = g[g['date'] <= day] if g is not None else None
+        if upto is None or upto.empty:
+            why.append('')
+            continue
+        series, w = str(upto['series'].iloc[-1]), []
+        if series in T2T_SERIES:
+            w.append('trade for trade')
+        if series in SME_SERIES:
+            w.append('SME')
+        n = int(upto['locked'].tail(LOCK_WINDOW).sum())
+        if n:
+            w.append(f'{n} locked day{"s" if n > 1 else ""} in {LOCK_WINDOW}')
+        why.append(', '.join(w))
+    out['restriction'] = why
+    out['restricted'] = out['restriction'] != ''
+    return out

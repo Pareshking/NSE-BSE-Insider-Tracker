@@ -119,6 +119,8 @@ def main() -> int:
             print(f'track: size-matched indices found {sorted(sized)}; missing {sorted(set(track.SIZE_INDEX.values()) - set(sized))}')
             size_of = summary.dropna(subset=['mcap_bucket']).set_index('isin')['mcap_bucket'].to_dict()
             fr = track.forward_returns(ev, close, nifty, sized, size_of)
+            fr = track.restrictions(fr, px[px['exchange'] == 'NSE'] if 'exchange' in px else px)
+            print(f'track: {int(fr["restricted"].sum())} of {len(fr)} events not freely tradable on the day (T2T, SME or locked days)')
             put(client, bucket, EVENTS_KEY, fr)
             summ = track.summary(fr)
             put(client, bucket, TRACK_KEY, summ)
