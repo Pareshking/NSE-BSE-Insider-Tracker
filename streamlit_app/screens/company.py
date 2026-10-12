@@ -11,6 +11,7 @@ from ui.kit import esc
 
 from insiders_clean import signals
 from screens.capital_raises import issue_rows, rights_rows
+from screens.buybacks import events as buyback_events
 from screens.ctx import load, need_data, with_flags
 
 
@@ -188,6 +189,8 @@ def render():
             meta = [f'Traded {traded}' if traded else '',
                     f'made public {kit.day(r["seen"])}' + (f' ({lag} later)' if lag and lag != 'same day' else ''),
                     kit.tag('Filed late', 'warn') if late else '',
+                    (f'{kit.sessions_text(r.get("sessions_since_window_open")).replace("same day", "first session")} after the trading window reopened'
+                     if pd.notna(r.get('window_open_buy')) and bool(r.get('window_open_buy')) else ''),
                     f'{kit.shares(r.get("quantity"))} sh @ {kit.price(paid)}' if kit._finite(paid) else '',
                     (f'own holding {kit.pct(r.get("holding_change_pct"), 1, signed=True)}' if kit._finite(r.get('holding_change_pct')) is not None else ''),
                     (f'<span class="{"up" if since > 0 else "down" if since < 0 else ""}">{kit.pct(since, 1, signed=True)} since</span>'
@@ -208,7 +211,11 @@ def render():
                            'title': f'<b>{esc(str(r["acquirer_name"]))}</b> {esc(str(r.get("action_type") or "").lower())}',
                            'amount': kit.pct(r.get('percent_equity_traded'), 2, signed=True),
                            'meta': [f'stake now {kit.pct(r.get("post_stake_pct"))}', esc(str(r.get('mode') or ''))]})
+        bb = own(store.table('buybacks'))  # buybacks carry their price and route (screens/buybacks.py)
+        events += buyback_events(bb, ctx.prices)
         for r in own(ctx.actions).to_dict('records'):
+            if r.get('purpose') == 'buyback' and not bb.empty:
+                continue  # shown above, with price and route
             events.append({'date': pd.to_datetime(r.get('ex_date'), errors='coerce'), 'kind': 'action',
                            'title': esc(str(r.get('subject') or 'Corporate action')),
                            'meta': [f'record date {kit.day(r.get("record_date"))}' if pd.notna(pd.to_datetime(r.get('record_date'), errors='coerce')) else '']})

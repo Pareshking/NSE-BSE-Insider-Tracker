@@ -107,6 +107,15 @@ class FakeNSE:
     def shareholding_filings(self, s, e):
         return self._n(load('shareholding_listing.json')[:5])
 
+    def tender_offers_past(self):
+        return self._n(load('tender_offers_past.json')['data'])
+
+    def tender_offers_active(self):
+        return self._n(load('tender_offers_active.json'))
+
+    def daily_buybacks(self, s, e):
+        return self._n(load('daily_buybacks.json')['data'])
+
     def xbrl(self, url):
         self.calls += 1
         if self.block_xbrl and self.calls > 6:

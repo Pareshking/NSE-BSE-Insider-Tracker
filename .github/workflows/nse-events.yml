@@ -1,6 +1,7 @@
 name: NSE Corporate Events (daily)
 
-# SAST Reg 29, corporate actions, board meetings, shareholding + pledges.
+# SAST Reg 29, corporate actions, board meetings, shareholding + pledges,
+# buyback tender offers and daily buyback reports.
 # Fetches the last 10 days each run and merges by event ID, so re-runs and
 # late filings are safe. Separate from the R2 Storage Write workflow so a
 # failure here never affects insider/deal collection.
@@ -12,9 +13,13 @@ on:
         required: false
         default: '10'
       dataset:
-        description: 'all | sast | actions | meetings | shareholding'
+        description: 'all | sast | actions | meetings | shareholding | tenders | daily_buybacks'
         required: false
         default: 'all'
+      from:
+        description: 'Board meetings backfill (dataset=meetings only): first day to fetch, YYYY-MM-DD, one month per call; empty = the usual window'
+        required: false
+        default: ''
       chain:
         description: 'Shareholding catch-up: 1 = start the next run by itself while pledge files are still pending'
         required: false
@@ -51,7 +56,8 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}"
+          FROM: ${{ inputs.from || '' }}
+        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" ${FROM:+--from "$FROM"}
       # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
       # rate-limits by IP); with chain=1 the next run starts by itself while
       # files are pending, up to 15 rounds, and stops if NSE refused a file

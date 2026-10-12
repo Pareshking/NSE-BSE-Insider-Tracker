@@ -1,0 +1,146 @@
+[
+ {
+  "company": "Hitech Corporation Limited",
+  "cumDmatQty": "2443642",
+  "cumPhyQty": "-",
+  "floorPrice": "252",
+  "issueSize": "4391220",
+  "issueType": "Reverse Book Building",
+  "numberOfTImes": "       .56",
+  "offerType": "Delisting",
+  "series": "DS",
+  "status": "Active",
+  "symbol": "HITECHCORP",
+  "timeStamp": "12-Oct-2026 16:00:00",
+  "todEndDate": "13-Oct-2026",
+  "todStartDate": "07-Oct-2026",
+  "totQty": "2443642",
+  "demand": [
+   {
+    "confQtyDemat": "5140",
+    "confQtyPhysical": "0",
+    "cumConfQtyDemat": "5140",
+    "cumConfQtyPhysical": "0",
+    "cumConfTot": "5140",
+    "cumGrandTot": null,
+    "cumUnconfQtyDemat": null,
+    "cumUnconfQtyPhysical": null,
+    "cumunconfTot": null,
+    "dateTime": "12-Oct-2026 16:00:02 IST",
+    "grandTot": null,
+    "noOfOrders": "13",
+    "price": "252",
+    "series": "DS",
+    "symbol": "HITECHCORP",
+    "totConf": "5140",
+    "totUnconf": null,
+    "unconfQtyDemat": null,
+    "unconfqtyPhysical": null
+   },
+   {
+    "confQtyDemat": "240",
+    "confQtyPhysical": "0",
+    "cumConfQtyDemat": "5380",
+    "cumConfQtyPhysical": "0",
+    "cumConfTot": "5380",
+    "cumGrandTot": null,
+    "cumUnconfQtyDemat": null,
+    "cumUnconfQtyPhysical": null,
+    "cumunconfTot": null,
+    "dateTime": "12-Oct-2026 16:00:02 IST",
+    "grandTot": null,
+    "noOfOrders": "1",
+    "price": "351",
+    "series": "DS",
+    "symbol": "HITECHCORP",
+    "totConf": "240",
+    "totUnconf": null,
+    "unconfQtyDemat": null,
+    "unconfqtyPhysical": null
+   }
+  ],
+  "bidDetails": {
+   "data": [
+    {
+     "category": "Qualified Institutional Buyers(QIBs)",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "1"
+    },
+    {
+     "category": "Foreign Institutional Investors(FIIs)",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "1(a)"
+    },
+    {
+     "category": "Domestic Financial Institutions(Banks/ Financial Institutions(FIs)/ Insurance Companies)",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "1(b)"
+    },
+    {
+     "category": "Mutual funds",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "1(c)"
+    },
+    {
+     "category": "Others",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "1(d)"
+    },
+    {
+     "category": "Non Institutional Investors",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "2"
+    },
+    {
+     "category": "Corporates",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "2(a)"
+    },
+    {
+     "category": "Others",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "0",
+     "srNo": "2(b)"
+    },
+    {
+     "category": "Individual Investors",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "263606",
+     "srNo": "3"
+    },
+    {
+     "category": "Individual",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "263606",
+     "srNo": "3(a)"
+    },
+    {
+     "category": "Total",
+     "noOfSharesOffered": null,
+     "noOfTime": null,
+     "noOfsharesBid": "263606",
+     "srNo": ""
+    }
+   ],
+   "timestamp": "12-Oct-2026 16:00:02"
+  },
+  "sr_no": 1
+ }
+]

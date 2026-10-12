@@ -38,10 +38,24 @@ def data_dir(tmp_path_factory, real_nse_rows):
                          nse_lists=[pd.read_csv(FIXTURES / 'nse_equity_sample.csv', dtype=str)],
                          market_cap_rows=BSE_ROWS + [{'symbol': 'HCLTECH', 'market_cap': 4.0e12, 'source': 'pr_zip'},
                                                      {'symbol': 'ZEEL', 'market_cap': 6.9e10, 'source': 'pr_zip'}])
-    for name, df in tables.items():
-        df.to_parquet(cur / f'{name}.parquet')
     ev = FIXTURES / 'nse_events'
     load = lambda n: json.loads((ev / n).read_text(encoding='utf-8'))
+    # Trading window: a results meeting three days before the first open-market buy, through the real join.
+    from insiders_clean import buybacks, trading_window
+    from insiders_clean.calendar import Calendar
+    t = tables['insider_trades']
+    b = t[t['is_market'].astype(bool) & t['side'].eq('BUY') & t['nse_symbol'].notna()].iloc[0]
+    meet = pd.DataFrame({'symbol': [b['nse_symbol']], 'results': [True], 'raw_json': ['[]'],
+                         'meeting_date': [pd.Timestamp(b['trade_date_from'] or b['trade_date_to']) - pd.Timedelta(days=3)]})
+    tables['insider_trades'] = trading_window.attach(
+        t, meet, Calendar([d.date() for d in pd.bdate_range('2024-01-01', '2026-12-31')]))[0]
+    for name, df in tables.items():
+        df.to_parquet(cur / f'{name}.parquet')
+    acts = parsers.parse_corporate_actions(load('corporate_actions.json'))[0]
+    tenders = parsers.parse_tender_offers(load('tender_offers_past.json')['data'], load('tender_offers_active.json'))
+    bb = buybacks.build(tenders, parsers.parse_daily_buybacks(load('daily_buybacks.json')['data']), acts)[0]
+    bb.loc[bb['symbol'] == 'INFY', 'isin'] = 'INE009A01021'
+    bb.to_parquet(cur / 'buybacks.parquet')
     parsers.parse_sast(load('sast_reg29.json')).to_parquet(cur / 'sast.parquet')
     parsers.parse_corporate_actions(load('corporate_actions.json'))[0].to_parquet(cur / 'actions.parquet')
     parsers.parse_board_meetings(load('board_meetings.json'))[0].to_parquet(cur / 'meetings.parquet')
@@ -132,3 +146,20 @@ company.render()
         labels[sym] = [t.label for t in at.tabs]
     assert 'Capital raises' in labels['HCLTECH']
     assert 'Capital raises' not in labels['ZEEL']
+
+
+def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    out = {}
+    for screen in ('insider_trades', 'capital_raises'):
+        at = AppTest.from_string(APP_PATHS + f"""
+from ui import theme
+theme.inject()
+from screens import {screen}
+{screen}.render()
+""", default_timeout=60)
+        at.run()
+        assert not at.exception, at.exception[0].value
+        out[screen] = ' '.join(e.proto.srcdoc for e in at.get('iframe'))  # tables are drawn in st.iframe
+    assert 'after the trading window reopened' in out['insider_trades']
+    assert 'Tender offer' in out['capital_raises'] and 'Open market' in out['capital_raises'] and '₹1,800' in out['capital_raises']

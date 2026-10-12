@@ -19,8 +19,9 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D2 | Bulk and block deals | client, side, shares, price, date, feed | NSE + BSE, 90-day window nightly | In |
 | D2h | Bulk and block, history | same | NSE from 08 Oct 2025; nightly now reads the uncapped CSV | In (backfill 08 Oct, redone 09 Oct) |
 | D3 | SAST Reg 29 | acquirer, promoter flag, 29(1)/29(2), action, mode, shares and % acquired/sold, stake after | NSE, from 07 Oct 2026 (10-day windows) | In |
-| D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In (buyback price and route missing) |
-| D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead | In |
+| D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In |
+| D4b | Buybacks | tender offers: offer price, shares sought and tendered, offer dates (NSE tender-offer list, from 2015); open market: daily buyback reports (no price); matched to D4 by symbol and record date | NSE, nightly (12 Oct 2026) | In (open-market price only in PDFs) |
+| D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead; past months by backfill (`--from`, from 01 Jul 2025) | In |
 | D6 | Shareholding pattern | promoter %, public % (free float), employee trusts %, promoter pledged and encumbered shares (XBRL) | NSE; only filings of the last 10 days so far | In, partial (TODO 5) |
 | D7 | Preferential issues | in-principle: board date, allottee category, consideration, amount; listing: offer price, shares allotted, allotment date, listing and trading-approval dates, XBRL | NSE latest 100 per stage a day, kept as daily snapshots; BSE has no amounts or prices | Clean (12 Oct, `insiders_clean/issues.py`) |
 | D8 | Rights issues | in-principle: board date, amount, consideration; listing stage | as D7 | Clean (12 Oct) |
@@ -47,10 +48,11 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | Is an outside fund or investor crossing 5% or adding 2%+? | D3 | In |
 | Is the promoter borrowing against shares? Is it rising? | D6 pledge %; D1 pledge filings | Partial (D6 coverage) |
 | Is the company about to raise money, buy back, split? | D5 | In |
+| Did the insider buy as soon as the trading window reopened after results? | D1 with D5 results dates, D12 | In (marked; to be measured) |
 | Did promoters get shares cheap or pay up? | D7 offer price with D11 (ICDR minimum, market price) | In vs the market price now; ICDR minimum pending (D11 VWAP) |
 | When can preferential shares be sold (supply overhang)? | D7 trading-approval date + lock-in rule (promoters 18 months, others 6) | In, for allotments matched to their approval |
 | Rights issue terms and dates | D4 ratio/premium, D8 stages | D4 In, D8 pending |
-| Buyback price vs market, tender or open market | D4 + offer documents + D11 | Pending |
+| Buyback price vs market, tender or open market | D4b + D11 | In (tender price vs the market now; open-market price not in structured data) |
 | Where is the price vs the 52-week high and 200-day average? What did the insider pay vs now? | D1 price with D11 | Pending (D11) |
 | Has this kind of signal worked before? This person? This fund? | D13 | Pending |
 
@@ -72,7 +74,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | S12 Outside 5% holders moving (SAST) | D3 | In |
 | S13 Promoter holding and pledge, latest quarter and trend | D6 | Partial |
 | S14 Upcoming catalysts: fund raising, preferential, buyback, bonus, split, results | D5 | In |
-| S15 Corporate actions: rights (ratio, price), bonus, split, dividend, buyback | D4 | In |
+| S15 Corporate actions: rights (ratio, price), bonus, split, dividend, buyback (price vs market, route) | D4, D4b, D11 | In |
+| S25 Window-open buys: open-market buys in the first 5 sessions after the trading window reopened | D1, D5, D12 | In (mark and filter on Insider trades, Company timeline) |
 | S16 Preferential pipeline: announced, approved, allotted, listed; promoter or not; amount | D7 | In (NSE; allottee and amount only where the allotment is matched to its approval) |
 | S17 Preferential price vs ICDR minimum and market | D7, D11 | In vs the market price now; ICDR minimum pending (needs VWAP) |
 | S18 Lock-in expiry calendar | D7 | In (matched records only; promoters 18 months, others 6, from trading approval) |
@@ -90,7 +93,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 |---|---|---|
 | Today | Every morning: what happened in the last session | S1 (session), S4 crossed today, S6 formed today, S9 (session), S12 (session), S14 (next days), S23 |
 | Screener | Looking for ideas: which companies show accumulation now | One row per company combining S1, S4, S5, S6, S7, S13 badges; S19 columns when D11 is in |
-| Insider trades | Checking filings in detail | S1, S2, S3, S8 |
+| Insider trades | Checking filings in detail | S1, S2, S3, S8, S25 |
 | Deals & stakes | Following institutional money | S9, S10, S12, S24 later |
 | Capital raises | Dilution and funding terms | S14, S15, S16-S18 when D7 is clean |
 | Company | Deciding on one stock | S1, S7, S9, S12, S13, S14, S15, S16, S19, S20 for that company, one timeline |

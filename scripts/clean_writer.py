@@ -40,8 +40,8 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import archive, day_range, issues
-from insiders_clean.calendar import seed_state
+from insiders_clean import archive, day_range, issues, trading_window
+from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
 
 CATEGORIES = ('insider_trading', 'bulk_deals', 'block_deals')
@@ -266,6 +266,12 @@ def main():
         tables.update(issue_out)
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
+    try:  # results dates come from the NSE events collector's meetings table; never stops the insider table
+        tables['insider_trades'], report['trading_window'] = trading_window.attach(
+            tables['insider_trades'], read_parquet(client, 'clean/current/meetings.parquet'),
+            Calendar.from_state(calendar_state), today=run_day)
+    except Exception as exc:  # noqa: BLE001
+        report['notes'].append(f'trading window: failed ({type(exc).__name__}: {exc})')
     report['archive'] = archive_report
     report['notes'] = notes + report['notes']
 
@@ -297,6 +303,7 @@ def main():
               f'(filed as {checks["holding_only"]["filed_as"]})')
     for kind, r in report.get('issues', {}).items():
         print(f'  issues/{kind}: {r}')
+    print(f'  trading window: {report.get("trading_window")}')
     for table, t in report['tables'].items():
         for reason, r in t.get('removed', {}).items():
             print(f'  removed {table}/{reason}: {r["count"]}')

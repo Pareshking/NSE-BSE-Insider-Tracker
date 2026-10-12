@@ -27,6 +27,9 @@ class NSEClient:
         self.pause, self.retries, self.sleep = pause, retries, sleep
         self.calls = 0
         self._warm = False
+        # Called as on_response(url, response) for every 200 answer, before
+        # parsing: the run that wants the write-once raw copy sets it.
+        self.on_response = None
 
     def _wait(self):
         if self.calls:
@@ -59,6 +62,8 @@ class NSEClient:
                 continue
             if r.status_code != 200:
                 raise RuntimeError(f'HTTP {r.status_code} for {url}')
+            if self.on_response is not None:
+                self.on_response(url, r)
             if not as_json:
                 return r.text
             try:
@@ -92,3 +97,24 @@ class NSEClient:
 
     def xbrl(self, url: str) -> str:
         return self.get(url, as_json=False)
+
+    # --- buybacks (confirmed 12 Oct 2026) --------------------------------------
+    # NSE's tender-offer window (market-data/all-upcoming-issues-ofs-tender-offer):
+    # every buyback, takeover and delisting tender since 2015 with its offer
+    # price, shares sought and shares tendered. No date parameters: the whole
+    # list each call.
+
+    def tender_offers_past(self) -> list[dict]:
+        j = self.get(f'{BASE}/api/liveTenderPast-issues')
+        return j.get('data', []) if isinstance(j, dict) else j
+
+    def tender_offers_active(self) -> list[dict]:
+        j = self.get(f'{BASE}/api/liveTenderActive-issues')
+        return j if isinstance(j, list) else j.get('data', [])
+
+    def daily_buybacks(self, start: date, end: date) -> list[dict]:
+        """Daily buyback reports (corporate-filings-daily-buy-back): filed each
+        day shares are bought back in an open-market buyback. On 12 Oct 2026
+        the answer held the last two months whatever the dates asked."""
+        j = self.get(f'{BASE}/api/corporates-daily-buyback?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
+        return j.get('data', []) if isinstance(j, dict) else j

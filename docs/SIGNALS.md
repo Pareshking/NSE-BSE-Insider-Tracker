@@ -49,6 +49,17 @@ Shown as facts, not ranked as signals, until the signal lab measures them.
 | Minimum size | Rs 25 lakh per trade; token buys excluded |
 | Shown | Median excess, share that beat the index, cases; "few" under 30 cases |
 
+## Window-open buys (exploratory, 12 Oct 2026)
+
+SEBI PIT closes the trading window from the end of each quarter until 48
+hours after the results. An open-market buy in the first
+`WINDOW_OPEN_SESSIONS` = 5 NSE sessions after it reopens is marked
+(`window_open_buy`, `insiders_clean/trading_window.py`). Results day = the
+NSE board meeting on results; the window is taken to reopen on that day + 2
+calendar days. Shown as a fact and a filter on Insider trades; not measured
+yet, so not ranked and no edge claimed. Track record can measure it from the
+`window_open_buy` column.
+
 Signals measured: promoter buy; promoter buy within 5% of / 30%+ below the
 52-week high; spotlight; cluster; director or KMP buy; promoter sale;
 director or KMP sale; real-fund net deal buy in small caps. Not yet: a
