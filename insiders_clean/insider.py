@@ -15,7 +15,10 @@ What a row gains:
 * `person_role` from the person category.
 * One security (ISIN, display name, both exchange identifiers).
 * Own-holding change, % of market cap, and the two Reg 7(2) deadlines.
-* `flags`: reasons to hold a row back from rankings until checked.
+* `flags`: reasons to hold a row back from rankings until checked;
+  `marks`: data checks that are counted and shown but hold nothing back
+  (docs/CLEAN_LAYER.md, "Data checks").
+* Holding-only disclosures (no shares traded) become kind 'holding_only'.
 * NSE/BSE copies of one filing: both kept, linked; NSE is primary (it
   carries the intimation date), BSE gets is_primary = False.
 """
@@ -27,6 +30,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from . import day_range
 from .calendar import Calendar, lateness
 from .dates import parse_dates, to_datetime_day_first
 from .entities import add_entity_columns, most_common
@@ -238,9 +242,46 @@ def _removal_breakdown(raw: pd.DataFrame, df: pd.DataFrame, order: pd.DataFrame,
     return out
 
 
-def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date) -> pd.DataFrame:
+def holding_check(df: pd.DataFrame) -> pd.Series:
+    """Holding after - holding before against the shares traded, per row:
+    `match`, `differs` (size off by more than 1% or 1 share), `against_side`
+    (right size, wrong direction: a buy that lowers the holding),
+    `against_side_and_differs`, `not_filed` (a holding or the quantity
+    missing), `not_applicable` (no side, or a pledge: a pledge leaves the
+    holding unchanged by design, 569 of the first 775 mismatches on a year of
+    real filings)."""
+    out = pd.Series('not_applicable', index=df.index, dtype=object)
+    moves = _true(df['side'].notna() & ~df['kind'].str.startswith('pledge'))
+    sign = df['side'].map({'BUY': 1, 'SELL': -1}).astype('Float64')
+    moved = (df['holding_after'] - df['holding_before']).astype('Float64')
+    qty = df['quantity'].astype('Float64')
+    filed = _true(moved.notna() & (qty > 0))
+    size_ok = _true((moved.abs() - qty).abs() <= (qty * 0.01).clip(lower=1))
+    against = _true((moved * sign) < 0)
+    out[moves & ~filed] = 'not_filed'
+    m = moves & filed
+    out[m & size_ok & ~against] = 'match'
+    out[m & ~size_ok & ~against] = 'differs'
+    out[m & size_ok & against] = 'against_side'
+    out[m & ~size_ok & against] = 'against_side_and_differs'
+    return out
+
+
+def _true(mask) -> np.ndarray:
+    """A comparison on nullable numbers -> plain bools, missing = False."""
+    return np.asarray(pd.Series(mask).fillna(False), dtype=bool)
+
+
+def _counts(s: pd.Series) -> dict:
+    return {str(k): int(v) for k, v in s.value_counts().items()}
+
+
+def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date,
+                  price_ranges: pd.DataFrame | None = None) -> pd.DataFrame:
     """canonical insider rows (both exchanges, native columns included,
-    an `exchange` column) -> clean insider_trades."""
+    an `exchange` column) -> clean insider_trades. `price_ranges`
+    (insiders_clean.day_range.load) feeds the price check; without it the
+    check is reported as not run and nothing is flagged for price."""
     t = report.table('insider_trades')
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -280,6 +321,20 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['is_market'] = df['kind'].eq('market')
     df['side'] = [side_of(tt, m) for tt, m in zip(df['transaction_type_raw'], df['mode_raw'])]
     df['person_role'] = df['person_category_raw'].map(classify_role)
+    # Holding-only disclosures (on appointment, on becoming a promoter): no
+    # shares change hands, yet NSE's nightly parser files an empty
+    # transaction type as 'Acquisition'. Not a trade of any kind: kind
+    # 'holding_only', no side, never market. Recognised from the numbers, not
+    # the wording: no quantity, no value, a holding filed and unchanged.
+    # Pledges keep their kind (a pledge never changes the holding).
+    df['_filed_kind'] = df['kind']
+    hb, ha = df['holding_before'], df['holding_after']
+    holding_only = (~_true(df['quantity'] > 0) & ~_true(df['value'] > 0)
+                    & ~_true(df['kind'].str.startswith('pledge'))
+                    & _true(hb.notna() | ha.notna()) & ~_true(hb.notna() & ha.notna() & (hb != ha)))
+    df.loc[holding_only, 'kind'] = 'holding_only'
+    df.loc[holding_only, 'is_market'] = False
+    df.loc[holding_only, 'side'] = None
     report.unrecognised('mode_of_acquisition', df.loc[df['kind'].eq('unrecognised'), 'mode_raw'].astype(str))
     df = add_entity_columns(df, 'person_raw', prefix='person')
 
@@ -359,24 +414,61 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     flag(df['pct_of_mcap'] > VALUE_SHARE_OF_MCAP_REVIEW * 100, 'value_over_25pct_of_mcap')
     multiple = df['holding_after'] / df['holding_before'].where(df['holding_before'] > 0)
     flag(df['is_market'] & (multiple > HOLDING_MULTIPLE_REVIEW), 'holding_jump_on_market_trade')
-    moved = (df['holding_after'] - df['holding_before']).abs()
-    # Only for rows that move shares: a pledge leaves the holding unchanged
-    # by design (569 of the first 775 hits on a year of real filings).
-    flag(df['side'].notna() & ~df['kind'].str.startswith('pledge')
-         & ((moved - df['quantity']).abs() > np.maximum(1, df['quantity'] * 0.01)),
-         'holding_change_differs_from_quantity')
+    # Data checks (docs/CLEAN_LAYER.md): holding after - holding before =
+    # shares traded, up for a buy and down for a sale.
+    df['holding_check'] = holding_check(df)
+    flag(df['holding_check'].isin(['differs', 'against_side_and_differs']), 'holding_change_differs_from_quantity')
+    flag(df['holding_check'].str.startswith('against_side'), 'holding_moves_against_side')
     # Gifts, ESOP grants and transmissions are legitimately filed at zero.
     flag(df['is_market'] & (df['quantity'] > 0) & ~(df['value'] > 0), 'missing_or_zero_value')
+    # A market trade with no shares filed: nothing to size it by. (No
+    # shares, no value and an unchanged holding was made holding_only above.)
+    flag(df['is_market'] & ~_true(df['quantity'] > 0), 'missing_quantity')
     mode_side = df['mode_raw'].map(_side_word)
     flag(df['is_market'] & mode_side.notna() & df['side'].notna() & (mode_side != df['side']),
          'mode_contradicts_side')
     to, frm = pd.to_datetime(df['trade_date_to']), pd.to_datetime(df['trade_date_from'])
     intim, bcast = pd.to_datetime(df['intimation_date']), pd.to_datetime(df['broadcast_date'])
-    flag((frm > to) | (to > intim) | (intim > bcast) | (to > bcast), 'dates_out_of_order')
-    flag(to > pd.Timestamp(run_date), 'trade_date_in_future')
+    today = pd.Timestamp(run_date)
+    flag((frm > to) | (intim > bcast), 'dates_out_of_order')
+    # Told the company, or published, before the last day of the trade.
+    flag((to > intim) | (to > bcast), 'disclosed_before_trade')
+    flag(to > today, 'trade_date_in_future')
+    flag((intim > today) | (bcast > today), 'disclosure_dated_in_future')
+
+    # Implied price (value / shares) against the traded range of the trade's
+    # sessions in our own price layer, either exchange. Only market trades
+    # are flagged: ESOPs, allotments and transfers are priced off the market
+    # by design (their outcomes are counted by kind, nothing more). A unit
+    # error, a swap or a price far outside is held back; a price a little
+    # outside is marked only, until the diagnostic has measured how often
+    # honest filings land there.
+    rng = day_range.attach(df, price_ranges, 'isin', 'trade_date_from', 'trade_date_to')
+    checked = day_range.check(df['price'].where(df['side'].notna() & ~df['kind'].str.startswith('pledge')), rng)
+    df['day_low'], df['day_high'], df['price_check'] = rng['day_low'], rng['day_high'], checked['price_check']
+    market, pc = df['is_market'].astype(bool), df['price_check']
+    flag(market & pc.eq('power_of_ten'), 'value_off_by_power_of_ten')
+    flag(market & pc.eq('swapped'), 'quantity_value_swapped')
+    flag(market & pc.isin(['far_below', 'far_above']), 'price_far_outside_day_range')
+    marks = [[] for _ in range(len(df))]
+    for i in np.flatnonzero(_true(market & pc.isin(['below', 'above']))):
+        marks[i].append('price_outside_day_range')
     df['flags'] = [','.join(f) for f in flags]
+    df['marks'] = [','.join(m) for m in marks]
     df['needs_review'] = df['flags'] != ''
     report.flagged('insider_trades', flags)
+    report.marked('insider_trades', marks)
+    only = df['kind'].eq('holding_only')
+    t['data_checks'] = {
+        'holding': {'all': _counts(df['holding_check']), 'market': _counts(df.loc[market, 'holding_check'])},
+        'price': {'price_layer': price_ranges is not None, 'tolerance': day_range.PRICE_TOLERANCE,
+                  'far_outside': day_range.FAR_OUTSIDE, 'max_span_days': day_range.MAX_SPAN_DAYS,
+                  'market': _counts(pc[market]), 'all': _counts(pc),
+                  'by_kind': {str(k): _counts(g) for k, g in pc.groupby(df['kind'])},
+                  'power_of_ten': _counts(checked['unit_power'].dropna().astype(int).astype(str))},
+        'holding_only': {'count': int(only.sum()), 'filed_as': _counts(df.loc[only, '_filed_kind']),
+                         'examples': df.loc[only, 'source_id'].astype(str).head(25).tolist()},
+    }
 
     # --- NSE/BSE copies of one filing ---
     df['trade_id'] = [_row_id(p) for p in zip(df['exchange'], df['source_id'])]
@@ -403,12 +495,13 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
             'person_id', 'person_name', 'person_role', 'person_role_source', 'person_category_raw',
             'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw',
-            'quantity', 'value', 'signed_value', 'price', 'holding_before', 'holding_after',
+            'quantity', 'value', 'signed_value', 'price', 'day_low', 'day_high', 'price_check',
+            'holding_before', 'holding_after', 'holding_check',
             'holding_change_pct', 'market_cap', 'pct_of_mcap',
             'trade_date_from', 'trade_date_to', 'intimation_date', 'broadcast_date',
             'insider_to_company_sessions', 'insider_filed_late',
             'company_to_exchange_sessions', 'company_filed_late', 'trade_to_public_sessions',
-            'source_url', 'flags', 'needs_review']
+            'source_url', 'flags', 'marks', 'needs_review']
     out = df[cols].reset_index(drop=True)
     t['output_rows'] += len(out)
     t['by_exchange'] = out['exchange'].value_counts().to_dict()

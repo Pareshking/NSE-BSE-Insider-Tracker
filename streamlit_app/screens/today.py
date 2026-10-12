@@ -22,6 +22,13 @@ REASONS = {'value_over_25pct_of_mcap': "value is over 25% of the company's marke
            'missing_or_zero_value': 'market trade with no value',
            'mode_contradicts_side': 'mode says buy, type says sell (or the reverse)',
            'dates_out_of_order': 'dates out of order', 'trade_date_in_future': 'trade date in the future',
+           'holding_moves_against_side': 'holding moves against the side',
+           'missing_quantity': 'market trade with no shares filed',
+           'disclosed_before_trade': 'disclosed before the trade ended',
+           'disclosure_dated_in_future': 'disclosure dated in the future',
+           'value_off_by_power_of_ten': 'value off by a power of ten (lakh or crore)',
+           'quantity_value_swapped': 'shares and value swapped',
+           'price_far_outside_day_range': "price far outside the day's range",
            'unmatched_security': 'company not found in NSE/BSE lists',
            'unrecognised_mode': 'mode of acquisition not stated'}
 

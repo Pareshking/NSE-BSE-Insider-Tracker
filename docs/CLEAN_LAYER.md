@@ -13,7 +13,8 @@ says where they live, what each rule does, and how storage is kept small.
    round-trip deal legs are flagged (`intraday_round_trip`), no longer dropped.
 3. `scripts/update_calendar.py` extends the NSE trading calendar.
 4. `scripts/clean_writer.py` merges today's canonical files into the archive
-   and rebuilds the clean tables from the whole archive.
+   and rebuilds the clean tables from the whole archive. It also reads (never
+   writes) the price layer `prices/daily/` for the insider price check.
 
 Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 
@@ -108,10 +109,45 @@ Insider trades (`insiders_clean/insider.py`):
   carry the intimation date, so only NSE rows get both checks.
 - **Held back for a look** (`needs_review`): unmatched security, unknown
   mode, value over 25% of market cap, a market trade that multiplies the
-  holding more than 20x, holding change that doesn't match the quantity,
-  zero value on a market trade, mode contradicting side, dates out of
-  order or in the future.
+  holding more than 20x, zero value or no shares on a market trade, mode
+  contradicting side, and the data checks below.
 - NSE/BSE copies of one filing are linked; NSE is primary.
+
+## Data checks (insider filings, from the 09 Oct brief)
+
+Each check is a counted outcome in the cleaning report
+(`tables.insider_trades.data_checks`) and on the Data page. A failing row is
+either **held back** (a flag in `flags`, so `needs_review` keeps it out of
+signals, rankings and totals) or **marked** (a name in `marks`, counted in
+`marked`, nothing held back). Nothing is corrected: a row keeps the numbers
+it was filed with. Counts are before the product window, like every flag
+count.
+
+| Check | Column | Held back or marked, and why |
+|---|---|---|
+| Holding after - holding before = shares traded, up for a buy, down for a sale (within 1% or 1 share) | `holding_check`: `match`, `differs`, `against_side`, `against_side_and_differs`, `not_filed`, `not_applicable` (no side, or a pledge) | Held back: `holding_change_differs_from_quantity` (size) and `holding_moves_against_side` (a buy that lowers the holding). When the holdings contradict the side or size, the direction or the size of the trade is in doubt, and every signal rests on both |
+| Implied price (value / shares) inside the low-high of the trade's sessions in our own price layer (`insiders_clean/day_range.py`; both exchanges, traded series only, 2% tolerance for charges and rounding) | `price_check`, `day_low`, `day_high`; market trades only are acted on | Held back: `value_off_by_power_of_ten` (price x 10^2, 10^3, 10^5, 10^6 or 10^7 either way lands inside: value filed in lakh, crore, thousand, million or paise), `quantity_value_swapped`, `price_far_outside_day_range` (more than 20% beyond the band: 20% is the widest fixed daily price band on NSE and BSE, so charges or rounding never explain it and a trade date one session off rarely does; F&O stocks have no fixed band). These make `value` and `% of market cap` wrong by a factor, or show a price no exchange trade those days could have had. Marked only: `price_outside_day_range` (2% to 20% outside), because the tolerance is not yet measured on real filings; the diagnostic below measures it. ESOP, preferential, gift and other non-market rows are priced off the market by design: their outcomes are counted by kind, never flagged |
+| Disclosure dated before the trade, or in the future | flags | Held back: `disclosed_before_trade` (told the company or published before the trade's last day), `disclosure_dated_in_future` (intimation or broadcast after the run date), `trade_date_in_future`, `dates_out_of_order` (from after to, intimation after broadcast). The broadcast time starts every return's clock (`docs/PRODUCT.md`), so a filing whose dates cannot be in that order cannot be timed |
+| Holding-only disclosures (on appointment, on becoming a promoter) | `kind` = `holding_only` | Not a flag: the row is kept as filed, but becomes kind `holding_only`, `is_market` false and no side, so it is never counted as a trade. Recognised from the numbers, not the wording: no shares and no value filed, a holding filed and unchanged (pledges keep their kind). Needed because NSE's nightly parser files an empty transaction type as `Acquisition`. Counted with the kind it was filed as (`data_checks.holding_only`) |
+
+Price check outcomes that mean "not checked" are counted with their reason:
+`no_price` (no shares or value), `no_isin`, `no_dates`, `span_too_long`
+(over 31 days), `before_price_layer` / `after_price_layer` (the price layer
+is extended by the Price backfill workflow, not nightly, so recent filings
+can be after its last day), `no_print` (no trade printed for the ISIN in the
+span) and `no_price_layer`. The months read, missing or unreadable are in the
+report under `price_layer`.
+
+**Diagnostic** (read-only): Actions -> **Data checks diagnostic** runs the
+clean step on R2 data through a client that refuses writes, and leaves
+aggregate counts, how far outside the range market trades fall, and the rows
+each check touched (filing number and link, no names) as a run artifact
+(`scripts/data_checks_diagnose.py`). Use it to set the 2% tolerance and to
+decide whether a price a little outside should be held back.
+
+Not checked for deals: a bulk or block deal's price against the range. Whether
+NSE's and BSE's bhavcopy high and low include the block-deal window has not
+been verified, so a block price outside them might be normal.
 
 Deals (`insiders_clean/deals.py`): same execution in the bulk and block feed
 counted once; same client, security, day and side rolled up with a

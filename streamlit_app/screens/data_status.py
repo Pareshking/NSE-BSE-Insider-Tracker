@@ -18,7 +18,56 @@ REASONS = {
     'missing_or_zero_value': 'Market trade with no value', 'mode_contradicts_side': 'Mode says buy, type says sell',
     'holding_jump_on_market_trade': 'Holding jumped 20x+ on a market trade', 'value_over_25pct_of_mcap': 'Value over 25% of market cap',
     'dates_out_of_order': 'Dates out of order', 'trade_date_in_future': 'Trade date in the future',
+    'holding_moves_against_side': 'Holding moves against the side (a buy that lowers it)',
+    'missing_quantity': 'Market trade with no shares filed', 'disclosed_before_trade': 'Disclosed before the trade ended',
+    'disclosure_dated_in_future': 'Disclosure dated in the future', 'value_off_by_power_of_ten': 'Value off by a power of ten (lakh, crore)',
+    'quantity_value_swapped': 'Shares and value swapped', 'price_far_outside_day_range': "Price far outside the day's range",
+    'price_outside_day_range': "Price a little outside the day's range",
 }
+PRICE_NOT_CHECKED = {'no_price': 'no shares or value', 'no_isin': 'no security', 'no_dates': 'no trade date',
+                     'span_too_long': 'span over a month', 'before_price_layer': 'before our prices',
+                     'after_price_layer': 'after our last price day', 'no_print': 'no trade printed'}
+
+
+def _sum(d: dict, *keys) -> int:
+    return sum(int(d.get(k, 0)) for k in keys)
+
+
+def _checks(it: dict, layer: dict) -> None:
+    """The four checks from the 09 Oct brief, as counted by the cleaning run
+    (insiders_clean/insider.py; what each holds back: docs/CLEAN_LAYER.md)."""
+    dc = it.get('data_checks')
+    if not dc:
+        return
+    c, fl = kit.count, it.get('flagged', {})
+    rows = []
+    h = dc['holding']['market']
+    rows.append(f"<b>Holding change = shares traded.</b> {c(h.get('match', 0))} of "
+                f"{c(sum(h.values()) - h.get('not_applicable', 0))} market trades match; "
+                f"{c(_sum(h, 'differs', 'against_side_and_differs'))} differ in size and "
+                f"{c(_sum(h, 'against_side', 'against_side_and_differs'))} move against the side, held back; "
+                f"{c(h.get('not_filed', 0))} could not be checked (a holding or the quantity not filed).")
+    p = dc['price']
+    if p.get('price_layer'):
+        m = p['market']
+        skipped = ', '.join(f'{c(m[k])} {v}' for k, v in PRICE_NOT_CHECKED.items() if m.get(k))
+        span = f" (sessions {kit.day(layer.get('first'))} to {kit.day(layer.get('last'))})" if layer.get('last') else ''
+        rows.append(f"<b>Implied price inside the day's range</b>{kit.esc(span)}. {c(m.get('inside', 0))} market trades "
+                    f"inside; held back: {c(m.get('power_of_ten', 0))} off by a power of ten, {c(m.get('swapped', 0))} "
+                    f"with shares and value swapped, {c(_sum(m, 'far_below', 'far_above'))} more than "
+                    f"{p['far_outside']:.0%} outside; marked only: {c(_sum(m, 'below', 'above'))} a little outside"
+                    + (f'; not checked: {kit.esc(skipped)}.' if skipped else '.'))
+    else:
+        rows.append("<b>Implied price inside the day's range:</b> not run, no price layer loaded.")
+    rows.append(f"<b>Disclosure dates.</b> {c(fl.get('disclosed_before_trade', 0))} disclosed before the trade ended, "
+                f"{c(fl.get('disclosure_dated_in_future', 0))} disclosures and {c(fl.get('trade_date_in_future', 0))} "
+                f"trades dated in the future, {c(fl.get('dates_out_of_order', 0))} other dates out of order; all held back.")
+    ho = dc['holding_only']
+    filed = ', '.join(f'{c(n)} as {k.replace("_", " ")}' for k, n in ho.get('filed_as', {}).items())
+    rows.append(f"<b>Holding-only disclosures</b> (no shares traded, e.g. on appointment): {c(ho.get('count', 0))}, "
+                "not counted as trades" + (f' (filed {kit.esc(filed)}).' if filed else '.'))
+    with kit.card('Data checks', 'checks', 'insider filings, counted before the product window'):
+        st.html(''.join(f'<div class="q-row">{r}</div>' for r in rows))
 
 
 def render():
@@ -51,6 +100,7 @@ def render():
             items = [(REASONS.get(f, f.replace('_', ' ').capitalize()), n, 'warn') for f, n in v.get('flagged', {}).items()]
             if items:
                 st.html(f'<div class="bl-h">{kit.esc(TABLES.get(table, table))}</div>' + kit.bar_list(items))
+    _checks(it, rep.get('price_layer') or {})
     if rep.get('notes'):
         with kit.card('Notes from the run', 'notes'):
             for n in rep['notes']:
