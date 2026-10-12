@@ -131,7 +131,7 @@ def _coming_up(ctx):
             return
         m = m.copy()
         m['meeting_date'] = pd.to_datetime(m['meeting_date'], errors='coerce')
-        today = pd.Timestamp.now().normalize()
+        today = (ctx.ref if ctx.ref is not None else pd.Timestamp.now()).normalize()
         cols = [c for c in CATALYSTS if c in m]
         rows = m[(m['meeting_date'] >= today) & (m['meeting_date'] <= today + pd.Timedelta(days=10))
                  & m[cols].astype('boolean').fillna(False).any(axis=1)].sort_values('meeting_date')

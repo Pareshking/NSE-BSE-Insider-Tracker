@@ -161,7 +161,7 @@ def render():
                              selection_mode='multi', format_func=lambda x: x.replace('_', ' ').capitalize(), key='cr_focus')
             cols = [c for c in (focus or []) if c in m]
             rows = m[m[cols].astype('boolean').fillna(False).any(axis=1)] if cols else m
-            rows = rows[rows['meeting_date'] >= pd.Timestamp.now().normalize() - pd.Timedelta(days=7)].sort_values('meeting_date')
+            rows = rows[rows['meeting_date'] >= (ctx.ref if ctx.ref is not None else pd.Timestamp.now()).normalize() - pd.Timedelta(days=7)].sort_values('meeting_date')
             if rows.empty:
                 kit.empty('No meetings for these purposes from last week onwards.')
             else:

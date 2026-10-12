@@ -26,14 +26,17 @@ def render():
                 f'<div class="q-row"><a href="{kit.entity_href(i)}" target="_self"><b>{kit.esc(str(n))}</b></a></div>'
                 for i, n in zip(hits['id'], hits['name'])) + '</div>' if len(hits) else '<p class="evl">No match. Try part of the name.</p>')
         return
-    t = ctx.trades[ctx.trades['person_id'] == eid]
+    # One row per real trade: the NSE and BSE copies of a filing are the same trade.
+    t = ctx.trades[(ctx.trades['person_id'] == eid) & ctx.trades['is_primary'].astype('boolean').fillna(False)]
     d = ctx.deals[ctx.deals['client_id'] == eid] if not ctx.deals.empty else pd.DataFrame()
+    if len(d):
+        d = d[d['is_primary'].astype('boolean').fillna(False)]
     name = (t['person_name'].dropna().iloc[0] if len(t) else d['client_name'].dropna().iloc[0] if len(d) else eid)
     kit.head(str(name), 'Every filing and deal under this name, across companies.')
     if not d.empty and d['client_is_market_maker'].astype('boolean').fillna(False).any():
         kit.note('Market maker.', 'This client buys and sells in near-equal amounts at high volume; its deals are '
                                   'liquidity, not positions, and are left out of signals.')
-    mk = t[t['is_market'].astype('boolean').fillna(False)]
+    mk = ctx.eligible[ctx.eligible['person_id'] == eid]
     # Owner's spec: capital deployed in 12 months, active tickers; win rate and
     # holding period come with the signal lab (docs/DATA_TO_PAGES.md S21).
     seen = pd.to_datetime(mk['broadcast_date'], errors='coerce')

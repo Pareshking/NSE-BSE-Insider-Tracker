@@ -36,8 +36,11 @@ def _table(rows: pd.DataFrame, ctx, name: str):
     rows = rows.sort_values('seen', ascending=False)
     rows = with_sparks(with_prices(rows.assign(late=[late_text(r) for _, r in rows.iterrows()],
                                                mode=rows['mode_raw'].fillna(rows['kind'])), ctx.prices), ctx)
-    rows = rows.assign(vs_paid=(pd.to_numeric(rows['latest_close'], errors='coerce')
-                                / pd.to_numeric(rows['price'], errors='coerce') - 1) * 100)
+    # Price paid vs now only means something for an open-market buy: a sale's gain is the seller's
+    # loss, and an ESOP, pledge or gift price is not what the market paid.
+    vs = (pd.to_numeric(rows['latest_close'], errors='coerce') / pd.to_numeric(rows['price'], errors='coerce') - 1) * 100
+    buy = rows['is_market'].astype('boolean').fillna(False) & (rows['side'] == 'BUY')
+    rows = rows.assign(vs_paid=vs.where(buy))
     kit.table(rows, [
         kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
         kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
