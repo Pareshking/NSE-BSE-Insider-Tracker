@@ -54,7 +54,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 24 | Disclosure lag and price before broadcast | How long each filing took to reach the public and how much the price moved before it did |
 | 25 | Results dates and trading window | Board-meeting results dates joined to filings: buys right after the trading window opens marked |
 | 26 | Forward record | Each signal recorded as it fires (time, rule version, entry price), never edited; outcomes filled in later; shown on Track record |
-| 27 | Retire or fix "NSE-BSE Data Validation" | Red on every push since 07 Oct: its step expects `nse_acquisition_output.json` that is never written, with a fixed date 2026-08-31 |
+| 27 | ~~Retire or fix "NSE-BSE Data Validation"~~ **Retired 12 Oct** (manual only, no longer red on every push) | Red on every push since 07 Oct: its step expects `nse_acquisition_output.json` that is never written, with a fixed date 2026-08-31 |
 | 28 | Object lock on `raw_v2/` | Owner sets R2 object lock or lifecycle protection on the raw layer |
 
 ## Decided, not to do

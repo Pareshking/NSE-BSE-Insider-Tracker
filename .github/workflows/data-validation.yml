@@ -1,8 +1,9 @@
 name: NSE-BSE Data Validation
 
+# Legacy 31 Aug 2026 experiment (fixed dates; it writes to a directory that does
+# not exist, so every run failed). Manual only; the nightly run does the real
+# validation (r2-storage.yml). docs/TODO.md item 27.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
