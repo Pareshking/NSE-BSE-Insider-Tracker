@@ -460,11 +460,14 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # outside is marked only, until the diagnostic has measured how often
     # honest filings land there.
     rng = day_range.attach(df, price_ranges, 'isin', 'trade_date_from', 'trade_date_to')
-    checked = day_range.check(df['price'].where(df['side'].notna() & ~df['kind'].str.startswith('pledge')), rng)
+    checked = day_range.check(df['price'].where(df['side'].notna() & ~df['kind'].str.startswith('pledge')), rng,
+                              value=df['value'])
     df['day_low'], df['day_high'], df['price_check'] = rng['day_low'], rng['day_high'], checked['price_check']
     market, pc = df['is_market'].astype(bool), df['price_check']
     flag(market & pc.eq('power_of_ten'), 'value_off_by_power_of_ten')
     flag(market & pc.eq('swapped'), 'quantity_value_swapped')
+    flag(market & pc.eq('value_is_price'), 'value_filed_as_price_per_share')
+    flag(market & pc.eq('face_value'), 'valued_at_face_value')
     flag(market & pc.isin(['far_below', 'far_above']), 'price_far_outside_day_range')
     marks = [[] for _ in range(len(df))]
     for i in np.flatnonzero(_true(market & pc.isin(['below', 'above']))):
