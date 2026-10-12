@@ -19,3 +19,10 @@ def test_search_text_with_regex_characters_is_literal():
     s = pd.Series(['Tata (Power)', 'C++ Ltd'])
     assert s.str.contains('(', case=False, regex=False).tolist() == [True, False]
     assert s.str.contains('C++', case=False, regex=False).tolist() == [False, True]
+
+
+def test_table_links_navigate_through_the_parent_page():
+    """Streamlit's st.iframe is sandboxed without top-level navigation, so a bare target=_top link is
+    blocked (checked in Chromium on 12 Oct). The frame script must hand the click to the parent page."""
+    from ui import table
+    assert "closest('a[target=\"_top\"]')" in table.SORT_JS and 'window.parent.document' in table.SORT_JS

@@ -65,3 +65,5 @@ same day something is promised, started or finished. Pages follow the data:
   (rendered by script). NSE data and Paresh's public release cover the needs.
 - No prices token and no Paresh data: our own exchange bhavcopy layer covers NSE and BSE (Paresh's covers about 38% of NSE symbols with 2026 data).
 - History: only the last one year (owner, 08 Oct); the site grows daily from there.
+
+- **Table links (fixed 12 Oct):** company and person links inside tables did nothing on the live site. Streamlit's `st.iframe` is sandboxed without top-level navigation, so `target="_top"` was blocked; reproduced in headless Chromium (console: "The frame attempting navigation of the top-level window is sandboxed"). `ui/table.py` now hands the click to an anchor in the parent page. Re-check on the live site after the deploy; if the host wraps the app in another frame, open links in a new tab instead.
