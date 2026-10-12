@@ -156,7 +156,9 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
     if k == 'date':
         t = pd.to_datetime(v, errors='coerce')
         ok = pd.notna(t)
-        return (t.strftime('%d %b %Y') if ok else NA), (t.strftime('%Y%m%d') if ok else ''), 'd'
+        sub = r.get(c.sub) if c.sub else None
+        tail = f'<div class="sub">{esc(sub)}</div>' if isinstance(sub, str) and sub else ''
+        return (t.strftime('%d %b %Y') if ok else NA) + tail, (t.strftime('%Y%m%d') if ok else ''), 'd'
     if k == 'tags':
         items = v if isinstance(v, (list, tuple)) else [x for x in str(v or '').split(',') if x.strip()]
         return ' '.join(tag(str(x).strip(), _tone(str(x).strip())) for x in items), str(len(items)), 'tags'

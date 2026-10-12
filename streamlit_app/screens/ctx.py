@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from data import store
@@ -80,6 +81,28 @@ def with_prices(df: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         return df.assign(**{c: None for c in PRICE_COLS})
     p = prices.drop_duplicates('isin').set_index('isin')
     return df.assign(**{c: df['isin'].map(p[c]) if c in p else None for c in PRICE_COLS})
+
+
+def pre_public_move(df: pd.DataFrame) -> pd.Series:
+    """Per filing, the stock's move (%) from the last trade date to the day it
+    was made public, on split-adjusted closes (artifacts/price_history.parquet,
+    the last ~400 days): what the market had already done before a reader
+    could know. Blank where either close is missing."""
+    hist = store.price_history()
+    out = pd.Series(np.nan, index=df.index)
+    if df.empty or not hist:
+        return out
+    to = pd.to_datetime(df['trade_date_to'], errors='coerce').to_numpy()
+    seen = pd.to_datetime(df['broadcast_date'], errors='coerce').dt.normalize().to_numpy()
+    for k, (i, a, b) in enumerate(zip(df['isin'], to, seen)):
+        h = hist.get(i)
+        if h is None or pd.isna(a) or pd.isna(b) or b < a:
+            continue
+        d, c = h
+        ia, ib = np.searchsorted(d, a, side='right') - 1, np.searchsorted(d, b, side='right') - 1
+        if ia >= 0 and ib >= 0 and c[ia] > 0:
+            out.iloc[k] = (c[ib] / c[ia] - 1) * 100
+    return out
 
 
 def split_since(df: pd.DataFrame, prices: pd.DataFrame) -> pd.Series:

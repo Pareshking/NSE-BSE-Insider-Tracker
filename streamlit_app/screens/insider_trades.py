@@ -12,7 +12,7 @@ from ui import kit
 
 from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
 from insiders_clean.trading_window import WINDOW_OPEN_SESSIONS
-from screens.ctx import load, need_data, split_since, with_prices, with_sparks
+from screens.ctx import load, need_data, pre_public_move, split_since, with_prices, with_sparks
 
 ROLE_FILTER = ['promoter', 'promoter_group', 'director', 'kmp', 'designated_person', 'immediate_relative', 'other',
                'missing']
@@ -53,14 +53,17 @@ def _table(rows: pd.DataFrame, ctx, name: str):
     paid = pd.to_numeric(rows['price'], errors='coerce') * split_since(rows, ctx.prices)  # on today's split-adjusted basis
     vs = (pd.to_numeric(rows['latest_close'], errors='coerce') / paid - 1) * 100
     buy = rows['is_market'].astype('boolean').fillna(False) & (rows['side'] == 'BUY')
-    rows = rows.assign(vs_paid=vs.where(buy))
+    rows = rows.assign(vs_paid=vs.where(buy), pre_move=pre_public_move(rows),
+                       lag=[f'{int(n)} sessions after the trade' if pd.notna(n) else '' for n in rows.get('trade_to_public_sessions', pd.Series(index=rows.index, dtype=float))])
     kit.table(rows, [
         kit.Col('company', 'Company', 'co', sub='window'), kit.Col('person_name', 'Person', 'person'),
         kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
         kit.Col('pct_of_mcap', '% of mcap', 'bar'),
         kit.Col('holding_change_pct', 'Own holding Δ', 'spct', phone=False, help="Change in the person's own holding"),
         kit.Col('price', 'Paid', 'price', phone=False), kit.Col('vs_paid', 'CMP vs paid', 'spct'),
-        kit.Col('seen', 'Made public', 'date'), kit.Col('mode', 'Mode as filed', 'text', sub='late', phone=False),
+        kit.Col('seen', 'Made public', 'date', sub='lag'),
+        kit.Col('pre_move', 'Before public', 'spct', phone=False,
+                help='Move from the last trade date to the day made public, on split-adjusted closes: what the price did before anyone could know'), kit.Col('mode', 'Mode as filed', 'text', sub='late', phone=False),
         kit.Col('range', '52W range · CMP', 'range', phone=False),
         kit.Col('spark', '1Y price · insider trades', 'spark', phone=False),
     ], limit=150, download=f'insider_{name}')
