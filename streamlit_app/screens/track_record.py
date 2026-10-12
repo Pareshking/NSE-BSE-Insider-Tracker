@@ -8,10 +8,10 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit
+from ui import charts, kit
 from ui.kit import esc
 
-from insiders_clean import track
+from insiders_clean import basket, track
 from screens.ctx import load
 
 MIN_CASES = 30  # below this a figure is shown, but marked "few cases"
@@ -80,6 +80,7 @@ def render():
                     'evidence building up, not as proof. Each company counts once per signal per 21 sessions.')
 
     _forward(ctx, sized)
+    _basket(ctx)
     if ev.empty:
         return
     with kit.card('Every case', 'tr_cases', 'pick a signal; newest first'):
@@ -122,3 +123,37 @@ def _forward(ctx, sized: bool):
             *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
                       phone=(h == '1M')) for h in track.HORIZONS],
         ], limit=200, download='forward_record')
+
+
+def _basket(ctx):
+    """Model basket: a paper portfolio on fixed rules from the forward record
+    (insiders_clean/basket.py). Drawn once it holds a position."""
+    pos = store.artifact('artifacts/basket_positions.parquet')
+    if pos.empty:
+        return
+    nav = store.artifact('artifacts/basket_nav.parquet')
+    meta = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
+    for col in ('company', 'nse_symbol'):
+        pos[col] = pos['isin'].map(meta[col]) if col in meta else None
+    pos['label'] = pos['signal'].map(track.SIGNALS).fillna(pos['signal'])
+    closed = pos[pos['status'] == 'closed']
+    with kit.card('Model basket', 'tr_basket', f'paper portfolio, rules fixed in advance (version {basket.BASKET_VERSION}): '
+                  f'every forward-record signal with an "ahead" early read, no surveillance or tight-band flag, '
+                  f'equal weight, held {basket.HOLD_SESSIONS} sessions, {track.COST_PCT:.2f} pts cost each'):
+        if not nav.empty:
+            b, i = float(nav['basket'].iloc[-1]), float(nav['index'].iloc[-1])
+            kit.tiles([
+                kit.Tile('Basket', kit.pct(b - 100, 1, signed=True), f'since {kit.day(nav["date"].iloc[0])}', 'up' if b > 100 else 'down'),
+                kit.Tile('Nifty 500, same days', kit.pct(i - 100, 1, signed=True), 'price index'),
+                kit.Tile('Open positions', kit.count(int((pos['status'] == 'open').sum())), f'{kit.count(len(closed))} closed'),
+                kit.Tile('Closed in profit', f'{(closed["ret"] > 0).mean() * 100:.0f}%' if len(closed) else '—',
+                         f'median {kit.pct(closed["ret"].median(), 1, signed=True)}' if len(closed) else 'none closed yet'),
+            ])
+            chart = charts.basket_vs_index(nav)
+            if chart is not None:
+                st.altair_chart(chart, width='stretch')
+        kit.table(pos.sort_values(['status', 'entry_date'], ascending=[False, False]), [
+            kit.Col('company', 'Company', 'co'), kit.Col('label', 'Signal', 'text', phone=False),
+            kit.Col('entry_date', 'Entry', 'date'), kit.Col('entry_price', 'Entry price', 'price', phone=False),
+            kit.Col('status', 'Status', 'text', phone=False), kit.Col('ret', 'Return after costs', 'spct'),
+        ], limit=200, download='model_basket')

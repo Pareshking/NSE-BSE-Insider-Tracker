@@ -6,7 +6,9 @@
   artifacts/track_events.parquet         every signal event with its forward returns (insiders_clean/track.py)
   artifacts/track_summary.parquet        per signal and horizon: cases, median excess vs Nifty 500, share that beat it
   ledger/forward/<run time>.parquet      forward record: events that fired since the last run, write-once, never edited
-  artifacts/forward_outcomes.parquet     every forward-record row with its returns so far (derived, rewritten each run)"""
+  artifacts/forward_outcomes.parquet     every forward-record row with its returns so far (derived, rewritten each run)
+  artifacts/basket_positions.parquet     model basket positions from the forward record (insiders_clean/basket.py)
+  artifacts/basket_nav.parquet           model basket and Nifty 500, daily, 100 at the first entry"""
 from __future__ import annotations
 
 import io
@@ -19,13 +21,14 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import slim, track  # noqa: E402
+from insiders_clean import basket, evidence, slim, track  # noqa: E402
 from price_coverage import load_prefix  # noqa: E402
 
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
 HISTORY_KEY, STRIP_KEY = 'artifacts/price_history.parquet', 'artifacts/market_strip.json'
 EVENTS_KEY, TRACK_KEY = 'artifacts/track_events.parquet', 'artifacts/track_summary.parquet'
 FORWARD_KEY = 'artifacts/forward_outcomes.parquet'
+BASKET_POS_KEY, BASKET_NAV_KEY = 'artifacts/basket_positions.parquet', 'artifacts/basket_nav.parquet'
 
 
 def put(client, bucket, key, df):
@@ -34,12 +37,28 @@ def put(client, bucket, key, df):
     client.put_object(Bucket=bucket, Key=key, Body=buf.getvalue())
 
 
-def forward(client, bucket, ev, close, nifty, sized, size_of):
+def _flags_now(client, bucket) -> dict:
+    """ISIN -> today's tradability flags as text (clean/current/tradability.parquet), {} if absent."""
+    try:
+        t = pd.read_parquet(io.BytesIO(client.get_object(Bucket=bucket, Key='clean/current/tradability.parquet')['Body'].read()))
+    except Exception as e:  # noqa: BLE001 -- no flags table: rows are stamped without flags
+        print(f'forward: tradability not read ({e})')
+        return {}
+    return {i: ','.join(f) for i, f in zip(t['isin'], t['trade_flags']) if f is not None and len(f)}
+
+
+def forward(client, bucket, ev, close, nifty, sized, size_of, summ):
     """Append the events that fired since the last run to the forward record
-    (a new write-once file per run), then rewrite the outcomes of every row."""
+    (a new write-once file per run), stamped with the evidence verdict and the
+    tradability flags of that night; rewrite the outcomes of every row and the
+    model basket built from them."""
     ledger = load_prefix(client, bucket, track.LEDGER_PREFIX)
     run_at = pd.Timestamp.now(tz='UTC').tz_localize(None).floor('s')
     new = track.new_ledger_rows(ev, ledger, close, run_at)
+    if len(new):
+        flags = _flags_now(client, bucket)
+        new['evidence'] = new['signal'].map(lambda s: evidence.verdict(summ, s)['kind'])
+        new['trade_flags'] = new['isin'].map(flags).fillna('')
     if len(new):
         key = f'{track.LEDGER_PREFIX}{run_at:%Y-%m-%dT%H%M%S}.parquet'
         try:
@@ -53,6 +72,10 @@ def forward(client, bucket, ev, close, nifty, sized, size_of):
     if len(ledger):
         ledger['day'] = pd.to_datetime(ledger['day'])
         put(client, bucket, FORWARD_KEY, track.forward_returns(ledger, close, nifty, sized, size_of))
+        pos = basket.positions(ledger, close)
+        put(client, bucket, BASKET_POS_KEY, pos)
+        put(client, bucket, BASKET_NAV_KEY, basket.nav(pos, close, nifty))
+        print(f'basket: {len(pos)} positions, {int((pos["status"] == "open").sum()) if len(pos) else 0} open')
 
 
 def main() -> int:
@@ -99,7 +122,7 @@ def main() -> int:
             put(client, bucket, EVENTS_KEY, fr)
             summ = track.summary(fr)
             put(client, bucket, TRACK_KEY, summ)
-            forward(client, bucket, ev, close, nifty, sized, size_of)
+            forward(client, bucket, ev, close, nifty, sized, size_of, summ)
             print(f'track: events {len(fr)}; ' + '; '.join(
                 f"{r.signal} {r.horizon} n={r.cases} med={r.median_excess:+.2f}" for r in summ.itertuples() if r.horizon == '1M'))
     return 0

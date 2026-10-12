@@ -67,3 +67,23 @@ def test_forward_ledger_appends_only_new_recent_events():
     assert again.empty  # already recorded: never written twice
     fr = track.forward_returns(first.assign(day=pd.to_datetime(first['day'])), close, close['A'])
     assert 'recorded_at' in fr and 'excess_1W' in fr  # outcomes keep the stamped row
+
+
+def test_model_basket_rules():
+    from insiders_clean import basket
+    days = pd.bdate_range('2026-01-01', periods=100)
+    close = pd.DataFrame({'A': np.linspace(100, 150, 100), 'B': np.linspace(100, 80, 100), 'C': 100.0}, index=days)
+    led = pd.DataFrame({'signal': ['cluster', 'cluster', 'promoter_buy', 'cluster', 'cluster'],
+                        'isin': ['A', 'A', 'B', 'C', 'B'],
+                        'day': [days[0], days[5], days[10], days[2], days[3]],
+                        'recorded_at': days[[0, 5, 10, 2, 3]],
+                        'evidence': ['leaning_positive', 'leaning_positive', 'no_edge', 'leaning_positive', 'leaning_positive'],
+                        'trade_flags': ['', '', '', '', 'T2T,5% band']})
+    pos = basket.positions(led, close)
+    assert list(pos['isin']) == ['A', 'C']        # A once (already held), B no edge or flagged
+    a = pos[pos['isin'] == 'A'].iloc[0]
+    assert a['status'] == 'closed' and a['entry_date'] == days[1] and a['exit_date'] == days[1 + basket.HOLD_SESSIONS]
+    assert abs(a['ret'] - ((close['A'].iloc[64] / close['A'].iloc[1] - 1) * 100 - track.COST_PCT)) < 1e-9
+    nav = basket.nav(pos, close, close['C'])
+    assert nav['basket'].iloc[-1] > 100 and (nav['index'] == 100).all()
+    assert basket.positions(led.drop(columns='evidence'), close).empty  # unstamped rows never open
