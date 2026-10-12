@@ -10,6 +10,7 @@ from ui.timeline import timeline
 from ui.kit import esc
 
 from insiders_clean import signals
+from screens.capital_raises import issue_rows, rights_rows
 from screens.ctx import load, need_data
 
 
@@ -95,8 +96,17 @@ def render():
                  + 'pledge as % of promoter shares, latest quarter'),
     ])
 
-    tabs = st.tabs(['Overview', 'Timeline', f'Insider trades · {kit.indian(len(t))}', f'Deals · {kit.indian(len(d))}',
-                    'Shareholding'])
+    # Preferential and rights issues for this company; the tab appears only when there are some.
+    raises = {}
+    for label, recs, build in (('Preferential issues', ctx.preferential, issue_rows), ('Rights issues', ctx.rights, rights_rows)):
+        if recs is not None and not recs.empty and 'symbol' in recs:
+            mine = recs[recs['symbol'].astype(str).str.upper() == sym]
+            if not mine.empty:
+                raises[label] = build(mine, ctx.prices)
+    names = ['Overview', 'Timeline', f'Insider trades · {kit.indian(len(t))}', f'Deals · {kit.indian(len(d))}', 'Shareholding']
+    if raises:
+        names.append('Capital raises')
+    tabs = st.tabs(names)
     with tabs[0]:
         with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):
             chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
@@ -208,6 +218,15 @@ def render():
             kit.Col('promoter_encumbered_pct', 'Encumbered', 'pct', phone=False),
             kit.Col('submission_date', 'Filed', 'date', phone=False)], limit=20,
             empty_text='No shareholding pattern loaded for this company yet (coverage grows nightly).')
+    if raises:
+        with tabs[5]:
+            for label, rows in raises.items():
+                st.html(f'<p class="cap"><b>{label}</b></p>')
+                kit.table(rows, [
+                    kit.Col('posted_on', 'Posted', 'date'), kit.Col('status', 'Stage'),
+                    kit.Col('offer_price', 'Offer price', 'price'), kit.Col('amount', 'Amount', 'money'),
+                    kit.Col('shares_allotted', 'Shares', 'shares', phone=False),
+                    kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)], limit=20)
     q = sym.replace('&', '%26')
     st.html('<p class="cap">Exchange filings: '
             f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" target="_blank">NSE insider trading</a> · '

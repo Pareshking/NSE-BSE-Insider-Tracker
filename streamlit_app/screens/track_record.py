@@ -45,6 +45,10 @@ def render():
         kit.Tile('Benchmark', 'Nifty 500', 'same sessions, price index'),
         kit.Tile('Costs', f'{track.COST_PCT:.2f} pts', 'off every return, round trip'),
     ])
+    if first is not None and last is not None:
+        months = max(1, round((last - first).days / 30.4))
+        kit.note('Early read.', f'Our measured history is about {months} months ({kit.day(first)} to {kit.day(last)}), one market '
+                                'phase. Treat every row as a hint that gets firmer as history grows, not as proof of an edge.')
     with kit.card('Scorecard', 'tr_score', 'median excess return over Nifty 500 · share of cases that beat it'):
         heads = ''.join(f'<th>{h}</th>' for h in track.HORIZONS)
         rows = []
