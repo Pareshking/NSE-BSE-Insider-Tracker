@@ -63,8 +63,8 @@ def _meetings(ctx, ref: pd.Timestamp) -> pd.DataFrame:
 
 def render():
     ctx = load()
-    kit.head('Actions', 'What deserves a look now, from every filing we read. Each list says how that kind of '
-                        'filing has done against Nifty 500, so you can weigh it.')
+    kit.head('Actions', 'What deserves a look now, from every filing we read. Each list gives the reason it matters, and '
+                        'an early read of how that kind of filing has done against Nifty 500.')
     if not need_data(ctx):
         return
     ref = ctx.ref
@@ -89,6 +89,17 @@ def render():
                           prom, who, summ, 'promoter_buy'))
     off = _prices(actions.buying(ctx.eligible, ref, ('director', 'kmp'), ROWS), ctx)
     drawn.append(_section('Directors and KMP buying', 'act_off', 'open market', off, who, summ, 'officer_buy'))
+
+    allbuy = actions.buying(ctx.eligible, ref, signals.PROMOTER_ROLES + ('director', 'kmp'), 60)
+    if not allbuy.empty and not ctx.prices.empty:
+        allbuy = _prices(allbuy, ctx)
+        off = pd.to_numeric(allbuy['pct_off_high'], errors='coerce')
+        allbuy = allbuy[off <= -0.25].head(ROWS)
+    else:
+        allbuy = pd.DataFrame()
+    drawn.append(_section('Insiders buying after a big fall', 'act_dip', 'price 25% or more below its 52-week high', allbuy, who, summ,
+                          note='People who know the business paying up while the price is down is the case worth a closer look. '
+                               'It can also mean the business is in trouble: read the filings first. Not measured on our data.'))
 
     # --- caution ---------------------------------------------------------------------------------
     sold = actions.selling(ctx.eligible, ref, signals.PROMOTER_ROLES, limit=ROWS)
@@ -130,4 +141,4 @@ def render():
         return
     kit.caption('The evidence line is what happened to stocks after this kind of filing in our own one year of data: median '
                 'return over Nifty 500 after costs, with the number of cases. Windows overlap and one year is one market, '
-                'so read it as a lead, not proof. The full table is on Track record.')
+                'so read it as a hint, not proof. Weigh the size of the buy against the company, who is buying, and that filings reach you about two days after the trade. The full table is on Track record.')

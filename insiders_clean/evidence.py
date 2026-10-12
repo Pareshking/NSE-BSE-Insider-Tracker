@@ -17,6 +17,7 @@ from __future__ import annotations
 import pandas as pd
 
 MIN_CASES = 30
+CAVEAT = '. Under a year of history, so a hint, not proof; the reasons below matter more.'
 
 
 def _row(summary: pd.DataFrame, signal: str, horizon: str):
@@ -43,7 +44,7 @@ def verdict(summary: pd.DataFrame | None, signal: str) -> dict:
     head = f'Median {r3["median"]:+.1f}% against Nifty 500 over 3 months ({r3["beat"]:.0f}% of {r3["n"]} cases beat it)'
     tail = f', {six["median"]:+.1f}% over 6 months ({six["n"]} cases)' if six else ''
     if up:
-        return {'kind': 'leaning_positive', 'tone': 'buy', 'tag': 'Beat the index so far', 'text': head + tail + '.'}
+        return {'kind': 'leaning_positive', 'tone': 'buy', 'tag': 'Early read: ahead', 'text': head + tail + CAVEAT}
     if down:
-        return {'kind': 'drag', 'tone': 'sell', 'tag': 'Lagged the index', 'text': head + tail + '.'}
-    return {'kind': 'no_edge', 'tone': 'mute', 'tag': 'No clear edge', 'text': head + tail + '.'}
+        return {'kind': 'drag', 'tone': 'sell', 'tag': 'Early read: behind', 'text': head + tail + CAVEAT}
+    return {'kind': 'no_edge', 'tone': 'mute', 'tag': 'Early read: no edge', 'text': head + tail + CAVEAT}

@@ -79,9 +79,9 @@ def test_every_section_with_rows_is_drawn_with_its_evidence_line():
                   'Heavily pledged promoters', 'Funds net buying small caps', 'Shares about to come off lock-in',
                   'Boards meeting on fund raising or a buyback'):
         assert title in blob, title
-    assert 'Beat the index so far' in blob and 'Lagged the index' in blob and 'Too few cases' in blob
+    assert 'Early read: ahead' in blob and 'Early read: behind' in blob and 'Too few cases' in blob
     assert '57% of 128 cases beat it' in blob and '38% of 148 cases beat it' in blob
-    assert 'Not measured on our data' in blob and 'lead, not proof' in blob
+    assert 'Not measured on our data' in blob and 'a hint, not proof' in blob
 
 
 def test_sections_without_rows_are_not_drawn_and_an_empty_page_says_so():
