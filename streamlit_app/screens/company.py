@@ -10,7 +10,7 @@ from ui.timeline import timeline
 from ui.kit import esc
 
 from insiders_clean import signals
-from screens.capital_raises import issue_rows, rights_rows
+from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.buybacks import events as buyback_events
 from screens.ctx import load, need_data, with_flags
 
@@ -108,6 +108,11 @@ def render():
             mine = recs[recs['symbol'].astype(str).str.upper() == sym]
             if not mine.empty:
                 raises[label] = build(mine, ctx.prices)
+    qips = store.table('qip')
+    if not qips.empty and 'symbol' in qips:
+        mine = qips[qips['symbol'].astype(str).str.upper() == sym]
+        if not mine.empty:
+            raises['QIPs'] = qip_rows(mine, ctx.prices).assign(offer_price=lambda r: r.get('issue_price'))
     names = ['Overview', 'Timeline', f'Insider trades · {kit.indian(len(t))}', f'Deals · {kit.indian(len(d))}', 'Shareholding']
     if raises:
         names.append('Capital raises')
@@ -248,6 +253,20 @@ def render():
             kit.Col('promoter_encumbered_pct', 'Encumbered', 'pct', phone=False),
             kit.Col('submission_date', 'Filed', 'date', phone=False)], limit=20,
             empty_text='No shareholding pattern loaded for this company yet (coverage grows nightly).')
+        # Promoter and promoter-group members as the latest filing names them (Table II of the XBRL):
+        # the people and entities counted as one decision-maker in clusters.
+        pg = store.table('promoter_group')
+        if not pg.empty and 'symbol' in pg:
+            pg = pg[pg['symbol'].astype(str).str.upper() == sym]
+            if not pg.empty:
+                last = pg['quarter_end'].max()
+                pg = pg[pg['quarter_end'] == last].sort_values('shares', ascending=False)
+                with kit.card('Promoter group', 'co_pg', f'{kit.plural(len(pg), "member")} named in the filing for the quarter ending '
+                              f'{kit.day(last)}; counted as one decision-maker in clusters'):
+                    kit.table(pg, [
+                        kit.Col('member_name', 'Member'), kit.Col('sub_category', 'Category', phone=False),
+                        kit.Col('shares', 'Shares', 'shares', phone=False), kit.Col('pct_of_company', '% of company', 'pct'),
+                        kit.Col('pledged_shares', 'Pledged', 'shares', phone=False)], limit=60, download=f'{sym}_promoter_group')
     if raises:
         with tabs[5]:
             for label, rows in raises.items():
