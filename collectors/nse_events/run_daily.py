@@ -135,6 +135,8 @@ def shareholding_coverage(clean: pd.DataFrame) -> dict:
         'companies': int(clean['symbol'].nunique()),
         'latest_quarter_of_company': {k: int(v) for k, v in quarters.items()},
         'xbrl_status': {k: int(v) for k, v in status.str.split(':').str[0].value_counts().items()},
+        # Why files fail, by exception type (e.g. 'failed: KeyError'), so a failure can be read from the run log.
+        'xbrl_failure_types': {k: int(v) for k, v in status[status.str.startswith('failed')].value_counts().items()},
         'pending_xbrl': int((status == 'pending').sum()),
         'pending_latest': int((lstat == 'pending').sum()),
         'latest_with_pledge': int(latest['promoter_pledge_pct'].notna().sum()),
