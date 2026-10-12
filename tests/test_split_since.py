@@ -21,3 +21,14 @@ def test_split_since():
     assert pd.isna(f.iloc[3])      # before the last of two: the earlier factor is unknown
     assert f.iloc[4] == 1.0 and f.iloc[5] == 1.0   # no split, or no price row
     assert pd.isna(f.iloc[6])      # no trade date, and the stock has split
+
+
+def test_pre_public_move(monkeypatch):
+    import numpy as np
+    from screens import ctx
+    d = pd.to_datetime(['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04']).to_numpy()
+    monkeypatch.setattr(ctx.store, 'price_history', lambda: {'A': (d, np.array([100.0, 104.0, 110.0, 99.0]))})
+    t = pd.DataFrame({'isin': ['A', 'A', 'B'], 'trade_date_to': pd.to_datetime(['2026-06-01', '2026-06-04', '2026-06-01']),
+                      'broadcast_date': pd.to_datetime(['2026-06-03 18:00', '2026-06-02 10:00', '2026-06-03 10:00'])})
+    m = ctx.pre_public_move(t)
+    assert abs(m.iloc[0] - 10.0) < 1e-9 and pd.isna(m.iloc[1]) and pd.isna(m.iloc[2])

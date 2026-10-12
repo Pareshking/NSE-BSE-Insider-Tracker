@@ -45,6 +45,7 @@ SIGNALS = {
     'officer_buy': 'Director or KMP open-market buy (₹25 L+)',
     'promoter_sell': 'Promoter open-market sale (₹25 L+)',
     'officer_sell': 'Director or KMP open-market sale (₹25 L+)',
+    'window_open_buy': 'Promoter or officer buy in the first 5 sessions after results (₹25 L+)',
     'fund_deal_buy': 'Bulk/block net buy by a real fund (small caps)',
 }
 
@@ -75,6 +76,9 @@ def events(trades: pd.DataFrame, deals: pd.DataFrame | None, close: pd.DataFrame
            big[off & (big['side'] == 'BUY')].assign(signal='officer_buy'),
            big[prom & (big['side'] == 'SELL')].assign(signal='promoter_sell'),
            big[off & (big['side'] == 'SELL')].assign(signal='officer_sell')]
+    if 'window_open_buy' in big:  # the results date is known before the trade, so no look-ahead (insiders_clean/trading_window.py)
+        out.append(big[(prom | off) & (big['side'] == 'BUY') & big['window_open_buy'].astype('boolean').fillna(False)]
+                   .assign(signal='window_open_buy'))
     # price context at the day made public: distance from the 52-week high
     pb = out[0]
     if not pb.empty:
@@ -196,7 +200,7 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
 # version, and never edits a row. Outcomes are derived from those rows later,
 # by the same forward_returns as the backtest.
 
-RULES_VERSION = '2026-10-12'  # bump when a signal rule, threshold, spacing or cost changes
+RULES_VERSION = '2026-10-12.2'  # .2: window_open_buy added  # bump when a signal rule, threshold, spacing or cost changes
 LEDGER_PREFIX = 'ledger/forward/'
 FIRE_WINDOW = 5  # sessions: an event made public this recently counts as firing now (covers missed runs)
 LEDGER_COLS = ['signal', 'isin', 'day', 'value', 'recorded_at', 'rules_version', 'last_session', 'close_at_record']
