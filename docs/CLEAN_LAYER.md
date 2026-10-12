@@ -38,6 +38,9 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 | `clean/current/securities.parquet` | One row per security used | Rewritten nightly |
 | `clean/current/tradability.parquet` | One row per ISIN: surveillance stage, T2T, SME, band, circuit days | Rewritten nightly |
 | `archive/tradability/{surveillance,sec_list}/year=YYYY.parquet` | One parsed snapshot a day of NSE's surveillance lists and price bands | Forever |
+
+| `clean/current/{preferential,rights,qip}.parquet`, `preferential_allottees`, `preferential_lockins`, `qip_allottees` | Further issues (`insiders_clean/issues.py`), rebuilt by `clean_writer.py` from the snapshots and the issues archive | Rewritten nightly |
+| `archive/nse_events/issues/year=YYYY.parquet` | Every further-issue filing NSE posted in a date window (NSE events job), with NSE's row and the parsed XBRL | Forever |
 | `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
 | `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
 | `archive/_backfill/nse_{dataset}.json` | Backfill progress: chunks done, with row counts | Forever (small) |
@@ -52,8 +55,9 @@ Each nightly snapshot repeats the full 90-day window, so one filing is
 stored up to ~60 times. The archive stores it once. `R2 Retention (weekly)`
 deletes dated snapshots older than 14 days that the archive has absorbed.
 It is a **dry run** until the repository variable `R2_RETENTION_DELETE` is
-set to `1`. It never touches a dataset that has no archive (rights and
-preferential issues are not archived yet), and it keeps market-cap history,
+set to `1`. It never touches a dataset that has no archive (the rights and
+preferential snapshots in `canonical/` are not archived; the window filings
+in `archive/nse_events/issues/` are), and it keeps market-cap history,
 manifests, the calendar and everything under `archive/` and `clean/`.
 
 The current Streamlit pages still read dated `canonical/` files through the
@@ -79,7 +83,9 @@ through the client's `on_response` hook before parsing; a failed raw write
 fails that stream for the night.
 
 Written with `If-None-Match: *` (never overwrites); no retention job touches
-it. Delete protection in the bucket (R2 object lock / lifecycle) is the
+it. The NSE events job stores the further-issue lists and XBRL files there
+directly (`raw_v2/nse/further_issues/`, `raw_v2/nse/further_issue_xbrl/`);
+a failed raw write is counted in its report (`raw_not_stored`). Delete protection in the bucket (R2 object lock / lifecycle) is the
 owner's to set; code cannot prove it. Wired into the NSE history backfill and
 the nightly collectors. A failed raw write fails the backfill chunk; in the
 nightly the flush step goes red.
@@ -93,6 +99,23 @@ Anything older stays in the archive and never reaches a clean table. The clean
 step removes them with counted reasons `before_product_start` and
 `no_readable_transaction_date` (insider ranges use their last day). Reversible:
 change the constant and rerun the clean step.
+
+Further issues are not cut at the window: an allotment posted before it still
+has lock-ins expiring inside it. The cleaning report counts them
+(`posted_before_product_start`).
+
+## Further issues (preferential, rights, QIP)
+
+`insiders_clean/issues.py`. Stage records are linked by ISIN (one approval in
+the 180 days before, else no link). From the XBRL: the filed ICDR minimum and
+relevant date, every proposed allottee, the filed lock-in lines, and QIP
+allottees. A link is dropped when the approval proposed fewer securities than
+were allotted (`more_shares_than_approved`; seen on real filings, e.g. Kanpur
+Plastipack and Lloyds Metals). Lock-in dates use the filed lines where present
+and the rule (promoters 18 months, others 6, from trading approval) otherwise.
+Our own ICDR estimate (90/10-session VWAP before the filed relevant date) is
+computed only beside the filed figure, from `prices/daily/` for the months it
+needs, and left blank across a split or bonus.
 
 ## Intraday round trips (deals)
 

@@ -122,14 +122,14 @@ def render():
         summ, 'fund_deal_buy', 'Shown so you can see where the crowd went, not as a buy list.'))
 
     # --- dates ahead -----------------------------------------------------------------------------
-    cal = lock_in_calendar(ctx.preferential, ctx.prices, ref)
+    cal = lock_in_calendar(ctx.preferential, ctx.prices, ref, store.table('preferential_lockins'))
     if not cal.empty:
         cal = cal[(cal['days_left'] >= 0) & (cal['days_left'] <= LOCK_AHEAD_DAYS)]
     drawn.append(_section('Shares about to come off lock-in', 'act_lock', f'next {LOCK_AHEAD_DAYS} days', cal, [
         kit.Col('expires', 'Free from', 'date'), kit.Col('days_left', 'Days', 'num'), kit.Col('company', 'Company', 'co'),
-        kit.Col('who', 'Whose shares'), kit.Col('shares_allotted', 'Shares', 'shares', phone=False),
+        kit.Col('what', 'Lock-in'), kit.Col('shares', 'Shares', 'shares', phone=False),
         kit.Col('at_market', 'At market now', 'money', phone=False)],
-        summ, note='Preferential allotments become tradable after 18 months (promoters) or 6 months (others). Not measured on our data.'))
+        summ, note='Lock-in lines as the company filed them, else the rule: 18 months for promoters, 6 for others. Not measured on our data.'))
 
     mt = _meetings(ctx, ref)
     drawn.append(_section('Boards meeting on fund raising or a buyback', 'act_meet', f'next {MEETING_AHEAD_DAYS} days', mt, [

@@ -2,6 +2,7 @@ name: NSE Corporate Events (daily)
 
 # SAST Reg 29, corporate actions, board meetings, shareholding + pledges,
 # buyback tender offers and daily buyback reports.
+# further issues (preferential, rights, QIP filings and their XBRL).
 # Fetches the last 10 days each run and merges by event ID, so re-runs and
 # late filings are safe. Separate from the R2 Storage Write workflow so a
 # failure here never affects insider/deal collection.
@@ -13,7 +14,7 @@ on:
         required: false
         default: '10'
       dataset:
-        description: 'all | sast | actions | meetings | shareholding | tenders | daily_buybacks'
+        description: 'all | sast | actions | meetings | shareholding | tenders | daily_buybacks | issues'
         required: false
         default: 'all'
       from:

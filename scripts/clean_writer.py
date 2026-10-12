@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import archive, day_range, issues, trading_window
+from insiders_clean import adjust, archive, day_range, issues, trading_window
 from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
 
@@ -191,19 +191,55 @@ def nse_lists(client, run_day: str, notes: list):
     return frames
 
 
+ISSUE_ARCHIVE = 'archive/nse_events/issues/'   # collectors/nse_events/run_daily.py, stream `issues`
+
+
+def issue_prices(client, filings: pd.DataFrame | None) -> tuple[pd.DataFrame | None, dict]:
+    """Daily NSE and BSE prices for the months the ICDR estimate needs, and
+    ISIN -> split/bonus dates in them (insiders_clean/adjust.py)."""
+    months = issues.price_months(filings)
+    frames = [read_parquet(client, f'prices/daily/{ex}/{m}.parquet') for ex in ('nse', 'bse') for m in months]
+    frames = [f for f in frames if f is not None and not f.empty]
+    if not frames:
+        return None, {}
+    px = pd.concat(frames, ignore_index=True)
+    px = px[px['isin'].isin(set(filings.loc[filings['kind'] == 'preferential', 'isin'].dropna()))]
+    px['date'] = pd.to_datetime(px['date'], errors='coerce')
+    f = adjust.implied_factors(px)
+    f = f[f['kind'] == 'split_bonus']
+    return px, {i: list(g['date']) for i, g in f.groupby('isin')}
+
+
 def issue_tables(client) -> tuple[dict, dict]:
-    """NSE preferential and rights issues -> clean tables. NSE returns only the
-    latest 100 records per stage a day, so the history is every daily
-    canonical snapshot stacked (insiders_clean/issues.py)."""
+    """NSE preferential and rights issues and QIPs -> clean tables. NSE's
+    latest-100 lists are kept as daily canonical snapshots; the nightly NSE
+    events job also archives every filing by date window with its parsed XBRL
+    (archive/nse_events/issues/). Both are stacked (insiders_clean/issues.py)."""
     tables, report = {}, {}
+    keys = sorted(k for k in list_keys(client, ISSUE_ARCHIVE) if k.endswith('.parquet'))
+    parts = [f for f in (read_parquet(client, k) for k in keys) if f is not None and not f.empty]
+    filings = pd.concat(parts, ignore_index=True) if parts else None
+    daily, splits = issue_prices(client, filings)
+    facts = issues.xbrl_facts(filings)
     for kind, category in (('preferential', 'preferential_issue'), ('rights', 'rights_issue')):
         keys = sorted(k for k in list_keys(client, f'canonical/nse/{category}/') if k.endswith('data.parquet'))
         frames = [f for f in (read_parquet(client, k) for k in keys) if f is not None and not f.empty]
-        df, rep = issues.clean_issues(pd.concat(frames, ignore_index=True) if frames else None, kind)
+        df, rep = issues.clean_issues(pd.concat(frames, ignore_index=True) if frames else None, kind,
+                                      filings, daily, splits)
         rep['snapshots'] = len(frames)
+        if kind == 'preferential' and not df.empty:
+            lines = issues.lock_in_lines(df, facts)
+            df = issues.with_lock_in_basis(df, lines)
+            tables['preferential_lockins'] = lines
+            tables['preferential_allottees'] = issues.allottee_rows(df, facts)
+            rep['lock_in_lines'] = {k: int(v) for k, v in lines['basis'].value_counts().items()}
+            rep['allottee_rows'] = len(tables['preferential_allottees'])
         report[kind] = rep
         if not df.empty:
             tables[kind] = df
+    qip, qip_allottees, report['qip'] = issues.clean_qip(filings)
+    if not qip.empty:
+        tables['qip'], tables['qip_allottees'] = qip, qip_allottees
     return tables, report
 
 

@@ -29,8 +29,13 @@ class FakeR2:
             raise NoSuchKey(Key)
         return {'Body': io.BytesIO(self.objects[Key])}
 
-    def put_object(self, Bucket, Key, Body, ContentType=None):
+    def put_object(self, Bucket, Key, Body, ContentType=None, **kw):
         self.objects[Key] = Body
+
+    def head_object(self, Bucket, Key):   # insiders_clean/raw_store.py checks a key before writing it once
+        if Key not in self.objects:
+            raise NoSuchKey(Key)
+        return {}
 
     def list_objects_v2(self, Bucket, Prefix, ContinuationToken=None):
         return {'Contents': [{'Key': k, 'Size': len(v)} for k, v in sorted(self.objects.items())
