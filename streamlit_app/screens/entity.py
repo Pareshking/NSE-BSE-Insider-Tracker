@@ -6,6 +6,7 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
+from insiders_clean import participants
 from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 
@@ -36,6 +37,16 @@ def render():
     if not d.empty and d['client_is_market_maker'].astype('boolean').fillna(False).any():
         kit.note('Market maker.', 'This client buys and sells in near-equal amounts at high volume; its deals are '
                                   'liquidity, not positions, and are left out of signals.')
+    if not d.empty and 'client_type' in d:
+        # Type read from the name (insiders_clean/participants.py); other names of the same investor.
+        r = d.iloc[0]
+        kind = participants.TYPES.get(r['client_type'], r['client_type'])
+        alln = ctx.deals
+        sib = alln[(alln['investor_group_id'] == r['investor_group_id']) & (alln['client_id'] != eid)].drop_duplicates('client_id')
+        links = ', '.join(f'<a href="{kit.entity_href(i)}" target="_self">{kit.esc(str(n))}</a>'
+                          for i, n in zip(sib['client_id'], sib['client_name']))
+        st.html(f'<p class="evl">{kit.esc(kind)} · {r["client_type_confidence"]} confidence ({kit.esc(str(r["client_type_rule"]))})'
+                + (f' · also deals as {links}' if links else '') + '</p>')
     mk = ctx.eligible[ctx.eligible['person_id'] == eid]
     # Owner's spec: capital deployed in 12 months, active tickers; win rate and
     # holding period come with the signal lab (docs/DATA_TO_PAGES.md S21).

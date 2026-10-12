@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
-from insiders_clean import signals
+from insiders_clean import participants, signals
 from screens.ctx import load, need_data, with_prices, with_sparks
 
 
@@ -45,8 +45,12 @@ def render():
             kit.caption('A promoter seller is recognised when the same name filed as promoter or promoter group for that '
                         'company. "Absorbed by" lists the real buyers on the other side that day.')
 
+    typed = 'client_type' in d  # written by the clean step from 12 Oct (insiders_clean/participants.py)
     with tabs[1]:
-        acc = signals.small_cap_accumulation(d)
+        inst = typed and st.toggle('Institutions only', value=False, key='acc_inst',
+                                   help='Mutual funds, insurers, pension funds, banks, foreign investors, AIFs and other funds, '
+                                        'as read from the client name (insiders_clean/participants.py)')
+        acc = signals.small_cap_accumulation(d[d['client_type'].isin(participants.INSTITUTIONAL)] if inst else d)
         if acc.empty:
             kit.empty('No small caps net-bought by real funds in the last 30 days.')
         else:
@@ -71,9 +75,17 @@ def render():
             if not show_mm:
                 rows = rows[~rows['client_is_market_maker'].astype('boolean').fillna(False)]
             rows = rows[rows['is_primary'].astype('boolean').fillna(False)].sort_values(['date', 'value'], ascending=False)
+            if typed:
+                kinds = [k for k in participants.TYPES if k in set(rows['client_type'])]
+                pick = st.multiselect('Who', kinds, format_func=participants.TYPES.get, key='dl_who',
+                                      placeholder='Every kind of client')
+                rows = rows[rows['client_type'].isin(pick)] if pick else rows
+                rows = rows.assign(who=[participants.TYPES.get(k, k) + (' (by name, unsure)' if c == 'low' else '')
+                                        for k, c in zip(rows['client_type'], rows['client_type_confidence'])])
             kit.table(rows, [
                 kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'),
-                kit.Col('client_name', 'Client', 'client', sub='counterparties'), kit.Col('side', 'Side', 'side'),
+                kit.Col('client_name', 'Client', 'client', sub='counterparties'), *([kit.Col('who', 'Type', phone=False)] if typed else []),
+                kit.Col('side', 'Side', 'side'),
                 kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
                 kit.Col('feeds', 'Feed', phone=False)], limit=200, download='deals')

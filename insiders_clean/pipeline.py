@@ -8,6 +8,7 @@ from datetime import date
 
 from .calendar import Calendar
 from .deals import clean_deals
+from .participants import add_participant_columns, report as participants_report
 from .insider import clean_insider
 from .missing import normalise
 from .report import Report
@@ -67,6 +68,8 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
     insider = clean_insider(frames('insider_trading'), master, cal, report, run_date, price_ranges=price_ranges)
     deals_raw = pd.concat([frames('bulk_deals'), frames('block_deals')], ignore_index=True)
     deals = clean_deals(deals_raw, master, report, run_date)
+    deals = add_participant_columns(deals)  # client type and investor group (TODO 23, 16)
+    report.table('deals')['participants'] = participants_report(deals)
 
     insider = apply_product_window(insider, 'trade_date_to', 'insider_trades', report, 'trade_id')
     deals = apply_product_window(deals, 'date', 'deals', report, 'deal_id')
