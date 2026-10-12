@@ -71,8 +71,8 @@ def render():
     if roles:
         t = t[t['person_role'].isin(roles)]
     if q:
-        t = t[t['company'].str.contains(q, case=False, na=False) | t['person_name'].str.contains(q, case=False, na=False)
-              | t['nse_symbol'].astype(str).str.contains(q, case=False)]
+        t = t[t['company'].str.contains(q, case=False, na=False, regex=False) | t['person_name'].str.contains(q, case=False, na=False, regex=False)
+              | t['nse_symbol'].astype(str).str.contains(q, case=False, regex=False)]
     market = t['is_market'].astype('boolean').fillna(False)
     review = t['needs_review'].astype('boolean').fillna(False)
     pledge = t['kind'].astype(str).str.startswith('pledge')

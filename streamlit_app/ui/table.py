@@ -112,7 +112,7 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
     v = r.get(c.key)
     k = c.kind
     if k == 'co':
-        sym = r.get('nse_symbol') or r.get('symbol') or ''
+        sym = next((x for x in (r.get('nse_symbol'), r.get('symbol')) if isinstance(x, str) and x), '')
         name = str(v if isinstance(v, str) and v else sym)
         sub = f'<span class="sym">{esc(str(sym))}</span>' + exchange_tags(str(r.get('listed_on') or '').lower())
         extra = r.get(c.sub) if c.sub else None

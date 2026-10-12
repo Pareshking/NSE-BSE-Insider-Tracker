@@ -90,6 +90,8 @@ def _session(ctx, n: int):
             one['qty'] = [qty.get((i, p, s)) for i, p, s in zip(one['isin'], one['person_id'], one['side'])]
             parts.append(one.assign(day=pd.Timestamp(day)))
     sess = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    if not len(days):
+        return sess, None, None
     return sess, pd.Timestamp(days[0]), pd.Timestamp(days[-1])
 
 
@@ -150,6 +152,9 @@ def render():
     pick = st.segmented_control('Window', list(WINDOWS), default='Last 5 sessions', key='today_win',
                                 label_visibility='collapsed') or 'Last 5 sessions'
     sess, first, day = _session(ctx, WINDOWS[pick])
+    if day is None:
+        kit.empty('No dated insider filings in the data yet.')
+        return
     when = kit.day(day) if first == day else f'{kit.day(first, with_year=False)}–{kit.day(day)}'
     end = day + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
     prom = sess[sess['person_role'].isin(signals.PROMOTER_ROLES)] if not sess.empty else sess

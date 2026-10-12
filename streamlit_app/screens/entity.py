@@ -21,10 +21,10 @@ def render():
             people = pd.concat([ctx.trades[['person_id', 'person_name']].rename(columns={'person_id': 'id', 'person_name': 'name'}),
                                 ctx.deals[['client_id', 'client_name']].rename(columns={'client_id': 'id', 'client_name': 'name'})
                                 if not ctx.deals.empty else pd.DataFrame(columns=['id', 'name'])]).dropna().drop_duplicates('id')
-            hits = people[people['name'].str.contains(q, case=False, na=False)].head(30)
+            hits = people[people['name'].str.contains(q, case=False, na=False, regex=False)].head(30)
             st.html('<div class="q-list">' + ''.join(
                 f'<div class="q-row"><a href="{kit.entity_href(i)}" target="_self"><b>{kit.esc(str(n))}</b></a></div>'
-                for i, n in zip(hits['id'], hits['name'])) + '</div>' if len(hits) else '')
+                for i, n in zip(hits['id'], hits['name'])) + '</div>' if len(hits) else '<p class="evl">No match. Try part of the name.</p>')
         return
     t = ctx.trades[ctx.trades['person_id'] == eid]
     d = ctx.deals[ctx.deals['client_id'] == eid] if not ctx.deals.empty else pd.DataFrame()
