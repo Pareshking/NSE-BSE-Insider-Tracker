@@ -59,6 +59,11 @@ def data_dir(tmp_path_factory, real_nse_rows):
                                 'canonical_isin': 'INE0LXG01040', 'canonical_symbol': 'OLAELEC',
                                 'canonical_company': 'OLA ELECTRIC MOBILITY LIMITED', 'sysDateTime': '09-OCT-2026',
                                 'dtOfSubmission': '08-OCT-2026', 'offerPrice': '40', 'rightRatio': '1:5',
+                                'ingested_at': '2026-10-10T02:01:03+00:00'},
+                               {'canonical_event_id': 'r2', 'appId': '10', 'canonical_stage': 'Listing Stage',
+                                'canonical_isin': 'INE860A01027', 'canonical_symbol': 'HCLTECH',
+                                'canonical_company': 'HCL TECHNOLOGIES LIMITED', 'sysDateTime': '09-OCT-2026',
+                                'dtOfSubmission': '08-OCT-2026', 'offerPrice': '1500', 'rightRatio': '1:10',
                                 'ingested_at': '2026-10-10T02:01:03+00:00'}])
     issue_clean.clean_issues(rights_raw, 'rights')[0].to_parquet(cur / 'rights.parquet')
     (root / 'clean' / 'report_local.json').write_text(json.dumps(report, default=str))
@@ -107,3 +112,23 @@ def test_company_board_survives_two_symbols_on_one_isin(real_nse_rows, master, c
                        'public_holding_pct': [96.01, 96.01], 'promoter_pledge_pct': [5.38, 5.38]})
     board = signals.company_board(t, None, sh, signals.as_of(t))
     assert not board.empty
+
+
+def test_company_page_shows_capital_raises_tab_only_when_the_company_has_them(data_dir, monkeypatch):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    labels = {}
+    for sym in ('HCLTECH', 'ZEEL'):
+        code = APP_PATHS + f"""
+import streamlit as st
+st.query_params['symbol'] = {sym!r}
+from ui import theme
+theme.inject()
+from screens import company
+company.render()
+"""
+        at = AppTest.from_string(code, default_timeout=60)
+        at.run()
+        assert not at.exception, at.exception[0].value
+        labels[sym] = [t.label for t in at.tabs]
+    assert 'Capital raises' in labels['HCLTECH']
+    assert 'Capital raises' not in labels['ZEEL']
