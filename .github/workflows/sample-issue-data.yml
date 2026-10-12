@@ -1,14 +1,15 @@
-name: Sample rights and preferential data (read-only)
+name: Sample stored data (read-only)
 
-# Prints the columns, fill rates, short-value lists and example rows of the
-# stored NSE and BSE rights and preferential issue data. Writes nothing.
+# Prints (1) the columns, fill rates, short-value lists and example rows of the
+# stored NSE and BSE rights and preferential issue data and (2) how complete the
+# shareholding table is. Writes nothing.
 # The push trigger is temporary, for running this from its branch.
 
 on:
   workflow_dispatch:
   push:
     branches: [ccr-d8fff3f9-npgfmg]
-    paths: ['.github/workflows/sample-issue-data.yml', 'scripts/sample_issue_data.py']
+    paths: ['.github/workflows/sample-issue-data.yml', 'scripts/sample_issue_data.py', 'scripts/shareholding_coverage_report.py']
 
 permissions:
   contents: read
@@ -31,3 +32,10 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python -u scripts/sample_issue_data.py
+      - name: Shareholding coverage
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/shareholding_coverage_report.py
