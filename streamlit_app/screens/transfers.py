@@ -20,10 +20,11 @@ GROUPS = {
 }
 
 
-def render():
+def render(head: bool = True):
     ctx = load()
-    kit.head('Inter-se and off-market transfers', 'Holdings that changed hands without a market trade. Never counted '
-                                                  'as buying or selling.')
+    if head:
+        kit.head('Inter-se and off-market transfers', 'Holdings that changed hands without a market trade. Never counted '
+                                                      'as buying or selling.')
     if not need_data(ctx):
         return
     t = ctx.trades[ctx.trades['is_primary'].astype('boolean').fillna(False)

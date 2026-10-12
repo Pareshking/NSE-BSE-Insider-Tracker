@@ -238,3 +238,7 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .cm-r { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid #F0F2F5; }
 .cm-r:last-child { border-bottom: 0; } .cm-r b { color: var(--ink); font-size: var(--fs-body); }
 .cm-r p { margin: 3px 0 0; font-size: var(--fs-small); color: var(--ink-3); max-width: 80ch; }
+
+/* ---- Actions page: the one-line evidence under each list's title ---- */
+.evl { margin: 0 0 10px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.5; }
+.evl .tg { margin-right: 6px; }
