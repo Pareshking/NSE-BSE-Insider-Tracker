@@ -143,6 +143,22 @@ jobs:
           TARGET_DATE: ${{ steps.target.outputs.date }}
         run: python scripts/bse_validate.py
 
+      # Prices: until 12 Oct 2026 only the manual Price backfill wrote
+      # prices/daily/, so every price on the site stopped at the last manual
+      # run (08 Oct). Each nightly now fetches the last 10 days (NSE and BSE
+      # bhavcopy, NSE market cap, NSE index closes); days already stored are
+      # skipped, so a missed night is filled by the next. Before the
+      # tradability step, the clean step's price check and Precompute, which read them.
+      - name: Prices (last 10 days, resumable)
+        if: always()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/price_backfill.py --from "$(date -u -d '10 days ago' +%F)" --to "$(date -u +%F)" --exchange NSE,BSE,NSE_PR,NSE_IDX
+
       # --- NSE surveillance lists and price bands -> clean/current/tradability.parquet
       # (scripts/nse_surveillance.py). Its raw answers are captured for the
       # raw step below. Flags only; it can never fail the collection. ---
@@ -231,22 +247,6 @@ jobs:
             artifacts/data_validation_v5
           retention-days: 14
           if-no-files-found: warn
-
-      # Prices: until 12 Oct 2026 only the manual Price backfill wrote
-      # prices/daily/, so every price on the site stopped at the last manual
-      # run (08 Oct). Each nightly now fetches the last 10 days (NSE and BSE
-      # bhavcopy, NSE market cap, NSE index closes); days already stored are
-      # skipped, so a missed night is filled by the next. Before Precompute,
-      # which reads them.
-      - name: Prices (last 10 days, resumable)
-        if: always()
-        continue-on-error: true
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python -u scripts/price_backfill.py --from "$(date -u -d '10 days ago' +%F)" --to "$(date -u +%F)" --exchange NSE,BSE,NSE_PR,NSE_IDX
 
       # Precompute (price summary, market strip, track record) used to start
       # from a workflow_run trigger, which has not fired after any run since
