@@ -1,1 +1,0 @@
-BSE 90-day validation is intentionally isolated from NSE. Do not certify from the legacy combined workflow.
