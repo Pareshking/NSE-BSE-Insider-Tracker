@@ -5,7 +5,7 @@ used to call -- is dead: it returns the same ~22KB Akamai bot-detection page
 on every request regardless of parameters, retries, or session warmup (same
 signature as the dead /api/corporates-pit endpoint that blocked Insider
 Trading before nse_insider.py was rewritten). A live-network diagnostic
-(scripts/nse_bulk_diagnose.py) captured what NSE's own "Bulk Deals/ Block
+(scripts/nse_bulk_diagnose.py, removed 12 Oct 2026; in git history) captured what NSE's own "Bulk Deals/ Block
 Deals/ Short Selling Archives" page (report-detail/display-bulk-and-block-deals)
 actually calls: /api/historicalOR/bulk-block-short-deals?optionType=block_deals
 -- from the SAME runner IP, in the SAME run, this endpoint returned real JSON
