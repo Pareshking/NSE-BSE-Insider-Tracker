@@ -34,6 +34,8 @@ same day something is promised, started or finished. Pages follow the data:
 
 | P | ~~Prices every night~~ **Fixed 12 Oct**: no workflow appended prices after the manual backfill, so the site's prices stopped at 08 Oct. Price backfill run on 12 Oct from 01 Oct; the nightly now fetches the last 10 days (NSE, BSE, NSE market cap, NSE indices) before Precompute | `slim: ... last session` in the Precompute log is the latest trading day |
 
+| U | ~~Study universe: Rs 100 Cr and up~~ **Done 12 Oct** (owner): clean step writes the universe table, every page reads through it, Track record judged on each event day's market cap; collection unchanged | Pages show no company under Rs 100 Cr; the Data page counts what is left out |
+
 ## Later
 
 | # | Item | Done when |

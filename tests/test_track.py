@@ -87,3 +87,11 @@ def test_model_basket_rules():
     nav = basket.nav(pos, close, close['C'])
     assert nav['basket'].iloc[-1] > 100 and (nav['index'] == 100).all()
     assert basket.positions(led.drop(columns='evidence'), close).empty  # unstamped rows never open
+
+
+def test_universe_judged_on_the_event_day():
+    ev = pd.DataFrame({'isin': ['A', 'A', 'B', 'C'], 'day': pd.to_datetime(['2026-01-10', '2026-06-10', '2026-03-01', '2026-03-01'])})
+    hist = pd.DataFrame({'date': pd.to_datetime(['2026-01-09', '2026-06-09', '2026-02-27']), 'isin': ['A', 'A', 'B'],
+                         'market_cap': [80e7, 150e7, 120e7]})
+    keep = track.universe_on_day(ev, hist, {'C': 300e7, 'A': 500e7}, 100e7)
+    assert list(keep) == [False, True, True, True]   # A small then big; B big; C not on NSE, BSE's latest used

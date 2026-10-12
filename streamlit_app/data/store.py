@@ -41,10 +41,29 @@ def configured() -> bool:
     return _local() is not None or r2_data.r2_configured()
 
 
-@st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES))
-def table(name: str) -> pd.DataFrame:
+@st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES) + 1)
+def _table(name: str) -> pd.DataFrame:
     body = _read(f'clean/current/{name}.parquet')
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def universe_isins() -> frozenset | None:
+    """ISINs of companies of Rs 100 Cr and up (clean/current/universe.parquet,
+    insiders_clean/universe.py); None until the clean step has written it."""
+    u = _table('universe')
+    return frozenset(u.loc[u['in_universe'].astype(bool), 'isin'].dropna()) if not u.empty and 'in_universe' in u else None
+
+
+def table(name: str, everything: bool = False) -> pd.DataFrame:
+    """A clean table, keeping only companies in the study universe (Rs 100 Cr
+    and up) unless `everything`: every page reads through here, so none can
+    miss the cutoff. Rows with no ISIN cannot be placed and are left out too."""
+    df = _table(name)
+    keep = None if everything or name == 'universe' else universe_isins()
+    if keep is None or df.empty or 'isin' not in df:
+        return df
+    return df[df['isin'].isin(keep)].reset_index(drop=True)
 
 
 @st.cache_data(ttl=600, show_spinner=False)

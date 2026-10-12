@@ -21,7 +21,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import basket, evidence, slim, track  # noqa: E402
+from insiders_clean import basket, evidence, slim, track, universe  # noqa: E402
 from price_coverage import load_prefix  # noqa: E402
 
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
@@ -87,20 +87,24 @@ def main() -> int:
     meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
             .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name', 'exchange']])
     mc = load_prefix(client, bucket, 'marketcap/daily/')
+    mc_hist = pd.DataFrame()
     if len(mc):
         mc['date'] = pd.to_datetime(mc['date'])
+        mc_hist = mc[['date', 'symbol', 'market_cap']].copy()   # point in time, for the study universe on each event day
         mc = mc[mc['date'] == mc['date'].max()]
     summary = slim.price_summary(close, meta, factors, mc if len(mc) else None)
     put(client, bucket, SUMMARY_KEY, summary)
     print(f'slim: isins {len(summary)}, with bucket {int(summary["mcap_bucket"].notna().sum())}, last session {close.index.max():%Y-%m-%d}')
     clean = {}
-    for table in ('insider_trades', 'deals'):
+    for table in ('insider_trades', 'deals', 'universe'):
         try:
             clean[table] = pd.read_parquet(io.BytesIO(
                 client.get_object(Bucket=bucket, Key=f'clean/current/{table}.parquet')['Body'].read()))
         except Exception as e:  # noqa: BLE001 -- a missing clean table means no lines for it, not a failed run
             print(f'history: {table} not read ({e})')
-    isins = set().union(*(set(t['isin'].dropna()) for t in clean.values())) if clean else set()
+    isins = set().union(*(set(clean[t]['isin'].dropna()) for t in ('insider_trades', 'deals') if t in clean))
+    if 'universe' in clean:   # only companies in the study universe: the site never draws the rest
+        isins &= set(clean['universe'].loc[clean['universe']['in_universe'].astype(bool), 'isin'])
     hist = slim.price_history(close, isins)
     put(client, bucket, HISTORY_KEY, hist)
     print(f'history: isins {hist["isin"].nunique()} of {len(isins)} in filings, rows {len(hist)}')
@@ -113,6 +117,13 @@ def main() -> int:
         nifty = ix[ix['symbol'] == 'Nifty 500'].drop_duplicates('date').set_index('date')['close'].sort_index()
         if 'insider_trades' in clean and len(nifty):
             ev = track.events(clean['insider_trades'], clean.get('deals'), close)
+            # Study universe (insiders_clean/universe.py): judged on each event's own day.
+            nse_isin = meta[meta['exchange'] == 'NSE'].drop_duplicates('symbol').set_index('symbol')['isin']
+            hist = mc_hist.assign(isin=mc_hist['symbol'].map(nse_isin)) if len(mc_hist) else mc_hist
+            latest = clean['universe'].set_index('isin')['market_cap'].to_dict() if 'universe' in clean else None
+            keep = track.universe_on_day(ev, hist, latest, universe.MIN_MARKET_CAP)
+            print(f'track: {int((~keep).sum())} of {len(ev)} events left out, under Rs 100 Cr on the day (or no market cap)')
+            ev = ev[keep]
             sized = {name: ix[ix['symbol'] == name].drop_duplicates('date').set_index('date')['close'].sort_index()
                      for name in track.SIZE_INDEX.values()}
             sized = {k: v for k, v in sized.items() if len(v)}

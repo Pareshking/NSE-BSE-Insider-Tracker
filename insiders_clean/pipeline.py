@@ -8,6 +8,7 @@ from datetime import date
 
 from .calendar import Calendar
 from .deals import clean_deals
+from . import universe
 from .participants import add_participant_columns, report as participants_report
 from .insider import clean_insider
 from .missing import normalise
@@ -83,4 +84,6 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
 
     used = pd.concat([s for s in (insider.get('isin'), deals.get('isin')) if s is not None]).dropna()
     securities = master.frame(used.unique())
-    return {'insider_trades': insider, 'deals': deals, 'securities': securities}, report.data
+    uni = universe.table(master.frame())   # every ISIN we know, not only those in filings
+    report.data['universe'] = universe.report(uni)
+    return {'insider_trades': insider, 'deals': deals, 'securities': securities, 'universe': uni}, report.data

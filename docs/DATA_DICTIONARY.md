@@ -9,6 +9,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/insider_trades.parquet` | One SEBI PIT filing | NSE + BSE insider filings | Nightly (R2 Storage Write) |
 | `clean/current/deals.parquet` | Client x security x day x side | NSE + BSE bulk and block deals | Nightly (R2 Storage Write) |
 | `clean/current/securities.parquet` | One security | NSE/BSE equity lists + VR export | Nightly (R2 Storage Write) |
+| `clean/current/universe.parquet` | One ISIN we know | Security master: latest NSE market cap, else BSE's (`insiders_clean/universe.py`) | Nightly (clean step). Columns: isin, company, nse_symbol, bse_code, market_cap, in_universe (Rs 100 Cr and up), why |
 | `clean/current/sast.parquet` | One SAST Reg 29 disclosure line | NSE `/api/corporate-sast-reg29` | Daily (NSE Corporate Events) |
 | `clean/current/actions.parquet` | One corporate action | NSE `/api/corporates-corporateActions` | Daily |
 | `clean/current/bse_sast.parquet`, `bse_actions.parquet` | One BSE SAST disclosure line / corporate action, linked to NSE's | BSE `Corporatesast`, `DefaultData` | Nightly (R2 Storage Write) |

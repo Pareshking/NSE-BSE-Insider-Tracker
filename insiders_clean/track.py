@@ -227,3 +227,26 @@ def new_ledger_rows(ev: pd.DataFrame, ledger: pd.DataFrame, close: pd.DataFrame,
     if 'value' not in fresh:
         fresh['value'] = np.nan
     return fresh[LEDGER_COLS].reset_index(drop=True)
+
+
+# --- Study universe on the event day (insiders_clean/universe.py) -------------
+def universe_on_day(ev: pd.DataFrame, mcap_hist: pd.DataFrame | None, latest: dict | None, min_cap: float) -> pd.Series:
+    """True where the company's market cap on the day made public was at
+    least `min_cap`: NSE's daily market cap (`mcap_hist`: date, isin,
+    market_cap) as of that day; for a company NSE does not list, its latest
+    market cap (`latest`: ISIN -> market cap, e.g. BSE's). Unknown -> False."""
+    if ev.empty:
+        return pd.Series(dtype=bool)
+    out = pd.Series(False, index=ev.index)
+    have = pd.Series(False, index=ev.index)
+    if mcap_hist is not None and not mcap_hist.empty:
+        h = mcap_hist.dropna(subset=['isin', 'date', 'market_cap']).assign(date=lambda d: pd.to_datetime(d['date'])).sort_values('date')
+        e = ev[['isin']].assign(day=pd.to_datetime(ev['day']), _i=ev.index).dropna(subset=['isin', 'day']).sort_values('day')
+        m = pd.merge_asof(e, h[['date', 'isin', 'market_cap']], left_on='day', right_on='date', by='isin', direction='backward')
+        m = m.set_index('_i')
+        have.loc[m.index] = m['market_cap'].notna().to_numpy()
+        out.loc[m.index] = (m['market_cap'] >= min_cap).fillna(False).to_numpy()
+    if latest:
+        lat = pd.to_numeric(ev['isin'].map(latest), errors='coerce')
+        out = out.where(have, lat.ge(min_cap).fillna(False))
+    return out.astype(bool)
