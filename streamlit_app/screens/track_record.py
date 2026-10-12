@@ -79,6 +79,7 @@ def render():
                     'cases. One year of history is one market regime, and windows overlap, so read these as '
                     'evidence building up, not as proof. Each company counts once per signal per 21 sessions.')
 
+    _forward(ctx, sized)
     if ev.empty:
         return
     with kit.card('Every case', 'tr_cases', 'pick a signal; newest first'):
@@ -96,3 +97,28 @@ def render():
             *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
                       phone=(h in ('1M', '3M'))) for h in track.HORIZONS],
         ], limit=200, download=f'track_{pick}')
+
+
+def _forward(ctx, sized: bool):
+    """The forward record: signals stamped the night they fired, never edited
+    (insiders_clean/track.py). Drawn once it holds a row."""
+    fw = store.artifact('artifacts/forward_outcomes.parquet')
+    if fw.empty:
+        return
+    fw = fw.copy()
+    meta = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
+    for col in ('company', 'nse_symbol'):
+        fw[col] = fw['isin'].map(meta[col]) if col in meta else None
+    fw['label'] = fw['signal'].map(track.SIGNALS).fillna(fw['signal'])
+    started = pd.to_datetime(fw['recorded_at']).min()
+    done = {h: fw[f'excess_sm_{h}' if sized else f'excess_{h}'].dropna() for h in track.HORIZONS}
+    sub = ' · '.join(f'{h} {kit.pct(x.median(), 1, signed=True)} ({kit.plural(len(x), "case")})' for h, x in done.items() if len(x))
+    with kit.card('Forward record', 'tr_fwd', f'recorded the night each signal fired since {kit.day(started)}, never edited · '
+                  + (f'median excess {sub}' if sub else 'no complete window yet')):
+        kit.table(fw.sort_values(['day', 'recorded_at'], ascending=False), [
+            kit.Col('company', 'Company', 'co'), kit.Col('label', 'Signal', 'text'),
+            kit.Col('day', 'Made public', 'date'), kit.Col('recorded_at', 'Recorded', 'date', phone=False),
+            kit.Col('close_at_record', 'Close then', 'price', phone=False), kit.Col('entry_price', 'Entry', 'price', phone=False),
+            *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
+                      phone=(h == '1M')) for h in track.HORIZONS],
+        ], limit=200, download='forward_record')

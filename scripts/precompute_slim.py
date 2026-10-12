@@ -4,7 +4,9 @@
   artifacts/price_history.parquet        adjusted daily closes, last ~400 days, for every ISIN in our filings
   artifacts/market_strip.json            Nifty 500 / Smallcap 250 / Microcap 250: level, vs 200-day average, 1 month
   artifacts/track_events.parquet         every signal event with its forward returns (insiders_clean/track.py)
-  artifacts/track_summary.parquet        per signal and horizon: cases, median excess vs Nifty 500, share that beat it"""
+  artifacts/track_summary.parquet        per signal and horizon: cases, median excess vs Nifty 500, share that beat it
+  ledger/forward/<run time>.parquet      forward record: events that fired since the last run, write-once, never edited
+  artifacts/forward_outcomes.parquet     every forward-record row with its returns so far (derived, rewritten each run)"""
 from __future__ import annotations
 
 import io
@@ -23,12 +25,34 @@ from price_coverage import load_prefix  # noqa: E402
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
 HISTORY_KEY, STRIP_KEY = 'artifacts/price_history.parquet', 'artifacts/market_strip.json'
 EVENTS_KEY, TRACK_KEY = 'artifacts/track_events.parquet', 'artifacts/track_summary.parquet'
+FORWARD_KEY = 'artifacts/forward_outcomes.parquet'
 
 
 def put(client, bucket, key, df):
     buf = io.BytesIO()
     df.to_parquet(buf, index=False)
     client.put_object(Bucket=bucket, Key=key, Body=buf.getvalue())
+
+
+def forward(client, bucket, ev, close, nifty, sized, size_of):
+    """Append the events that fired since the last run to the forward record
+    (a new write-once file per run), then rewrite the outcomes of every row."""
+    ledger = load_prefix(client, bucket, track.LEDGER_PREFIX)
+    run_at = pd.Timestamp.now(tz='UTC').tz_localize(None).floor('s')
+    new = track.new_ledger_rows(ev, ledger, close, run_at)
+    if len(new):
+        key = f'{track.LEDGER_PREFIX}{run_at:%Y-%m-%dT%H%M%S}.parquet'
+        try:
+            client.head_object(Bucket=bucket, Key=key)
+            print(f'forward: {key} exists, not overwritten')
+            return
+        except Exception:  # noqa: BLE001 -- absent: write it
+            put(client, bucket, key, new)
+        ledger = pd.concat([ledger, new], ignore_index=True)
+    print(f'forward: {len(new)} new rows, {len(ledger)} in the record')
+    if len(ledger):
+        ledger['day'] = pd.to_datetime(ledger['day'])
+        put(client, bucket, FORWARD_KEY, track.forward_returns(ledger, close, nifty, sized, size_of))
 
 
 def main() -> int:
@@ -75,6 +99,7 @@ def main() -> int:
             put(client, bucket, EVENTS_KEY, fr)
             summ = track.summary(fr)
             put(client, bucket, TRACK_KEY, summ)
+            forward(client, bucket, ev, close, nifty, sized, size_of)
             print(f'track: events {len(fr)}; ' + '; '.join(
                 f"{r.signal} {r.horizon} n={r.cases} med={r.median_excess:+.2f}" for r in summ.itertuples() if r.horizon == '1M'))
     return 0

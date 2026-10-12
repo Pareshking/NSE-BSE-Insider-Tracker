@@ -186,3 +186,39 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
                          'median_pre_move': g['pre_move'].dropna().median() if 'pre_move' in g and g['pre_move'].notna().any() else np.nan,
                          'median_lag': g['lag_sessions'].dropna().median() if 'lag_sessions' in g and g['lag_sessions'].notna().any() else np.nan})
     return pd.DataFrame(rows)
+
+
+# --- Forward record (docs/TODO.md item 26) ----------------------------------
+# The backtest above is re-measured every night on the whole history, so a
+# rule change rewrites the past. The forward record does not: each run appends
+# the events that fired since the last run to a new write-once file in R2
+# (`ledger/forward/<run time>.parquet`), stamped with the run time and the rule
+# version, and never edits a row. Outcomes are derived from those rows later,
+# by the same forward_returns as the backtest.
+
+RULES_VERSION = '2026-10-12'  # bump when a signal rule, threshold, spacing or cost changes
+LEDGER_PREFIX = 'ledger/forward/'
+FIRE_WINDOW = 5  # sessions: an event made public this recently counts as firing now (covers missed runs)
+LEDGER_COLS = ['signal', 'isin', 'day', 'value', 'recorded_at', 'rules_version', 'last_session', 'close_at_record']
+
+
+def new_ledger_rows(ev: pd.DataFrame, ledger: pd.DataFrame, close: pd.DataFrame, run_at: pd.Timestamp) -> pd.DataFrame:
+    """Events made public in the last FIRE_WINDOW sessions and not yet in the
+    ledger (keyed on signal, ISIN and day made public). `close_at_record` is
+    the latest close known at this run (adjusted as of this run)."""
+    if ev.empty or close.empty:
+        return pd.DataFrame(columns=LEDGER_COLS)
+    sessions = close.index
+    since = sessions[max(0, len(sessions) - FIRE_WINDOW)]
+    fresh = ev[pd.to_datetime(ev['day']) >= since].copy()
+    if not ledger.empty and len(fresh):
+        seen = set(zip(ledger['signal'], ledger['isin'], pd.to_datetime(ledger['day'])))
+        fresh = fresh[[k not in seen for k in zip(fresh['signal'], fresh['isin'], pd.to_datetime(fresh['day']))]]
+    last = close.ffill().iloc[-1]
+    fresh['recorded_at'] = run_at
+    fresh['rules_version'] = RULES_VERSION
+    fresh['last_session'] = sessions[-1]
+    fresh['close_at_record'] = [float(last[i]) if i in last.index and pd.notna(last[i]) else np.nan for i in fresh['isin']]
+    if 'value' not in fresh:
+        fresh['value'] = np.nan
+    return fresh[LEDGER_COLS].reset_index(drop=True)
