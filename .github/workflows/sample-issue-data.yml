@@ -3,13 +3,10 @@ name: Sample stored data (read-only)
 # Prints (1) the columns, fill rates, short-value lists and example rows of the
 # stored NSE and BSE rights and preferential issue data and (2) how complete the
 # shareholding table is. Writes nothing.
-# The push trigger is temporary, for running this from its branch.
+# Manual run only (Actions tab, Run workflow).
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ccr-d8fff3f9-npgfmg]
-    paths: ['.github/workflows/sample-issue-data.yml', 'scripts/sample_issue_data.py', 'scripts/shareholding_coverage_report.py', 'scripts/issues_dry_run.py', 'insiders_clean/issues.py']
 
 permissions:
   contents: read
