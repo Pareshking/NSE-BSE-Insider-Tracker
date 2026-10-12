@@ -14,6 +14,21 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 
+## Deal participants (columns on `deals`, from 12 Oct 2026)
+
+Added by `insiders_clean/participants.py` in the clean step (TODO 23, 16). Read from the client's name only;
+NSE and BSE publish nothing else about the client.
+
+| Column | Meaning |
+|---|---|
+| `client_type` | mutual_fund, insurer, pension, bank, fpi (foreign investor, incl. sovereign funds and global banks), pms_aif, fund_other (a fund not told apart as AIF or foreign by its name), prop_hft (a measured market maker), broker, corporate, trust, individual, unknown |
+| `client_type_confidence` | high (the name says it, or the behaviour was measured), medium (a strong marker), low (a weak marker or a person-like name) |
+| `client_type_rule` | The rule that matched, e.g. `mutual fund`, `foreign vehicle form`, `looks like a person`, `measured two-way volume` |
+| `investor_group`, `investor_group_id` | One investor across spellings, share classes and series; never merges entity IDs. From `insiders_clean/investor_aliases.csv` (each line with its reason) or a suffix rule |
+| `investor_group_rule` | `alias`, `share class`, `series`, or blank (the name itself) |
+
+The cleaning report counts rows by type and confidence under `tables.deals.participants`.
+
 ## NSE corporate events (`collectors/nse_events/`)
 
 Every run fetches the last 10 days (board meetings: up to 60 days ahead as
