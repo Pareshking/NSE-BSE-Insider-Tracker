@@ -112,3 +112,12 @@ stock's tradability flags. A position opens for a row whose verdict was
 tight-band or circuit flag; entry the next close, equal weight, held 63
 sessions, 0.25 points of cost each, one position per company at a time.
 Shown on Track record against Nifty 500 over the same sessions.
+
+## Tradable only (12 Oct 2026)
+
+Each Track record event carries `restriction`, judged from the NSE bhavcopy as it
+stood on the day made public (no hindsight): trade-for-trade or SME series that
+day, or a band lock (one price all day, a move of 1.9% or more) in the 20
+sessions up to it. "Tradable only" on Track record re-measures the scorecard on
+the events with no restriction. Surveillance stages (ASM/GSM/ESM) are not used
+here: our snapshots of those lists start on 12 Oct 2026.

@@ -56,6 +56,14 @@ def render():
     bench = st.segmented_control('Benchmark', ['Nifty 500', 'Size-matched index'], default='Nifty 500', key='tr_bench',
                                  label_visibility='collapsed') or 'Nifty 500'
     sized = bench != 'Nifty 500'
+    if 'restricted' in ev:
+        free = st.toggle('Tradable only', value=False, key='tr_free',
+                         help='Leave out events where, on the day made public, the stock was trade for trade, on the SME board, '
+                              f'or locked at its band on any of the last {track.LOCK_WINDOW} sessions (judged on that day, no hindsight)')
+        if free:
+            ev = ev[~ev['restricted'].astype(bool)]
+            summ = track.summary(ev)
+            kit.caption(f'{kit.count(len(ev))} events a reader could trade freely on the day; the scorecard below is re-measured on them.')
     with kit.card('Scorecard', 'tr_score', f'median excess return over {"the size-matched index" if sized else "Nifty 500"}'
                   ' · share of cases that beat it'):
         heads = ''.join(f'<th>{h}</th>' for h in track.HORIZONS) + '<th>Before public</th>'
@@ -95,6 +103,7 @@ def render():
             kit.Col('company', 'Company', 'co'), kit.Col('day', 'Made public', 'date'),
             kit.Col('entry_price', 'Entry', 'price', phone=False), kit.Col('value', 'Value', 'money', phone=False),
             kit.Col('pre_move', 'Before public', 'spct', phone=False), kit.Col('lag_sessions', 'Lag', 'num', phone=False),
+            *([kit.Col('restriction', 'Tradability', phone=False)] if 'restriction' in rows else []),
             *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
                       phone=(h in ('1M', '3M'))) for h in track.HORIZONS],
         ], limit=200, download=f'track_{pick}')

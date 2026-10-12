@@ -87,3 +87,18 @@ def test_model_basket_rules():
     nav = basket.nav(pos, close, close['C'])
     assert nav['basket'].iloc[-1] > 100 and (nav['index'] == 100).all()
     assert basket.positions(led.drop(columns='evidence'), close).empty  # unstamped rows never open
+
+
+def test_restrictions_judged_on_the_event_day():
+    days = pd.bdate_range('2026-03-02', periods=6)
+    px = pd.DataFrame({'date': list(days) * 2, 'isin': ['A'] * 6 + ['B'] * 6,
+                       'series': ['EQ', 'EQ', 'BE', 'BE', 'BE', 'BE'] + ['EQ'] * 6,
+                       'open': [100, 100, 100, 100, 100, 100] + [50, 52.5, 50, 50, 50, 50],
+                       'high': [101, 101, 101, 101, 101, 101] + [51, 52.5, 51, 51, 51, 51],
+                       'low': [99, 99, 99, 99, 99, 99] + [49, 52.5, 49, 49, 49, 49],
+                       'close': [100, 100, 100, 100, 100, 100] + [50, 52.5, 50, 50, 50, 50],
+                       'prev_close': [100] * 6 + [50, 50, 52.5, 50, 50, 50], 'volume': [10] * 12})
+    ev = pd.DataFrame({'isin': ['A', 'A', 'B', 'B', 'C'], 'day': [days[1], days[3], days[0], days[4], days[2]]})
+    out = track.restrictions(ev, px)
+    assert list(out['restriction']) == ['', 'trade for trade', '', '1 locked day in 20', '']  # A moved to BE later; B locked at +5% on day 2
+    assert list(out['restricted']) == [False, True, False, True, False]
