@@ -121,7 +121,8 @@ def render():
     if not cl.empty:
         with kit.card('Insiders buying together, joined last session', 'br_cl', 'clusters with a buy made public that day'):
             kit.table(with_flags(with_prices(cl, ctx.prices)), [
-                kit.Col('company', 'Company', 'co'), kit.Col('buyers', 'Buyers', 'num'), kit.Col('roles', 'Who', phone=False),
+                kit.Col('company', 'Company', 'co', sub='who'),  # '4 buyers, 2 decision-makers: promoter group (3), director'
+                kit.Col('decision_makers', 'Deciders', 'num', help='The promoter group counts once, each director or KMP once'),
                 kit.Col('value', 'Bought, 30 days', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'pct')], limit=10)
     big = new[new['value'] >= actions.MIN_SELL_VALUE].sort_values('pct_of_mcap', ascending=False)
     if not big.empty:

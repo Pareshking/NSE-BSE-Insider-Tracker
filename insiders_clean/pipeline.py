@@ -11,6 +11,7 @@ from .deals import clean_deals
 from .participants import add_participant_columns, report as participants_report
 from .insider import clean_insider
 from .missing import normalise
+from .promoter_group import link as link_promoter_group
 from .report import Report
 from .securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -38,12 +39,16 @@ def apply_product_window(table: pd.DataFrame, date_col: str, name: str, report, 
 
 
 def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.DataFrame | None = None,
-        nse_lists=(), market_cap_rows=None, price_ranges: pd.DataFrame | None = None):
+        nse_lists=(), market_cap_rows=None, price_ranges: pd.DataFrame | None = None,
+        promoter_group: pd.DataFrame | None = None):
     """
     canonical: {(exchange, category): DataFrame} as stored under canonical/
                in R2 (native + canonical_* columns).
     price_ranges: day ranges from our price layer (insiders_clean.day_range);
                None skips the price check (noted in the report, never an error).
+    promoter_group: clean/current/promoter_group.parquet (written by the NSE
+               events collector); filings by a member of the company's latest
+               list are linked to it (insiders_clean/promoter_group.py).
     Returns ({table_name: DataFrame}, report_dict).
     """
     report = Report(run_date)
@@ -72,6 +77,8 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
     report.table('deals')['participants'] = participants_report(deals)
 
     insider = apply_product_window(insider, 'trade_date_to', 'insider_trades', report, 'trade_id')
+    if insider is not None and not insider.empty:
+        insider, report.data['promoter_group_link'] = link_promoter_group(insider, promoter_group)
     deals = apply_product_window(deals, 'date', 'deals', report, 'deal_id')
 
     used = pd.concat([s for s in (insider.get('isin'), deals.get('isin')) if s is not None]).dropna()

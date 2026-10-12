@@ -14,7 +14,17 @@ Shareholding: the listing gives promoter and public % straight away; the
 promoter pledge comes from each filing's XBRL, fetched once per filing (at
 most MAX_XBRL_PER_RUN a night; the rest wait for the next night). If a
 quarter's XBRL can't be parsed, the company's previous quarter's pledge
-figures are carried forward with shareholding_stale = true.
+figures are carried forward with shareholding_stale = true. A company with
+no promoter group files no promoter context: promoter 0% as filed
+(no_promoter_group), not a failure.
+
+The same download gives the promoter-group member list (TODO item 21): each
+filing's members go to a write-once batch under
+archive/nse_events/promoter_group/, and clean/current/promoter_group.parquet
+is rebuilt from all batches. A filing parsed before member lists existed is
+fetched again when it is its company's latest; run with --days 120 and the
+workflow's chain=1 to cover every company's latest quarter. The XBRL itself
+is kept gzip-compressed in raw_v2/nse/shareholding_xbrl/ (write-once).
 
 Buybacks (TODO 12): NSE's tender-offer list (every buyback tender with its
 offer price) and the daily buyback reports of open-market buybacks are
@@ -46,6 +56,7 @@ already fetched is still stored.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -62,7 +73,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks, issues
+from insiders_clean import archive, buybacks, issues, promoter_group, raw_store
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -155,64 +166,147 @@ def clean_shareholding(arch: pd.DataFrame) -> pd.DataFrame:
 
 def shareholding_coverage(clean: pd.DataFrame) -> dict:
     """How far the shareholding table has got: companies, the quarter each
-    company's latest filing is for, and how many pledge files are still
-    waiting. Counts only; nothing here changes the data."""
+    company's latest filing is for, how many pledge files are still waiting,
+    why files failed, and how many latest filings have their promoter-group
+    member list. Counts only; nothing here changes the data."""
     if clean is None or clean.empty:
-        return {'companies': 0, 'pending_xbrl': 0, 'pending_latest': 0}
+        return {'companies': 0, 'pending_xbrl': 0, 'pending_latest': 0, 'pending_members': 0}
     status = clean['xbrl_status'].astype(str) if 'xbrl_status' in clean.columns else pd.Series('pending', index=clean.index)
     latest = clean.sort_values('quarter_end').groupby('symbol').tail(1)
     lstat = status.loc[latest.index]
     quarters = latest['quarter_end'].dt.strftime('%Y-%m-%d').value_counts().sort_index(ascending=False).head(4)
+    col = lambda c: clean[c] if c in clean.columns else pd.Series(None, index=clean.index, dtype=object)  # noqa: E731
+    failed = status.str.startswith('failed')
+    mstat = col('members_status').astype('string').fillna('not fetched')
+    no_group = col('no_promoter_group').astype('boolean').fillna(False)
     return {
         'companies': int(clean['symbol'].nunique()),
         'latest_quarter_of_company': {k: int(v) for k, v in quarters.items()},
         'xbrl_status': {k: int(v) for k, v in status.str.split(':').str[0].value_counts().items()},
-        # Why files fail, by exception type (e.g. 'failed: KeyError'), so a failure can be read from the run log.
-        'xbrl_failure_types': {k: int(v) for k, v in status[status.str.startswith('failed')].value_counts().items()},
+        # Why files fail, by exception type (e.g. 'failed: KeyError') and by the parser's reason, so a failure can be
+        # read from the run log.
+        'xbrl_failure_types': {k: int(v) for k, v in status[failed].value_counts().items()},
+        'xbrl_failure_reasons': {str(k): int(v) for k, v in col('xbrl_error')[failed].fillna('(not recorded)').value_counts().items()},
+        # Parsed, with promoter shares 0 as filed: the company names no promoter group (ITC, L&T, ICICI Bank).
+        'no_promoter_group': int((no_group & status.eq('ok')).sum()),
         'pending_xbrl': int((status == 'pending').sum()),
         'pending_latest': int((lstat == 'pending').sum()),
         'latest_with_pledge': int(latest['promoter_pledge_pct'].notna().sum()),
+        # Promoter-group member lists (docs/TODO.md item 21): latest filing of each company.
+        'members_status_latest': {str(k): int(v) for k, v in mstat.loc[latest.index].str.split(':').str[0].value_counts().items()},
+        'members_check_latest': {str(k): int(v) for k, v in col('members_check').loc[latest.index].dropna().value_counts().items()},
+        'pending_members': int(mstat.loc[latest.index].isin(['pending', 'not fetched']).sum()),
     }
 
 
+XBRL_COLS = ('xbrl_status', 'xbrl_error', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
+             'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct', 'no_promoter_group')
+MEMBER_COLS = ('members_status', 'promoter_members', 'members_check')
+
+
+def _latest_per_company(listing: pd.DataFrame) -> set:
+    """event_ids of each company's latest filing in the listing (latest quarter, then latest submission)."""
+    if listing.empty or 'symbol' not in listing:
+        return set()
+    order = listing.sort_values([c for c in ('symbol', 'quarter_end', 'submission_date') if c in listing], kind='stable')
+    return set(order.drop_duplicates('symbol', keep='last')['event_id'])
+
+
+def _keep_raw(raw, body: str, row) -> str | None:
+    """Store the XBRL in the write-once raw layer, gzip-compressed (about 30x
+    smaller; gzip with no timestamp, so the same file is the same blob).
+    Returns the SHA-256 of the bytes NSE sent. Best effort: a storage error
+    never stops the parse."""
+    data = body.encode('utf-8')
+    sha = raw_store.sha256_hex(data)
+    if raw is not None:
+        try:
+            raw.put('nse', 'shareholding_xbrl', gzip.compress(data, 9, mtime=0), url=row['xbrl_url'],
+                    params={'record_id': row.get('record_id'), 'symbol': row.get('symbol'), 'stored_as': 'gzip',
+                            'sha256_as_sent': sha}, content_type='application/gzip',
+                    covers={'quarter_end': str(row.get('quarter_end'))})
+        except Exception:  # noqa: BLE001
+            pass
+    return sha
+
+
 def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None, report: dict,
-               max_xbrl: int = MAX_XBRL_PER_RUN) -> pd.DataFrame:
-    """Add pledge figures to listing rows whose XBRL hasn't been parsed yet."""
-    done = set()
+               max_xbrl: int = MAX_XBRL_PER_RUN, members: list | None = None, raw=None,
+               run_date: str | None = None) -> pd.DataFrame:
+    """Add pledge figures to listing rows whose XBRL hasn't been parsed yet,
+    and the promoter-group member list (parsers.parse_shp_members) from the
+    same download. A filing parsed before member lists existed is fetched
+    again only when it is its company's latest in the listing, so a catch-up
+    covers the latest quarter of every company. Parsed members are appended
+    to `members` (one frame per filing); one download counts once against
+    max_xbrl."""
+    done, mdone, prev = set(), set(), None
     if known is not None and 'xbrl_status' in known.columns:
         done = set(known.loc[known['xbrl_status'].astype(str).eq('ok'), 'event_id'])
+        if 'members_status' in known.columns:
+            mdone = set(known.loc[known['members_status'].astype(str).eq('ok'), 'event_id'])
         prev = known.set_index('event_id')
+    latest = _latest_per_company(listing)
     listing = listing.copy()
-    for c in ('xbrl_status', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
-              'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct'):
+    for c in XBRL_COLS + MEMBER_COLS:
         listing[c] = None
     fetched, blocked = 0, False
     # Newest quarters first: the latest filing per company is what the pages show.
     for i, row in listing.sort_values('quarter_end', ascending=False, kind='stable').iterrows():
-        if row['event_id'] in done:
-            for c in ('xbrl_status', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
-                      'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct'):
-                if c in prev.columns:
-                    listing.at[i, c] = prev.at[row['event_id'], c]
+        eid = row['event_id']
+        totals_done = eid in done
+        if prev is not None and eid in prev.index:
+            for c in XBRL_COLS + MEMBER_COLS:
+                if c in prev.columns and (totals_done or c in MEMBER_COLS):
+                    listing.at[i, c] = prev.at[eid, c]
+        need_members = eid not in mdone and (not totals_done or eid in latest)
+        if totals_done and not need_members:
             continue
         if blocked or fetched >= max_xbrl or not row.get('xbrl_url'):
-            listing.at[i, 'xbrl_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
+            if not totals_done:
+                listing.at[i, 'xbrl_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
+            listing.at[i, 'members_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
             continue
         fetched += 1
         try:
-            facts = parsers.parse_shp_xbrl(nse.xbrl(row['xbrl_url']))
-            for k, v in facts.items():
-                if k in listing.columns:
-                    listing.at[i, k] = v
-            listing.at[i, 'xbrl_status'] = 'ok'
+            body = nse.xbrl(row['xbrl_url'])
         except Blocked:
             # Keep what was parsed tonight; the rest wait for the next run.
-            listing.at[i, 'xbrl_status'] = 'pending'
+            if not totals_done:
+                listing.at[i, 'xbrl_status'] = 'pending'
+            listing.at[i, 'members_status'] = 'pending'
             blocked = True
             report['xbrl_blocked'] = True
             report['notes'].append('NSE refused an XBRL download; remaining XBRLs wait for the next run')
+            continue
         except Exception as exc:  # noqa: BLE001 -- one bad file must not stop the rest
-            listing.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
+            if not totals_done:
+                listing.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
+                listing.at[i, 'xbrl_error'] = str(exc)[:120]
+            listing.at[i, 'members_status'] = f'failed: {type(exc).__name__}'
+            continue
+        sha = _keep_raw(raw, body, row)
+        if not totals_done:
+            try:
+                facts = parsers.parse_shp_xbrl(body)
+                for k, v in facts.items():
+                    if k in listing.columns:
+                        listing.at[i, k] = v
+                listing.at[i, 'xbrl_status'] = 'ok'
+                listing.at[i, 'xbrl_error'] = None
+            except Exception as exc:  # noqa: BLE001
+                listing.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
+                listing.at[i, 'xbrl_error'] = str(exc)[:120]
+        try:
+            found, check = parsers.parse_shp_members(body)
+            listing.at[i, 'members_status'] = 'ok'
+            listing.at[i, 'promoter_members'] = check['members']
+            listing.at[i, 'members_check'] = check['check']
+            if members is not None:
+                members.append(promoter_group.member_rows(found, row.to_dict(), check['check'], sha,
+                                                          run_date or ''))
+        except Exception as exc:  # noqa: BLE001
+            listing.at[i, 'members_status'] = f'failed: {type(exc).__name__}'
     report['xbrl_fetched'] = fetched
     return listing
 
@@ -357,8 +451,37 @@ def issue_coverage(arch: pd.DataFrame | None) -> dict:
             'pending_xbrl': int((status == 'pending').sum())}
 
 
+GROUP_BATCHES = 'archive/nse_events/promoter_group/'
+
+
+def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str, now: datetime) -> dict:
+    """Promoter-group members parsed tonight -> a new write-once batch file
+    (archive/nse_events/promoter_group/batch=<run time>.parquet, never
+    rewritten), then clean/current/promoter_group.parquet rebuilt from every
+    batch (insiders_clean/promoter_group.clean_members). Counts for the report."""
+    entry = {'filings_parsed': len(batch), 'members_parsed': int(sum(len(b) for b in batch))}
+    rows = pd.concat([b for b in batch if b is not None and not b.empty], ignore_index=True) \
+        if any(b is not None and not b.empty for b in batch) else None
+    if rows is not None:  # filings that name no member (no promoter group) add no rows
+        key = f'{GROUP_BATCHES}batch={now:%Y-%m-%dT%H%M%S}.parquet'
+        if get(r2, key) is None:
+            put_parquet(r2, key, rows)
+            entry['batch_written'] = key
+    keys = sorted(k for k in list_keys(r2, GROUP_BATCHES) if k.endswith('.parquet'))
+    if not keys:
+        return entry
+    table, counts = promoter_group.clean_members([read_parquet(r2, k) for k in keys])
+    entry.update(batches=len(keys), **counts)
+    if not table.empty:
+        table = add_identity(table, master)
+        table['isin'] = table['isin'].astype('string')
+        put_parquet(r2, 'clean/current/promoter_group.parquet', table)
+    return entry
+
+
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
-        raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN) -> dict:
+        raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN,
+        now: datetime | None = None) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -366,6 +489,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
         report['meetings_backfill_from'] = backfill_from.isoformat()
     master = security_master(r2, run_date, report['notes'])
     blocked = False
+    members: list = []
     for stream in streams:
         entry = report['streams'].setdefault(stream, {})
         new = None
@@ -393,7 +517,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 else:
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
                     known = merge_into_archive(r2, stream, None, run_date)[0]
-                    new = fetch_xbrl(nse, listing, known, report, max_xbrl)
+                    new = fetch_xbrl(nse, listing, known, report, max_xbrl, members, raw, run_date)
                     blocked = bool(report.get('xbrl_blocked'))
             except Blocked as exc:
                 blocked = True
@@ -413,6 +537,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             clean = clean_shareholding(clean)
             entry['coverage'] = shareholding_coverage(clean)
             report['pending_xbrl'] = entry['coverage']['pending_xbrl']
+            report['pending_members'] = entry['coverage']['pending_members']
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['clean_rows'] = len(clean)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
@@ -422,6 +547,12 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             build_buybacks(r2, master, run_date, report)
         except Exception as exc:  # noqa: BLE001
             report['notes'].append(f'buybacks: failed ({type(exc).__name__}: {exc})')
+    if 'shareholding' in streams:
+        try:  # a failure here must never cost the shareholding table written above
+            report['promoter_group'] = write_promoter_group(
+                r2, members, master, run_date, now or datetime.now(timezone.utc))
+        except Exception as exc:  # noqa: BLE001
+            report['notes'].append(f'promoter_group: failed ({type(exc).__name__}: {exc})')
     report['nse_calls'] = nse.calls
     put(r2, f'clean/reports/nse_events/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),
         'application/json')
@@ -450,6 +581,8 @@ def main(argv=None):
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')
+    if 'promoter_group' in report:
+        print(f'  promoter_group: {report["promoter_group"]}')
     for n in report['notes']:
         print(f'  note: {n}')
     print(f'  NSE calls: {report["nse_calls"]}; bucket {"set" if BUCKET else "MISSING"}')

@@ -58,6 +58,57 @@ def family_key(person_name, person_id) -> str:
     return 'family:' + name.split()[-1].lower()
 
 
+def decision_makers(people: pd.DataFrame) -> pd.Series:
+    """person_id -> decision-maker key, for the buyers of one company (one row
+    per person). Members of the company's promoter group, linked through the
+    shareholding pattern (`promoter_group_id`, insiders_clean/promoter_group.py),
+    are one decision-maker; promoter-role filers sharing a family_key (the
+    surname rule above) are one as well, and either link joins the two.
+    Directors and KMP outside the group stand alone. Links only ever merge, so
+    a cluster is never easier to reach than under the surname rule alone."""
+    ids = list(people['person_id'])
+    parent = {i: i for i in ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    groups = people['promoter_group_id'] if 'promoter_group_id' in people else pd.Series(None, index=people.index)
+    first: dict[str, str] = {}
+    for pid, name, role, g in zip(ids, people['person_name'], people['person_role'], groups):
+        keys = [g] if isinstance(g, str) and g else []
+        if role in PROMOTER_ROLES:
+            keys.append(family_key(name, pid))
+        for k in keys:
+            if k in first:
+                parent[find(pid)] = find(first[k])
+            else:
+                first[k] = pid
+    return pd.Series({i: find(i) for i in ids}, dtype=object)
+
+
+def decision_text(people: pd.DataFrame, dm: pd.Series) -> str:
+    """'4 buyers, 2 decision-makers: promoter group (3), director'."""
+    groups = people['promoter_group_id'] if 'promoter_group_id' in people else pd.Series(None, index=people.index)
+    linked = groups.map(lambda g: isinstance(g, str) and bool(g)).to_numpy()
+    roots = people['person_id'].map(dm).to_numpy()
+    parts = []
+    for root in dict.fromkeys(roots):
+        sel = roots == root
+        n = int(sel.sum())
+        if linked[sel].any():
+            parts.append('promoter group' + (f' ({n})' if n > 1 else ''))
+        elif n > 1:
+            parts.append(f'one family by surname ({n})')
+        else:  # a promoter-role filer not in the group list reads 'promoter', never 'promoter group'
+            r = people['person_role'].to_numpy()[sel][0]
+            parts.append('promoter' if r in PROMOTER_ROLES else ROLE_WORDS.get(r, 'insider'))
+    k, b = len(parts), len(people)
+    return f'{b} buyer{"s" if b != 1 else ""}, {k} decision-maker{"s" if k != 1 else ""}: ' + ', '.join(parts)
+
+
 def person_windows(t: pd.DataFrame, ref: pd.Timestamp) -> pd.DataFrame:
     """Per company and person: open-market buys in the 30 and 90 days to `ref`."""
     buys = t[(t['side'] == 'BUY') & ~t['is_token'] & t['person_role'].isin(DECISION_ROLES)
@@ -86,8 +137,11 @@ def float_absorbers(t: pd.DataFrame, ref: pd.Timestamp) -> pd.DataFrame:
 
 
 def clusters(t: pd.DataFrame, ref: pd.Timestamp) -> pd.DataFrame:
-    """Companies with 2+ distinct buyers in the last 30 days, including a
-    director/KMP or promoter entities that are not one family."""
+    """Companies with 2+ distinct decision-makers buying in the last 30 days
+    (docs/SIGNALS.md): each director or KMP, each promoter family, and the
+    promoter group as one (decision_makers). With no promoter-group links this
+    is the rule of 07 Oct: 2+ buyers including a director/KMP, or promoters of
+    two families."""
     buys = t[(t['side'] == 'BUY') & ~t['is_token'] & t['person_role'].isin(DECISION_ROLES)
              & (t['seen'] <= ref) & (t['seen'] > ref - pd.Timedelta(days=CLUSTER_DAYS))].dropna(subset=['isin'])
     rows = []
@@ -95,17 +149,18 @@ def clusters(t: pd.DataFrame, ref: pd.Timestamp) -> pd.DataFrame:
         people = g.drop_duplicates('person_id')
         if len(people) < 2:
             continue
-        has_officer = people['person_role'].isin(['director', 'kmp']).any()
-        families = {family_key(n, p) for n, p in zip(people['person_name'], people['person_id'])}
-        if not has_officer and len(families) < 2:
+        dm = decision_makers(people)
+        if dm.nunique() < 2:
             continue
+        linked = int(people['promoter_group_id'].notna().sum()) if 'promoter_group_id' in people else 0
         rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
-                     'buyers': len(people), 'families': len(families), 'has_officer': bool(has_officer),
-                     'roles': ', '.join(sorted(set(people['person_role']))),
+                     'buyers': len(people), 'decision_makers': int(dm.nunique()), 'group_buyers': linked,
+                     'has_officer': bool(people['person_role'].isin(['director', 'kmp']).any()),
+                     'roles': ', '.join(sorted(set(people['person_role']))), 'who': decision_text(people, dm),
                      'value': g['value'].sum(), 'pct_of_mcap': g['pct_of_mcap'].sum(), 'last_seen': g['seen'].max()})
     return pd.DataFrame(rows).sort_values('pct_of_mcap', ascending=False) if rows else pd.DataFrame(
-        columns=['isin', 'company', 'nse_symbol', 'buyers', 'families', 'has_officer', 'roles', 'value',
-                 'pct_of_mcap', 'last_seen'])
+        columns=['isin', 'company', 'nse_symbol', 'buyers', 'decision_makers', 'group_buyers', 'has_officer',
+                 'roles', 'who', 'value', 'pct_of_mcap', 'last_seen'])
 
 
 def latest_shareholding(sh: pd.DataFrame | None) -> pd.DataFrame:
@@ -135,8 +190,13 @@ def company_board(t: pd.DataFrame, deals: pd.DataFrame | None, sh: pd.DataFrame 
     board['officer_net'] = win[off].groupby('isin')['signed_value'].sum()
     signed_pct = win['pct_of_mcap'] * win['side'].map({'BUY': 1, 'SELL': -1})
     board['promoter_net_pct'] = signed_pct[prom].groupby(win.loc[prom, 'isin']).sum()
-    board['insiders'] = win[win['person_role'].isin(DECISION_ROLES)].groupby('isin')['person_id'].nunique()
-    board = board.fillna({'promoter_net': 0, 'officer_net': 0, 'promoter_net_pct': 0, 'insiders': 0})
+    dec = win[win['person_role'].isin(DECISION_ROLES)]
+    board['insiders'] = dec.groupby('isin')['person_id'].nunique()
+    # Breadth with the promoter group counted once.
+    board['decision_makers'] = pd.Series({i: decision_makers(g.drop_duplicates('person_id')).nunique()
+                                          for i, g in dec.groupby('isin')}, dtype=float)
+    board = board.fillna({'promoter_net': 0, 'officer_net': 0, 'promoter_net_pct': 0, 'insiders': 0,
+                          'decision_makers': 0})
     if deals is not None and not deals.empty:
         d = deals.copy()
         d['date'] = pd.to_datetime(d['date'], errors='coerce')
@@ -314,14 +374,19 @@ def small_cap_accumulation(deals: pd.DataFrame, ref: pd.Timestamp | None = None,
 
 
 def insider_details(t: pd.DataFrame, ref: pd.Timestamp, days: int = 90) -> pd.Series:
-    """Per company, who bought: e.g. '1 director, 2 promoters · 4 trades'."""
+    """Per company, who bought: e.g. '1 director, 2 promoters · 4 trades', with
+    '· 2 decision-makers' when the promoter group (or one family) counts once."""
     w = t[(t['side'] == 'BUY') & t['person_role'].isin(DECISION_ROLES) & ~t['is_token']
           & (t['seen'] <= ref) & (t['seen'] > ref - pd.Timedelta(days=days))].dropna(subset=['isin'])
     out = {}
     for isin, g in w.groupby('isin'):
-        people = g.drop_duplicates('person_id')['person_role'].map(ROLE_WORDS).value_counts()
-        parts = [f'{n} {r}' + ('s' if n > 1 and r != 'KMP' else '') for r, n in people.items()]
-        out[isin] = f'{", ".join(parts)} · {len(g)} trade' + ('s' if len(g) != 1 else '')
+        uniq = g.drop_duplicates('person_id')
+        people = uniq['person_role'].map(ROLE_WORDS).value_counts()
+        parts = [f'{n} ' + ('promoter-group members' if r == 'promoter group' and n > 1 else
+                            r + ('s' if n > 1 and r != 'KMP' else '')) for r, n in people.items()]
+        k = decision_makers(uniq).nunique()
+        dm = (f' · {k} decision-maker' + ('s' if k != 1 else '')) if k < len(uniq) else ''
+        out[isin] = f'{", ".join(parts)}{dm} · {len(g)} trade' + ('s' if len(g) != 1 else '')
     return pd.Series(out, dtype=object)
 
 

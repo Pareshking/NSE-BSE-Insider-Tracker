@@ -62,7 +62,9 @@ jobs:
       # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
       # rate-limits by IP); with chain=1 the next run starts by itself while
       # files are pending, up to 15 rounds, and stops if NSE refused a file
-      # or this run parsed nothing.
+      # or this run parsed nothing. Pending includes companies whose latest
+      # filing has no promoter-group member list yet (TODO item 21): after the
+      # first deploy, run dataset=shareholding, days=120, chain=1 once.
       - name: Continue the catch-up
         if: ${{ inputs.chain == '1' && always() }}
         env:
@@ -74,7 +76,7 @@ jobs:
           read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
           import json
           r = json.load(open('nse_events_report.json'))
-          print(r.get('pending_xbrl', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
+          print(r.get('pending_xbrl', 0) + r.get('pending_members', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
           PY
           )
           echo "round $ROUND: pending $PENDING, parsed $FETCHED, refused $BLOCKED"

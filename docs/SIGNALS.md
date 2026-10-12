@@ -13,12 +13,36 @@ Only primary rows count: `is_market`, `is_primary`, not `needs_review`.
 | Spotlight buy | One person's open-market buys in a company summed over a rolling 30 days >= 0.15% of market cap | Single promoter buys: median 0.017% of market cap, top 10% from 0.155% (about 320 a year). Promoters split purchases: median 2 trades per person-year, top 10% 10+ |
 | Float absorber | One person's open-market buys summed over 90 days >= 0.5% of market cap | Per person-year sum: median 0.07%, top 10% from 0.95%. A single filing that large is only the top ~3% |
 | Token buy | Promoter buy < Rs.25 lakh in a company > Rs.5,000 Cr market cap: labelled "Token", never ranked | 89 of 496 promoter buys in companies above Rs.5,000 Cr |
-| Cluster | 2+ distinct buyers within 30 days, including at least one director/KMP, or promoter entities that are not one family | 62 companies a year had 3+ distinct buyers, but only 12 included a director/KMP; the rest were one promoter family buying together |
+| Cluster | 2+ distinct **decision-makers** buying within 30 days. Each director or KMP is one; a company's promoter group is one however many of its members buy (12 Oct 2026, below); promoter filers not linked to the group are one per family by surname, as before | 62 companies a year had 3+ distinct buyers, but only 12 included a director/KMP; the rest were one promoter family buying together |
 | Market makers | Bulk/block clients with 40+ legs in a quarter and buys/sells within 20%: labelled, kept out of signals | 32 clients made 60% of deal legs (09 Jul - 07 Oct 2026) |
 | Price context | Distance from 52-week high and from 200-day average, shown as neutral numbers ("-14% from 52W high") | Whether buying near highs or after falls works better is contested; the signal lab measures both before either becomes a rule |
 | Scoring | No star score. Factor badges only (size, cluster, pledge, price distance) | Weights would be arbitrary until measured |
 
 Display: 14px card radius, as on paresh.streamlit.app.
+
+## One decision-maker per promoter group (12 Oct 2026, TODO item 21)
+
+A company's promoter group often files as many people and companies (Asian
+Paints names 117 members across the Vakil, Choksi and Dani families; Reliance
+50). They act as one, so in clusters and breadth they count once.
+
+| Rule | Value |
+|---|---|
+| Who is in the group | The members named in Table II of the company's latest shareholding pattern (`clean/current/promoter_group.parquet`) |
+| Link | Identity only: the filer's `entity_key` equals a member's, or the name before a bracket does (HUF karta, trustees, former name). Never by similarity; unlinked filings stay as they were (`docs/CLEAN_LAYER.md`, "Promoter-group link") |
+| Who counts as one | All linked members of one company's group; promoter-role filers sharing a surname (the 07 Oct rule, kept for filers not in the list); a linked member and an unlinked promoter with the same surname join. A director or KMP named in the list joins the group |
+| Never easier | Links only merge, so a cluster under this rule is always one under the 07 Oct rule |
+| Shown | Actions, "Several insiders buying together": under the company, e.g. "4 buyers, 2 decision-makers: promoter group (3), director", and a Deciders column; Latest session's cluster tile. Screener "Who bought": "· 2 decision-makers" when fewer than the people. `company_board` carries `decision_makers` next to `insiders` |
+| Caveat | The latest list is applied to every filing of the year. Membership rarely changes, but a list published after a filing is later information; a company whose promoters changed (CRESTO, 2026) simply stays unlinked for the older filings |
+
+On the 50-company sample (Jan-Mar 2026 filings, Jun 2026 lists): 20 companies
+had two or more open-market buyers among promoters, directors and KMP over the
+quarter; 17 had two or more decision-makers under the 07 Oct surname rule, 8
+under this one (Gem Aromatics, Hindustan Construction, Orient Bell, Premier
+Polyfilm and others: one group buying under different surnames or company
+names). The Track record's cluster events change accordingly from the first
+precompute after the lists are collected; `insiders_clean/track.py`
+`RULES_VERSION` bumped to `2026-10-12.3`.
 
 Data not yet collected that the blueprint needs: free float %, promoter
 holding %, promoter pledge % (NSE shareholding pattern, quarterly).

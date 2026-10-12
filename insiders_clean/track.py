@@ -41,7 +41,7 @@ SIGNALS = {
     'promoter_buy_near_high': 'Promoter buy within 5% of the 52-week high',
     'promoter_buy_far_below_high': 'Promoter buy 30%+ below the 52-week high',
     'spotlight': 'One person buys 0.15%+ of market cap in 30 days',
-    'cluster': '2+ insiders buying within 30 days',
+    'cluster': '2+ decision-makers buying within 30 days',
     'officer_buy': 'Director or KMP open-market buy (₹25 L+)',
     'promoter_sell': 'Promoter open-market sale (₹25 L+)',
     'officer_sell': 'Director or KMP open-market sale (₹25 L+)',
@@ -200,7 +200,8 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
 # version, and never edits a row. Outcomes are derived from those rows later,
 # by the same forward_returns as the backtest.
 
-RULES_VERSION = '2026-10-12.2'  # .2: window_open_buy added  # bump when a signal rule, threshold, spacing or cost changes
+RULES_VERSION = '2026-10-12.3'  # bump when a signal rule, threshold, spacing or cost changes
+# .2: window_open_buy added. .3: clusters count a company's promoter group once (shareholding pattern).
 LEDGER_PREFIX = 'ledger/forward/'
 FIRE_WINDOW = 5  # sessions: an event made public this recently counts as firing now (covers missed runs)
 LEDGER_COLS = ['signal', 'isin', 'day', 'value', 'recorded_at', 'rules_version', 'last_session', 'close_at_record']

@@ -13,6 +13,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/actions.parquet` | One corporate action | NSE `/api/corporates-corporateActions` | Daily |
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
+| `clean/current/promoter_group.parquet` | One company x quarter x promoter-group member | The same shareholding XBRL (Table II) | Daily (NSE Corporate Events) |
 | `clean/current/tradability.parquet` | One ISIN (NSE equity series, or on an NSE surveillance list) | NSE `/api/reportASM`, `/api/reportGSM`, `/api/reportESM`, `sec_list.csv`, NSE bhavcopy | Nightly (R2 Storage Write; also Tradability flags) |
 | `clean/current/tenders.parquet` | One tender offer (buyback, takeover, delisting) | NSE `/api/liveTenderPast-issues` + `liveTenderActive-issues` | Daily |
 | `clean/current/daily_buybacks.parquet` | One daily buyback report | NSE `/api/corporates-daily-buyback` | Daily |
@@ -44,6 +45,18 @@ NSE and BSE publish nothing else about the client.
 | `investor_group_rule` | `alias`, `share class`, `series`, or blank (the name itself) |
 
 The cleaning report counts rows by type and confidence under `tables.deals.participants`.
+
+## insider_trades: promoter-group link
+
+Added by the clean step from `clean/current/promoter_group.parquet` (`insiders_clean/promoter_group.py`). Identity only:
+the filer's `person_id` equals a member's key in the company's latest list, or the name before a bracket on either
+side does. Never by similarity; counts in the cleaning report under `promoter_group_link`.
+
+| Column | Meaning |
+|---|---|
+| `promoter_group_id` | `group:<ISIN>` when the filer is in that company's latest promoter-group list; blank otherwise (unlinked, or no list yet) |
+| `promoter_group_quarter` | Quarter end of the list the filing was linked through |
+| `promoter_group_key` | `name` (same key as filed) or `name_before_bracket` (HUF karta or trustees in brackets, or a former name) |
 
 ## NSE corporate events (`collectors/nse_events/`)
 
@@ -166,7 +179,30 @@ One row per company and quarter; a revised filing replaces the original.
 | `promoter_pledged_shares`, `promoter_pledge_pct` | Pledged shares, and as a **% of the promoter group's own shares** (Zee, Jun 2026: 2,060,000 / 38,316,284 = 5.38%, matching the filing) |
 | `promoter_encumbered_shares`, `promoter_encumbered_pct` | Pledge + non-disposal undertakings + other encumbrance |
 | `xbrl_status` | `ok`, `pending` (not fetched yet; at most 300 a night), `no_xbrl`, or `failed: ...` |
+| `xbrl_error` | Why a file failed, in the parser's words (e.g. `total shares not found`); counted in the run report's coverage |
+| `no_promoter_group` | True when the filing has no promoter section at all and public plus non-promoter non-public shares are the whole total (ITC, L&T, ICICI Bank): promoter shares 0 as filed, pledge % blank |
+| `members_status`, `promoter_members`, `members_check` | Whether the promoter-group member list was parsed (`ok`, `pending`, `failed: ...`; blank for an older quarter fetched before lists existed), how many members, and whether their shares add up to the promoter total (`match` / `mismatch`) |
 | `shareholding_stale` | True when this quarter's XBRL isn't parsed and the pledge figures shown are the company's previous quarter's |
+
+### promoter_group — promoter and promoter-group members (TODO item 21)
+
+From Table II of each shareholding XBRL, the same download as the pledge figures. One row per member of one
+company's filing for one quarter; a revised filing replaces the original, a later parse of the same filing replaces
+the earlier. Parsed rows are first written once to `archive/nse_events/promoter_group/batch=<run time>.parquet`
+(never rewritten); this table is rebuilt from all batches. Only the published name is kept: no PAN (NSE masks it
+anyway) and no promoter/promoter-group split (NSE masks `TypeOfPromoterShareholding` too).
+
+| Column | Meaning |
+|---|---|
+| `event_id`, `record_id`, `symbol`, `isin`, `company`, `quarter_end`, `submission_date`, `xbrl_url` | The filing (as in `shareholding`) |
+| `member_no` | Order in the filing (individuals first, then bodies corporate, trusts and others, then foreign) |
+| `member_name_filed`, `member_name`, `member_id` | Name as filed; display spelling; `entity_key` of the name (the link key) |
+| `member_alt_id` | `entity_key` of the name before its first bracket, when different ("VAKIL HUF (VARUN AMAR VAKIL)") |
+| `section` | The XBRL section: `IndividualsOrHUF`, `OthersIndianShareholders`, `CentralGovernmentOrStateGovernments`, `NonResidentIndividualsOrForeignIndividuals`, `OtherForeignShareholders` |
+| `sub_category` | Plain words: `Individual or HUF`, `Central or state government`, `Non-resident or foreign individual`, or the category the company filed (`Bodies Corporate`, `Trusts`, `Person Acting in Concert`, `Overseas Corporate Bodies`, ...) |
+| `shares`, `pct_of_company`, `pledged_shares` | As filed; % of total shares. Members with 0 shares are listed by the filing and kept |
+| `members_check` | The filing's members add up to its promoter total: `match` or `mismatch` |
+| `xbrl_sha256`, `parsed_on` | SHA-256 of the XBRL bytes NSE sent (the raw copy's `sha256_as_sent`); run date of the parse |
 
 ### preferential and rights — NSE issue records, one row per stage record
 
@@ -266,6 +302,7 @@ have no row.
 | `first_seen`, `last_seen` | archive | Run dates a row was first and last collected |
 | `event_id`, `kind`, `stage`, `app_id`, `posted_on`, `xbrl_url`, `xbrl_status`, `xbrl_json`, `raw_json` | `archive/nse_events/issues/year=YYYY.parquet` | One row per further-issue filing (`{kind}:{stage}:{appId}`), NSE's list row as JSON, and the parsed XBRL facts (`{'main': ..., 'groups': ...}`) for preferential filings and QIP listings |
 | `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
+| `raw_v2/nse/shareholding_xbrl/` | R2 | Each shareholding XBRL fetched from 12 Oct 2026, gzip-compressed (`.gz`, no timestamp, so the same file is one blob); the fetch record's `params.sha256_as_sent` is the hash of the uncompressed bytes |
 
 ## Insider trades: results dates and the trading window
 
