@@ -53,7 +53,7 @@ same day something is promised, started or finished. Pages follow the data:
 | 23 | Deal participant types | Mutual fund, insurer, FPI, PMS/AIF, proprietary/HFT, corporate, individual, each with a confidence level; name mapping auditable |
 | 24 | Disclosure lag and price before broadcast (**on Track record 12 Oct**: median move from the last trade date to the day made public, and the lag in sessions, per signal and per case; not yet on the trade tables) | How long each filing took to reach the public and how much the price moved before it did |
 | 25 | Results dates and trading window | Board-meeting results dates joined to filings: buys right after the trading window opens marked |
-| 26 | Forward record | Each signal recorded as it fires (time, rule version, entry price), never edited; outcomes filled in later; shown on Track record |
+| 26 | ~~Forward record~~ **Coded 12 Oct** (Precompute appends what fired in the last 5 sessions to a new write-once `ledger/forward/<run time>.parquet`, rules version `track.RULES_VERSION`; outcomes in `artifacts/forward_outcomes.parquet`; the Track record card appears with the first row) | Each signal recorded as it fires (time, rule version, entry price), never edited; outcomes filled in later; shown on Track record |
 | 27 | ~~Retire or fix "NSE-BSE Data Validation"~~ **Retired 12 Oct** (manual only, no longer red on every push) | Red on every push since 07 Oct: its step expects `nse_acquisition_output.json` that is never written, with a fixed date 2026-08-31 |
 | 28 | Object lock on `raw_v2/` | Owner sets R2 object lock or lifecycle protection on the raw layer |
 

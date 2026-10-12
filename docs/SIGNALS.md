@@ -54,3 +54,14 @@ Signals measured: promoter buy; promoter buy within 5% of / 30%+ below the
 director or KMP sale; real-fund net deal buy in small caps. Not yet: a
 size-matched benchmark (small and micro caps against their own indices).
 
+
+## Forward record (12 Oct 2026)
+
+The Track record backtest is re-measured nightly on the whole history, so a rule
+change rewrites the past. The forward record does not: after each nightly the
+precompute job appends every event made public in the last 5 sessions and not
+yet recorded to a new write-once file `ledger/forward/<run time>.parquet`, with
+the run time, the rules version (`insiders_clean/track.py` `RULES_VERSION`,
+bumped whenever a rule, threshold, spacing or cost changes) and the latest close
+known then. Rows are never edited; their returns are derived by the same rules
+as the backtest (`artifacts/forward_outcomes.parquet`).

@@ -51,3 +51,19 @@ def test_size_matched_excess_and_move_before_the_filing():
     assert abs(fr['excess_sm_1M'].iloc[0] - expect) < 1e-9
     assert abs(fr['pre_move'].iloc[0] - (close['A'].iloc[20] / close['A'].iloc[17] - 1) * 100) < 1e-9
     assert fr['lag_sessions'].iloc[0] == 3
+
+
+def test_forward_ledger_appends_only_new_recent_events():
+    days = pd.bdate_range('2026-09-01', periods=30)
+    close = pd.DataFrame({'A': np.linspace(100, 130, 30), 'B': np.linspace(50, 40, 30)}, index=days)
+    ev = pd.DataFrame({'signal': ['promoter_buy', 'promoter_buy', 'cluster'], 'isin': ['A', 'B', 'A'],
+                       'day': [days[-1], days[-20], days[-2]], 'value': [3e6, 4e6, np.nan]})
+    run = pd.Timestamp('2026-10-12 19:00')
+    first = track.new_ledger_rows(ev, pd.DataFrame(), close, run)
+    assert set(zip(first['signal'], first['isin'])) == {('promoter_buy', 'A'), ('cluster', 'A')}  # B is too old to be "firing now"
+    assert (first['rules_version'] == track.RULES_VERSION).all() and (first['recorded_at'] == run).all()
+    assert first.loc[first['signal'] == 'promoter_buy', 'close_at_record'].iloc[0] == 130
+    again = track.new_ledger_rows(ev, first, close, run + pd.Timedelta(days=1))
+    assert again.empty  # already recorded: never written twice
+    fr = track.forward_returns(first.assign(day=pd.to_datetime(first['day'])), close, close['A'])
+    assert 'recorded_at' in fr and 'excess_1W' in fr  # outcomes keep the stamped row
