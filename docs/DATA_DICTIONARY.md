@@ -14,6 +14,18 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 
+## insider_trades: data-check columns
+
+Added by the data checks (`docs/CLEAN_LAYER.md`, "Data checks").
+
+| Column | Meaning |
+|---|---|
+| `holding_check` | Holding after - before against the shares traded: `match`, `differs`, `against_side`, `against_side_and_differs`, `not_filed`, `not_applicable` |
+| `price_check` | Implied price (`price` = value / shares) against the trade's sessions in our price layer: `inside`, `below`, `above`, `far_below`, `far_above`, `power_of_ten`, `swapped`, or why it was not checked |
+| `day_low`, `day_high` | Lowest low and highest high printed on NSE or BSE over the trade's sessions, unadjusted; empty when not checked |
+| `marks` | Comma list of checks that failed but hold nothing back (`price_outside_day_range`); `flags` holds those that do |
+| `kind` = `holding_only` | A disclosure of a holding with no shares traded; never a trade (`is_market` false, no side) |
+
 ## NSE corporate events (`collectors/nse_events/`)
 
 Every run fetches the last 10 days (board meetings: up to 60 days ahead as

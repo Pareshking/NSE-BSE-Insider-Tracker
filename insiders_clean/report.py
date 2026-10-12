@@ -34,6 +34,13 @@ class Report:
         for flag, n in counts.items():
             t[flag] = t.get(flag, 0) + n
 
+    def marked(self, table: str, mark_lists):
+        """Data checks that are counted and shown but hold nothing back."""
+        counts = Counter(m for marks in mark_lists for m in marks)
+        t = self.table(table).setdefault('marked', {})
+        for mark, n in counts.items():
+            t[mark] = t.get(mark, 0) + n
+
     def unrecognised(self, field: str, values):
         counts = Counter(v for v in values if v)
         if counts:
