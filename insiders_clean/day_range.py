@@ -44,6 +44,7 @@ PRICE_TOLERANCE = 0.02
 FAR_OUTSIDE = 0.20
 MAX_SPAN_DAYS = 31
 # 10x is left out: a tenth or ten times the market price is within reach of a real off-market price.
+FACE_VALUES = (1.0, 2.0, 5.0, 10.0)   # common face values of an Indian share, in rupees
 UNIT_POWERS = (2, 3, 5, 6, 7)
 
 NOT_CHECKED = ('no_price', 'no_isin', 'no_dates', 'span_too_long', 'before_price_layer', 'after_price_layer',
@@ -149,7 +150,7 @@ def attach(df: pd.DataFrame, ranges: pd.DataFrame | None, isin_col: str, from_co
 
 
 def check(price: pd.Series, rng: pd.DataFrame, tolerance: float = PRICE_TOLERANCE, far: float = FAR_OUTSIDE,
-          powers=UNIT_POWERS) -> pd.DataFrame:
+          powers=UNIT_POWERS, value: pd.Series | None = None) -> pd.DataFrame:
     """Price against the attached range -> `price_check` (module docstring) and `unit_power` (signed k of a
     power_of_ten outcome: +5 means the filed price is 10^5 too small, as when value is filed in lakh)."""
     p = pd.to_numeric(price, errors='coerce').astype(float)
@@ -173,6 +174,17 @@ def check(price: pd.Series, rng: pd.DataFrame, tolerance: float = PRICE_TOLERANC
             left &= ~hit
     hit = left & inside(1 / p)
     res[hit] = 'swapped'
+    left &= ~hit
+    # Two filing errors seen in the 12 Oct diagnostic (most of the 195 market trades "far below"):
+    # the value field holds the price of one share (1,200 shares, value 818, the stock near 800),
+    # and shares valued at their face value (Rs 1, 2, 5 or 10 a share, far under the market).
+    if value is not None:
+        v = pd.to_numeric(value, errors='coerce').astype(float)
+        hit = left & inside(v)
+        res[hit] = 'value_is_price'
+        left &= ~hit
+    hit = left & p.isin(FACE_VALUES) & (p < lo * (1 - far))
+    res[hit] = 'face_value'
     left &= ~hit
     res[left & (p < lo)] = 'below'
     res[left & (p > hi)] = 'above'

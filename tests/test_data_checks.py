@@ -114,9 +114,9 @@ def test_trade_over_two_sessions_uses_both(real_nse_rows, master, calendar, repo
 def test_off_market_kinds_are_counted_never_flagged(real_nse_rows, master, calendar, report):
     k = _one(real_nse_rows, master, calendar, report, _ranges(ZEE_AUG)[0], modeOfAcquisition='ESOP',
              buyValue='1000000')                                                          # Rs.10 exercise price
-    assert k['kind'] == 'esop' and k['price_check'] == 'far_below' and k['flags'] == ''
+    assert k['kind'] == 'esop' and k['price_check'] == 'face_value' and k['flags'] == ''   # Rs.10: face value, as ESOPs often are
     by_kind = report.data['tables']['insider_trades']['data_checks']['price']['by_kind']
-    assert by_kind['esop'] == {'far_below': 1}
+    assert by_kind['esop'] == {'face_value': 1}
 
 
 def test_unchecked_rows_say_why(real_nse_rows, master, calendar, report):
@@ -227,3 +227,11 @@ data_status.render()
     html = ' '.join(str(getattr(e, 'body', '')) for e in at.get('html'))
     assert 'Implied price inside the day' in html and '1 off by a power of ten' in html
     assert 'Holding-only disclosures' in html
+
+
+def test_value_filed_as_price_and_face_value_are_named(real_nse_rows, master, calendar, report):
+    # From the 12 Oct diagnostic: the price of one share typed into the value field, and shares valued at face value
+    k = _one(real_nse_rows, master, calendar, report, _ranges(ZEE_AUG)[0], buyValue='101', buyQuantity='1200')  # 1,200 shares 'worth' Rs.101: one share's price
+    assert k['price_check'] == 'value_is_price' and 'value_filed_as_price_per_share' in k['flags']
+    k = _one(real_nse_rows, master, calendar, report, _ranges(ZEE_AUG)[0], buyValue='1000000')  # Rs.10 a share, market trade
+    assert k['price_check'] == 'face_value' and 'valued_at_face_value' in k['flags']

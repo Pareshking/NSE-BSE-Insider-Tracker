@@ -344,3 +344,9 @@ hand-edited file is needed in any year.
 `python -m pytest tests -q`. Real NSE filings fetched 07 Oct 2026 are in
 `tests/fixtures/nse_pit_real.json` and go through the production writer's
 own `canonicalize()`.
+
+**Calibration, 12 Oct 2026** (read-only diagnostic, 8,609 market trades with a price layer): 8,003 inside the
+traded range, 106 between 2% and 20% outside (marked only: about 1.2%, mostly multi-day trades priced at an
+average), 215 more than 20% outside. Most of those 215 were two filing errors, now named and held back with their
+own reasons: the value field holding one share's price (`value_filed_as_price_per_share`) and shares valued at
+face value, Rs 1-10 (`valued_at_face_value`). The 2% and 20% tolerances stay.
