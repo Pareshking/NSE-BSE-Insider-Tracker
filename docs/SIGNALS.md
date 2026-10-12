@@ -76,3 +76,15 @@ the run time, the rules version (`insiders_clean/track.py` `RULES_VERSION`,
 bumped whenever a rule, threshold, spacing or cost changes) and the latest close
 known then. Rows are never edited; their returns are derived by the same rules
 as the backtest (`artifacts/forward_outcomes.parquet`).
+
+## Model basket (12 Oct 2026)
+
+A paper portfolio on rules fixed in advance (`insiders_clean/basket.py`,
+`BASKET_VERSION`), built only from the forward record so nothing in it was
+picked with hindsight. Each forward-record row is stamped, the night it fires,
+with its signal's evidence verdict (`insiders_clean/evidence.py`) and the
+stock's tradability flags. A position opens for a row whose verdict was
+"leaning positive" and whose stock had no surveillance, trade-for-trade, SME,
+tight-band or circuit flag; entry the next close, equal weight, held 63
+sessions, 0.25 points of cost each, one position per company at a time.
+Shown on Track record against Nifty 500 over the same sessions.

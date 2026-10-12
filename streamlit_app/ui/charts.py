@@ -80,3 +80,19 @@ def monthly_flow(df: pd.DataFrame, date_col: str, title: str, months: int = 12) 
     return (alt.layer(bars, zero, dots).properties(height=230, title=alt.TitleParams(title, anchor='start', fontSize=13,
                                                                                     fontWeight=600, color=INK))
             .configure(font='Geist').configure_view(strokeWidth=0))
+
+
+def basket_vs_index(nav: pd.DataFrame) -> alt.Chart | None:
+    """Model basket and Nifty 500, both 100 at the first entry (artifacts/basket_nav.parquet)."""
+    if nav is None or nav.empty:
+        return None
+    long = nav.melt(id_vars='date', value_vars=['basket', 'index'], var_name='line', value_name='value')
+    long['line'] = long['line'].map({'basket': 'Model basket', 'index': 'Nifty 500'})
+    return alt.Chart(long).mark_line(strokeWidth=2).encode(
+        x=alt.X('date:T', title=None, axis=alt.Axis(format='%d %b %y', grid=False, tickCount=6, labelColor=INK3)),
+        y=alt.Y('value:Q', title=None, scale=alt.Scale(zero=False),
+                axis=alt.Axis(format=',.0f', gridColor='#F0F2F5', labelColor=INK3, domain=False, tickCount=5)),
+        color=alt.Color('line:N', scale=alt.Scale(domain=['Model basket', 'Nifty 500'], range=[PRICE, INK3]),
+                        legend=alt.Legend(title=None, orient='top-left', labelColor=INK3)),
+        tooltip=[alt.Tooltip('date:T', title='Date', format='%d %b %Y'), 'line:N', alt.Tooltip('value:Q', format=',.1f')],
+    ).properties(height=220)
