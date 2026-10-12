@@ -37,3 +37,17 @@ def test_a_run_of_tranches_is_one_event():
     ev = pd.DataFrame({'isin': ['A'] * 4, 'day': [d[5], d[8], d[20], d[30]], 'signal': 'x', 'value': 1e7})
     kept = track._space(ev, d)
     assert list(kept['day']) == [d[5], d[30]]
+
+
+def test_size_matched_excess_and_move_before_the_filing():
+    close, index = panel()
+    d = close.index
+    small = pd.Series(np.linspace(1000, 1100, len(d)), index=d)
+    ev = pd.DataFrame({'isin': ['A'], 'day': [d[20]], 'signal': ['promoter_buy'], 'value': [1e7],
+                       'trade_date_to': [d[17]]})
+    fr = track.forward_returns(ev, close, index, {'Nifty Smallcap 250': small}, {'A': 'Small'})
+    p, q = 21, 21 + 21
+    expect = fr['ret_1M'].iloc[0] - (small.iloc[q] / small.iloc[p] - 1) * 100
+    assert abs(fr['excess_sm_1M'].iloc[0] - expect) < 1e-9
+    assert abs(fr['pre_move'].iloc[0] - (close['A'].iloc[20] / close['A'].iloc[17] - 1) * 100) < 1e-9
+    assert fr['lag_sessions'].iloc[0] == 3

@@ -36,7 +36,7 @@ same day something is promised, started or finished. Pages follow the data:
 
 | # | Item | Done when |
 |---|---|---|
-| 7 | ~~Signal lab and Track record page~~ **Measured 09 Oct** (insiders_clean/track.py, nightly; 1W-6M vs Nifty 500, costs, cases; size-matched benchmark still to add) | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
+| 7 | ~~Signal lab and Track record page~~ **Measured 09 Oct** (insiders_clean/track.py, nightly; 1W-6M vs Nifty 500, costs, cases). **Size-matched benchmark added 12 Oct** (large caps vs Nifty 100, mid Midcap 150, small Smallcap 250, micro and unbucketed Microcap 250, by today's size bucket; a switch on Track record); the precompute log names any of those indices missing from `indices/daily/nse/` | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
 | 8 | ~~Price chart with filings marked (company page)~~ **Done 09 Oct** | |
 | 9 | Morning brief and watchlist warnings | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
 | 10 | Model basket | Waits on 7 |
@@ -49,9 +49,9 @@ same day something is promised, started or finished. Pages follow the data:
 | 19 | Data checks from the 09 Oct brief | In the cleaning report and Data page: holding after - holding before = shares traded (right sign); implied price (value / shares) inside that day's high-low (catches lakh/crore unit errors and off-market prices); disclosure before trade or in the future; holding-only disclosures (on appointment) not counted as trades |
 | 20 | Tradability flags | ASM / GSM / ESM stage, trade-for-trade, SME board, circuit-locked or suspended days, shown as flags (never silent drops), thresholds in config |
 | 21 | One decision-maker per promoter family | Promoter-group entities acting together count once in cluster and breadth figures (linked through the shareholding pattern, not by name similarity) |
-| 22 | Ownership headroom | Distance to the 75% promoter ceiling (minimum public shareholding, SCRR 19A) and creeping-acquisition room (SAST Reg 3(2), 5% a year) on the Company page |
+| 22 | ~~Ownership headroom~~ **Done 12 Oct** (Company Overview; creeping room estimated from promoter open-market buys only, labelled) | Distance to the 75% promoter ceiling (minimum public shareholding, SCRR 19A) and creeping-acquisition room (SAST Reg 3(2), 5% a year) on the Company page |
 | 23 | Deal participant types | Mutual fund, insurer, FPI, PMS/AIF, proprietary/HFT, corporate, individual, each with a confidence level; name mapping auditable |
-| 24 | Disclosure lag and price before broadcast | How long each filing took to reach the public and how much the price moved before it did |
+| 24 | Disclosure lag and price before broadcast (**on Track record 12 Oct**: median move from the last trade date to the day made public, and the lag in sessions, per signal and per case; not yet on the trade tables) | How long each filing took to reach the public and how much the price moved before it did |
 | 25 | Results dates and trading window | Board-meeting results dates joined to filings: buys right after the trading window opens marked |
 | 26 | Forward record | Each signal recorded as it fires (time, rule version, entry price), never edited; outcomes filled in later; shown on Track record |
 | 27 | ~~Retire or fix "NSE-BSE Data Validation"~~ **Retired 12 Oct** (manual only, no longer red on every push) | Red on every push since 07 Oct: its step expects `nse_acquisition_output.json` that is never written, with a fixed date 2026-08-31 |

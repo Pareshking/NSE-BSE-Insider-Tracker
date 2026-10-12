@@ -108,6 +108,25 @@ def render():
         names.append('Capital raises')
     tabs = st.tabs(names)
     with tabs[0]:
+        # Ownership headroom: room to the 75% promoter ceiling (minimum public shareholding,
+        # SCRR 19A) and creeping-acquisition room this financial year (SAST Reg 3(2): holders
+        # of 25% to under 75% may add 5% a year, gross, without an open offer). This year's use
+        # is estimated from promoter open-market buys only; allotments and off-market moves are not in it.
+        if len(shr) and pd.notna(shr['promoter_holding_pct'].iloc[0]):
+            ph = float(shr['promoter_holding_pct'].iloc[0])
+            fy = pd.Timestamp(year=ctx.ref.year if ctx.ref.month >= 4 else ctx.ref.year - 1, month=4, day=1)
+            used = pd.to_numeric(e.loc[(e['seen'] >= fy) & (e['side'] == 'BUY')
+                                       & e['person_role'].isin(signals.PROMOTER_ROLES), 'pct_of_mcap'], errors='coerce').sum()
+            q_end = f'quarter ending {kit.day(shr["quarter_end"].iloc[0])}' if 'quarter_end' in shr else 'latest quarter'
+            kit.tiles([
+                kit.Tile('Room to the 75% ceiling', f'{75 - ph:.2f} pts' if ph < 75 else f'{ph - 75:.2f} pts over',
+                         f'promoters hold {kit.pct(ph, 2)}, {q_end} · minimum public shareholding (SCRR 19A)',
+                         '' if ph < 75 else 'down'),
+                kit.Tile('Creeping-acquisition room, this FY',
+                         kit.pct(max(0.0, min(5.0 - used, 75 - ph)), 2) if 25 <= ph < 75 else 'Not open',
+                         (f'of 5% a year (SAST 3(2)) · {kit.pct(used, 2)} bought on market since {kit.day(fy)}, estimated'
+                          if 25 <= ph < 75 else 'applies only to promoter holdings from 25% to under 75%')),
+            ])
         with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):
             chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
             if chart is None:

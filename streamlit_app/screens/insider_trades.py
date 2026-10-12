@@ -11,7 +11,7 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
-from screens.ctx import load, need_data, with_prices, with_sparks
+from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 ROLE_FILTER = ['promoter', 'promoter_group', 'director', 'kmp', 'designated_person', 'immediate_relative', 'other',
                'missing']
@@ -38,7 +38,8 @@ def _table(rows: pd.DataFrame, ctx, name: str):
                                                mode=rows['mode_raw'].fillna(rows['kind'])), ctx.prices), ctx)
     # Price paid vs now only means something for an open-market buy: a sale's gain is the seller's
     # loss, and an ESOP, pledge or gift price is not what the market paid.
-    vs = (pd.to_numeric(rows['latest_close'], errors='coerce') / pd.to_numeric(rows['price'], errors='coerce') - 1) * 100
+    paid = pd.to_numeric(rows['price'], errors='coerce') * split_since(rows, ctx.prices)  # on today's split-adjusted basis
+    vs = (pd.to_numeric(rows['latest_close'], errors='coerce') / paid - 1) * 100
     buy = rows['is_market'].astype('boolean').fillna(False) & (rows['side'] == 'BUY')
     rows = rows.assign(vs_paid=vs.where(buy))
     kit.table(rows, [

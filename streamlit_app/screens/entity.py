@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
-from screens.ctx import load, need_data, with_sparks
+from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 
 def render():
@@ -46,12 +46,27 @@ def render():
     bought_deals = pd.to_numeric(dy.loc[dy['side'] == 'BUY', 'value'], errors='coerce').sum() if len(dy) else 0.0
     active = pd.concat([yr['isin'] if len(yr) else pd.Series(dtype=object),
                         dy['isin'] if len(dy) else pd.Series(dtype=object)]).dropna().nunique()
+    # Every open-market buy valued at today's close, shares restated for any split or
+    # bonus since; value-weighted, and the share of buys now above the price paid.
+    buys = with_prices(mk[mk['side'] == 'BUY'], ctx.prices)
+    f = split_since(buys, ctx.prices)
+    paid = pd.to_numeric(buys['price'], errors='coerce') * f
+    now = pd.to_numeric(buys['latest_close'], errors='coerce')
+    shares = pd.to_numeric(buys['quantity'], errors='coerce') / f
+    ok = shares.gt(0) & paid.gt(0) & now.gt(0)
+    cost, worth = (shares * paid)[ok].sum(), (shares * now)[ok].sum()
+    pnl = (kit.Tile('Open-market buys, P&L', kit.pct((worth / cost - 1) * 100, 1, signed=True),
+                    f'{kit.rupees(cost)} paid, worth {kit.rupees(worth)} at the latest close · '
+                    f'{(now[ok] > paid[ok]).mean() * 100:.0f}% of {kit.plural(int(ok.sum()), "buy")} in profit',
+                    'up' if worth > cost else 'down')
+           if cost > 0 else None)
     kit.tiles([
         kit.Tile('Capital deployed, 12 months', kit.rupees(bought_ins + bought_deals),
                  f'open-market insider buys {kit.rupees(bought_ins)} · deal buys {kit.rupees(bought_deals)}'),
         kit.Tile('Active companies, 12 months', kit.count(active), 'with an open-market buy, sale or deal'),
         kit.Tile('Net, all data', kit.rupees((mk['signed_value'].sum() if len(mk) else 0) + (d['signed_value'].sum() if len(d) else 0),
                                               signed=True), f'{kit.count(len(t))} insider filings · {kit.count(len(d))} deals'),
+        *([pnl] if pnl else []),
     ])
     if len(t):
         with kit.card('Insider filings', 'en_it'):

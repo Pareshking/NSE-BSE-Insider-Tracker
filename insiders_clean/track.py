@@ -16,6 +16,12 @@ Rules (docs/SIGNALS.md, "Track record"):
 - Costs: 0.25 percentage points off every return (round trip at a
   zero-brokerage broker: STT, exchange charges, stamp duty, slippage).
 - Prices adjusted for splits and bonuses only.
+- Size-matched excess as well: large caps against Nifty 100, mid caps Nifty
+  Midcap 150, small caps Nifty Smallcap 250, micro caps (and unbucketed) Nifty
+  Microcap 250. The size bucket is today's (NSE market-cap rank), not the one
+  on the event day: labelled as such.
+- Before the filing was public: the stock's move from the last trade date to
+  the day made public, and the lag in sessions (insider signals only).
 """
 from __future__ import annotations
 
@@ -28,6 +34,7 @@ HORIZONS = {'1W': 5, '1M': 21, '3M': 63, '6M': 126}
 COST_PCT = 0.25
 SPACING_SESSIONS = 21
 MIN_VALUE = 25e5  # Rs 25 lakh: below this a trade is not counted as a decision
+SIZE_INDEX = {'Large': 'Nifty 100', 'Mid': 'Nifty Midcap 150', 'Small': 'Nifty Smallcap 250', 'Micro': 'Nifty Microcap 250'}
 
 SIGNALS = {
     'promoter_buy': 'Promoter open-market buy (₹25 L+)',
@@ -97,7 +104,7 @@ def events(trades: pd.DataFrame, deals: pd.DataFrame | None, close: pd.DataFrame
                 if (isin, d) not in seen_clus:
                     seen_clus.add((isin, d))
                     rows.append({'isin': isin, 'day': pd.Timestamp(d), 'signal': 'cluster'})
-    ev = pd.concat([x[['isin', 'day', 'signal', 'value']] for x in out if not x.empty]
+    ev = pd.concat([x[['isin', 'day', 'signal', 'value', 'trade_date_to']] for x in out if not x.empty]
                    + ([pd.DataFrame(rows)] if rows else []), ignore_index=True)
     if deals is not None and not deals.empty:
         d = deals.copy()
@@ -112,31 +119,48 @@ def events(trades: pd.DataFrame, deals: pd.DataFrame | None, close: pd.DataFrame
     return pd.concat([_space(g, sessions) for _, g in ev.groupby('signal')], ignore_index=True) if len(ev) else ev
 
 
-def forward_returns(ev: pd.DataFrame, close: pd.DataFrame, index_close: pd.Series) -> pd.DataFrame:
+def forward_returns(ev: pd.DataFrame, close: pd.DataFrame, index_close: pd.Series,
+                    size_index: dict | None = None, bucket: dict | None = None) -> pd.DataFrame:
     """Per event: entry date and price, then for each horizon the stock's
-    return, the index's return and the excess, net of costs (percent)."""
+    return, the index's return and the excess, net of costs (percent).
+    With `size_index` (index name -> closes) and `bucket` (ISIN -> size
+    bucket), also the excess over the size-matched index."""
     if ev.empty:
         return ev
     sessions = close.index
     idx = index_close.reindex(sessions).ffill()
+    sized = {k: v.reindex(sessions).ffill() for k, v in (size_index or {}).items()}
     out = ev.copy()
+    out['size_bucket'] = out['isin'].map(bucket or {})
+    ff = close.ffill()
+    if 'trade_date_to' in out:
+        td = pd.to_datetime(out['trade_date_to'], errors='coerce')
+        p_trade = [ff[i].asof(t) if i in ff and pd.notna(t) and t >= sessions[0] else np.nan for i, t in zip(out['isin'], td)]
+        p_public = [ff[i].asof(d) if i in ff else np.nan for i, d in zip(out['isin'], out['day'])]
+        out['pre_move'] = (np.array(p_public, dtype=float) / np.array(p_trade, dtype=float) - 1) * 100
+        out['lag_sessions'] = [float(sessions.searchsorted(d, side='right') - sessions.searchsorted(t, side='right'))
+                               if pd.notna(t) else np.nan for d, t in zip(out['day'], td)]
     pos = sessions.searchsorted(out['day'].to_numpy(), side='right')  # first session after the day made public
     out['entry_date'] = [sessions[p] if p < len(sessions) else pd.NaT for p in pos]
     entry = [close.at[sessions[p], i] if p < len(sessions) and i in close else np.nan for p, i in zip(pos, out['isin'])]
     out['entry_price'] = entry
     for name, n in HORIZONS.items():
-        stock, bench = [], []
-        for p, i, e0 in zip(pos, out['isin'], entry):
+        stock, bench, size_b = [], [], []
+        for p, i, e0, b in zip(pos, out['isin'], entry, out['size_bucket']):
             q = p + n
             if q >= len(sessions) or i not in close or not np.isfinite(e0) or e0 <= 0:
                 stock.append(np.nan)
                 bench.append(np.nan)
+                size_b.append(np.nan)
                 continue
             e1 = close.at[sessions[q], i]
             stock.append((e1 / e0 - 1) * 100 if np.isfinite(e1) else np.nan)
             bench.append((idx.iloc[q] / idx.iloc[p] - 1) * 100)
+            s_ix = sized.get(SIZE_INDEX.get(b, SIZE_INDEX['Micro']))
+            size_b.append((s_ix.iloc[q] / s_ix.iloc[p] - 1) * 100 if s_ix is not None else np.nan)
         out[f'ret_{name}'] = np.array(stock) - COST_PCT
         out[f'excess_{name}'] = out[f'ret_{name}'] - np.array(bench)
+        out[f'excess_sm_{name}'] = out[f'ret_{name}'] - np.array(size_b)
     return out
 
 
@@ -155,5 +179,10 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
                          'beat_index': (x > 0).mean() * 100 if n else np.nan,
                          'ci_low': x.mean() - 1.645 * se if n > 1 else np.nan,
                          'ci_high': x.mean() + 1.645 * se if n > 1 else np.nan,
-                         'median_return': g[f'ret_{name}'].dropna().median() if n else np.nan})
+                         'median_return': g[f'ret_{name}'].dropna().median() if n else np.nan,
+                         'median_excess_sm': g[f'excess_sm_{name}'].dropna().median() if f'excess_sm_{name}' in g and n else np.nan,
+                         'beat_size_index': (g[f'excess_sm_{name}'].dropna() > 0).mean() * 100
+                         if f'excess_sm_{name}' in g and g[f'excess_sm_{name}'].notna().any() else np.nan,
+                         'median_pre_move': g['pre_move'].dropna().median() if 'pre_move' in g and g['pre_move'].notna().any() else np.nan,
+                         'median_lag': g['lag_sessions'].dropna().median() if 'lag_sessions' in g and g['lag_sessions'].notna().any() else np.nan})
     return pd.DataFrame(rows)

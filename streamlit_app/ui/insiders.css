@@ -242,3 +242,4 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 /* ---- Actions page: the one-line evidence under each list's title ---- */
 .evl { margin: 0 0 10px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.5; }
 .evl .tg { margin-right: 6px; }
+.sc-t td.sc-pre { background: #F4F2FF; } .sc-t td.sc-pre b { color: var(--accent-ink); }
