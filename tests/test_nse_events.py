@@ -210,3 +210,14 @@ def test_coverage_counts_latest_quarter_per_company():
     c = shareholding_coverage(df)
     assert c['companies'] == 2 and c['pending_xbrl'] == 1 and c['pending_latest'] == 1
     assert c['latest_quarter_of_company'] == {'2026-06-30': 2} and c['latest_with_pledge'] == 1
+
+
+def test_coverage_names_why_pledge_files_failed():
+    from collectors.nse_events.run_daily import shareholding_coverage
+    df = pd.DataFrame({
+        'symbol': ['A', 'B', 'C', 'D'],
+        'quarter_end': pd.to_datetime(['2026-06-30'] * 4),
+        'xbrl_status': ['ok', 'failed: KeyError', 'failed: KeyError', 'failed: ParseError'],
+        'promoter_pledge_pct': [1.0, None, None, None]})
+    c = shareholding_coverage(df)
+    assert c['xbrl_failure_types'] == {'failed: KeyError': 2, 'failed: ParseError': 1}
