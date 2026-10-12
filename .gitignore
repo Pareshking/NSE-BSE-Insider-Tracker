@@ -22,6 +22,7 @@ data/curated/
 # Small reference and test files that must be tracked despite *.csv above
 !reference_data/nse_sessions.csv
 !tests/fixtures/*.csv
+!tests/fixtures/bse/*.csv
 
 # Collector-side raw captures: ephemeral, flushed to R2 raw_v2/
 artifacts/raw_capture/

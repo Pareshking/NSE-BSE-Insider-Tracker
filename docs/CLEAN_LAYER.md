@@ -178,13 +178,19 @@ Insider trades (`insiders_clean/insider.py`):
 - **Truncated names** (NSE cuts at ~30 characters) are merged within one
   security on a unique prefix match.
 - **Deadlines**: SEBI PIT Reg 7(2)(a) insider -> company and 7(2)(b)
-  company -> exchange, each within 2 trading sessions. BSE rows don't
+  company -> exchange, each within 2 trading sessions. BSE rows from the
+  nightly page capture don't (rows from BSE's insider CSV do); those rows don't
   carry the intimation date, so only NSE rows get both checks.
 - **Held back for a look** (`needs_review`): unmatched security, unknown
   mode, value over 25% of market cap, a market trade that multiplies the
   holding more than 20x, zero value or no shares on a market trade, mode
   contradicting side, and the data checks below.
 - NSE/BSE copies of one filing are linked; NSE is primary.
+- **One BSE filing in both BSE feeds** (the nightly page capture and BSE's
+  insider CSV) is one row: BSE rows are matched on the from-date (the capture
+  files only that), the CSV's row is kept (it adds the to-date and the
+  intimation date) and the other is removed as `bse_same_filing_two_feeds`.
+  The report counts BSE input rows by feed (`bse_rows_by_feed`).
 
 ## Data checks (insider filings, from the 09 Oct brief)
 
@@ -286,6 +292,43 @@ ahead (18 months from a mid-October run, about 2 minutes), each response into `r
 merged by `event_id`. Starting in July 2025 covers the results season before
 the product window (08 Oct 2025), so October 2025 trades have their window.
 Then run **Clean only** so insider trades get the trading-window columns.
+
+## BSE history
+
+`scripts/bse_history_backfill.py` (insider, bulk, block) and `collectors/bse/events.py`
+(SAST, corporate actions) read BSE's own history endpoints (`collectors/bse/client.py`;
+parameters and caps confirmed 12 Oct 2026). Run from Actions -> **BSE History Backfill**
+(dataset, from, to, redo, dry run; dry run is the default), or locally:
+
+    python scripts/bse_history_backfill.py --dataset all --dry-run
+    python -m collectors.bse.events --from 2025-10-08 --dataset sast --dry-run
+
+| Dataset | Endpoint | One call | Cap |
+|---|---|---|---|
+| `insider` | `Corp_Regulation_DownloadCSV_ng` (the insider page's CSV download), filtered on the date reported to BSE | 10 days | none seen; the JSON form `getCorp_Regulation_ng` stops at 25 rows, so it is not used |
+| `bulk` / `block` | `BulkDealData_ng?DealType=1/2`, filtered on the deal date | 10 / 31 days | none seen |
+| `sast` | `Corporatesast?ddlregul=ALL`, filtered on the first acquisition date | a month, read three ways (below) | none seen, but some windows answer `[]` |
+| `actions` | `DefaultData?strSearch=S`, filtered on the ex-date | a month | none seen (a year = its months) |
+
+- **Nightly** (R2 Storage Write, before the clean step): insider and deals for the
+  last 10 days (`--recent 10`), SAST and actions for the last 30. The page capture
+  (`bse_raw_capture_v2.py`) reads BSE's defaults only (today's deals; the day's
+  insider filings plus a fixed older block), so a missed day was never filled.
+- **Deals** map to exactly the nightly row, so a deal both stored has one id; a
+  row already in the archive is not written again (`already_in_archive`).
+- **SAST** answers `[]` for some windows that hold rows (08-14 Mar 2026 `[]`; 01-31
+  Mar 2026 has 315 rows in those days). Every window is read whole, in 7-day
+  pieces (a piece answering `[]` is split down to one day) and in 7-day pieces
+  shifted by 3 days, united by `event_id`; weekdays with no row in any are listed
+  in the report.
+- **In-page fetch**: requests with BSE's own Origin and Referer answer (the `bse`
+  package does the same for market cap from GitHub's runners). On a 401/403/429 the
+  client moves to an XHR from inside a bseindia.com page in headless Chrome for the
+  rest of the run (`via: in_page_xhr` in the raw fetch record); tried 12 Oct, same
+  answers as requests.
+- Pacing 4-6 s, 3 retries, stop on 401/403/429; resumable through
+  `archive/_backfill/bse_{dataset}.json`; reports in `clean/reports/backfill/` and
+  `clean/reports/bse_events/`. Shares the `r2-archive-writes` concurrency group.
 
 ## Trading calendar
 

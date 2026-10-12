@@ -1,0 +1,84 @@
+name: BSE History Backfill
+
+# BSE insider filings, bulk / block deals, SAST Reg 29 and corporate actions
+# for the product window (from 08 Oct 2025) into archive/ in R2, from BSE's
+# own history endpoints (collectors/bse/client.py). insider/bulk/block:
+# scripts/bse_history_backfill.py; sast/actions: collectors/bse/events.py.
+# See docs/CLEAN_LAYER.md ("BSE history").
+#
+# DRY RUN by default: fetches and maps, prints counts, writes nothing.
+# Resumable: rerunning skips the chunks already stored. The nightly R2 Storage
+# Write run keeps the last days current after this has run once.
+on:
+  workflow_dispatch:
+    inputs:
+      dataset:
+        description: 'insider, bulk, block, sast, actions, or all'
+        type: choice
+        options: [all, insider, bulk, block, sast, actions]
+        default: all
+      from:
+        description: 'From (YYYY-MM-DD). Blank = 2025-10-08 (product window).'
+        required: false
+        default: ''
+      to:
+        description: 'To (YYYY-MM-DD). Blank = today (IST).'
+        required: false
+        default: ''
+      redo:
+        description: "'true' = refetch chunks already marked done (idempotent merge)"
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
+      dry_run:
+        description: "'true' = fetch and map only, write nothing"
+        type: choice
+        options: ['true', 'false']
+        default: 'true'
+
+permissions:
+  contents: read
+
+# Shared with R2 Storage Write and the NSE backfill: all write archive/.
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      DATASET: ${{ inputs.dataset }}
+      FROM: ${{ inputs.from }}
+      TO: ${{ inputs.to }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      REDO: ${{ inputs.redo }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Insider, bulk and block deals
+        if: ${{ contains(fromJSON('["all", "insider", "bulk", "block"]'), inputs.dataset) }}
+        run: |
+          args=(--dataset "$DATASET")
+          if [ -n "$FROM" ]; then args+=(--from "$FROM"); fi
+          if [ -n "$TO" ]; then args+=(--to "$TO"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$REDO" = "true" ]; then args+=(--redo); fi
+          python -u scripts/bse_history_backfill.py "${args[@]}"
+      - name: SAST and corporate actions
+        if: ${{ always() && contains(fromJSON('["all", "sast", "actions"]'), inputs.dataset) }}
+        run: |
+          args=(--dataset "$DATASET" --from "${FROM:-2025-10-08}")
+          if [ -n "$TO" ]; then args+=(--to "$TO"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$REDO" = "true" ]; then args+=(--redo); fi
+          python -u -m collectors.bse.events "${args[@]}"

@@ -15,7 +15,7 @@ import streamlit as st
 from lib import r2_data
 
 TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings', 'shareholding', 'preferential', 'rights', 'tradability',
-          'buybacks')
+          'buybacks', 'bse_sast', 'bse_actions')
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 
 

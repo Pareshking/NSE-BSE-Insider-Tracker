@@ -11,6 +11,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/securities.parquet` | One security | NSE/BSE equity lists + VR export | Nightly (R2 Storage Write) |
 | `clean/current/sast.parquet` | One SAST Reg 29 disclosure line | NSE `/api/corporate-sast-reg29` | Daily (NSE Corporate Events) |
 | `clean/current/actions.parquet` | One corporate action | NSE `/api/corporates-corporateActions` | Daily |
+| `clean/current/bse_sast.parquet`, `bse_actions.parquet` | One BSE SAST disclosure line / corporate action, linked to NSE's | BSE `Corporatesast`, `DefaultData` | Nightly (R2 Storage Write) |
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 | `clean/current/promoter_group.parquet` | One company x quarter x promoter-group member | The same shareholding XBRL (Table II) | Daily (NSE Corporate Events) |
@@ -317,9 +318,39 @@ meeting in our data in the 100 days before the trade.
 | `sessions_since_window_open` | NSE sessions from `window_open_date` to the first trade day; 0 = the first session the window was open |
 | `window_open_buy` | An open-market buy with `sessions_since_window_open` below 5 (`WINDOW_OPEN_SESSIONS`) |
 
+## BSE events (`collectors/bse/`)
+
+SAST Reg 29 and corporate actions from BSE, in NSE's columns (`collectors/nse_events/parsers.py`) plus `exchange` =
+`BSE` and `bse_code`. Archive: `archive/bse_events/{sast|actions}/year=YYYY.parquet` by `event_id` (Company_Name left
+out of the SAST hash: BSE appends `-$` to it on some days). Raw: `raw_v2/bse/{sast|corporate_actions}/`. Report:
+`clean/reports/bse_events/{date}.json` (calls, fetched, added, dropped, windows split, weekdays with no row, linked).
+Pages read NSE's table plus the BSE rows with `on_nse` false (`insiders_clean/bse_events.py::with_bse`).
+
+| Column | Meaning |
+|---|---|
+| `bse_code`, `isin`, `nse_symbol` | BSE scrip code as filed; ISIN and NSE symbol from the security master |
+| `symbol` | The NSE symbol when the company has one (pages and the Company page are keyed by it), else the BSE code |
+| `on_nse`, `nse_event_id` | The same disclosure or action is in NSE's table: SAST on ISIN, last trade date, direction and shares within 1% or 1 share; actions on ISIN, purpose and ex-date. Shown once, as NSE's row |
+| `listed_on` | `bse` or `bse,nse` |
+| SAST `regulation` | `Reg29(1)` or `Reg29(2)`; BSE's Reg 10(5)/10(6) and other notes in the same list are dropped and counted |
+| SAST `broadcast_ts` | BSE's dissemination day (no time) |
+| SAST `is_promoter` | BSE's promoter-group column (Yes/No) |
+| SAST `diluted_post_pct` | % after on a diluted basis, as filed |
+| actions `ratio`, `dividend_per_share`, `face_value_from/to` | From BSE's purpose text (`Bonus issue 1:2`, `Final Dividend - Rs. - 5.0000`, `Stock Split From Rs.5/- to Rs.1/-`). BSE gives no rights ratio or price |
+
+## BSE insider and deals history (archive columns)
+
+`scripts/bse_history_backfill.py` writes BSE rows into `archive/canonical/bse/{insider_trading|bulk_deals|block_deals}/`
+with `source` = `bse_insider_csv` or `bse_deals_history` (not part of the row id). Insider rows carry, beyond the
+nightly fields, `transaction_date_to`, `intimation_date`, `pct_before`, `pct_after`, `security_type_prior`,
+`security_type_post`, `buy_units`, `sell_units`, `derivative_specification`, `trade_exchange` (where the trade was
+executed: `BSE`, `NSE` or blank). Clean insider rows from BSE's CSV therefore get the intimation date and both Reg 7(2)
+deadline checks; rows from the nightly page capture still don't.
+
 ## Not yet collected
 
-BSE equivalents of the four event tables (BSE's API needs an in-page fetch).
+Board meetings and shareholding patterns from BSE (NSE's cover dual-listed companies; BSE-only companies have none).
+BSE-only companies have no Company page (it is keyed by NSE symbol).
 The time results were filed (NSE's `corporates-financial-results` API answers
 only for filings in its old format: 59 for Oct-Dec 2025; quarterly results
 now go through integrated filing, whose API is not confirmed), so the

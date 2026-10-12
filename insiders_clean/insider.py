@@ -34,6 +34,7 @@ from . import day_range
 from .calendar import Calendar, lateness
 from .dates import parse_dates, to_datetime_day_first
 from .entities import add_entity_columns, most_common
+from .history import BSE_INSIDER_SOURCE
 from .missing import is_missing, present
 from .securities import SecurityMaster, display_name
 
@@ -308,9 +309,11 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['trade_date_from'] = parse_dates(_col(raw, 'canonical_transaction_date_from', 'acqfromDt'))
     df['trade_date_to'] = parse_dates(_col(raw, 'canonical_transaction_date_to', 'acqtoDt',
                                            'canonical_transaction_date'))
-    # NSE carries the date the insider told the company; BSE's capture
-    # doesn't, so the two deadlines can't be split for BSE rows.
-    df['intimation_date'] = parse_dates(_col(raw, 'intimDt'))
+    # NSE carries the date the insider told the company, and so does BSE's
+    # insider CSV (scripts/bse_history_backfill.py); the nightly BSE capture
+    # doesn't, so for its rows the two deadlines can't be split.
+    df['intimation_date'] = parse_dates(_col(raw, 'intimDt', 'intimation_date'))
+    df['source'] = _col(raw, 'source').astype('string')
     broadcast_raw = _col(raw, 'canonical_broadcast_date', 'broadcastDt')
     df['broadcast_date'] = parse_dates(broadcast_raw)
     df['broadcast_ts'] = to_datetime_day_first(broadcast_raw)
@@ -389,15 +392,28 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     superseded = df['app_id'].isin(set(df['prev_app_id'].dropna()) & known_app)
     report.removed('insider_trades', 'superseded_by_revision', df.loc[superseded, 'source_id'])
     keep &= ~superseded
+    # BSE: the nightly capture (BSE's JSON) files only the from-date, as the
+    # to-date too; BSE's insider CSV has both. So BSE rows are matched on the
+    # from-date, and one filing seen by both feeds is one row: the CSV's is
+    # kept (it adds the to-date and the intimation date), counted apart as
+    # `bse_same_filing_two_feeds` (its mode is spelt differently in each feed,
+    # so it would otherwise read as a correction).
+    df['_key_to'] = df['trade_date_to'].where(df['exchange'] != 'bse', df['trade_date_from'])
+    df['_bse_csv'] = df['source'].eq(BSE_INSIDER_SOURCE).fillna(False).astype(bool)
     key_cols = ['exchange', 'isin', 'symbol', 'person_id', 'side', 'quantity', 'value',
-                'trade_date_from', 'trade_date_to', 'holding_before', 'holding_after']
+                'trade_date_from', '_key_to', 'holding_before', 'holding_after']
     order = (df[keep].assign(_b=df['broadcast_ts'])
-             .sort_values(['_b', 'app_num'], ascending=False, na_position='last'))
-    latest_mode = order.groupby(key_cols, dropna=False)['mode_raw'].transform('first')
+             .sort_values(['_b', 'app_num', '_bse_csv'], ascending=False, na_position='last'))
+    groups = order.groupby(key_cols, dropna=False)
+    latest_mode = groups['mode_raw'].transform('first')
     dup = order.duplicated(subset=key_cols, keep='first')
-    corrected = dup & (order['mode_raw'].astype(str) != latest_mode.astype(str))
+    two_feeds = dup & order['exchange'].eq('bse') & (order['_bse_csv'] != groups['_bse_csv'].transform('first'))
+    corrected = dup & ~two_feeds & (order['mode_raw'].astype(str) != latest_mode.astype(str))
+    report.removed('insider_trades', 'bse_same_filing_two_feeds', order.loc[two_feeds, 'source_id'])
     report.removed('insider_trades', 'corrected_refiling', order.loc[corrected, 'source_id'])
-    report.removed('insider_trades', 'repeat_filing', order.loc[dup & ~corrected, 'source_id'])
+    report.removed('insider_trades', 'repeat_filing', order.loc[dup & ~corrected & ~two_feeds, 'source_id'])
+    t['bse_rows_by_feed'] = {'csv': int((df['exchange'].eq('bse') & df['_bse_csv']).sum()),
+                             'nightly_json': int((df['exchange'].eq('bse') & ~df['_bse_csv']).sum())}
     report.table('insider_trades')['removal_breakdown'] = _removal_breakdown(raw, df, order, dup, key_cols)
     keep.loc[dup[dup].index] = False
     df = df[keep].copy()

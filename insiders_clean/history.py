@@ -40,7 +40,10 @@ PIT_KEPT = ('did', 'pid', 'exchange', 'anex', 'remarks', 'befAcqSharesPer', 'aft
 # rows by it (insiders_clean/archive.py::from_history).
 PIT_SOURCE = 'nse_corporates_pit_history'
 DEALS_SOURCE = 'nse_historical_deals_csv'
-HISTORY_SOURCES = (PIT_SOURCE, DEALS_SOURCE)
+# BSE's history endpoints (scripts/bse_history_backfill.py, collectors/bse/).
+BSE_INSIDER_SOURCE = 'bse_insider_csv'
+BSE_DEALS_SOURCE = 'bse_deals_history'
+HISTORY_SOURCES = (PIT_SOURCE, DEALS_SOURCE, BSE_INSIDER_SOURCE, BSE_DEALS_SOURCE)
 # Values NSE uses for "nothing" in this feed.
 _EMPTY = {'-', '', 'NA', 'N.A.', 'None', 'null'}
 _ZERO = {'Nil', 'NIL', 'nil'}

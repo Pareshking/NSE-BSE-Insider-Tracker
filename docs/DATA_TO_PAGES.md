@@ -14,12 +14,12 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 
 | # | Dataset | Fields that matter | Coverage | Status |
 |---|---|---|---|---|
-| D1 | Insider trades (SEBI PIT) | person, role (19% blank), mode, side, shares, value, holding before/after, trade dates, intimation date (NSE only), broadcast time | NSE from 03 May 2026 nightly; BSE nightly (no intimation date) | In |
-| D1h | Insider trades, history | same, older names | NSE 08 Oct 2025 - 02 May 2026 (the one-year window) | In (backfill 08 Oct) |
+| D1 | Insider trades (SEBI PIT) | person, role (19% blank), mode, side, shares, value, holding before/after, trade dates, intimation date (NSE; BSE from its insider CSV), broadcast time (BSE: day only) | NSE from 03 May 2026 nightly; BSE nightly (page capture + the last 10 days from BSE's insider CSV) | In |
+| D1h | Insider trades, history | same, older names | NSE 08 Oct 2025 - 02 May 2026 (the one-year window); BSE from 08 Oct 2025 (BSE's insider CSV, `scripts/bse_history_backfill.py`) | NSE In (backfill 08 Oct); BSE coded 12 Oct, waits on the BSE History Backfill run |
 | D2 | Bulk and block deals | client, side, shares, price, date, feed | NSE + BSE, 90-day window nightly | In |
-| D2h | Bulk and block, history | same | NSE from 08 Oct 2025; nightly now reads the uncapped CSV | In (backfill 08 Oct, redone 09 Oct) |
-| D3 | SAST Reg 29 | acquirer, promoter flag, 29(1)/29(2), action, mode, shares and % acquired/sold, stake after | NSE, from 07 Oct 2026 (10-day windows) | In |
-| D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In |
+| D2h | Bulk and block, history | same | NSE from 08 Oct 2025; nightly now reads the uncapped CSV. BSE from 08 Oct 2025 (`BulkDealData_ng`), and its last 10 days nightly | NSE In (backfill 08 Oct, redone 09 Oct); BSE coded 12 Oct, waits on the BSE History Backfill run |
+| D3 | SAST Reg 29 | acquirer, promoter flag, 29(1)/29(2), action, mode, shares and % acquired/sold, stake after | NSE, from 07 Oct 2026 (10-day windows); BSE from 08 Oct 2025 (history run) and 30-day windows nightly, a disclosure on both shown once | NSE In; BSE coded 12 Oct |
+| D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium (NSE only), dividend | NSE, from 07 Oct 2026; BSE from 08 Oct 2025 (history run) and nightly, an action on both shown once | NSE In; BSE coded 12 Oct |
 | D4b | Buybacks | tender offers: offer price, shares sought and tendered, offer dates (NSE tender-offer list, from 2015); open market: daily buyback reports (no price); matched to D4 by symbol and record date | NSE, nightly (12 Oct 2026) | In (open-market price only in PDFs) |
 | D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead; past months by backfill (`--from`, from 01 Jul 2025) | In |
 | D6 | Shareholding pattern | promoter %, public % (free float), employee trusts %, promoter pledged and encumbered shares (XBRL); promoter 0% as filed where a company has no promoter group | NSE, latest quarter of every company (TODO F) | In |

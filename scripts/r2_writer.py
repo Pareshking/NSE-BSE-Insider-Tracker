@@ -213,8 +213,9 @@ def canonicalize(exchange, category, row):
         # real range instead of silently collapsing it to one day. BSE's
         # normalized schema has no separate from/to fields (its
         # 'transaction_date' is already a single day), so from==to there.
+        # BSE's insider CSV (scripts/bse_history_backfill.py) adds the to-date.
         txn_from = _pick(row, 'acqfromDt', 'transaction_date')
-        txn_to = _pick(row, 'acqtoDt', 'transaction_date')
+        txn_to = _pick(row, 'acqtoDt', 'transaction_date_to', 'transaction_date')
         is_range = bool(txn_from and txn_to and txn_from != txn_to)
 
         result = {

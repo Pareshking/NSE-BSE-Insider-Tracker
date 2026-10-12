@@ -9,7 +9,7 @@ from screens.ctx import load
 
 TABLES = {'insider_trades': 'Insider filings', 'deals': 'Bulk and block deals', 'securities': 'Securities'}
 REASONS = {
-    'repeat_filing': 'Same trade filed again', 'corrected_refiling': 'Replaced by a corrected filing',
+    'repeat_filing': 'Same trade filed again', 'bse_same_filing_two_feeds': 'Same BSE filing in both BSE feeds', 'corrected_refiling': 'Replaced by a corrected filing',
     'superseded_by_revision': 'Replaced by a revision NSE marked', 'before_product_start': 'Traded before 08 Oct 2025',
     'no_readable_transaction_date': 'No readable trade date', 'intraday_round_trip': 'Intraday round trip (bought and sold same day)',
     'same_deal_in_older_json_form': 'Same deal in the old feed format', 'same_trade_in_both_feeds': 'Same trade in bulk and block feeds',

@@ -111,7 +111,7 @@ def _outside_holders(ctx):
     s = ctx.sast
     with kit.card('Outside investors crossing 5% or moving 2%+', 'today_sast', 'SAST Regulation 29, latest filing day'):
         if s.empty:
-            kit.empty('SAST filings arrive with the daily NSE events collection.')
+            kit.empty('SAST filings arrive with the daily NSE and BSE events collections.')
             return
         s = s.copy()
         s['seen'] = pd.to_datetime(s['broadcast_ts'], errors='coerce', format='mixed', dayfirst=True).dt.normalize()
