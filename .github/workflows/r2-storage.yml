@@ -73,7 +73,9 @@ jobs:
       # find nothing, not last month's file. (The validators also check the
       # report's target_date.)
       - name: Clear old collector outputs
-        run: rm -rf artifacts/nse_insider artifacts/nse_bulk artifacts/nse_block artifacts/nse_validation artifacts/bse_validation artifacts/data_validation_v5
+        # Market-cap reports too (12 Oct 2026): a September copy of each sat in the repo, so a
+        # failed market-cap step would have published those numbers as the day's market cap.
+        run: rm -rf artifacts/nse_insider artifacts/nse_bulk artifacts/nse_block artifacts/nse_validation artifacts/bse_validation artifacts/data_validation_v5 artifacts/nse_market_cap artifacts/bse_market_cap
 
       # --- Market cap reference data, both exchanges, whole-file downloads
       # only (no per-symbol lookups -- see scripts/*_market_cap.py). Neither

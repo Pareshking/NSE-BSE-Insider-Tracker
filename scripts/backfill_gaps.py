@@ -18,7 +18,7 @@ calls, no extra rate-limit exposure.
 
 Scope: only checks the last BACKFILL_LOOKBACK_DAYS weekdays (default 10),
 not the full 90-day window -- an old gap from months back is a historical
-question for VALIDATION_STATUS.md, not something to silently paper over
+question for the validation notes (VALIDATION_STATUS.md, in git history), not something to silently paper over
 here every single run. Weekends are skipped outright (nothing trades);
 a real holiday still gets "backfilled" with that day's data folded into a
 run for a date with genuinely zero disclosures -- flagged in the manifest

@@ -1,1 +1,0 @@
-The BSE-only workflow is the certification path. Legacy combined runs are evidence only and cannot certify BSE.

@@ -22,7 +22,7 @@ across people and time, and measuring what happened after similar signals.
 | Cleaning rules, storage, trading calendar, backfill | `docs/CLEAN_LAYER.md` |
 | Every clean table and column | `docs/DATA_DICTIONARY.md` |
 | What is open and how we will know it's done | `docs/TODO.md` |
-| Collection pipeline and its validation history | `PROJECT_PLAN.md`, `DATA_ACQUISITION.md`, `VALIDATION_STATUS.md` |
+| Collection pipeline and its rules | `docs/CLEAN_LAYER.md`, `docs/DATA_DICTIONARY.md` (the September planning and validation notes are in git history, removed 12 Oct 2026) |
 | The site's code | `streamlit_app/README.md` |
 
 Agents: read `CLAUDE.md` first.

@@ -5,7 +5,7 @@ bse_validate.py and only writes a (exchange, category) dataset to R2 if its
 own validator marked it VERIFIED for this run. A category that is BLOCKED,
 missing, or empty is recorded in the manifest as `written: false` with a
 reason -- it is never silently written as an empty "successful" dataset,
-per the data-quality rule in PROJECT_PLAN.md section 11.
+per the September data-quality rule (PROJECT_PLAN.md section 11, in git history).
 
 R2 layout:
   raw/{exchange}/{category}/{date}/raw.json           -- validated rows, native fields preserved, unmodified
@@ -193,7 +193,7 @@ def _pick(row, *keys):
 def canonicalize(exchange, category, row):
     """Frontend-facing aligned fields, common by name across NSE and BSE for a
     given category. Computed from known native field names (verified against
-    real captured data on 2026-09-01 -- see DATA_ACQUISITION.md); anything not
+    real captured data on 2026-09-01 -- see DATA_ACQUISITION.md in git history); anything not
     recognized is left None rather than guessed. Never touches the native
     columns, which stay available for drill-down/audit alongside these.
     """
@@ -242,7 +242,7 @@ def canonicalize(exchange, category, row):
             'canonical_broadcast_date': _pick(row, 'broadcastDt', 'broadcast_date'),
             # NSE's schema carries appId/prevAppId to mark a filing as
             # amending an earlier one (0 occurrences in the 2026-09-01
-            # sample, but expected to recur -- see PROJECT_PLAN.md section 8
+            # sample, but expected to recur -- see PROJECT_PLAN.md section 8, in git history
             # "amended/re-filed disclosure" identity requirement).
             # canonical_event_id is a content hash and correctly differs
             # between the original and its revision; appId is NSE's own
