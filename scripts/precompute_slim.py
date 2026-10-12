@@ -66,7 +66,12 @@ def main() -> int:
         nifty = ix[ix['symbol'] == 'Nifty 500'].drop_duplicates('date').set_index('date')['close'].sort_index()
         if 'insider_trades' in clean and len(nifty):
             ev = track.events(clean['insider_trades'], clean.get('deals'), close)
-            fr = track.forward_returns(ev, close, nifty)
+            sized = {name: ix[ix['symbol'] == name].drop_duplicates('date').set_index('date')['close'].sort_index()
+                     for name in track.SIZE_INDEX.values()}
+            sized = {k: v for k, v in sized.items() if len(v)}
+            print(f'track: size-matched indices found {sorted(sized)}; missing {sorted(set(track.SIZE_INDEX.values()) - set(sized))}')
+            size_of = summary.dropna(subset=['mcap_bucket']).set_index('isin')['mcap_bucket'].to_dict()
+            fr = track.forward_returns(ev, close, nifty, sized, size_of)
             put(client, bucket, EVENTS_KEY, fr)
             summ = track.summary(fr)
             put(client, bucket, TRACK_KEY, summ)

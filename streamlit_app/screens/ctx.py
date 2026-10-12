@@ -82,6 +82,23 @@ def with_prices(df: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     return df.assign(**{c: df['isin'].map(p[c]) if c in p else None for c in PRICE_COLS})
 
 
+def split_since(df: pd.DataFrame, prices: pd.DataFrame) -> pd.Series:
+    """Per trade, the split/bonus factor that puts its price on the basis of
+    today's adjusted close (paid x factor; shares / factor): 1 when none came
+    after the trade, the factor when one did, blank when more than one may
+    have (the summary keeps only the last) or the trade date is unreadable."""
+    one = pd.Series(1.0, index=df.index)
+    if df.empty or prices.empty or 'last_split_date' not in prices or 'isin' not in df:
+        return one
+    p = prices.drop_duplicates('isin').set_index('isin')
+    when = pd.to_datetime(df['trade_date_to'], errors='coerce') if 'trade_date_to' in df else pd.Series(pd.NaT, index=df.index)
+    split = pd.to_datetime(df['isin'].map(p['last_split_date']), errors='coerce')
+    n = pd.to_numeric(df['isin'].map(p['n_splits']), errors='coerce').fillna(0)
+    f = pd.to_numeric(df['isin'].map(p['last_split_factor']), errors='coerce')
+    after = split.notna() & (when.isna() | (when < split))
+    return one.where(~after, f).where(~(after & (when.isna() | (n > 1))))
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def _marks(eligible: pd.DataFrame) -> dict:
     """ISIN -> [(day made public, side)] for open-market insider trades."""

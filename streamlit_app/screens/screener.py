@@ -13,7 +13,7 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean import signals
-from screens.ctx import load, need_data, with_prices, with_sparks
+from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 PRESETS = {
     'All with promoter buying': None,
@@ -70,7 +70,8 @@ def render():
     e = ctx.eligible
     w = e[(e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)
           & (e['seen'] > ctx.ref - pd.Timedelta(days=90)) & (e['seen'] <= ctx.ref)]
-    q = pd.to_numeric(w['quantity'], errors='coerce')
+    # Shares restated for any split or bonus since the buy, so the average is on today's price basis.
+    q = pd.to_numeric(w['quantity'], errors='coerce') / split_since(w, ctx.prices)
     paid = (w['value'].where(q > 0).groupby(w['isin']).sum() / q.where(q > 0).groupby(w['isin']).sum())
     last_buy = w.groupby('isin')['seen'].max()
     show = with_sparks(with_prices(rows, ctx.prices), ctx)
