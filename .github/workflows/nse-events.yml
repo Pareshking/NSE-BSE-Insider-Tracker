@@ -15,11 +15,20 @@ on:
         description: 'all | sast | actions | meetings | shareholding'
         required: false
         default: 'all'
+      chain:
+        description: 'Shareholding catch-up: 1 = start the next run by itself while pledge files are still pending'
+        required: false
+        default: '0'
+      round:
+        description: 'Catch-up round number (set by the workflow)'
+        required: false
+        default: '1'
   schedule:
     - cron: '0 16 * * 1-6'  # 21:30 IST, Monday-Saturday
 
 permissions:
   contents: read
+  actions: write   # only for the catch-up chain below
 
 concurrency:
   group: nse-events
@@ -43,3 +52,28 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}"
+      # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
+      # rate-limits by IP); with chain=1 the next run starts by itself while
+      # files are pending, up to 15 rounds, and stops if NSE refused a file
+      # or this run parsed nothing.
+      - name: Continue the catch-up
+        if: ${{ inputs.chain == '1' && always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROUND: ${{ inputs.round || '1' }}
+          DAYS: ${{ inputs.days || '10' }}
+        run: |
+          [ -f nse_events_report.json ] || { echo "no report written; stopping"; exit 0; }
+          read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
+          import json
+          r = json.load(open('nse_events_report.json'))
+          print(r.get('pending_xbrl', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
+          PY
+          )
+          echo "round $ROUND: pending $PENDING, parsed $FETCHED, refused $BLOCKED"
+          if [ "$PENDING" -gt 0 ] && [ "$FETCHED" -gt 0 ] && [ "$BLOCKED" -eq 0 ] && [ "$ROUND" -lt 15 ]; then
+            gh workflow run nse-events.yml -f days="$DAYS" -f dataset=shareholding -f chain=1 -f round=$((ROUND + 1))
+            echo "started round $((ROUND + 1))"
+          else
+            echo "catch-up finished or stopped"
+          fi

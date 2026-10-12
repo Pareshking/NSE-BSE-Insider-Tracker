@@ -28,7 +28,7 @@ same day something is promised, started or finished. Pages follow the data:
 | C | Owner reviews the baseline numbers above | Owner confirms |
 | D | PR #17 (was PR #4): on `main`, real-browser screenshots of every page on R2 data, fix what's wrong | CI green on the PR head; screenshots looked at |
 | E | Merge PR #17, then a "Clean only" run (one-year window) | Live insiders.streamlit.app shows the new site on the rebuilt tables |
-| F | Shareholding for every company | `nse-events.yml` run with dataset=shareholding and a wide window (~120 days), repeated until most companies' latest quarter is in (300 XBRL files per run) |
+| F | Shareholding for every company | `nse-events.yml` run with dataset=shareholding, days=120, chain=1: each run parses up to 300 pledge files, newest quarters first, and starts the next run by itself while files are pending (stops if NSE refuses a file; 15 rounds at most). The run report prints coverage: companies, each company's latest quarter, pending files |
 | G | ~~Prices on the pages~~ **Done 09 Oct** (CMP, 52W range, price line with trades, avg paid vs CMP; ICDR minimum waits on H) | From our own price layer (`artifacts/prices_summary_slim.parquet`, `prices/daily/`): CMP, 52-week high, 200-day average, price paid vs CMP, move since broadcast, and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
 | H | Preferential and rights issues cleaned | Offer price, shares allotted, allotment and trading-approval dates, promoter or not; lock-in expiry (promoters 18 months, others 6); Capital raises sections S16-S18 built |
 

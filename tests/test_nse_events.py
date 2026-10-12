@@ -176,3 +176,37 @@ def test_failed_quarter_carries_previous_pledge_forward():
     latest = out.loc[pd.Timestamp('2026-06-30')]
     assert latest['promoter_pledge_pct'] == 42.0 and latest['shareholding_stale']
     assert not out.loc[pd.Timestamp('2026-03-31'), 'shareholding_stale']
+
+
+def test_batch_size_limits_the_pledge_files_and_the_report_counts_what_is_left(events):
+    r2, run_daily = events
+    rep = run_daily.run(r2, FakeNSE(), date(2026, 10, 7), 10, max_xbrl=2)
+    assert rep['xbrl_fetched'] == 2
+    cov = rep['streams']['shareholding']['coverage']
+    assert cov['pending_xbrl'] == 3 and rep['pending_xbrl'] == 3
+    assert cov['xbrl_status']['ok'] == 2 and cov['companies'] == 5
+    # the next run picks up the rest and nothing is fetched twice
+    rep2 = run_daily.run(r2, FakeNSE(), date(2026, 10, 8), 10, max_xbrl=10)
+    assert rep2['xbrl_fetched'] == 3 and rep2['pending_xbrl'] == 0
+
+
+def test_newest_quarter_is_fetched_first():
+    from collectors.nse_events.run_daily import fetch_xbrl
+    listing = pd.DataFrame({
+        'event_id': ['old', 'new'], 'xbrl_url': ['u1', 'u2'],
+        'quarter_end': pd.to_datetime(['2026-03-31', '2026-06-30'])})
+    nse = FakeNSE()
+    out = fetch_xbrl(nse, listing, None, {'notes': []}, max_xbrl=1).set_index('event_id')
+    assert out.loc['new', 'xbrl_status'] == 'ok' and out.loc['old', 'xbrl_status'] == 'pending'
+
+
+def test_coverage_counts_latest_quarter_per_company():
+    from collectors.nse_events.run_daily import shareholding_coverage
+    df = pd.DataFrame({
+        'symbol': ['A', 'A', 'B'],
+        'quarter_end': pd.to_datetime(['2026-03-31', '2026-06-30', '2026-06-30']),
+        'xbrl_status': ['ok', 'pending', 'ok'],
+        'promoter_pledge_pct': [1.0, 1.0, None]})
+    c = shareholding_coverage(df)
+    assert c['companies'] == 2 and c['pending_xbrl'] == 1 and c['pending_latest'] == 1
+    assert c['latest_quarter_of_company'] == {'2026-06-30': 2} and c['latest_with_pledge'] == 1

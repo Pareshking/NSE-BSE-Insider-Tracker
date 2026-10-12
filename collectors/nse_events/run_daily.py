@@ -121,7 +121,28 @@ def clean_shareholding(arch: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None, report: dict) -> pd.DataFrame:
+def shareholding_coverage(clean: pd.DataFrame) -> dict:
+    """How far the shareholding table has got: companies, the quarter each
+    company's latest filing is for, and how many pledge files are still
+    waiting. Counts only; nothing here changes the data."""
+    if clean is None or clean.empty:
+        return {'companies': 0, 'pending_xbrl': 0, 'pending_latest': 0}
+    status = clean['xbrl_status'].astype(str) if 'xbrl_status' in clean.columns else pd.Series('pending', index=clean.index)
+    latest = clean.sort_values('quarter_end').groupby('symbol').tail(1)
+    lstat = status.loc[latest.index]
+    quarters = latest['quarter_end'].dt.strftime('%Y-%m-%d').value_counts().sort_index(ascending=False).head(4)
+    return {
+        'companies': int(clean['symbol'].nunique()),
+        'latest_quarter_of_company': {k: int(v) for k, v in quarters.items()},
+        'xbrl_status': {k: int(v) for k, v in status.str.split(':').str[0].value_counts().items()},
+        'pending_xbrl': int((status == 'pending').sum()),
+        'pending_latest': int((lstat == 'pending').sum()),
+        'latest_with_pledge': int(latest['promoter_pledge_pct'].notna().sum()),
+    }
+
+
+def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None, report: dict,
+               max_xbrl: int = MAX_XBRL_PER_RUN) -> pd.DataFrame:
     """Add pledge figures to listing rows whose XBRL hasn't been parsed yet."""
     done = set()
     if known is not None and 'xbrl_status' in known.columns:
@@ -132,14 +153,15 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
               'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct'):
         listing[c] = None
     fetched, blocked = 0, False
-    for i, row in listing.iterrows():
+    # Newest quarters first: the latest filing per company is what the pages show.
+    for i, row in listing.sort_values('quarter_end', ascending=False, kind='stable').iterrows():
         if row['event_id'] in done:
             for c in ('xbrl_status', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
                       'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct'):
                 if c in prev.columns:
                     listing.at[i, c] = prev.at[row['event_id'], c]
             continue
-        if blocked or fetched >= MAX_XBRL_PER_RUN or not row.get('xbrl_url'):
+        if blocked or fetched >= max_xbrl or not row.get('xbrl_url'):
             listing.at[i, 'xbrl_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
             continue
         fetched += 1
@@ -161,7 +183,7 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
     return listing
 
 
-def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS) -> dict:
+def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -184,7 +206,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS) -> dict:
                 else:
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
                     known = merge_into_archive(r2, stream, None, run_date)[0]
-                    new = fetch_xbrl(nse, listing, known, report)
+                    new = fetch_xbrl(nse, listing, known, report, max_xbrl)
                     blocked = bool(report.get('xbrl_blocked'))
             except Blocked as exc:
                 blocked = True
@@ -199,6 +221,8 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS) -> dict:
         clean = add_identity(arch, master)
         if stream == 'shareholding':
             clean = clean_shareholding(clean)
+            entry['coverage'] = shareholding_coverage(clean)
+            report['pending_xbrl'] = entry['coverage']['pending_xbrl']
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['clean_rows'] = len(clean)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
@@ -212,10 +236,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--days', type=int, default=10)
     ap.add_argument('--dataset', choices=('all',) + STREAMS, default='all')
+    ap.add_argument('--max-xbrl', type=int, default=MAX_XBRL_PER_RUN,
+                    help='shareholding pledge files to fetch this run (NSE rate-limits by IP)')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
-    report = run(r2_client(), NSEClient(), today, args.days, streams)
+    report = run(r2_client(), NSEClient(), today, args.days, streams, args.max_xbrl)
+    Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')
     for n in report['notes']:
