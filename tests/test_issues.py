@@ -114,12 +114,13 @@ def test_rights_records_keep_ratio_dates_and_price():
          'canonical_symbol': 'OLAELEC', 'canonical_company': 'OLA ELECTRIC MOBILITY LIMITED', 'sysDateTime': '09-OCT-2026',
          'dtOfSubmission': '08-OCT-2026', 'offerPrice': '40', 'rightRatio': '1:5', 'recordDate': '01-SEP-2026',
          'issueOpenDate': '10-SEP-2026', 'issueCloseDate': '24-SEP-2026', 'noOfSharesAlloted': '5000',
-         'dtOfAllotmentsOfShares': '02-OCT-2026', 'dateOfListing': '07-OCT-2026', 'dateOfTradingApp': '06-OCT-2026',
+         'dtOfAllotmentsOfShare': '02-OCT-2026', 'dateOfListing': '07-OCT-2026', 'dateOfTradingApp': '06-OCT-2026',
          'ingested_at': '2026-10-10T02:01:03+00:00'}])
     df, report = issues.clean_issues(raw, 'rights')
     ls = df[df['stage'] == 'listing'].iloc[0]
     assert ls['ratio'] == '1:5' and ls['offer_price'] == 40 and ls['record_date'] == date(2026, 9, 1)
     assert ls['issue_close_date'] == date(2026, 9, 24) and ls['link_status'] == 'linked'
+    assert ls['allotment_date'] == date(2026, 10, 2) and ls['trading_approval_date'] == date(2026, 10, 6)
     assert report['listing'] == 1 and report['in_principle'] == 1 and report['link_status'] == {'linked': 1}
     assert 'lock_in_promoter_until' not in df.columns  # rights carry no lock-in
 

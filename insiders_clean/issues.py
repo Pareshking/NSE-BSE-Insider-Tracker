@@ -54,7 +54,7 @@ RIGHTS_FIELDS = {
     'listing': {'offerPrice': 'offer_price', 'rightRatio': 'ratio', 'recordDate': 'record_date',
                 'issueOpenDate': 'issue_open_date', 'issueCloseDate': 'issue_close_date',
                 'noOfSharesAlloted': 'shares_allotted', 'noOfSharesListed': 'shares_listed',
-                'dtOfAllotmentsOfShares': 'allotment_date', 'dateOfListing': 'listing_date',
+                'dtOfAllotmentsOfShare': 'allotment_date', 'dateOfListing': 'listing_date',
                 'dateOfTradingApp': 'trading_approval_date', 'amntRaised': 'amount_raised'},
 }
 NUMERIC = ('offer_price', 'shares_allotted', 'shares_listed', 'amount_raised', 'amount_total')
