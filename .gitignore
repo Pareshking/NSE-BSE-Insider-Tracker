@@ -28,3 +28,4 @@ artifacts/raw_capture/
 
 # Local Claude Code settings and worktrees
 .claude/
+!insiders_clean/investor_aliases.csv
