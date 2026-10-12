@@ -48,6 +48,19 @@ def data_dir(tmp_path_factory, real_nse_rows):
     sh = parsers.parse_shareholding_listing(load('shareholding_ZEEL.json'))
     sh['promoter_pledge_pct'] = 5.38
     sh.to_parquet(cur / 'shareholding.parquet')
+    from test_issues import IN_P, LIST, frame as issue_frame, pref as issue_row
+
+    from insiders_clean import issues as issue_clean
+    pref_raw = issue_frame(issue_row('In-Principle', 1, isin='INE0V9N01017', posted='02-MAR-2026', **IN_P),
+                           issue_row('Listing Stage', 2, isin='INE0V9N01017', posted='12-MAR-2026', **LIST),
+                           issue_row('In-Principle', 5, isin='INE000000009', posted='09-OCT-2026', **IN_P))
+    issue_clean.clean_issues(pref_raw, 'preferential')[0].to_parquet(cur / 'preferential.parquet')
+    rights_raw = pd.DataFrame([{'canonical_event_id': 'r1', 'appId': '9', 'canonical_stage': 'Listing Stage',
+                                'canonical_isin': 'INE0LXG01040', 'canonical_symbol': 'OLAELEC',
+                                'canonical_company': 'OLA ELECTRIC MOBILITY LIMITED', 'sysDateTime': '09-OCT-2026',
+                                'dtOfSubmission': '08-OCT-2026', 'offerPrice': '40', 'rightRatio': '1:5',
+                                'ingested_at': '2026-10-10T02:01:03+00:00'}])
+    issue_clean.clean_issues(rights_raw, 'rights')[0].to_parquet(cur / 'rights.parquet')
     (root / 'clean' / 'report_local.json').write_text(json.dumps(report, default=str))
     (root / 'clean' / 'latest.json').write_text(json.dumps({'date': RUN_DATE, 'report': 'local'}))
     return root
