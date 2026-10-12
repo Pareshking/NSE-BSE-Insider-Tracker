@@ -14,7 +14,7 @@ import pandas as pd
 import streamlit as st
 from lib import r2_data
 
-TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings', 'shareholding')
+TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings', 'shareholding', 'preferential', 'rights')
 
 
 def _local() -> Path | None:

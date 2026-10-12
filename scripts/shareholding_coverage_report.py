@@ -26,8 +26,9 @@ from collectors.nse_events.run_daily import shareholding_coverage  # noqa: E402
 
 def latest_completed_quarter(today: pd.Timestamp) -> pd.Timestamp:
     """Latest quarter end whose filing deadline (21 days after quarter end) has passed."""
-    q = (today - pd.Timedelta(days=21)) - pd.offsets.QuarterEnd(0)
-    return q if q <= today - pd.Timedelta(days=21) else q - pd.offsets.QuarterEnd(1)
+    cutoff = today - pd.Timedelta(days=21)
+    q = cutoff + pd.offsets.QuarterEnd(0)
+    return q if q <= cutoff else q - pd.offsets.QuarterEnd(1)
 
 
 def main():
@@ -48,12 +49,15 @@ def main():
     print('latest filing quarter, all companies:',
           latest['quarter_end'].dt.strftime('%Y-%m-%d').value_counts().sort_index(ascending=False).head(6).to_dict())
     if sec is not None and not sec.empty and 'isin' in sec.columns:
-        isins = set(sec['isin'].dropna().astype(str))
         have = set(sh['isin'].dropna().astype(str))
         have_latest = set(sh.loc[sh['quarter_end'] >= target, 'isin'].dropna().astype(str))
-        print(f'securities in the clean securities table: {len(isins)}')
-        print(f'  with any shareholding row: {len(isins & have)}; with a row for {target:%Y-%m-%d}: {len(isins & have_latest)}')
-        print(f'  without any shareholding row: {len(isins - have)}')
+        on_nse = sec['nse_symbol'].notna() & sec['nse_symbol'].astype(str).str.strip().ne('') if 'nse_symbol' in sec.columns else pd.Series(True, index=sec.index)
+        for label, part in (('NSE-listed', sec[on_nse]), ('BSE-only', sec[~on_nse])):
+            isins = set(part['isin'].dropna().astype(str))
+            print(f'{label} securities in the clean securities table: {len(isins)}; '
+                  f'with any shareholding row {len(isins & have)}; with a row for {target:%Y-%m-%d} or later {len(isins & have_latest)}; '
+                  f'none {len(isins - have)}')
+        print('(shareholding comes from NSE only; BSE-only securities have none by construction)')
     else:
         print('no securities table to compare against')
 

@@ -91,6 +91,23 @@ One row per company and quarter; a revised filing replaces the original.
 | `xbrl_status` | `ok`, `pending` (not fetched yet; at most 300 a night), `no_xbrl`, or `failed: ...` |
 | `shareholding_stale` | True when this quarter's XBRL isn't parsed and the pledge figures shown are the company's previous quarter's |
 
+### preferential and rights — NSE issue records, one row per stage record
+
+NSE returns the latest 100 records of each stage a day, so the table is every daily snapshot stacked, newest snapshot per record winning. An issue has two records, **In-Principle** (board date, amount, consideration; preferential also the allottee category) and **Listing Stage** (offer price, shares allotted, allotment, listing and trading-approval dates; rights also ratio, record date, issue open and close). They have separate `app_id`s and no shared key, so a listing record is linked to its approval by ISIN: the one In-Principle record filed in the 180 days before it, if there is exactly one.
+
+| Column | Meaning |
+|---|---|
+| `stage` | `in_principle` or `listing` |
+| `posted_on`, `submitted_on` | NSE posting date (`systemDate`/`sysDateTime`; the fields NSE calls `boardResDate` hold this too, not the board meeting) and the date filed |
+| `board_date`, `amount_total`, `consideration`, `allottee_category` | In-Principle fields (`PROMOTER`, `NON_PROMOTER`, `MIXED`); on a listing record they are copied from its linked approval |
+| `offer_price`, `shares_allotted`, `shares_listed`, `allotment_date`, `listing_date`, `trading_approval_date`, `amount_raised` | Listing-stage fields |
+| `ratio`, `record_date`, `issue_open_date`, `issue_close_date` | Rights, listing stage |
+| `link_status`, `linked_app_id` | `linked`, `ambiguous` (more than one possible approval; nothing copied), `no_in_principle_in_data` (its approval is not in the latest-100 lists) |
+| `amount_unreliable` | NSE's amount was zero or above ₹1 lakh crore; the amount is blank |
+| `lock_in_promoter_until`, `lock_in_other_until` | Preferential only, linked records with a trading-approval date: +18 months for promoters, +6 for others; a `MIXED` allotment gets both because the split is not filed |
+
+BSE's rights and preferential rows carry only company, scrip code and two stage dates, so they are not used here.
+
 ## Archive and raw layer columns (not clean tables)
 
 | Column | Where | Meaning |

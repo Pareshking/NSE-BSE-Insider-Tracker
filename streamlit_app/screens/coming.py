@@ -6,10 +6,10 @@ import streamlit as st
 from ui import kit
 
 ITEMS = [
-    ('Preferential allotments and private placements', 'Collected, not cleaned yet',
-     'Who got shares, at what price against the market price and the SEBI ICDR floor, how much, dilution, lock-in expiry.'),
-    ('Rights issues', 'Collected, not cleaned yet',
-     'Ratio and price, record date, and whether promoters took up, renounced or let their entitlement lapse.'),
+    ('SEBI ICDR minimum price on preferential issues', 'Needs daily volumes',
+     'Higher of the 90-day and 10-day VWAP, to show whether promoters got shares below the floor. Preferential and rights issues themselves are on Capital raises.'),
+    ('Rights take-up by promoters', 'Not in NSE\'s feed',
+     'Whether promoters took up, renounced or let their entitlement lapse.'),
     ('Warrants and convertibles', 'Not collected yet',
      'Upfront money, exercise price against today\'s price, conversion deadline, and whether they were converted.'),
     ('QIPs', 'Not collected yet', 'Issue price, discount to market, and the institutions allotted.'),
@@ -24,5 +24,5 @@ def render():
     with kit.card('Status', 'coming'):
         st.html(''.join(
             f'<div class="cm-r"><div><b>{kit.esc(name)}</b><p>{kit.esc(what)}</p></div>'
-            f'<span class="tg {"tg-warn" if "not cleaned" in status else "tg-mute"}">{kit.esc(status)}</span></div>'
+            f'<span class="tg {"tg-warn" if "Needs" in status else "tg-mute"}">{kit.esc(status)}</span></div>'
             for name, status, what in ITEMS))

@@ -22,6 +22,8 @@ class Ctx:
     actions: pd.DataFrame
     meetings: pd.DataFrame
     shareholding: pd.DataFrame
+    preferential: pd.DataFrame  # NSE preferential issue records, both stages, linked where certain
+    rights: pd.DataFrame
     prices: pd.DataFrame        # per ISIN: latest_close, high_52w, pct_off_high, last_date
     ref: pd.Timestamp | None
     latest: dict
@@ -52,7 +54,8 @@ def load() -> Ctx:
         deals['date'] = pd.to_datetime(deals['date'], errors='coerce')
     return Ctx(trades=trades, eligible=elig, deals=deals, securities=store.table('securities'),
                sast=store.table('sast'), actions=store.table('actions'), meetings=store.table('meetings'),
-               shareholding=store.table('shareholding'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest())
+               shareholding=store.table('shareholding'), preferential=store.table('preferential'),
+               rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest())
 
 
 def need_data(ctx: Ctx) -> bool:

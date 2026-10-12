@@ -36,7 +36,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import archive
+from insiders_clean import archive, issues
 from insiders_clean.calendar import seed_state
 from insiders_clean.pipeline import run
 
@@ -187,6 +187,22 @@ def nse_lists(client, run_day: str, notes: list):
     return frames
 
 
+def issue_tables(client) -> tuple[dict, dict]:
+    """NSE preferential and rights issues -> clean tables. NSE returns only the
+    latest 100 records per stage a day, so the history is every daily
+    canonical snapshot stacked (insiders_clean/issues.py)."""
+    tables, report = {}, {}
+    for kind, category in (('preferential', 'preferential_issue'), ('rights', 'rights_issue')):
+        keys = sorted(k for k in list_keys(client, f'canonical/nse/{category}/') if k.endswith('data.parquet'))
+        frames = [f for f in (read_parquet(client, k) for k in keys) if f is not None and not f.empty]
+        df, rep = issues.clean_issues(pd.concat(frames, ignore_index=True) if frames else None, kind)
+        rep['snapshots'] = len(frames)
+        report[kind] = rep
+        if not df.empty:
+            tables[kind] = df
+    return tables, report
+
+
 def last_good(client, pattern, run_day: date, include_today=False):
     start = 0 if include_today else 1
     for back in range(start, LOOKBACK_DAYS + 1):
@@ -223,6 +239,11 @@ def main():
 
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
                          nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows)
+    try:  # a failure here must never stop the insider and deal tables
+        issue_out, report['issues'] = issue_tables(client)
+        tables.update(issue_out)
+    except Exception as exc:  # noqa: BLE001
+        report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
     report['archive'] = archive_report
     report['notes'] = notes + report['notes']
 
@@ -246,6 +267,8 @@ def main():
         print(f'  {table}: {t["input_rows"]} in -> {t["output_rows"]} out; '
               f'removed {sum(r["count"] for r in t["removed"].values())}; flagged {t["flagged"]}')
     print(f'  unmatched securities: {len(report["unmatched_securities"])}')
+    for kind, r in report.get('issues', {}).items():
+        print(f'  issues/{kind}: {r}')
     for table, t in report['tables'].items():
         for reason, r in t.get('removed', {}).items():
             print(f'  removed {table}/{reason}: {r["count"]}')

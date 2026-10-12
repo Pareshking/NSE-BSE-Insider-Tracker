@@ -22,8 +22,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In (buyback price and route missing) |
 | D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead | In |
 | D6 | Shareholding pattern | promoter %, public % (free float), employee trusts %, promoter pledged and encumbered shares (XBRL) | NSE; only filings of the last 10 days so far | In, partial (TODO 5) |
-| D7 | Preferential issues | in-principle: board date, allottee category, consideration, amount; listing: offer price, shares allotted, allotment date, listing and trading-approval dates, XBRL | NSE latest 100 per stage; history from May 2023; BSE stages | Raw (TODO 11) |
-| D8 | Rights issues | in-principle: board date, amount, consideration; listing stage | as D7 | Raw (TODO 11) |
+| D7 | Preferential issues | in-principle: board date, allottee category, consideration, amount; listing: offer price, shares allotted, allotment date, listing and trading-approval dates, XBRL | NSE latest 100 per stage a day, kept as daily snapshots; BSE has no amounts or prices | Clean (12 Oct, `insiders_clean/issues.py`) |
+| D8 | Rights issues | in-principle: board date, amount, consideration; listing stage | as D7 | Clean (12 Oct) |
 | D9 | Market cap | per symbol, daily | NSE PR file + BSE list | In |
 | D10 | Securities | ISIN, NSE symbol, BSE code, name, sector, industry, size bucket | NSE/BSE lists nightly + VR export | In |
 | D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In; not yet shown on pages (TODO G) |
@@ -46,8 +46,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | Is an outside fund or investor crossing 5% or adding 2%+? | D3 | In |
 | Is the promoter borrowing against shares? Is it rising? | D6 pledge %; D1 pledge filings | Partial (D6 coverage) |
 | Is the company about to raise money, buy back, split? | D5 | In |
-| Did promoters get shares cheap or pay up? | D7 offer price with D11 (ICDR minimum, market price) | Pending (D7 clean, D11) |
-| When can preferential shares be sold (supply overhang)? | D7 trading-approval date + lock-in rule (promoters 18 months, others 6) | Pending (D7 clean) |
+| Did promoters get shares cheap or pay up? | D7 offer price with D11 (ICDR minimum, market price) | In vs the market price now; ICDR minimum pending (D11 VWAP) |
+| When can preferential shares be sold (supply overhang)? | D7 trading-approval date + lock-in rule (promoters 18 months, others 6) | In, for allotments matched to their approval |
 | Rights issue terms and dates | D4 ratio/premium, D8 stages | D4 In, D8 pending |
 | Buyback price vs market, tender or open market | D4 + offer documents + D11 | Pending |
 | Where is the price vs the 52-week high and 200-day average? What did the insider pay vs now? | D1 price with D11 | Pending (D11) |
@@ -72,9 +72,9 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | S13 Promoter holding and pledge, latest quarter and trend | D6 | Partial |
 | S14 Upcoming catalysts: fund raising, preferential, buyback, bonus, split, results | D5 | In |
 | S15 Corporate actions: rights (ratio, price), bonus, split, dividend, buyback | D4 | In |
-| S16 Preferential pipeline: announced, approved, allotted, listed; promoter or not; amount | D7 | Pending |
-| S17 Preferential price vs ICDR minimum and market | D7, D11 | Pending |
-| S18 Lock-in expiry calendar | D7 | Pending |
+| S16 Preferential pipeline: announced, approved, allotted, listed; promoter or not; amount | D7 | In (NSE; allottee and amount only where the allotment is matched to its approval) |
+| S17 Preferential price vs ICDR minimum and market | D7, D11 | In vs the market price now; ICDR minimum pending (needs VWAP) |
+| S18 Lock-in expiry calendar | D7 | In (matched records only; promoters 18 months, others 6, from trading approval) |
 | S19 Price context: CMP vs 52W high and 200-day average, price paid vs today | D1, D11 | Pending |
 | S20 Price chart with filings marked at broadcast date | D11, D1-D5 | Pending |
 | S21 Track record by signal, person and fund | D13 | Pending |
