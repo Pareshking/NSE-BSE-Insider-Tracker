@@ -41,6 +41,8 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 
 | `clean/current/{preferential,rights,qip}.parquet`, `preferential_allottees`, `preferential_lockins`, `qip_allottees` | Further issues (`insiders_clean/issues.py`), rebuilt by `clean_writer.py` from the snapshots and the issues archive | Rewritten nightly |
 | `archive/nse_events/issues/year=YYYY.parquet` | Every further-issue filing NSE posted in a date window (NSE events job), with NSE's row and the parsed XBRL | Forever |
+| `archive/nse_events/promoter_group/batch={run time}.parquet` | Promoter-group members parsed in one NSE events run; a new file per run, never rewritten | Forever |
+| `clean/current/promoter_group.parquet` | One row per company, quarter and promoter-group member, rebuilt from the batches | Rewritten daily |
 | `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
 | `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
 | `archive/_backfill/nse_{dataset}.json` | Backfill progress: chunks done, with row counts | Forever (small) |
@@ -90,6 +92,16 @@ owner's to set; code cannot prove it. Wired into the NSE history backfill and
 the nightly collectors. A failed raw write fails the backfill chunk; in the
 nightly the flush step goes red.
 
+Shareholding XBRLs (`raw_v2/nse/shareholding_xbrl/`, from the first run after
+12 Oct 2026) are the one dataset stored compressed: gzip of the bytes NSE sent,
+with no timestamp so the same file is one blob; `params.sha256_as_sent` in the
+fetch record is the hash of the uncompressed file. Kept, no longer discarded,
+because the member lists are a second parse of the same file and a parser fix
+should re-read it without asking NSE again. Size: 70 KB to 1.2 MB as sent
+(ASIANPAINT 1.16 MB), about 30 times smaller compressed (ASIANPAINT 35 KB), so
+roughly 100 MB a quarter for ~2,400 companies. A raw write that fails never
+stops the parse.
+
 ## Product window
 
 The product holds transactions dated on or after 8 Oct 2025: the last one
@@ -116,6 +128,28 @@ and the rule (promoters 18 months, others 6, from trading approval) otherwise.
 Our own ICDR estimate (90/10-session VWAP before the filed relevant date) is
 computed only beside the filed figure, from `prices/daily/` for the months it
 needs, and left blank across a split or bonus.
+
+## Promoter-group link (insider filings)
+
+The clean step reads `clean/current/promoter_group.parquet` and adds
+`promoter_group_id` to every insider filing whose filer is in the company's
+latest promoter-group list (`insiders_clean/promoter_group.py`). Identity only:
+the filer's `person_id` (`entity_key` of the name) equals a member's key, or the
+name before a bracket does on either side (a HUF with its karta, a trust with
+its trustees, a filer's former name). Never by similarity: "JSL Overseas Holding
+LTF" stays unlinked from "JSL Overseas Holding LTD". The cleaning report's
+`promoter_group_link` counts, for promoter-role and for director/KMP filings:
+all, in a company with a list, linked, linked through the bracket rule, and up
+to 20 unlinked promoter filers by name. Nothing is removed or held back.
+
+Checked on real data, 12 Oct 2026: NSE PIT filings of Jan-Mar 2026 for 50
+companies with promoter trades, against their Jun 2026 lists: 557 of 665
+promoter-role filings link (83.8%; 22 through the bracket rule). The unlinked
+are spellings that differ ("Kakatiya Industries (P) Ltd", "M/s Kewal Kiran
+Finance Private Limited", initials for a middle name) and one company whose
+promoters changed between the filings and the list (CRESTO: the seven Q1
+buyers are not in the Jun list). None of 44 director/KMP filings there named a
+group member.
 
 ## Intraday round trips (deals)
 

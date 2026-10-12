@@ -7,6 +7,7 @@ twice) and keeps the NSE payload in `raw_json` for audit.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 
@@ -258,6 +259,9 @@ def _fact(xml: str, tag: str, ctx: str):
     return _num(m.group(1)) if m else None
 
 
+_NON_PROMOTER_NON_PUBLIC_CTX = 'SharesHeldByNonPromoterNonPublicShareholders_ContextI'
+
+
 def parse_shp_xbrl(xml: str) -> dict:
     """Promoter, public and total shares and promoter pledges from a
     shareholding-pattern XBRL (SEBI's in-bse-shp taxonomy, as NSE files it).
@@ -265,21 +269,36 @@ def parse_shp_xbrl(xml: str) -> dict:
     promoter_pledge_pct is pledged shares as a % of the promoter group's own
     shares, which is what a pledge warning needs (Zee, Jun 2026: 2,060,000 of
     38,316,284 = 5.38%, matching the filing's own 0.0538), not a % of the
-    company. Raises ValueError when the promoter or total figure is missing."""
-    promoter = _fact(xml, 'NumberOfShares', _PROMOTER_CTX)
+    company.
+
+    A company with no promoter group (ITC, L&T, ICICI Bank, Swiggy, AYE, Jun
+    2026) files no promoter context at all; when public plus non-promoter
+    non-public shares then make up the whole total, promoter shares are 0 as
+    filed (`no_promoter_group`), and the pledge % stays blank (nothing to
+    pledge). Raises ValueError, with the reason, otherwise."""
     total = _fact(xml, 'NumberOfShares', _TOTAL_CTX)
-    if promoter is None or not total:
-        raise ValueError('promoter or total shares not found in shareholding XBRL')
+    if not total:
+        raise ValueError('total shares not found')
+    promoter = _fact(xml, 'NumberOfShares', _PROMOTER_CTX)
     public = _fact(xml, 'NumberOfShares', _PUBLIC_CTX)
+    no_group = False
+    if promoter is None:
+        if f'id="{_PROMOTER_CTX}"' in xml:
+            raise ValueError('promoter context filed without a share count')
+        rest = (public or 0.0) + (_fact(xml, 'NumberOfShares', _NON_PROMOTER_NON_PUBLIC_CTX) or 0.0)
+        if public is None or abs(rest - total) >= 1:
+            raise ValueError('no promoter context and public shares do not make up the total')
+        promoter, no_group = 0.0, True
     pledged = _fact(xml, 'NumberOfSharesEncumberedUnderPledged', _PROMOTER_CTX) or 0.0
     encumbered = _fact(xml, 'NumberOfSharesEncumbered', _PROMOTER_CTX) or pledged
     return {
         'promoter_shares': promoter, 'public_shares': public, 'total_shares': total,
         'promoter_pledged_shares': pledged, 'promoter_encumbered_shares': encumbered,
-        'promoter_pledge_pct': round(pledged / promoter * 100, 4) if promoter else 0.0,
-        'promoter_encumbered_pct': round(encumbered / promoter * 100, 4) if promoter else 0.0,
+        'promoter_pledge_pct': None if no_group else round(pledged / promoter * 100, 4) if promoter else 0.0,
+        'promoter_encumbered_pct': None if no_group else round(encumbered / promoter * 100, 4) if promoter else 0.0,
         'promoter_holding_pct_xbrl': round(promoter / total * 100, 4),
         'public_holding_pct_xbrl': round(public / total * 100, 4) if public is not None else None,
+        'no_promoter_group': no_group,
     }
 
 
@@ -346,3 +365,75 @@ def parse_daily_buybacks(rows: list[dict]) -> pd.DataFrame:
     df = _frame(out, DAILY_BB_COLUMNS)
     df['report_date'] = parse_dates(df['report_date'].astype('string').str[:11])
     return df.drop_duplicates('event_id').reset_index(drop=True)
+
+
+# --- Promoter and promoter-group members (docs/TODO.md item 21) ------------------
+#
+# Table II of the shareholding pattern names every promoter and promoter-group
+# member. In the XBRL each member has a pair of contexts on its own axis: a
+# duration context `D_<Section>_Context<n>` carrying NameOfTheShareholder (and,
+# for "any other", CategoryOfOther...Shareholders), and an instant context
+# `<Section>_Context<n>` carrying NumberOfShares and the % of the company.
+# Promoter members, and only they, also carry TypeOfPromoterShareholding
+# (masked by NSE as '******', like the PAN). Checked on 14 filings, taxonomies
+# 2025-05-31 and 2025-10-31 (ASIANPAINT, RELIANCE, NESTLEIND, COALINDIA, INFY,
+# ADANIENT, ZEEL, CHEVIOT, BFINVEST, MOTILALOFS, JSWINFRA, RIIL, EMCURE,
+# ANUHPHR): in every one the members' shares add up exactly to the promoter
+# total. Public holders named in Table III (mutual funds, insurers, 1%+
+# holders) sit on other axes and carry no promoter type. The PAN is never read.
+
+PROMOTER_SECTIONS = {
+    'IndividualsOrHUF': 'Individual or HUF',
+    'CentralGovernmentOrStateGovernments': 'Central or state government',
+    'OthersIndianShareholders': None,          # the filed category: Bodies Corporate, Trusts, ...
+    'NonResidentIndividualsOrForeignIndividuals': 'Non-resident or foreign individual',
+    'OtherForeignShareholders': None,          # the filed category: Bodies Corporate, Overseas Corporate Bodies, ...
+}
+_FACT = re.compile(r'<in-bse-shp:(\w+)\b[^>]*?contextRef="([^"]+)"[^>]*>([^<]*)<')
+_MEMBER_CTX = re.compile(r'^D_(\w+?)_Context(\d+)$')
+
+
+def _words(section: str) -> str:
+    return re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', section).capitalize()
+
+
+def parse_shp_members(xml: str) -> tuple[list[dict], dict]:
+    """(members, check) from a shareholding-pattern XBRL. Each member: order in
+    the filing, name as filed, section, sub-category, shares, % of the
+    company, pledged shares. `check` compares the members' shares with the
+    promoter total of the same file: 'match', 'mismatch', or 'no_members'
+    when the file names nobody (a company with no promoter group: 0 = 0 is
+    'match')."""
+    facts: dict[str, dict] = {}
+    for tag, ctx, val in _FACT.findall(xml):
+        facts.setdefault(ctx, {})[tag] = html.unescape(val).strip()
+    members = []
+    for ctx, f in facts.items():
+        m = _MEMBER_CTX.match(ctx)
+        name = f.get('NameOfTheShareholder')
+        if not m or not name:
+            continue
+        section = m.group(1)
+        if 'TypeOfPromoterShareholding' not in f and section not in PROMOTER_SECTIONS:
+            continue
+        inst = facts.get(ctx[2:], {})
+        pct = _num(inst.get('ShareholdingAsAPercentageOfTotalNumberOfShares'))
+        filed_cat = f.get('CategoryOfOtherIndianShareholders') or f.get('CategoryOfOtherForeignShareholders')
+        members.append({
+            'member_no': int(m.group(2)),
+            'member_name_filed': name,
+            'section': section,
+            'sub_category': filed_cat or PROMOTER_SECTIONS.get(section) or _words(section),
+            'shares': _num(inst.get('NumberOfShares')),
+            'pct_of_company': round(pct * 100, 4) if pct is not None else None,
+            'pledged_shares': _num(inst.get('NumberOfSharesEncumberedUnderPledged')),
+        })
+    order = list(PROMOTER_SECTIONS)
+    members.sort(key=lambda r: (order.index(r['section']) if r['section'] in order else len(order), r['member_no']))
+    for i, r in enumerate(members, 1):
+        r['member_no'] = i
+    promoter = _fact(xml, 'NumberOfShares', _PROMOTER_CTX) or 0.0
+    held = sum(r['shares'] or 0.0 for r in members)
+    check = ('no_members' if not members and promoter else
+             'match' if abs(held - promoter) < 1 else 'mismatch')
+    return members, {'members': len(members), 'member_shares': held, 'promoter_shares': promoter, 'check': check}

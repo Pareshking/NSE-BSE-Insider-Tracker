@@ -1,0 +1,779 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><!--SHP V1.1 (01-12-2025)--><xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-bse-shp="http://www.bseindia.com/xbrl/shp/2025-10-31/in-bse-shp" xmlns:in-bse-shp-types="http://www.bseindia.com/xbrl/shp/2025-10-31/in-bse-shp-types" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:negated="http://www.xbrl.org/2009/role/negated" xmlns:net="http://www.xbrl.org/2009/role/net" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><link:schemaRef xlink:href="in-bse-shp-2025-10-31.xsd" xlink:type="simple"/><xbrli:context id="ShareholdingOfPromoterAndPromoterGroup_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/in-bse-shp/ScripCode">500820</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:ShareholdingOfPromoterAndPromoterGroupMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:context id="PublicShareholding_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/in-bse-shp/ScripCode">500820</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:PublicShareholdingMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:context id="SharesHeldByNonPromoterNonPublicShareholders_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/in-bse-shp/ScripCode">500820</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:SharesHeldByNonPromoterNonPublicShareholdersMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:context id="ShareholdingPattern_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/in-bse-shp/ScripCode">500820</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2026-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:ShareholdingPatternMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit><xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
+<in-bse-shp:NumberOfShares contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="shares">504785198</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="pure">0.5263</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="shares">48142227</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="shares">48142227</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:NumberOfShares contextRef="PublicShareholding_ContextI" decimals="INF" unitRef="shares">453590707</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="PublicShareholding_ContextI" decimals="INF" unitRef="pure">0.4729</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfShares contextRef="SharesHeldByNonPromoterNonPublicShareholders_ContextI" decimals="INF" unitRef="shares">821885</in-bse-shp:NumberOfShares>
+<in-bse-shp:NumberOfShares contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="shares">959197790</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="pure">1</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="shares">48142227</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="shares">48142227</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context15">Dipika Amar Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="shares">12761340</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="pure">0.0133</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context15">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context16">Late Abhay Arvind Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="shares">12418060</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="pure">0.0129</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context16">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context17">Vivek Abhay Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context17" decimals="INF" unitRef="shares">6812369</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context17" decimals="INF" unitRef="pure">0.0071</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context17" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context17" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context17">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context18">Bhairavi Abhay Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context18" decimals="INF" unitRef="shares">6064322</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context18" decimals="INF" unitRef="pure">0.0063</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context18" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context18" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context18">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context19">Nehal Abhay Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context19" decimals="INF" unitRef="shares">5738489</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context19" decimals="INF" unitRef="pure">0.006</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context19" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context19" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context19">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context20">Prafullika Shailesh Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context20" decimals="INF" unitRef="shares">3874480</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context20" decimals="INF" unitRef="pure">0.004</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context20" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context20" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context20">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context21">Satyen Ashwin Gandhi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context21" decimals="INF" unitRef="shares">3725954</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context21" decimals="INF" unitRef="pure">0.0039</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context21" decimals="INF" unitRef="shares">1391500</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context21" decimals="INF" unitRef="shares">1391500</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context21">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context22">Hiren Ashwin Gandhi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context22" decimals="INF" unitRef="shares">3706265</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context22" decimals="INF" unitRef="pure">0.0039</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context22" decimals="INF" unitRef="shares">1294227</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context22" decimals="INF" unitRef="shares">1294227</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context22">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context23">Vishal Shailesh Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context23" decimals="INF" unitRef="shares">3380865</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context23" decimals="INF" unitRef="pure">0.0035</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context23" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context23" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context23">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context24">Hasit A Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context24" decimals="INF" unitRef="shares">3150800</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context24" decimals="INF" unitRef="pure">0.0033</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context24" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context24" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context24">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context25">VAKIL HUF (VARUN AMAR VAKIL)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context25" decimals="INF" unitRef="shares">3103290</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context25" decimals="INF" unitRef="pure">0.0032</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context25" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context25" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context25">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context26">Amrita Amar Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context26" decimals="INF" unitRef="shares">2566680</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context26" decimals="INF" unitRef="pure">0.0027</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context26" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context26" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context26">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context27">Jigish Shailesh Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context27" decimals="INF" unitRef="shares">2424825</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context27" decimals="INF" unitRef="pure">0.0025</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context27" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context27" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context27">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context28">Manish Mahendra Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context28" decimals="INF" unitRef="shares">2381040</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context28" decimals="INF" unitRef="pure">0.0025</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context28" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context28" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context28">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context29">Varun Amar Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context29" decimals="INF" unitRef="shares">2230590</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context29" decimals="INF" unitRef="pure">0.0023</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context29" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context29" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context29">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context30">AMAR ARVIND VAKIL HUF (VARUN AMAR VAKIL)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context30" decimals="INF" unitRef="shares">2112190</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context30" decimals="INF" unitRef="pure">0.0022</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context30" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context30" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context30">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context31">ABHAY ARVIND VAKIL HUF (VIVEK ABHAY VAKIL)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context31" decimals="INF" unitRef="shares">2076820</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context31" decimals="INF" unitRef="pure">0.0022</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context31" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context31" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context31">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context32">Rupal Anant Bhat</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context32" decimals="INF" unitRef="shares">1923770</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context32" decimals="INF" unitRef="pure">0.002</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context32" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context32" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context32">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context33">SHAILESH CHIMANLAL CHOKSI HUF (JIGISH SHAILESH CHOKSI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context33" decimals="INF" unitRef="shares">1749690</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context33" decimals="INF" unitRef="pure">0.0018</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context33" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context33" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context33">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context34">Mahendra Chimanlal Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context34" decimals="INF" unitRef="shares">1656380</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context34" decimals="INF" unitRef="pure">0.0017</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context34" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context34" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context34">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context35">Jalaj A Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context35" decimals="INF" unitRef="shares">1600200</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context35" decimals="INF" unitRef="pure">0.0017</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context35" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context35" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context35">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context36">Late Asha Subhash Gujarathi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context36" decimals="INF" unitRef="shares">1423400</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context36" decimals="INF" unitRef="pure">0.0015</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context36" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context36" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context36">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context37">Rita Mahendra Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context37" decimals="INF" unitRef="shares">980000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context37" decimals="INF" unitRef="pure">0.001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context37" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context37" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context37">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context38">Rupen Ashwin Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context38" decimals="INF" unitRef="shares">928607</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context38" decimals="INF" unitRef="pure">0.001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context38" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context38" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context38">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context39">Ashish Ashwin Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context39" decimals="INF" unitRef="shares">880840</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context39" decimals="INF" unitRef="pure">0.0009</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context39" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context39" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context39">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context40">Urvashi Ashwin Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context40" decimals="INF" unitRef="shares">838110</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context40" decimals="INF" unitRef="pure">0.0009</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context40" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context40" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context40">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context41">Rhea Amit Sethi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context41" decimals="INF" unitRef="shares">702000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context41" decimals="INF" unitRef="pure">0.0007</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context41" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context41" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context41">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context42">MAHENDRA CHIMANLAL CHOKSI HUF (MAHENDRA CHIMANLAL CHOKSI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context42" decimals="INF" unitRef="shares">539800</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context42" decimals="INF" unitRef="pure">0.0006</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context42" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context42" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context42">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context43">Ami Manish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context43" decimals="INF" unitRef="shares">472200</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context43" decimals="INF" unitRef="pure">0.0005</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context43" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context43" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context43">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context44">Vita Jalaj Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context44" decimals="INF" unitRef="shares">435260</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context44" decimals="INF" unitRef="pure">0.0005</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context44" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context44" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context44">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context45">Ishwara Hasit Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context45" decimals="INF" unitRef="shares">410710</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context45" decimals="INF" unitRef="pure">0.0004</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context45" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context45" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context45">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context46">HASIT ASHWIN DANI HUF (HASIT ASHWIN DANI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context46" decimals="INF" unitRef="shares">392666</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context46" decimals="INF" unitRef="pure">0.0004</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context46" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context46" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context46">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context47">JALAJ A DANI HUF (JALAJ ASHWIN DANI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context47" decimals="INF" unitRef="shares">344666</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context47" decimals="INF" unitRef="pure">0.0004</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context47" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context47" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context47">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context48">Richa Manish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context48" decimals="INF" unitRef="shares">180450</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context48" decimals="INF" unitRef="pure">0.0002</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context48" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context48" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context48">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context49">Mudit Jalaj Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context49" decimals="INF" unitRef="shares">159800</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context49" decimals="INF" unitRef="pure">0.0002</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context49" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context49" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context49">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context50">Late Amar Arvind Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context50" decimals="INF" unitRef="shares">158770</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context50" decimals="INF" unitRef="pure">0.0002</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context50" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context50" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context50">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context51">Smiti Jalaj Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context51" decimals="INF" unitRef="shares">139110</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context51" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context51" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context51" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context51">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context52">Binita Ashish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context52" decimals="INF" unitRef="shares">131700</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context52" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context52" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context52" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context52">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context53">Anay Rupen Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context53" decimals="INF" unitRef="shares">130500</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context53" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context53" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context53" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context53">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context54">Aashay Ashish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context54" decimals="INF" unitRef="shares">125380</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context54" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context54" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context54" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context54">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context55">Nysha Rupen Choksi (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context55" decimals="INF" unitRef="shares">102750</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context55" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context55" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context55" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context55">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context56">Druhi Ashish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context56" decimals="INF" unitRef="shares">100000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context56" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context56" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context56" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context56">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context57">Ashwin Ramanlal Gandhi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context57" decimals="INF" unitRef="shares">91860</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context57" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context57" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context57" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context57">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context58">Meghna Satyen Gandhi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context58" decimals="INF" unitRef="shares">75000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context58" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context58" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context58" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context58">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context59">Vaibhavi Hiren Gandhi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context59" decimals="INF" unitRef="shares">75000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context59" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context59" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context59" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context59">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context60">Shubhlakshmi Hasit Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context60" decimals="INF" unitRef="shares">59529</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context60" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context60" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context60" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context60">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context61">Late Chandanben Chhotalal Shah</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context61" decimals="INF" unitRef="shares">20000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context61" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context61" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context61" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context61">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context62">Hrishav Varun Vakil (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context62" decimals="INF" unitRef="shares">10000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context62" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context62" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context62" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context62">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context63">Nyra Varun Vakil (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context63" decimals="INF" unitRef="shares">10000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context63" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context63" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context63" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context63">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context64">Ragini Varun Vakil</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context64" decimals="INF" unitRef="shares">10000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context64" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context64" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context64" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context64">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context65">MANISH MAHENDRA CHOKSI HUF (MANISH MAHENDRA CHOKSI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context65" decimals="INF" unitRef="shares">7500</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context65" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context65" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context65" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context65">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context66">ASHISH ASHWIN CHOKSI HUF (ASHISH ASHWIN CHOKSI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context66" decimals="INF" unitRef="shares">5620</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context66" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context66" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context66" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context66">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context67">ASHWIN SURYAKANT DANI HUF (ASHWIN SURYAKANT DANI)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context67" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context67">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context68">Anant Raghuvir Bhat</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context68" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context68">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context69">Arhaan Anant Bhat</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context69" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context69">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context70">Rehaan Anant Bhat (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context70" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context70" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context70" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context70" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context70">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context71">Priyanka Jigish Choksi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context71" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context71" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context71" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context71" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context71">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context72">Aryan Jigish Choksi N/G Jigish Shailesh Choksi (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context72" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context72" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context72" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context72" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context72">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context73">Gayatri Subhash Gujarathi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context73" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context73" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context73" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context73" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context73">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context74">Amreen Sethi (Minor)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context74" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context74" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="IndividualsOrHUF_Context74" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="IndividualsOrHUF_Context74" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context74">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context15">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context15">Sattva Holding and Trading Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="shares">54789183</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="pure">0.0571</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="shares">6738500</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="shares">6738500</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context15">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context16">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context16">Smiti Holding and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="shares">51442638</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="pure">0.0536</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="shares">36218000</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="shares">36218000</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context16">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context17">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context17">Geetanjali Trading and Investments Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="shares">45706140</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="pure">0.0477</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="shares">2500000</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="shares">2500000</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context17">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context18">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context18">Elcid Investments Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="shares">28313860</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="pure">0.0295</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context18">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context19">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context19">Shubhit Holdings Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="shares">23150730</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="pure">0.0241</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context19">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context20">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context20">Sudhanva Investments and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="shares">19001760</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="pure">0.0198</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context20">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context21">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context21">Rupen Investment &amp; Industries Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="shares">18849825</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="pure">0.0197</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context21">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context22">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context22">Satyadharma Investments and Trading Company Private Ltd.</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="shares">18334280</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="pure">0.0191</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context22">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context23">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context23">Castle Investment &amp; Industries Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="shares">15457470</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="pure">0.0161</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context23">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context24">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context24">Lyon Investment &amp; Industries Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="shares">14342060</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="pure">0.015</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context24">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context25">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context25">Jaldhar Investments and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="shares">12428250</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="pure">0.013</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context25">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context26">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context26">Tru Trading and Investments Pvt Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="shares">12176500</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="pure">0.0127</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context26">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context27">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context27">Nehal Trading and Investments Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="shares">11102530</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="pure">0.0116</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context27">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context28">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context28">Asteroids Trading and Investments Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="shares">10818530</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="pure">0.0113</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context28">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context29">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context29">Jalaj Trading &amp; Investment Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="shares">10776697</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="pure">0.0112</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context29">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context30">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context30">Unnati Trading and Investments Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="shares">10472600</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="pure">0.0109</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context30">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context31">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context31">Doli Trading and Investments Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="shares">9363440</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="pure">0.0098</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context31">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context32">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context32">Centaurus Trading and Investments Pvt Ltd</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="shares">7408940</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="pure">0.0077</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context32">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context33">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context33">Suptaswar Investments and Trading Company Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="shares">6558310</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="pure">0.0068</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context33">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context34">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context34">Lambodar Investments and Trading Company Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="shares">6015130</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="pure">0.0063</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context34">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context35">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context35">Murahar Investments and Trading Company Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="shares">5743670</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="pure">0.006</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context35">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context36">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context36">Upnishad Holdings Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="shares">4098430</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="pure">0.0043</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context36">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context37">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context37">Hiren Holdings Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="shares">3950310</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="pure">0.0041</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context37">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context38">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context38">ELF Trading and Chemical Manufacturing Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="shares">2108160</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="pure">0.0022</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context38">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context39">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context39">Rayirth Holding and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="shares">965910</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="pure">0.001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context39">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context40">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context40">Vikatmev Containers Ltd</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="shares">111600</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="pure">0.0001</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context40">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context41">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context41">Dani Finlease Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context41" decimals="INF" unitRef="shares">10930</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context41" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context41" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context41" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context41">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context42">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context42">S C Dani Research Foundation Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context42" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context42" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context42" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context42" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context42">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context43">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context43">Haish Holding and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context43" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context43" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context43" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context43" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context43">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context44">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context44">Avinash Holding and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context44" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context44" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context44" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context44" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context44">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context45">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context45">Canes Venatici Trading Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context45" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context45" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context45" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context45" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context45">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context46">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context46">Hydra Trading Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context46" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context46" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context46" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context46" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context46">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context47">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context47">Hitech Specialities Solutions Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context47" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context47" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context47" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context47" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context47">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context48">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context48">Rituh Holding and Trading Company Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context48" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context48" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context48" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context48" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context48">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context49">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context49">Hitech Corporation Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context49" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context49" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context49" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context49" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context49">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context50">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context50">Homevilla Yoga Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context50" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context50" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context50" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context50" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context50">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context51">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context51">Riash Renewable Materials Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context51" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context51" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context51" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context51" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context51">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context52">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context52">Stack Pack Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context52" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context52" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context52" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context52" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context52">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context53">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context53">Dipika Chemicals Private Limited</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context53" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context53" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context53" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context53" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context53">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context54">Other</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context54">Cronus Merchandise LLP</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context54" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context54" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context54" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context54" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context54">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context55">Other</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context55">Mefree LLP</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context55" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context55" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context55" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context55" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context55">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context56">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context56">ACC AP TRUST (Urvashi Ashwin Choksi, Ashish Ashwin Choksi, Rupen Ashwin Choksi)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context56" decimals="INF" unitRef="shares">785700</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context56" decimals="INF" unitRef="pure">0.0008</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context56" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context56" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context56">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context57">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context57">DANI FOUNDATION (Jalaj Dani, Vita Dani, Mudit Dani, Smiti Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context57" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context57" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context57" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context57" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context57">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context58">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context58">PARAM-ARTH CHARITABLE TRUST (Hasit Dani, Shubhlakshmi Dani, Priyadarshini Kanodia)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context58" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context58" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context58" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context58" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context58">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context59">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context59">ASHIYANA TRUST (Ina Ashwin Dani - Managing Trustee, Percy Jal Dajee - Trustee)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context59" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context59" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context59" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context59" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context59">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context60">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context60">CRONUS TRUST (Jalaj Dani, Vita Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context60" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context60" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context60" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context60" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context60">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context61">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context61">ISHWARA TRUST (Hasit Dani, Shubhlakshmi Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context61" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context61" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context61" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context61" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context61">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context62">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context62">NARADIYA TRUST (Malav Ashwin Dani - Managing Trustee, Ina Ashwin Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context62" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context62" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context62" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context62" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context62">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context63">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context63">RIG Trust (Jalaj Dani, Vita Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context63" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context63" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context63" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context63" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context63">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context64">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context64">INAASHWIN TRUST (Ina Dani and Malav Dani-Managing Trustees,Viraf Mehta,Gautam Doshi,Vaishali Sharma)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context64" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context64" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context64" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context64" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context64">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context65">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context65">Advaita Charitable Trust (Malav Ashwin Dani, Ina Ashwin Dani, Percy Jal Dajee)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context65" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context65" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context65" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context65" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context65">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context66">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context66">Sab Ka Mangal Ho Foundation (Ina Ashwin Dani, Malav Ashwin Dani, Percy Dajee, Mehernosh Mehta)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context66" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context66" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context66" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context66" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context66">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context67">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context67">Dani Charitable Foundation (Ina Ashwin Dani, Jalaj Dani, Malav Ashwin Dani, Hasit Dani)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context67" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context67" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context67">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context68">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context68">Homevilla Charitable Trust (Ina Ashwin Dani, Mahendra Sheth, Percy Jal Dajee, Homi Daruwalla)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context68" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context68" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context68">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context69">Trusts</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context69">Ashwin Ina Charitable Trust (Ina Ashwin Dani, Malav Ashwin Dani, Percy Jal Dajee)</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context69" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="OthersIndianShareholders_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="OthersIndianShareholders_Context69" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context69">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_NonResidentIndividualsOrForeignIndividuals_Context15">Malav A Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="NonResidentIndividualsOrForeignIndividuals_Context15" decimals="INF" unitRef="shares">3650176</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="NonResidentIndividualsOrForeignIndividuals_Context15" decimals="INF" unitRef="pure">0.0038</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="NonResidentIndividualsOrForeignIndividuals_Context15" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="NonResidentIndividualsOrForeignIndividuals_Context15" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_NonResidentIndividualsOrForeignIndividuals_Context15">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_NonResidentIndividualsOrForeignIndividuals_Context16">Ina Ashwin Dani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="NonResidentIndividualsOrForeignIndividuals_Context16" decimals="INF" unitRef="shares">1451792</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="NonResidentIndividualsOrForeignIndividuals_Context16" decimals="INF" unitRef="pure">0.0015</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfSharesEncumberedUnderPledged contextRef="NonResidentIndividualsOrForeignIndividuals_Context16" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumberedUnderPledged>
+<in-bse-shp:NumberOfSharesEncumbered contextRef="NonResidentIndividualsOrForeignIndividuals_Context16" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfSharesEncumbered>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_NonResidentIndividualsOrForeignIndividuals_Context16">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_MutualFundsOrUTI_Context15">SBI Mutual Fund</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="MutualFundsOrUTI_Context15" decimals="INF" unitRef="shares">41302172</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="MutualFundsOrUTI_Context15" decimals="INF" unitRef="pure">0.0431</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NameOfTheShareholder contextRef="D_MutualFundsOrUTI_Context16">ICICI Prudential Mutual Fund</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="MutualFundsOrUTI_Context16" decimals="INF" unitRef="shares">17637780</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="MutualFundsOrUTI_Context16" decimals="INF" unitRef="pure">0.0184</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NameOfTheShareholder contextRef="D_InsuranceCompanies_Context15">Life Insurance Corporation of India</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="InsuranceCompanies_Context15" decimals="INF" unitRef="shares">77822006</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="InsuranceCompanies_Context15" decimals="INF" unitRef="pure">0.0811</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+</xbrli:xbrl>

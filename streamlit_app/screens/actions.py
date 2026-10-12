@@ -75,8 +75,11 @@ def render():
     # --- worth a look: buying with real money -------------------------------------------------
     cl = signals.clusters(ctx.eligible, ref)
     cl = _prices(cl.head(ROWS), ctx)
-    drawn.append(_section('Several insiders buying together', 'act_cluster', 'last 30 days', cl, [
-        kit.Col('company', 'Company', 'co'), kit.Col('buyers', 'Buyers', 'num'), kit.Col('roles', 'Who', phone=False),
+    # Under the company: e.g. '4 buyers, 2 decision-makers: promoter group (3), director'.
+    drawn.append(_section('Several insiders buying together', 'act_cluster', 'last 30 days · a promoter group counts once', cl, [
+        kit.Col('company', 'Company', 'co', sub='who'),
+        kit.Col('decision_makers', 'Deciders', 'num', help='Distinct decision-makers: the promoter group counts once '
+                '(linked through the shareholding pattern), each director or KMP once'),
         kit.Col('value', 'Bought', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'pct'),
         kit.Col('last_seen', 'Last filed', 'date'), kit.Col('range', '52W range · price', 'range', phone=False)],
         summ, 'cluster'))

@@ -191,7 +191,7 @@ def render():
                  f'{kit.plural(prom["isin"].nunique() if not prom.empty else 0, "company", "companies")} · made public {when}',
                  'up' if net > 0 else 'down' if net < 0 else ''),
         best,
-        kit.Tile('Cluster formations', kit.count(len(clus_today)), f'2+ insiders buying within 30 days · {when}'),
+        kit.Tile('Cluster formations', kit.count(len(clus_today)), f'2+ decision-makers buying within 30 days · {when}'),
         kit.Tile('Institutional handshakes', kit.rupees(hs['matched_value'].sum() if not hs.empty else None),
                  f'{kit.plural(len(hs), "buyer-seller match", "buyer-seller matches")} · {when} · market makers excluded' if hs_day is not None
                  else 'No matched deals'),

@@ -293,9 +293,12 @@ def main():
     vr_master = pd.read_csv(vr_path, dtype=str, keep_default_na=False) if vr_path.exists() else None
 
     ranges, price_info = load_price_ranges(client, run_day, notes)
+    group = read_parquet(client, 'clean/current/promoter_group.parquet')  # NSE events collector; None until its first run
+    if group is None:
+        notes.append('no promoter-group lists yet (clean/current/promoter_group.parquet): no filing linked')
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
                          nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows,
-                         price_ranges=ranges)
+                         price_ranges=ranges, promoter_group=group)
     report['price_layer'] = price_info
     try:  # a failure here must never stop the insider and deal tables
         issue_out, report['issues'] = issue_tables(client)
@@ -337,6 +340,8 @@ def main():
         print(f'  insider price check (market): {checks["price"]["market"]}; price layer {price_info}')
         print(f'  insider holding-only disclosures: {checks["holding_only"]["count"]} '
               f'(filed as {checks["holding_only"]["filed_as"]})')
+    if report.get('promoter_group_link'):
+        print(f'  promoter-group link: {report["promoter_group_link"]}')
     for kind, r in report.get('issues', {}).items():
         print(f'  issues/{kind}: {r}')
     print(f'  trading window: {report.get("trading_window")}')

@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-bse-shp="http://www.bseindia.com/xbrl/shp/2025-05-31/in-bse-shp" xmlns:in-bse-shp-types="http://www.bseindia.com/xbrl/shp/2025-05-31/in-bse-shp-types" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:negated="http://www.xbrl.org/2009/role/negated" xmlns:net="http://www.xbrl.org/2009/role/net" xmlns:nonnum="http://www.xbrl.org/dtr/type/non-numeric" xmlns:num="http://www.xbrl.org/dtr/type/numeric" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><link:schemaRef xlink:href="in-bse-shp-2025-05-31.xsd" xlink:type="simple"/><xbrli:context id="ShareholdingOfPromoterAndPromoterGroup_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/bse-shp/ScripCode">532892</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:ShareholdingOfPromoterAndPromoterGroupMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:context id="PublicShareholding_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/bse-shp/ScripCode">532892</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:PublicShareholdingMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:context id="ShareholdingPattern_ContextI"><xbrli:entity><xbrli:identifier scheme="http://www.bseindia.com/bse-shp/ScripCode">532892</xbrli:identifier></xbrli:entity><xbrli:period><xbrli:instant>2025-06-30</xbrli:instant></xbrli:period><xbrli:scenario><xbrldi:explicitMember dimension="in-bse-shp:CategoryOfShareholdersAxis">in-bse-shp:ShareholdingPatternMember</xbrldi:explicitMember></xbrli:scenario></xbrli:context><xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit><xbrli:unit id="shares"><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unit>
+<in-bse-shp:NumberOfShares contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="shares">406495752</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI" decimals="INF" unitRef="pure">67.80</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfShares contextRef="PublicShareholding_ContextI" decimals="INF" unitRef="shares">193014930</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="PublicShareholding_ContextI" decimals="INF" unitRef="pure">32.20</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NumberOfShares contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="shares">599510682</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="ShareholdingPattern_ContextI" decimals="INF" unitRef="pure">100.00</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context15">Raamdeo Ramgopal Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="shares">127207260</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context15" decimals="INF" unitRef="pure">21.22</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context15">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_IndividualsOrHUF_Context16">Motilal Gopilal Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="shares">13512716</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="IndividualsOrHUF_Context16" decimals="INF" unitRef="pure">2.25</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_IndividualsOrHUF_Context16">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context15">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context15">Motilal Oswal Family Trust</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="shares">142196408</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context15" decimals="INF" unitRef="pure">23.72</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context15">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context16">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context16">Vaibhav Raamdeo Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="shares">30870096</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context16" decimals="INF" unitRef="pure">5.15</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context16">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context17">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context17">Suneeta Raamdeo Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="shares">25487508</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context17" decimals="INF" unitRef="pure">4.25</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context17">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context18">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context18">Raamdeo Agarwal HUF</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="shares">17973056</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context18" decimals="INF" unitRef="pure">3</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context18">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context19">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context19">Vimla Motilal Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="shares">9912516</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context19" decimals="INF" unitRef="pure">1.65</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context19">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context20">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context20">Pratik Ranjit Mehta</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="shares">8940828</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context20" decimals="INF" unitRef="pure">1.49</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context20">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context21">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context21">Natasha Aniruddha Malpani</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="shares">8876828</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context21" decimals="INF" unitRef="pure">1.48</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context21">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context22">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context22">Pratik Motilal Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="shares">8876828</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context22" decimals="INF" unitRef="pure">1.48</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context22">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context23">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context23">Pratiksha Pratik Mehta</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="shares">8876828</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context23" decimals="INF" unitRef="pure">1.48</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context23">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context24">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context24">Dhairya Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="shares">900000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context24" decimals="INF" unitRef="pure">0.15</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context24">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context25">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context25">Suman Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="shares">400000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context25" decimals="INF" unitRef="pure">0.07</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context25">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context26">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context26">Vedika Vaibhav Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="shares">400000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context26" decimals="INF" unitRef="pure">0.07</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context26">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context27">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context27">Vinay Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="shares">400000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context27" decimals="INF" unitRef="pure">0.07</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context27">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context28">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context28">Anita Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="shares">320000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context28" decimals="INF" unitRef="pure">0.05</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context28">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context29">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context29">Sukhdeo Ramgopal Agarawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="shares">311248</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context29" decimals="INF" unitRef="pure">0.05</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context29">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context30">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context30">Karoon Ramgopal Agarawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="shares">300000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context30" decimals="INF" unitRef="pure">0.05</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context30">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context31">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context31">Satish Agrawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="shares">273380</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context31" decimals="INF" unitRef="pure">0.05</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context31">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context32">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context32">Govind Deo Agarawal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="shares">223080</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context32" decimals="INF" unitRef="pure">0.04</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context32">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context33">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context33">Rajendra Gopilal Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="shares">219984</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context33" decimals="INF" unitRef="pure">0.04</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context33">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context34">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context34">Late Vimala Devi</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="shares">5720</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context34" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context34">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context35">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context35">Motilal Gopilal Oswal HUF</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="shares">3468</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context35" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context35">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context36">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context36">OSAG Enterprises LLP</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="shares">8000</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context36" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context36">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context37">Bodies Corporate</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context37">Motilal Oswal Foundation</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context37" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context37">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context38">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context38">Ansi Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context38" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context38">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context39">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context39">Javerilal Oswal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context39" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context39">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:CategoryOfOtherIndianShareholders contextRef="D_OthersIndianShareholders_Context40">Person Acting in Concert</in-bse-shp:CategoryOfOtherIndianShareholders>
+<in-bse-shp:NameOfTheShareholder contextRef="D_OthersIndianShareholders_Context40">Anand Agarwal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="shares">0</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="OthersIndianShareholders_Context40" decimals="INF" unitRef="pure">0</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:TypeOfPromoterShareholding contextRef="D_OthersIndianShareholders_Context40">******</in-bse-shp:TypeOfPromoterShareholding>
+<in-bse-shp:NameOfTheShareholder contextRef="D_DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context15">Navin Agarwal</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context15" decimals="INF" unitRef="shares">30540288</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context15" decimals="INF" unitRef="pure">5.09</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+<in-bse-shp:NameOfTheShareholder contextRef="D_DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context16">Rajat Rajgarhia</in-bse-shp:NameOfTheShareholder>
+<in-bse-shp:NumberOfShares contextRef="DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context16" decimals="INF" unitRef="shares">6868943</in-bse-shp:NumberOfShares>
+<in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="DetailsOfSharesHeldByDirectorsAndDirectorsRelatives_Context16" decimals="INF" unitRef="pure">1.15</in-bse-shp:ShareholdingAsAPercentageOfTotalNumberOfShares>
+</xbrli:xbrl>

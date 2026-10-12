@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 
 PREFIX = 'raw_v2'
 _EXT = {'application/json': 'json', 'text/csv': 'csv', 'text/html': 'html', 'application/xml': 'xml',
-        'text/xml': 'xml', 'application/zip': 'zip'}
+        'text/xml': 'xml', 'application/zip': 'zip', 'application/gzip': 'gz'}
 
 
 def sha256_hex(body: bytes) -> str:

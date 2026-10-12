@@ -22,7 +22,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D4 | Corporate actions | purpose (buyback, bonus, split, rights, dividend), ex/record date, ratio, rights premium, dividend | NSE, from 07 Oct 2026 | In |
 | D4b | Buybacks | tender offers: offer price, shares sought and tendered, offer dates (NSE tender-offer list, from 2015); open market: daily buyback reports (no price); matched to D4 by symbol and record date | NSE, nightly (12 Oct 2026) | In (open-market price only in PDFs) |
 | D5 | Board meetings | meeting date, purposes (results, dividend, buyback, bonus, fund raising, split, rights, preferential) | NSE, up to 60 days ahead; past months by backfill (`--from`, from 01 Jul 2025) | In |
-| D6 | Shareholding pattern | promoter %, public % (free float), employee trusts %, promoter pledged and encumbered shares (XBRL) | NSE; only filings of the last 10 days so far | In, partial (TODO 5) |
+| D6 | Shareholding pattern | promoter %, public % (free float), employee trusts %, promoter pledged and encumbered shares (XBRL); promoter 0% as filed where a company has no promoter group | NSE, latest quarter of every company (TODO F) | In |
+| D6m | Promoter-group members | every promoter and promoter-group member by name, sub-category (individual or HUF, body corporate, trust, government, foreign), shares, % (Table II of the same XBRL); insider filings linked by identity (`promoter_group_id`) | NSE; new filings nightly, latest quarter of every company after the catch-up | In (from 12 Oct 2026; catch-up run after merge) |
 | D7 | Preferential issues | in-principle: board date, allottee category, consideration, amount; XBRL: instruments, securities proposed, ICDR minimum price and relevant date as filed, every proposed allottee; listing: offer price, shares allotted, allotment, listing and trading-approval dates; XBRL: filed lock-in lines | NSE latest 100 per stage a day as snapshots, plus every filing by date window from 12 Oct 2026 (NSE events job, history by a `--days 550` run); BSE has no amounts or prices | Clean (12 Oct, `insiders_clean/issues.py`); XBRL from the first issues run |
 | D8 | Rights issues | in-principle: board date, amount, consideration; listing stage | as D7 (XBRL not read: it adds only the security type) | Clean (12 Oct) |
 | D8q | QIPs | in-principle: board and shareholder approval dates, amount; listing: bid dates, relevant date, floor and issue price, discount, shares, allottee count, amount; XBRL: each allottee with category and % of the issue | NSE filings by date window (`corporate-further-issues-qip`, confirmed 12 Oct 2026) | Clean (12 Oct, `issues.clean_qip`) |
@@ -41,7 +42,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | Is this insider trade a real decision to buy or sell? | D1 mode and side | In |
 | Is it big for this company? | D1 value with D9 (% of mcap), D6 (% of float), D1 holding change | In; % of float partial |
 | Is one person building a position over weeks? | D1 per person, 30/90 days | In |
-| Are several decision-makers buying together? | D1 roles and families, 30 days | In |
+| Are several decision-makers buying together? | D1 roles, D6m (the promoter group counts once), 30 days | In |
 | Is the buyer someone who trades every year at the same time (routine)? | D1h, 3 years per person | Pending (D1h) |
 | Did they disclose on time? | D1 dates with D12 | In (NSE) |
 | Who took the other side of a big sale, and was the seller a promoter? | D2 pairs with D1 roles | In |
@@ -71,7 +72,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | S3 Pledge filings | D1 | In |
 | S4 Spotlight: one person 0.15%+ of mcap in 30 days | D1 | In |
 | S5 Float absorbers: 0.5%+ in 90 days | D1 | In |
-| S6 Clusters: 2+ buyers incl. an officer or separate families | D1 | In |
+| S6 Clusters: 2+ decision-makers (the promoter group once, each director/KMP once) | D1, D6m | In |
 | S7 Promoter selling | D1 | In |
 | S8 Late filings, by X trading days, per step | D1, D12 | In (NSE) |
 | S9 Handshakes: seller, absorbing buyers, promoter seller flag | D2, D1 | In |
