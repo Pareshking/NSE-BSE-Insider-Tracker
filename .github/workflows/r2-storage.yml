@@ -209,6 +209,35 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python scripts/backfill_gaps.py
 
+      # --- BSE through its own history endpoints (collectors/bse/client.py) ---
+      # The capture above reads BSE's page defaults (today's deals; an insider
+      # list of the day's filings plus a fixed older block), so a day it missed
+      # is never filled. These read the last days again from BSE's history
+      # endpoints into archive/canonical/bse/ (deals the capture stored are not
+      # written twice; the clean step links the two insider feeds), then SAST
+      # and corporate actions into archive/bse_events/ and
+      # clean/current/bse_{sast,actions}.parquet, linked to NSE's tables
+      # (written by NSE Corporate Events at 16:00 UTC). Neither can fail the run.
+      - name: BSE insider and deals, last 10 days
+        if: always()
+        continue-on-error: true
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/bse_history_backfill.py --dataset all --recent 10
+      - name: BSE SAST and corporate actions, last 30 days
+        if: always()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u -m collectors.bse.events --days 30
+
       # --- Clean layer: archive every record once, rebuild clean/ from it ---
       # The calendar step first, so tonight's deadlines can use tonight's
       # confirmed sessions. Neither step can make the acquisition fail.

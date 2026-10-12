@@ -264,7 +264,7 @@ def render():
     with kit.card('Corporate actions', 'cr_actions', 'buybacks, rights, bonuses, splits, dividends'):
         a = ctx.actions
         if a.empty:
-            kit.empty('Corporate actions arrive with the daily NSE events collection.')
+            kit.empty('Corporate actions arrive with the daily NSE and BSE events collections.')
         else:
             a = a.copy()
             a['ex_date'] = pd.to_datetime(a['ex_date'], errors='coerce')
@@ -278,5 +278,7 @@ def render():
                 kit.Col('rights_issue_price', 'Rights price', 'price', phone=False),
                 kit.Col('dividend_per_share', 'Dividend/share', 'price', phone=False),
                 kit.Col('record_date', 'Record date', 'date', phone=False)], limit=150, download='corporate_actions')
-            kit.caption("Rights price = face value + the premium NSE lists. Buyback price and route are not in NSE's "
-                        "corporate-actions feed; the Buybacks list above takes them from NSE's tender-offer list and daily buyback reports.")
+            kit.caption("Rights price = face value + the premium NSE lists; BSE's list gives no rights ratio or price. "
+                        "An action on both exchanges is shown once (NSE's row); BSE rows are tagged BSE. Buyback price and "
+                        "route are not in either corporate-actions feed; the Buybacks list above takes them from NSE's "
+                        "tender-offer list and daily buyback reports.")

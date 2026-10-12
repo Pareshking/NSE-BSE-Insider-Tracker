@@ -11,6 +11,7 @@ import streamlit as st
 from data import store
 
 from insiders_clean import signals
+from insiders_clean.bse_events import with_bse
 
 
 @dataclass
@@ -19,7 +20,7 @@ class Ctx:
     eligible: pd.DataFrame      # open-market, primary, not held back
     deals: pd.DataFrame
     securities: pd.DataFrame
-    sast: pd.DataFrame
+    sast: pd.DataFrame          # NSE's, plus BSE rows NSE has not got (listed_on 'bse')
     actions: pd.DataFrame
     meetings: pd.DataFrame
     shareholding: pd.DataFrame
@@ -54,7 +55,8 @@ def load() -> Ctx:
     if not deals.empty:
         deals['date'] = pd.to_datetime(deals['date'], errors='coerce')
     return Ctx(trades=trades, eligible=elig, deals=deals, securities=store.table('securities'),
-               sast=store.table('sast'), actions=store.table('actions'), meetings=store.table('meetings'),
+               sast=with_bse(store.table('sast'), store.table('bse_sast')),
+               actions=with_bse(store.table('actions'), store.table('bse_actions')), meetings=store.table('meetings'),
                shareholding=store.table('shareholding'), preferential=store.table('preferential'),
                rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest())
 

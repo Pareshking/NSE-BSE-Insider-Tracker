@@ -18,7 +18,7 @@ def render(head: bool = True):
         return
     s = ctx.sast
     if s.empty:
-        kit.empty('SAST filings arrive with the daily NSE events collection.')
+        kit.empty('SAST filings arrive with the daily NSE and BSE events collections.')
         return
     s = s.copy()
     s['transaction_date'] = pd.to_datetime(s['transaction_date'], errors='coerce')
@@ -42,7 +42,7 @@ def render(head: bool = True):
     if q:
         rows = rows[rows['company'].str.contains(q, case=False, na=False, regex=False)
                     | rows['acquirer_name'].str.contains(q, case=False, na=False, regex=False)]
-    with kit.card(f'{kit.plural(len(rows), "disclosure")}', 'sast_tbl', 'newest first · % of share capital as filed'):
+    with kit.card(f'{kit.plural(len(rows), "disclosure")}', 'sast_tbl', 'newest first · % of share capital as filed · NSE and BSE, a disclosure filed on both shown once'):
         kit.table(rows.sort_values('seen', ascending=False).assign(nse_symbol=rows['symbol']), [
             kit.Col('company', 'Company', 'co'), kit.Col('seen', 'Made public', 'date'),
             kit.Col('acquirer_name', 'Acquirer / seller', sub='mode'), kit.Col('action_type', 'Action'),
