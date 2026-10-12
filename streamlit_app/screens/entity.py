@@ -52,7 +52,6 @@ def render():
         kit.Tile('Active companies, 12 months', kit.count(active), 'with an open-market buy, sale or deal'),
         kit.Tile('Net, all data', kit.rupees((mk['signed_value'].sum() if len(mk) else 0) + (d['signed_value'].sum() if len(d) else 0),
                                               signed=True), f'{kit.count(len(t))} insider filings · {kit.count(len(d))} deals'),
-        kit.Tile('Win rate · holding period', 'Pending', 'measured by the signal lab'),
     ])
     if len(t):
         with kit.card('Insider filings', 'en_it'):
@@ -71,4 +70,3 @@ def render():
                 kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
                 kit.Col('feeds', 'Feed', phone=False)], limit=100, download='person_deals')
-    kit.caption('What happened after this person\'s or fund\'s past buys arrives with the signal lab.')
