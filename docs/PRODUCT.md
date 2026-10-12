@@ -46,6 +46,14 @@ reader can't get by scrolling the exchange pages:
 
 ## Decisions (with dates)
 
+- **One front page of actions, evidence beside each list** (owner, 12 Oct 2026:
+  "clutter free website giving value to right signal"). The menu is three
+  groups. A signal leads only if the measured record supports it: on 12 Oct
+  clusters and promoter buys beat Nifty 500 so far, one person buying 0.15% of
+  market cap showed no edge, and promoter sales and funds' small-cap net buys
+  lagged it (`docs/SIGNALS.md`, Track record). Placeholders for data we do not
+  have are not drawn.
+
 - **Data correctness first.** Data is cleaned once, in the nightly
   pipeline (`insiders_clean/`); the site never cleans. (07 Oct 2026)
 - **Sources: NSE and BSE only.** Screener.in is not scraped: its
@@ -109,13 +117,15 @@ reader can't get by scrolling the exchange pages:
 
 | Page | Question it answers |
 |---|---|
-| Today | What did insiders and big money do in the latest session? High-conviction buys, session feed, what was held back |
+| Actions (front page, 12 Oct) | What deserves a look now, from every filing: insiders buying together, promoter and director buys, promoter sales, heavy pledges, funds buying small caps, shares coming off lock-in, boards meeting on fund raising. Each list shows how that kind of filing has done against Nifty 500 in our data (`insiders_clean/evidence.py`); a list with no rows is not drawn |
+| Latest session (was Today) | What did insiders and big money do in the latest session? High-conviction buys, session feed, what was held back |
 | Screener | Which companies show insider accumulation or distribution now? One row per company, badges |
 | Insider trades | Every filing, open-market by default; ESOP/off-market and pledges in their own tabs; late filings marked |
-| Deals & big stakes | Bulk/block deals by real buyers and sellers, the most active buyers, SAST Reg 29 stake changes |
+| Deals & big stakes | Bulk/block deals by real buyers and sellers, the most active buyers |
+| Other filings | SAST Reg 29 stake changes; gifts, inter-se and off-market transfers, ESOPs, pledges (two tabs) |
 | Capital raises | Upcoming board meetings (fund raising, preferential, buyback), corporate actions |
 | Track record | What happened after each signal (shows nothing until measured) |
-| Data | What the last cleaning run removed, held back and could not place |
+| Data quality (footer link, not in the menu) | What the last cleaning run removed, held back and could not place |
 | Company `/company?symbol=` | Everything about one company on one page |
 | Person or fund `/entity?id=` | Everything one insider or fund did, across companies |
 

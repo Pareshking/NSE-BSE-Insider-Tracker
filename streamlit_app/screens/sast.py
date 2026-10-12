@@ -9,10 +9,11 @@ from ui import kit
 from screens.ctx import load, need_data
 
 
-def render():
+def render(head: bool = True):
     ctx = load()
-    kit.head('Substantial acquisitions', 'SAST Regulation 29: anyone crossing 5% of a company, or moving 2% or more '
-                                         'after that.')
+    if head:
+        kit.head('Substantial acquisitions', 'SAST Regulation 29: anyone crossing 5% of a company, or moving 2% or more '
+                                             'after that.')
     if not need_data(ctx):
         return
     s = ctx.sast

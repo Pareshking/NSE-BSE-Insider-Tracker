@@ -18,6 +18,7 @@ st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
                    initial_sidebar_state='expanded')
 
 from screens import (
+    actions,
     capital_raises,
     coming,
     company,
@@ -25,12 +26,11 @@ from screens import (
     deals,
     entity,
     insider_trades,
-    sast,
+    other_filings,
     screener,
     shareholding,
     today,
     track_record,
-    transfers,
 )
 from screens.ctx import load
 from data import store
@@ -40,37 +40,32 @@ theme.inject()
 
 M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 SECTIONS = {
-    'Overview': [
-        st.Page(today.render, title='Dashboard', icon=M('space_dashboard'), url_path='today', default=True),
+    'Signals': [
+        st.Page(actions.render, title='Actions', icon=M('bolt'), url_path='actions', default=True),
         st.Page(screener.render, title='Screener', icon=M('filter_alt'), url_path='screener'),
+        st.Page(track_record.render, title='Track record', icon=M('query_stats'), url_path='track-record'),
     ],
-    'Transactions': [
+    'Filings': [
+        st.Page(today.render, title='Latest session', icon=M('space_dashboard'), url_path='today'),
         st.Page(insider_trades.render, title='Insider & promoter trades', icon=M('swap_vert'), url_path='insider-trades'),
         st.Page(deals.render, title='Bulk & block deals', icon=M('handshake'), url_path='deals'),
-        st.Page(sast.render, title='Substantial acquisitions', icon=M('account_tree'), url_path='sast'),
-        st.Page(transfers.render, title='Inter-se & off-market', icon=M('sync_alt'), url_path='transfers'),
+        st.Page(other_filings.render, title='Other filings', icon=M('account_tree'), url_path='other-filings'),
     ],
-    'Ownership': [
-        st.Page(shareholding.render, title='Shareholding & pledges', icon=M('pie_chart'), url_path='shareholding'),
-    ],
-    'Corporate events': [
-        st.Page(capital_raises.render, title='Capital raises & actions', icon=M('event'), url_path='capital-raises'),
-        st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming'),
-    ],
-    'Analytics': [
-        st.Page(track_record.render, title='Track record', icon=M('query_stats'), url_path='track-record'),
-        st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data'),
-    ],
-    'Look up': [
+    'Companies': [
         st.Page(company.render, title='Company', icon=M('apartment'), url_path='company'),
         st.Page(entity.render, title='Person or fund', icon=M('person_search'), url_path='entity'),
+        st.Page(capital_raises.render, title='Capital raises & actions', icon=M('event'), url_path='capital-raises'),
+        st.Page(shareholding.render, title='Shareholding & pledges', icon=M('pie_chart'), url_path='shareholding'),
     ],
 }
-ALL = [p for ps in SECTIONS.values() for p in ps]
+# Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
+DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
+HIDDEN = [DATA_PAGE, st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
+ALL = [p for ps in SECTIONS.values() for p in ps] + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Screener', 'entity_tracker': 'Person or fund', 'transactions': 'Insider & promoter trades',
          'promoter_activity': 'Insider & promoter trades', 'bulk_block_concentration': 'Bulk & block deals',
-         'data_quality': 'Data quality'}
+         'data_quality': 'Data quality', 'sast': 'Other filings', 'transfers': 'Other filings'}
 
 
 def _redirect(path: str, target: str):
@@ -81,7 +76,7 @@ def _redirect(path: str, target: str):
 
 
 st.logo(str(HERE / 'ui' / 'logo.svg'), size='large', link=None)
-nav = st.navigation({**SECTIONS, '': [_redirect(p, t) for p, t in MOVED.items()]}, position='sidebar', expanded=True)
+nav = st.navigation({**SECTIONS, '': HIDDEN + [_redirect(p, t) for p, t in MOVED.items()]}, position='sidebar', expanded=True)
 
 ctx = load()
 with st.sidebar:
@@ -106,3 +101,4 @@ nav.run()
 
 st.html('<p class="foot">NSE and BSE disclosures, cleaned nightly · prices from the NSE and BSE daily bhavcopy, '
         'split and bonus adjusted · check the exchange filing before acting.</p>')
+st.page_link(DATA_PAGE, label='How clean is the data?', icon=':material/fact_check:')
