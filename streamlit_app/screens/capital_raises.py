@@ -2,10 +2,11 @@
 
 Sections from docs/DATA_TO_PAGES.md: S14 upcoming capital moves (board
 meetings) and S15 corporate actions; S16 preferential issues and where each
-stands, S17 offer price against the market, S18 lock-in expiries, and rights
-issues, all from NSE's two-stage filings (insiders_clean/issues.py). The SEBI
-ICDR minimum price needs VWAP from daily volumes and is not computed yet; the
-page says so instead of showing a stand-in."""
+stands, the proposed allottees, S17 offer price against the ICDR minimum and
+the market, S18 lock-in expiries, rights issues and QIPs, all from NSE's
+two-stage filings and their XBRL (insiders_clean/issues.py). The ICDR minimum
+shown first is the one the company filed; ours (from the bhavcopy) sits beside
+it as a check and is labelled."""
 from __future__ import annotations
 
 import pandas as pd
@@ -13,6 +14,7 @@ import streamlit as st
 from data import store
 from ui import kit
 
+from insiders_clean import issues as issue_clean
 from screens.ctx import load, with_prices
 
 PURPOSES = {'buyback': 'Buyback', 'rights': 'Rights', 'bonus': 'Bonus', 'split': 'Split', 'dividend': 'Dividend'}
@@ -26,48 +28,60 @@ def _vs_market(offer, close):
     return ((pd.to_numeric(offer, errors='coerce') / pd.to_numeric(close, errors='coerce') - 1) * 100).where(ok)
 
 
-def issue_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """One row per issue as far as the data shows: an allotted or listed
-    record (with its approval's amount and allottee when the two are linked),
-    or an approval no listing record points to."""
-    if records is None or records.empty:
-        return pd.DataFrame()
+def _stage_rows(records: pd.DataFrame) -> pd.DataFrame:
+    """Allotted or listed records, and approvals no listing record points to."""
     r = records.copy()
     linked = set(r.loc[r['stage'] == 'listing', 'linked_app_id'].dropna())
     approved = r[(r['stage'] == 'in_principle') & ~r['app_id'].isin(linked)].assign(status='Approved in principle')
-    listed = r[r['stage'] == 'listing'].assign(status='Allotted or listed')
-    rows = pd.concat([listed, approved], ignore_index=True)
+    return pd.concat([r[r['stage'] == 'listing'].assign(status='Allotted or listed'), approved], ignore_index=True)
+
+
+def issue_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """One row per issue as far as the data shows: an allotted or listed
+    record (with its approval's amount, allottee and filed ICDR minimum when
+    the two are linked), or an approval no listing record points to."""
+    if records is None or records.empty:
+        return pd.DataFrame()
+    rows = _stage_rows(records)
     rows['nse_symbol'] = rows['symbol']
     rows['to'] = rows['allottee_category'].map(ALLOTTEE_LABEL) if 'allottee_category' in rows else None
     amount = rows['amount_total'] if 'amount_total' in rows else pd.Series(index=rows.index, dtype=float)
     rows['amount'] = amount.fillna(rows['amount_raised']) if 'amount_raised' in rows else amount
+    for c in ('icdr_min_price', 'icdr_min_ours', 'vs_icdr_min', 'instruments'):
+        if c not in rows:
+            rows[c] = None
     rows = with_prices(rows, prices)
     rows['vs_market'] = _vs_market(rows.get('offer_price'), rows['latest_close'])
+    rows['ours_vs_filed'] = _vs_market(rows['icdr_min_ours'], rows['icdr_min_price'])
     return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
 
-def lock_in_calendar(records: pd.DataFrame, prices: pd.DataFrame, today: pd.Timestamp) -> pd.DataFrame:
-    """Lock-in expiries from the trading-approval date (promoters 18 months,
-    others 6), earliest first, from a month ago on. A mixed allotment's split
-    between promoters and others is not in the filing, so it shows the whole
-    allotment and no market value."""
-    if records is None or records.empty or 'lock_in_promoter_until' not in records:
+def lock_in_calendar(records: pd.DataFrame, prices: pd.DataFrame, today: pd.Timestamp,
+                     lines: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Lock-in expiries, earliest first, from a month ago on: the lines the
+    company filed where the listing XBRL has them, the rule otherwise
+    (promoters 18 months, others 6, from the trading-approval date). `lines`
+    is the preferential_lockins table; without it the rule lines are built
+    from `records`. A rule line of a mixed allotment has no share count (the
+    split is not filed), so no market value."""
+    if lines is None or lines.empty:
+        if records is None or records.empty or 'lock_in_promoter_until' not in records:
+            return pd.DataFrame()
+        lines = issue_clean.lock_in_lines(records, {})
+    rows = lines[lines['expires'].notna()].copy()
+    if rows.empty:
         return pd.DataFrame()
-    ls = records[records['stage'] == 'listing']
-    parts = []
-    for col, who in (('lock_in_promoter_until', 'Promoters'), ('lock_in_other_until', 'Others')):
-        part = ls[ls[col].notna()]
-        if not part.empty:
-            parts.append(part.assign(expires=pd.to_datetime(part[col]), who=who))
-    if not parts:
-        return pd.DataFrame()
-    rows = pd.concat(parts, ignore_index=True)
+    rows['expires'] = pd.to_datetime(rows['expires'])
     rows = rows[rows['expires'] >= today.normalize() - pd.Timedelta(days=LOCK_IN_RECENT_DAYS)].copy()
     rows['nse_symbol'] = rows['symbol']
     rows['days_left'] = (rows['expires'] - today.normalize()).dt.days
-    rows['note'] = rows['allottee_category'].map(lambda c: 'Mixed allotment: promoter and other split not filed' if c == 'MIXED' else '')
+    months = rows['months'].map(lambda m: f'{m:g} months' if pd.notna(m) else '')
+    rows['what'] = [f'{m}, as filed' if b == 'filed' else f'{w}, {m} (rule)'
+                    for b, w, m in zip(rows['basis'], rows['who'], months)]
+    rows['note'] = ['Mixed allotment: promoter and other split not filed' if b == 'rule' and pd.isna(s) else ''
+                    for b, s in zip(rows['basis'], rows['shares'])]
     rows = with_prices(rows, prices)
-    rows['at_market'] = (pd.to_numeric(rows['shares_allotted'], errors='coerce') * pd.to_numeric(rows['latest_close'], errors='coerce')).where(rows['note'].eq(''))
+    rows['at_market'] = pd.to_numeric(rows['shares'], errors='coerce') * pd.to_numeric(rows['latest_close'], errors='coerce')
     return rows.sort_values('expires').reset_index(drop=True)
 
 
@@ -75,10 +89,7 @@ def rights_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     """Rights issues: the listing record (ratio, price, dates) or an approval no listing record points to."""
     if records is None or records.empty:
         return pd.DataFrame()
-    r = records.copy()
-    linked = set(r.loc[r['stage'] == 'listing', 'linked_app_id'].dropna())
-    approved = r[(r['stage'] == 'in_principle') & ~r['app_id'].isin(linked)].assign(status='Approved in principle')
-    rows = pd.concat([r[r['stage'] == 'listing'].assign(status='Allotted or listed'), approved], ignore_index=True)
+    rows = _stage_rows(records)
     rows['nse_symbol'] = rows['symbol']
     amount = rows['amount_total'] if 'amount_total' in rows else pd.Series(index=rows.index, dtype=float)
     rows['amount'] = amount.fillna(rows['amount_raised']) if 'amount_raised' in rows else amount
@@ -87,15 +98,51 @@ def rights_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
 
-def link_summary(records: pd.DataFrame) -> str:
+def qip_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
+    """QIPs: the allotment (issue and floor price, discount, allottees) or an
+    approval no allotment points to."""
+    if records is None or records.empty:
+        return pd.DataFrame()
+    rows = _stage_rows(records)
+    rows['nse_symbol'] = rows['symbol']
+    rows['amount'] = rows['amount_raised'].fillna(rows['amount_total'])
+    rows = with_prices(rows, prices)
+    rows['vs_market'] = _vs_market(rows['issue_price'], rows['latest_close'])
+    return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
+
+
+def allottee_rows(allottees: pd.DataFrame, known_ids: set) -> pd.DataFrame:
+    """Proposed or actual allottees, newest first; a name links to its page only
+    when that person or fund also appears in our insider filings or deals."""
+    if allottees is None or allottees.empty:
+        return pd.DataFrame()
+    a = allottees.copy()
+    a['nse_symbol'] = a['symbol']
+    a['client_id'] = a['allottee_id'].where(a['allottee_id'].isin(known_ids))
+    if 'promoter' in a:
+        a['promoter_text'] = a['promoter'].map(lambda v: 'Yes' if v is True else 'No' if v is False else '')
+    return a.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
+
+
+def link_summary(records: pd.DataFrame, shown: str = 'who gets the shares, the amount and the filed ICDR minimum') -> str:
     ls = records[records['stage'] == 'listing'] if not records.empty else records
     if ls.empty:
         return ''
     c = ls['link_status'].value_counts()
+    more = int(c.get('more_shares_than_approved', 0))
     return (f"{len(ls)} allotment records: {int(c.get('linked', 0))} matched to their approval (same ISIN, one approval in "
             f"the 180 days before), {int(c.get('ambiguous', 0))} with more than one possible approval, "
-            f"{int(c.get('no_in_principle_in_data', 0))} whose approval is not in NSE's latest-100 list. "
-            "Only matched records show who gets the shares, the amount and a lock-in date.")
+            f"{int(c.get('no_in_principle_in_data', 0))} whose approval is not in the filings we hold"
+            + (f", {more} not matched because they allot more shares than the only approval proposed" if more else '')
+            + f". Only matched records show {shown}.")
+
+
+def _known_ids(ctx) -> set:
+    ids = set()
+    for df, col in ((ctx.trades, 'person_id'), (ctx.deals, 'client_id')):
+        if df is not None and not df.empty and col in df:
+            ids.update(df[col].dropna())
+    return ids
 
 
 def render():
@@ -103,6 +150,7 @@ def render():
     kit.head('Capital raises', 'Who is about to raise money or buy back shares, and on what terms: dilution risk and '
                                'promoter funding in one place.')
     pref = ctx.preferential
+    known = _known_ids(ctx)
     if pref is None or pref.empty:
         kit.note('Preferential issue pipeline, offer price against the market and the lock-in calendar are pending.',
                  'The data is collected and cleaned nightly; these sections appear after the next clean run.')
@@ -116,28 +164,47 @@ def render():
             kit.table(rows, [
                 kit.Col('posted_on', 'Posted', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('status', 'Stage'),
                 kit.Col('to', 'Shares go to', help='From the In-Principle record, shown only when it is matched to the allotment'),
+                kit.Col('instruments', 'Instrument', phone=False, help='As filed in the In-Principle XBRL'),
                 kit.Col('amount', 'Amount', 'money'), kit.Col('shares_allotted', 'Shares allotted', 'shares', phone=False),
+                kit.Col('icdr_min_price', 'ICDR minimum', 'price', phone=False, help='Minimum issue price per SEBI ICDR, as the company filed it'),
                 kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)],
                 limit=100, download='preferential_issues')
             kit.caption(link_summary(pref))
-        with kit.card('Offer price against the market', 'cr_px', 'allotted issues'):
+        with kit.card('Offer price against the ICDR minimum and the market', 'cr_px', 'allotted issues'):
             allotted = issues[(issues['status'] == 'Allotted or listed') & issues['offer_price'].notna()]
             kit.table(allotted, [
-                kit.Col('posted_on', 'Posted', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('to', 'Shares go to'),
-                kit.Col('offer_price', 'Offer price', 'price'), kit.Col('latest_close', 'Market price now', 'price'),
+                kit.Col('posted_on', 'Posted', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('to', 'Shares go to', phone=False),
+                kit.Col('offer_price', 'Offer price', 'price'),
+                kit.Col('icdr_min_price', 'ICDR minimum, filed', 'price', help='The minimum price the company filed with NSE (higher of the 90- and 10-day VWAP before the relevant date, or its own valuation)'),
+                kit.Col('vs_icdr_min', 'Offer vs minimum', 'spct', phone=False),
+                kit.Col('icdr_min_ours', 'Minimum, our estimate', 'price', phone=False, help='Ours: higher of the 90- and 10-session VWAP before the filed relevant date, from our NSE/BSE bhavcopy'),
+                kit.Col('latest_close', 'Market price now', 'price', phone=False),
                 kit.Col('vs_market', 'Offer vs market now', 'spct', help='Negative = shares were offered below today\'s market price')],
                 limit=100, empty_text='No allotted issues with an offer price yet.')
-            kit.caption("Market price now is the latest close in our NSE and BSE price files, not the price when the issue was priced. "
-                        "The SEBI ICDR minimum (higher of the 90-day and 10-day VWAP) needs daily volumes and is not computed yet.")
+            kit.caption('The filed minimum comes from the In-Principle XBRL and shows only on allotments matched to their approval. '
+                        'Our estimate needs the relevant date in that filing and 90 trading sessions before it in our price files; '
+                        'it is left blank across a split or bonus. Market price now is the latest close, not the price when the issue was priced.')
+        allot = allottee_rows(store.table('preferential_allottees'), known)
+        if not allot.empty:
+            with kit.card('Who gets the shares', 'cr_allot', 'proposed allottees, from each In-Principle XBRL'):
+                kit.table(allot, [
+                    kit.Col('posted_on', 'Posted', 'date'), kit.Col('company', 'Company', 'co'),
+                    kit.Col('allottee', 'Allottee', 'client', sub='security_type'),
+                    kit.Col('securities', 'Securities', 'shares'),
+                    kit.Col('promoter_text', 'Promoter', phone=False, help='From the issue\'s category; blank for an issue to promoters and others')],
+                    limit=150, download='preferential_allottees')
+                kit.caption('The XBRL names each proposed allottee but not whether that allottee is a promoter: an issue filed as '
+                            'to promoters marks all its allottees Yes, one to non-promoters No, a mixed issue leaves it blank.')
         with kit.card('Lock-in expiries', 'cr_lock', 'when newly allotted shares can first be sold'):
-            cal = lock_in_calendar(pref, ctx.prices, today)
+            cal = lock_in_calendar(pref, ctx.prices, today, store.table('preferential_lockins'))
             kit.table(cal, [
                 kit.Col('expires', 'Expires', 'date'), kit.Col('days_left', 'Days', 'num'), kit.Col('company', 'Company', 'co'),
-                kit.Col('who', 'Whose shares'), kit.Col('shares_allotted', 'Shares allotted', 'shares', phone=False),
+                kit.Col('what', 'Lock-in'), kit.Col('shares', 'Shares', 'shares', phone=False),
                 kit.Col('at_market', 'At market now', 'money', phone=False), kit.Col('note', 'Note', phone=False)],
-                limit=100, empty_text='No lock-in dates yet: they need an allotment record matched to its approval.')
-            kit.caption('Promoters 18 months and others 6 months from the trading-approval date (SEBI ICDR, preferential allotments). '
-                        'Dates come only from matched records; the first 30 days after an expiry stay on the list.')
+                limit=100, empty_text='No lock-in dates yet.')
+            kit.caption('"As filed": the lock-in lines in the company\'s listing XBRL, counted from the trading-approval date. '
+                        '"Rule": none was filed, so promoters 18 months and others 6 (SEBI ICDR), only for allotments matched '
+                        'to their approval. The first 30 days after an expiry stay on the list.')
     rights = rights_rows(ctx.rights, ctx.prices)
     if not rights.empty:
         with kit.card('Rights issues', 'cr_rights', 'approved in principle, then allotted and listed'):
@@ -149,7 +216,28 @@ def render():
                 kit.Col('record_date', 'Record date', 'date', phone=False),
                 kit.Col('issue_close_date', 'Closes', 'date', phone=False), kit.Col('amount', 'Amount', 'money', phone=False)],
                 limit=100, download='rights_issues')
-            kit.caption(link_summary(ctx.rights))
+            kit.caption(link_summary(ctx.rights, "the approval's amount"))
+    qip = qip_rows(store.table('qip'), ctx.prices)
+    if not qip.empty:
+        with kit.card('QIPs', 'cr_qip', 'placements with institutions: approved, then allotted and listed'):
+            kit.table(qip, [
+                kit.Col('posted_on', 'Posted', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('status', 'Stage'),
+                kit.Col('issue_price', 'Issue price', 'price'),
+                kit.Col('floor_price', 'Floor price', 'price', phone=False, help='Minimum issue price per unit, as filed'),
+                kit.Col('discount_per_share', 'Discount/share', 'price', phone=False, help='As filed'),
+                kit.Col('vs_market', 'Issue vs market now', 'spct', phone=False),
+                kit.Col('amount', 'Amount', 'money'), kit.Col('allottees', 'Allottees', 'num', phone=False),
+                kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)],
+                limit=100, download='qips')
+            kit.caption('From NSE\'s QIP filings, both stages. Floor price and discount are as filed: some filings give the '
+                        'issue price as the floor. Market price now is the latest close.')
+        buyers = allottee_rows(store.table('qip_allottees'), known)
+        if not buyers.empty:
+            with kit.card('Who bought the QIPs', 'cr_qip_buyers', 'allottees named in each QIP listing XBRL'):
+                kit.table(buyers, [
+                    kit.Col('allotment_date', 'Allotted', 'date'), kit.Col('company', 'Company', 'co'),
+                    kit.Col('allottee', 'Allottee', 'client', sub='category'), kit.Col('shares', 'Shares', 'shares', phone=False),
+                    kit.Col('pct_of_issue', '% of issue', 'pct')], limit=150, download='qip_allottees')
 
     with kit.card('Upcoming board meetings on capital moves', 'cr_meet', 'from NSE board-meeting intimations'):
         m = ctx.meetings

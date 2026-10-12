@@ -1,6 +1,6 @@
 """Nightly: NSE corporate events for the last 10 days -> archive/ and clean/.
 
-    python -m collectors.nse_events.run_daily [--days 10] [--dataset all|sast|actions|meetings|shareholding|tenders|daily_buybacks]
+    python -m collectors.nse_events.run_daily [--days 10] [--dataset all|sast|actions|meetings|shareholding|tenders|daily_buybacks|issues]
     python -m collectors.nse_events.run_daily --dataset meetings --from 2025-07-01   # one-off backfill
 
 For each stream it fetches [today - days, today], so filings NSE adds late
@@ -28,6 +28,18 @@ rows, the same as its two halves together). Meetings, tenders and daily
 buyback reports are stored byte for byte in raw_v2/nse/{stream}/ first
 (insiders_clean/raw_store.py) when the run is given a raw store.
 
+Further issues (stream `issues`: preferential, rights and QIP, both stages;
+`insiders_clean/issues.py`): every filing NSE posted in the window, one archive
+row per filing with NSE's row, and the XBRL of the filings in
+issues.XBRL_WANTED parsed once (at most MAX_ISSUE_XBRL_PER_RUN a night, newest
+first; pending ones are retried on later nights). List responses and XBRL
+files are also stored byte for byte in raw_v2/nse/further_issues/ and
+raw_v2/nse/further_issue_xbrl/. The clean tables (preferential, rights, qip
+and their allottee and lock-in tables) are written by scripts/clean_writer.py,
+which reads this archive. To load history run once with
+`--dataset issues --days 550` (an approval up to 180 days older than the first
+allotment in the product window still links to it).
+
 A 401/403/429 from NSE stops all further NSE calls for the night; what was
 already fetched is still stored.
 """
@@ -50,7 +62,8 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks
+from insiders_clean import archive, buybacks, issues
+from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
 STREAMS = ('sast', 'actions', 'meetings', 'shareholding', 'tenders', 'daily_buybacks')
@@ -59,6 +72,11 @@ DATE_COLUMN = {'sast': 'trade_date_to', 'actions': 'ex_date', 'meetings': 'meeti
 RAW_STREAMS = ('meetings', 'tenders', 'daily_buybacks')  # kept byte for byte in raw_v2/
 MAX_XBRL_PER_RUN = 300
 IST = timezone(timedelta(hours=5, minutes=30))
+
+ISSUES = 'issues'   # further issues: preferential, rights, QIP
+STREAMS = STREAMS + (ISSUES,)
+DATE_COLUMN[ISSUES] = 'posted_on'
+MAX_ISSUE_XBRL_PER_RUN = 300   # further-issue XBRLs (4-100 KB each) a night
 
 
 def prefix(stream):
@@ -246,8 +264,101 @@ def build_buybacks(r2, master, run_date, report) -> None:
         put_parquet(r2, 'clean/current/buybacks.parquet', add_identity(bb, master))
 
 
+def store_raw(raw: RawStore | None, dataset: str, body: str, url: str, report: dict, content_type: str, covers=None):
+    """The exact text NSE sent, write-once in raw_v2. Never stops the run: a
+    failure is counted in the report."""
+    if raw is None:
+        return
+    try:
+        raw.put('nse', dataset, body.encode('utf-8'), url=url, content_type=content_type, covers=covers)
+    except Exception as exc:  # noqa: BLE001
+        counts = report.setdefault('raw_not_stored', {})
+        counts[type(exc).__name__] = counts.get(type(exc).__name__, 0) + 1
+
+
+def issue_filings(nse: NSEClient, raw: RawStore | None, start: date, today: date, report: dict) -> pd.DataFrame:
+    """Archive rows for every further-issue filing NSE posted in [start, today].
+    A refusal stops the lists (Blocked goes up); one failing list does not."""
+    frames = []
+    for kind in issues.KINDS:
+        for stage in ('in_principle', 'listing'):
+            url = nse.further_issues_url(kind, stage, start, today)
+            try:
+                text = nse.get(url, as_json=False)
+                store_raw(raw, 'further_issues', text, url, report, 'application/json',
+                          {'from': start.isoformat(), 'to': today.isoformat(), 'kind': kind, 'stage': stage})
+                j = json.loads(text)
+                frames.append(issues.filing_rows(kind, stage, j.get('data', []) if isinstance(j, dict) else j))
+            except Blocked:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                report['notes'].append(f'issues/{kind}/{stage}: list failed ({type(exc).__name__}: {exc})')
+    frames = [f for f in frames if not f.empty]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=issues.FILING_COLUMNS)
+
+
+def fetch_issue_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame, known: pd.DataFrame | None,
+                     report: dict, max_xbrl: int = MAX_ISSUE_XBRL_PER_RUN) -> pd.DataFrame:
+    """Parsed XBRL facts on tonight's filings, each file fetched once: facts
+    already parsed are carried over, and filings still 'pending' in the archive
+    (refused or over the cap on an earlier night) are retried even when the
+    window no longer lists them. Only issues.XBRL_WANTED are fetched."""
+    rows = rows.copy()
+    prev = known.set_index('event_id') if known is not None and not known.empty else None
+    if prev is not None:
+        pending = known[known['xbrl_status'].astype('string').eq('pending').fillna(False)
+                        & ~known['event_id'].isin(rows['event_id'])]
+        rows = pd.concat([rows, pending[[c for c in issues.FILING_COLUMNS if c in pending.columns]]], ignore_index=True)
+    rows['xbrl_status'] = rows['xbrl_status'].astype(object)
+    rows['xbrl_json'] = rows['xbrl_json'].astype(object)
+    fetched, blocked = 0, False
+    for i, row in rows.sort_values('posted_on', ascending=False, kind='stable', na_position='last').iterrows():
+        eid = row['event_id']
+        if prev is not None and eid in prev.index and str(prev.at[eid, 'xbrl_status']) == 'ok':
+            rows.at[i, 'xbrl_status'], rows.at[i, 'xbrl_json'] = 'ok', prev.at[eid, 'xbrl_json']
+            continue
+        if (row['kind'], row['stage']) not in issues.XBRL_WANTED:
+            rows.at[i, 'xbrl_status'] = 'not_needed'
+            continue
+        url = row['xbrl_url']
+        if not isinstance(url, str) or not url.startswith('http'):
+            rows.at[i, 'xbrl_status'] = 'no_xbrl'
+            continue
+        if blocked or fetched >= max_xbrl:
+            rows.at[i, 'xbrl_status'] = 'pending'
+            continue
+        fetched += 1
+        try:
+            text = nse.xbrl(url)
+            store_raw(raw, 'further_issue_xbrl', text, url, report, 'application/xml')
+            rows.at[i, 'xbrl_json'] = json.dumps(issues.parse_xbrl(text), ensure_ascii=False)
+            rows.at[i, 'xbrl_status'] = 'ok'
+        except Blocked:
+            rows.at[i, 'xbrl_status'] = 'pending'
+            blocked = True
+            report['issue_xbrl_blocked'] = True
+            report['notes'].append('NSE refused a further-issue XBRL; the rest wait for the next run')
+        except Exception as exc:  # noqa: BLE001 -- one bad file must not stop the rest
+            rows.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
+    report['issue_xbrl_fetched'] = fetched
+    return rows
+
+
+def issue_coverage(arch: pd.DataFrame | None) -> dict:
+    """Filings per kind and stage, and XBRL status counts. Counts only."""
+    if arch is None or arch.empty:
+        return {}
+    text = arch['xbrl_status'].astype('string')
+    status = text.fillna('none').str.split(':').str[0]
+    failed = text.dropna()
+    return {'filings': {f'{k}/{s}': int(n) for (k, s), n in arch.groupby(['kind', 'stage']).size().items()},
+            'xbrl_status': {k: int(v) for k, v in status.value_counts().items()},
+            'xbrl_failure_types': {k: int(v) for k, v in failed[failed.str.startswith('failed')].value_counts().items()},
+            'pending_xbrl': int((status == 'pending').sum())}
+
+
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
-        raw=None, backfill_from: date | None = None) -> dict:
+        raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -267,6 +378,12 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 elif stream == 'actions':
                     new, entry['dropped_other_purposes'] = parsers.parse_corporate_actions(
                         nse.corporate_actions(start, today))
+                elif stream == ISSUES:
+                    known = merge_into_archive(r2, stream, None, run_date)[0]
+                    iraw = raw if raw is not None else RawStore(r2, BUCKET, collector='collectors.nse_events.run_daily')
+                    new = fetch_issue_xbrl(nse, iraw, issue_filings(nse, iraw, start, today, report), known, report,
+                                           max_issue_xbrl)
+                    blocked = bool(report.get('issue_xbrl_blocked'))
                 elif stream == 'meetings':
                     new, entry['dropped_routine'] = fetch_meetings(nse, start, today, raw, backfill_from)
                 elif stream == 'tenders':
@@ -287,6 +404,9 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
         arch, added, parts = merge_into_archive(r2, stream, new, run_date)
         entry.update(added=added, partitions_written=parts, archive_rows=0 if arch is None else len(arch))
         if arch is None or arch.empty:
+            continue
+        if stream == ISSUES:   # cleaned by scripts/clean_writer.py, which reads this archive
+            entry['coverage'] = issue_coverage(arch)
             continue
         clean = add_identity(arch, master)
         if stream == 'shareholding':
@@ -316,15 +436,17 @@ def main(argv=None):
                     help='shareholding pledge files to fetch this run (NSE rate-limits by IP)')
     ap.add_argument('--from', dest='backfill_from', type=date.fromisoformat, default=None,
                     help='board meetings only: backfill month by month from this date (YYYY-MM-DD)')
+    ap.add_argument('--max-issue-xbrl', type=int, default=MAX_ISSUE_XBRL_PER_RUN,
+                    help='further-issue XBRL files to fetch this run')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
     if args.backfill_from and streams != ('meetings',):
         ap.error('--from needs --dataset meetings')
-    from insiders_clean.raw_store import RawStore
     r2 = r2_client()
     report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
-                 raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from)
+                 raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from,
+                 max_issue_xbrl=args.max_issue_xbrl)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')

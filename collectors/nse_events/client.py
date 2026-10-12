@@ -118,3 +118,19 @@ class NSEClient:
         the answer held the last two months whatever the dates asked."""
         j = self.get(f'{BASE}/api/corporates-daily-buyback?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j.get('data', []) if isinstance(j, dict) else j
+
+    # --- further issues (confirmed 12 Oct 2026) -----------------------------
+    # Preferential, rights and QIP, each in two stages. With from_date/to_date
+    # NSE returns every filing it posted in the window, not only the latest
+    # 100 (08-10-2025 to 12-10-2026 gave 639 preferential listing filings).
+    FURTHER_ISSUES = {
+        ('preferential', 'in_principle'): 'corporate-further-issues-pref?index=FIPREFIP',
+        ('preferential', 'listing'): 'corporate-further-issues-pref?index=FIPREFLS',
+        ('rights', 'in_principle'): 'corporate-further-issues-ri?index=FIRIIP',
+        ('rights', 'listing'): 'corporate-further-issues-ri?index=FIRILS',
+        ('qip', 'in_principle'): 'corporate-further-issues-qip?index=FIQIPIP',
+        ('qip', 'listing'): 'corporate-further-issues-qip?index=FIQIPLS',
+    }
+
+    def further_issues_url(self, kind: str, stage: str, start: date, end: date) -> str:
+        return f'{BASE}/api/{self.FURTHER_ISSUES[(kind, stage)]}&from_date={self._d(start)}&to_date={self._d(end)}'

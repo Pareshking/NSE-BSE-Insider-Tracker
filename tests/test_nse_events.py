@@ -85,9 +85,30 @@ def test_xbrl_without_totals_is_refused():
 
 # --- nightly job -----------------------------------------------------------------
 
+CAP = FIXTURES / 'capital'
+ISSUE_LISTS = {('preferential', 'in_principle'): 'pref_in_principle.json', ('preferential', 'listing'): 'pref_listing.json',
+               ('rights', 'in_principle'): 'rights_in_principle.json', ('rights', 'listing'): 'rights_listing.json',
+               ('qip', 'in_principle'): 'qip_in_principle.json', ('qip', 'listing'): 'qip_listing.json'}
+
+
+def _issue_xml():
+    """XBRL URL in the further-issue fixtures -> the fixture file holding it."""
+    out = {}
+    for (kind, stage), name in ISSUE_LISTS.items():
+        for row in json.loads((CAP / name).read_text(encoding='utf-8')):
+            f = CAP / f"{dict(preferential='pref', rights='rights', qip='qip')[kind]}_{'ip' if stage == 'in_principle' else 'ls'}_{row['appId']}.xml"
+            if f.exists():
+                out[row['xmlFileName']] = f
+    return out
+
+
+ISSUE_XML = _issue_xml()
+
+
 class FakeNSE:
     def __init__(self, block_xbrl=False):
         self.calls = 0
+        self.issue_xbrl = []
         self.block_xbrl = block_xbrl
         self.xml = (EV / 'shp_ZEEL_2026Q2.xml').read_text(encoding='utf-8')
 
@@ -120,7 +141,23 @@ class FakeNSE:
         self.calls += 1
         if self.block_xbrl and self.calls > 6:
             raise Blocked('HTTP 403')
+        if '_ISSUE_' in url or '/QIP_' in url:   # a further-issue XBRL
+            self.issue_xbrl.append(url)
+            if url not in ISSUE_XML:
+                raise RuntimeError('HTTP 404')
+            return ISSUE_XML[url].read_text(encoding='utf-8')
         return self.xml
+
+    # further issues: the list text for one kind and stage, as NSE sends it
+    issue_xbrl: list = []
+
+    def further_issues_url(self, kind, stage, s, e):
+        return f'further:{kind}:{stage}'
+
+    def get(self, url, as_json=True):
+        self.calls += 1
+        _, kind, stage = url.split(':')
+        return (CAP / ISSUE_LISTS[(kind, stage)]).read_text(encoding='utf-8')
 
 
 @pytest.fixture()
@@ -148,7 +185,8 @@ def test_nightly_run_writes_archive_clean_and_report(events):
     r2, run_daily = events
     rep = run_daily.run(r2, FakeNSE(), date(2026, 10, 7), 10)
     for stream in run_daily.STREAMS:
-        assert f'clean/current/{stream}.parquet' in r2.objects, stream
+        if stream != run_daily.ISSUES:   # issues are cleaned by scripts/clean_writer.py
+            assert f'clean/current/{stream}.parquet' in r2.objects, stream
         assert any(k.startswith(f'archive/nse_events/{stream}/year=') for k in r2.objects), stream
     sh = frame(r2, 'clean/current/shareholding.parquet')
     assert set(sh['xbrl_status']) == {'ok'} and round(float(sh['promoter_pledge_pct'].iloc[0]), 2) == 5.38
@@ -230,3 +268,39 @@ def test_coverage_names_why_pledge_files_failed():
         'promoter_pledge_pct': [1.0, None, None, None]})
     c = shareholding_coverage(df)
     assert c['xbrl_failure_types'] == {'failed: KeyError': 2, 'failed: ParseError': 1}
+
+
+# --- further issues -------------------------------------------------------------------
+
+def test_further_issues_are_archived_with_their_xbrl_and_raw_bytes(events):
+    r2, run_daily = events
+    nse = FakeNSE()
+    rep = run_daily.run(r2, nse, date(2026, 10, 9), 10, streams=(run_daily.ISSUES,))
+    arch = run_daily.merge_into_archive(r2, run_daily.ISSUES, None, '')[0]
+    assert arch['event_id'].is_unique and set(arch['kind']) == {'preferential', 'rights', 'qip'}
+    status = dict(zip(arch['event_id'], arch['xbrl_status']))
+    assert status['preferential:listing:65108'] == 'ok' and status['qip:listing:72568'] == 'ok'
+    assert status['rights:listing:72319'] == 'not_needed'                 # its XBRL adds nothing to the list
+    assert status['preferential:listing:65487'] == 'failed: RuntimeError'  # no fixture file: counted, not fatal
+    assert not any('/RIGHT' in u for u in nse.issue_xbrl)
+    cov = rep['streams']['issues']['coverage']
+    assert cov['filings']['preferential/listing'] == 11 and cov['xbrl_status']['ok'] >= 15
+    assert sum(k.startswith('raw_v2/nse/further_issues/blobs/') for k in r2.objects) == 6
+    assert any(k.startswith('raw_v2/nse/further_issue_xbrl/blobs/') for k in r2.objects)
+    assert 'clean/current/issues.parquet' not in r2.objects
+    again = FakeNSE()
+    rep2 = run_daily.run(r2, again, date(2026, 10, 10), 10, streams=(run_daily.ISSUES,))
+    failed = sum(str(v).startswith('failed') for v in status.values())
+    assert rep2['issue_xbrl_fetched'] == failed == len(again.issue_xbrl)   # parsed files are not fetched again
+
+
+def test_issue_xbrl_cap_leaves_the_rest_pending_and_retries_them(events):
+    r2, run_daily = events
+    rep = run_daily.run(r2, FakeNSE(), date(2026, 10, 9), 10, streams=(run_daily.ISSUES,), max_issue_xbrl=3)
+    arch = run_daily.merge_into_archive(r2, run_daily.ISSUES, None, '')[0]
+    assert rep['issue_xbrl_fetched'] == 3 and (arch['xbrl_status'] == 'pending').sum() > 0
+    newest = arch[arch['xbrl_status'].isin(['ok', 'failed: RuntimeError'])]['posted_on'].min()
+    assert newest >= arch.loc[arch['xbrl_status'] == 'pending', 'posted_on'].max()   # newest filings first
+    run_daily.run(r2, FakeNSE(), date(2026, 10, 10), 10, streams=(run_daily.ISSUES,))
+    arch = run_daily.merge_into_archive(r2, run_daily.ISSUES, None, '')[0]
+    assert (arch['xbrl_status'] == 'pending').sum() == 0

@@ -170,7 +170,7 @@ One row per company and quarter; a revised filing replaces the original.
 
 ### preferential and rights — NSE issue records, one row per stage record
 
-NSE returns the latest 100 records of each stage a day, so the table is every daily snapshot stacked, newest snapshot per record winning. An issue has two records, **In-Principle** (board date, amount, consideration; preferential also the allottee category) and **Listing Stage** (offer price, shares allotted, allotment, listing and trading-approval dates; rights also ratio, record date, issue open and close). They have separate `app_id`s and no shared key, so a listing record is linked to its approval by ISIN: the one In-Principle record filed in the 180 days before it, if there is exactly one.
+Two sources are stacked, newest copy per record winning: NSE's latest-100 lists kept as daily snapshots (`canonical/nse/{preferential,rights}_issue/`), and, from 12 Oct 2026, every filing NSE posted in a date window with its parsed XBRL (`archive/nse_events/issues/`, below). Records posted before 8 Oct 2025 are kept (counted in the report): their lock-ins run into the product window. An issue has two records, **In-Principle** (board date, amount, consideration; preferential also the allottee category) and **Listing Stage** (offer price, shares allotted, allotment, listing and trading-approval dates; rights also ratio, record date, issue open and close). They have separate `app_id`s and no shared key, so a listing record is linked to its approval by ISIN: the one In-Principle record filed in the 180 days before it, if there is exactly one.
 
 | Column | Meaning |
 |---|---|
@@ -179,7 +179,13 @@ NSE returns the latest 100 records of each stage a day, so the table is every da
 | `board_date`, `amount_total`, `consideration`, `allottee_category` | In-Principle fields (`PROMOTER`, `NON_PROMOTER`, `MIXED`); on a listing record they are copied from its linked approval |
 | `offer_price`, `shares_allotted`, `shares_listed`, `allotment_date`, `listing_date`, `trading_approval_date`, `amount_raised` | Listing-stage fields |
 | `ratio`, `record_date`, `issue_open_date`, `issue_close_date` | Rights, listing stage |
-| `link_status`, `linked_app_id` | `linked`, `ambiguous` (more than one possible approval; nothing copied), `no_in_principle_in_data` (its approval is not in the latest-100 lists) |
+| `link_status`, `linked_app_id` | `linked`, `ambiguous` (more than one possible approval; nothing copied), `no_in_principle_in_data` (its approval is not in the filings we hold), `more_shares_than_approved` (the only candidate approval's XBRL proposed fewer securities than were allotted, so it is another issue; nothing copied) |
+| `xbrl_status` | Preferential: `ok`, `pending`, `failed: <error>`, `no_xbrl`, or blank when the record is only in the snapshots |
+| `instruments`, `securities_proposed` | Preferential In-Principle XBRL: security types filed (`Equity Shares; Warrants`) and the total number proposed; copied to a linked listing record |
+| `icdr_min_price`, `relevant_date` | Preferential In-Principle XBRL: the minimum issue price under SEBI ICDR and the relevant date, **as filed**; blank when the issue's instruments state different ones. Copied to a linked listing record |
+| `vs_icdr_min` | Offer price vs the filed minimum, % |
+| `icdr_min_ours`, `icdr_ours_exchange`, `icdr_ours_note` | **Our estimate** of the minimum: the higher of the 90- and 10-session VWAP (traded value / volume, all series) before the filed relevant date, on the exchange with more volume, from our bhavcopy. Blank with a reason (`no_prices`, `under_90_sessions`, `split_or_bonus_in_window`) |
+| `lock_in_filed`, `lock_in_basis` | Listing records: whether the listing XBRL has lock-in lines, and whether the lock-in table uses them (`filed`) or the rule (`rule`) |
 | `amount_unreliable` | NSE's amount was zero or above ₹1 lakh crore; the amount is blank |
 | `lock_in_promoter_until`, `lock_in_other_until` | Preferential only, linked records with a trading-approval date: +18 months for promoters, +6 for others; a `MIXED` allotment gets both because the split is not filed |
 
@@ -217,6 +223,40 @@ Not available: **suspended** securities. NSE's `content/equities/suspension.csv`
 surveillance stages before that day are not known. BSE's own surveillance lists are not collected; BSE-only names
 have no row.
 
+### preferential_allottees — proposed allottees, one row per name in a preferential In-Principle XBRL
+
+| Column | Meaning |
+|---|---|
+| `app_id`, `isin`, `symbol`, `company`, `posted_on`, `board_date` | The approval |
+| `allottee`, `allottee_id` | Name as filed (display form) and its entity key (`insiders_clean/entities.py`) |
+| `security_type`, `securities` | Instrument and number proposed for that allottee |
+| `issue_category`, `promoter` | The XBRL gives no promoter status per allottee: `promoter` is True for a promoter issue, False for a non-promoter one, blank for `MIXED` |
+
+### preferential_lockins — lock-in lines, one or more per allotment (listing record)
+
+| Column | Meaning |
+|---|---|
+| `basis` | `filed`: a line of the listing XBRL (period and shares as the company filed them, possibly more shares than this allotment, e.g. an older lock-in); `rule`: none filed, so promoters 18 months and others 6, on linked records only |
+| `period_filed`, `months`, `who` | Filed text (`Equity shares for 18 months`), months read from it, and `Promoters`/`Others` for rule lines |
+| `shares` | Filed lock-in shares; for a rule line the shares allotted when the issue has one category, blank for `MIXED` |
+| `trading_approval_date`, `expires` | Lock-in counts from trading approval; `expires` blank when the period is not in whole months |
+
+### qip — NSE QIP records, one row per stage record (window filings only)
+
+| Column | Meaning |
+|---|---|
+| `stage`, `posted_on` | `in_principle` or `listing`; NSE's posting date (`boardResolutionDate` in NSE's QIP lists holds the posting date) |
+| `board_date`, `shareholder_approval_date`, `amount_total`, `listed_at`, `discount_in_notice_filed` | In-Principle fields; the last is NSE's `prcntagePerSecrtyProDiscNotice` as filed (values seen 0, 0.0005, 0.05; unit not stated, not shown) |
+| `bid_open_date`, `bid_close_date`, `relevant_date`, `floor_price`, `issue_price`, `discount_per_share`, `allotment_date`, `shares_allotted`, `allottees`, `amount_raised`, `listing_date`, `trading_approval_date` | Listing fields as filed. `floor_price` is NSE's minimum issue price; some filings give the issue price there |
+| `shares_listed` | As filed; some filings give the shares of this issue, others the company's total, so no % of equity is derived from it |
+| `issue_vs_floor` | Issue price vs the filed floor, % |
+| `amount_unreliable` | Amount zero, above ₹1 lakh crore, or more than 2x away from shares x issue price: blanked |
+| `link_status`, `linked_app_id` | As for preferential |
+
+### qip_allottees — allottees named in a QIP listing XBRL
+
+`app_id`, `isin`, `symbol`, `company`, `posted_on`, `allotment_date`, `allottee`, `allottee_id`, `category` (as filed: `Foreign Portfolio Investor`, `Mutual Fund`, `Systemically important NBFC` ...), `shares`, `pct_of_issue` (filed as a fraction, shown as %).
+
 ## Archive and raw layer columns (not clean tables)
 
 | Column | Where | Meaning |
@@ -224,6 +264,7 @@ have no row.
 | `intraday_round_trip` | `archive/canonical/.../bulk_deals`, `block_deals` | True when the row is a leg of a same-day, same-client, equal-size buy+sell. Absent on rows written before 09 Oct 2026; may be boolean or text, read with `as_flag` |
 | `canonical_prev_app_id`, `canonical_submission_type`, `canonical_revision_remark` | archive, NSE insider | NSE's own revision markers from the filing list (clean table: `prev_app_id`, `nse_submission_type`, `nse_revision_remark`). Not part of the row id |
 | `first_seen`, `last_seen` | archive | Run dates a row was first and last collected |
+| `event_id`, `kind`, `stage`, `app_id`, `posted_on`, `xbrl_url`, `xbrl_status`, `xbrl_json`, `raw_json` | `archive/nse_events/issues/year=YYYY.parquet` | One row per further-issue filing (`{kind}:{stage}:{appId}`), NSE's list row as JSON, and the parsed XBRL facts (`{'main': ..., 'groups': ...}`) for preferential filings and QIP listings |
 | `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
 
 ## Insider trades: results dates and the trading window

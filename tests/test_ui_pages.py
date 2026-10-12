@@ -80,6 +80,15 @@ def data_dir(tmp_path_factory, real_nse_rows):
                                 'dtOfSubmission': '08-OCT-2026', 'offerPrice': '1500', 'rightRatio': '1:10',
                                 'ingested_at': '2026-10-10T02:01:03+00:00'}])
     issue_clean.clean_issues(rights_raw, 'rights')[0].to_parquet(cur / 'rights.parquet')
+    # QIPs, allottees and filed lock-ins from the real further-issue fixtures, as scripts/clean_writer.py builds them
+    import clean_writer
+    from test_archive_and_writer import FakeR2, parquet
+    from test_issue_filings import filings
+    r2 = FakeR2()
+    r2.objects['archive/nse_events/issues/year=2026.parquet'] = parquet(filings())
+    extra, _ = clean_writer.issue_tables(r2)
+    for name in ('preferential_lockins', 'preferential_allottees', 'qip', 'qip_allottees'):
+        extra[name].to_parquet(cur / f'{name}.parquet')
     (root / 'clean' / 'report_local.json').write_text(json.dumps(report, default=str))
     (root / 'clean' / 'latest.json').write_text(json.dumps({'date': RUN_DATE, 'report': 'local'}))
     return root
