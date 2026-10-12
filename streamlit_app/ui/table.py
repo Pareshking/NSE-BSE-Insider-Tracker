@@ -175,6 +175,18 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
 
 
 SORT_JS = """
+// Streamlit's iframe is sandboxed without top-level navigation, so a link with target=_top is
+// blocked. The frame shares the app's origin, so hand the click to an anchor in the parent page.
+document.addEventListener('click', function (e) {
+  var a = e.target.closest && e.target.closest('a[target="_top"]');
+  if (!a) return;
+  e.preventDefault();
+  try {
+    var p = window.parent.document.createElement('a');
+    p.href = a.getAttribute('href'); p.target = '_self';
+    window.parent.document.body.appendChild(p); p.click(); p.remove();
+  } catch (err) { window.open(a.href, '_blank'); }
+});
 document.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {
   const tb = th.closest('table').tBodies[0], i = th.cellIndex, num = th.dataset.k === 'n';
   const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
