@@ -28,6 +28,8 @@ FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a sh
          'capacity_to': 'Capacity after'}
 SHOWN_STATUSES = ('read', 'same_file', 'same_text')
 LIMIT = 40
+NOT_HELD = 'entity labels not shown yet'   # by design for now, so not counted as held back on the card
+NO_PERIOD = ('', 'n/a', 'na', '-', 'none', 'not stated')
 
 
 def _json(v, empty):
@@ -87,7 +89,8 @@ def card_html(r: dict) -> str:
     fields = [f for f in _json(r.get('fields'), []) if f.get('shown') and f.get('name') in FIELD]
     metrics = [m for m in _json(r.get('metrics'), []) if m.get('shown')]
     agreed = _json(r.get('agreed'), {})
-    held = [f for f in _json(r.get('fields'), []) + _json(r.get('metrics'), []) if not f.get('shown')]
+    held = [f for f in _json(r.get('fields'), []) + _json(r.get('metrics'), [])
+            if not f.get('shown') and f.get('reason') != NOT_HELD]
     when = pd.Timestamp(r['broadcast_at']).tz_convert('Asia/Kolkata') if r.get('broadcast_at') else None
     rows = []
     for f in fields:
@@ -95,12 +98,19 @@ def card_html(r: dict) -> str:
         rows.append(f'<li><b>{esc(FIELD[f["name"]])}</b> <span class="rd-v">{esc(value_text(f))}</span>'
                     f'{_evidence(f.get("evidence"))}{both}<q>{esc(str(f.get("quote") or ""))}</q></li>')
     for m in metrics[:6]:
-        label = ' '.join(x for x in (str(m.get('label') or ''), f'({m["period"]})' if m.get('period') else '') if x)
+        period = str(m.get('period') or '').strip()
+        label = ' '.join(x for x in (str(m.get('label') or ''),
+                                     f'({period})' if period.lower() not in NO_PERIOD else '') if x)
         rows.append(f'<li><b>{esc(label)}</b> <span class="rd-v">{esc(metric_text(m))}</span>'
                     f'{_evidence(m.get("evidence"))}<q>{esc(str(m.get("quote") or ""))}</q></li>')
-    reasons = sorted({h.get('reason') for h in held if h.get('reason')})
-    held_html = (f'<p class="rd-held">{kit.plural(len(held), "value")} held back: {esc("; ".join(reasons))}</p>'
+    reasons = pd.Series([h.get('reason') for h in held if h.get('reason')], dtype=object).value_counts()
+    because = '; '.join(f'{k} ×{n}' if n > 1 else k for k, n in sorted(reasons.items()))
+    held_html = (f'<p class="rd-held">{kit.plural(len(held), "value")} held back: {esc(because)}</p>'
                  if held else '')
+    also = r.get('also_filed') or []
+    also_html = ('<p class="rd-s">Also filed: ' + ' · '.join(
+        esc(f'{a["exchange"]} {pd.Timestamp(a["broadcast_at"]).tz_convert("Asia/Kolkata").strftime("%d %b, %H:%M")}')
+        for a in also) + '</p>') if also else ''
     sym = r.get('symbol')
     return (f'<article class="rd">'
             f'<header><a href="{kit.company_href(sym)}" target="_self">{esc(str(r.get("company") or sym))}</a>'
@@ -108,19 +118,28 @@ def card_html(r: dict) -> str:
             f'{kit.tag(r.get("exchange") or "", "mute")}'
             f'<span class="rd-t">{esc(when.strftime("%d %b, %H:%M IST")) if when is not None else ""}</span></header>'
             f'<p class="rd-s">{esc(str(r.get("subject") or ""))}</p>'
-            f'<ul>{"".join(rows)}</ul>{held_html}'
+            f'{also_html}<ul>{"".join(rows)}</ul>{held_html}'
             f'<footer><a href="{esc(str(r.get("file_url") or "#"))}" target="_blank" rel="noopener">The filing</a>'
             f' · read by {esc(str(r.get("reader") or ""))}</footer></article>')
 
 
 def recent(reads: pd.DataFrame, since: pd.Timestamp) -> pd.DataFrame:
-    """Filings with something to show, made public on or after `since`, newest first."""
+    """Filings with something to show, made public on or after `since`, newest first. The same file filed
+    again (on the other exchange, or under another subject) is one card: the copies go in its `also_filed`."""
     if reads is None or reads.empty:
         return pd.DataFrame()
     r = reads[reads['status'].isin(SHOWN_STATUSES) & reads['category'].notna() & reads['category'].ne('routine')
               & pd.to_numeric(reads['shown'], errors='coerce').fillna(0).gt(0)]
     day = pd.to_datetime(r['broadcast_date'], errors='coerce')
     r = r[day >= since.normalize()]
+    if r.empty:
+        return r
+    r = r if 'same_as' in r else r.assign(same_as=None)
+    copy = r['status'].ne('read') & r['same_as'].isin(r['event_id'])
+    also = {k: g[['exchange', 'broadcast_at']].to_dict('records')
+            for k, g in r[copy].sort_values('broadcast_at').groupby('same_as')}
+    r = r[~copy].copy()
+    r['also_filed'] = r['event_id'].map(lambda e: also.get(e, []))
     return r.sort_values('broadcast_at', ascending=False)
 
 

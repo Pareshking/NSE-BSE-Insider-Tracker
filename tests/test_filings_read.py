@@ -36,7 +36,7 @@ def test_card_shows_checked_values_with_quotes_and_counts_the_rest():
     assert 'Price a share' in html and 'USD 15.50 bn' in html and 'at the issue price of Rs. 165.65' in html
     assert 'in the filing' in html and 'table row' in html and '2 readers agree' in html
     assert 'listed' not in html.split('held back')[0]   # entity kept back
-    assert '2 values held back: entity labels not shown yet; number not in its quote' in html
+    assert '1 value held back: number not in its quote' in html and 'entity labels' not in html   # by design, not held
     assert '10:15 IST' in html and 'href="/company?symbol=HYUNDAI"' in html and 'x.pdf' in html
 
 
@@ -47,6 +47,28 @@ def test_recent_keeps_filings_with_shown_values_since_the_day():
     assert list(fr.recent(reads, pd.Timestamp('2026-10-12'))['event_id']) == ['nse:1']
     assert fr.recent(pd.DataFrame(), pd.Timestamp('2026-10-12')).empty
 
+
+
+def test_the_same_file_filed_again_is_one_card_with_where_else_it_was_filed():
+    reads = pd.DataFrame([row(), row(event_id='bse:1', exchange='BSE', status='same_file', same_as='nse:1',
+                                     broadcast_at='2026-10-13T10:09:00+05:30'),
+                          row(event_id='nse:2', status='same_file', same_as='nse:1', subject='General Updates',
+                              broadcast_at='2026-10-13T10:20:00+05:30'),
+                          row(event_id='nse:7', status='same_file', same_as='nse:9')])   # its original not shown
+    got = fr.recent(reads, pd.Timestamp('2026-10-12'))
+    assert list(got['event_id']) == ['nse:1', 'nse:7']
+    html = fr.card_html(got.iloc[0].to_dict())
+    assert 'Also filed: BSE 13 Oct, 10:09 · NSE 13 Oct, 10:20' in html
+    assert 'Also filed' not in fr.card_html(got.iloc[1].to_dict())
+
+
+def test_held_back_reasons_are_counted_and_an_empty_period_is_not_written():
+    fields = [dict(FIELDS[4]), dict(FIELDS[4], name='amount')]
+    metrics = [{'label': 'Stake acquired', 'period': 'N/A', 'value': '89.8', 'number': 89.8, 'unit': 'percent',
+                'quote': 'acquire c.89.8%', 'evidence': 'exact', 'shown': True}]
+    html = fr.card_html(row(fields=json.dumps(fields), metrics=json.dumps(metrics)))
+    assert '2 values held back: number not in its quote ×2' in html
+    assert 'Stake acquired</b>' in html and 'N/A' not in html
 
 def test_card_waits_for_data_and_renders_when_there_is_some():
     code = APP_PATHS + f'''

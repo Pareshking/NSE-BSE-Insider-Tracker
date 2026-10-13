@@ -124,57 +124,109 @@ def test_lane_falls_back_and_leaves_out_a_model_that_keeps_timing_out():
 
 def test_lanes_file_and_free_only_rule():
     spec = ar.lanes_of(ar.LANES_FILE.read_text(encoding='utf-8'))
-    assert set(spec) == {'main', 'second'} and spec['main'] and spec['second']
+    assert list(spec) == ['nvidia', 'zai', 'groq', 'gemini'] and all(spec.values())
+    assert all({e.split(':', 1)[0] for e in es} == {name} for name, es in spec.items())   # one provider a lane
     assert ar.usable(['zai:glm-4.5-flash', 'zai:glm-5.3', 'nvidia:moonshotai/kimi-k3']) == [
         'zai:glm-4.5-flash', 'nvidia:moonshotai/kimi-k3']
     _, notes = ar.clients_for(['zai:glm-5.3'], env={'ZAI_API_KEY': 'k'})
     assert any('not one of zai' in n for n in notes)
     assert ar.clients_for(['nvidia:x'], env={})[1] == ['NVIDIA_API_KEY is not set; nvidia lanes skipped']
+    assert isinstance(ar.clients_for(['gemini:gemini-3.5-flash-lite'], env={'GEMINI_API_KEY': 'k'})[0]['gemini'],
+                      ar.GeminiCalls)
 
 
-def test_run_reads_with_both_lanes_copies_same_file_and_writes_r2(monkeypatch):
+def _lanes(**replies):
+    """Lanes named after their provider, each with a fake client answering in turn."""
+    return {p: ar.Lane(p, [f'{p}:m'], {p: FakeClient(r)}) for p, r in replies.items()}
+
+
+def _qips(n):
+    return pd.DataFrame([_cand(f'nse:{i}', 'NSE', f'INE{i}', f'2026-10-13T1{i}:00:00+05:30', 'QIP') for i in range(1, n + 1)])
+
+
+def test_lanes_read_different_filings_at_once_copy_the_same_file_and_cross_check_when_idle(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC if data != b'empty' else '', ['0.1 MB']))
     files = {'https://f/nse:1.pdf': b'one', 'https://f/nse:2.pdf': b'one', 'https://f/nse:3.pdf': b'empty'}
-    lanes = {'main': ar.Lane('main', ['nvidia:moonshotai/kimi-k3'], {'nvidia': FakeClient([QIP])}),
-             'second': ar.Lane('second', ['zai:glm-4.5-flash'], {'zai': FakeClient([QIP])})}
-    to_read = pd.DataFrame([_cand(f'nse:{i}', 'NSE', f'INE{i}', f'2026-10-13T1{i}:00:00+05:30', 'Qualified Institutional Placement')
-                            for i in (1, 2, 3)])
-    rows, notes = ar.run(to_read, lanes, None, 600, fetch=files.__getitem__)
+    lanes = _lanes(nvidia=[QIP, QIP], zai=[QIP, QIP])
+    rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=files.__getitem__, idle_wait=0.01)
     by = {r['event_id']: r for r in rows}
-    assert by['nse:1']['status'] == 'read' and by['nse:1']['reader'] == 'nvidia:moonshotai/kimi-k3'
-    assert by['nse:1']['second_reader'] == 'zai:glm-4.5-flash' and json.loads(by['nse:1']['agreed']) == {'price_per_share': True}
-    assert by['nse:1']['shown'] == 1 and json.loads(by['nse:1']['fields'])[0]['number'] == 165.65
-    assert by['nse:2']['status'] == 'same_file' and by['nse:2']['same_as'] == 'nse:1' and by['nse:2']['fields'] == by['nse:1']['fields']
+    # nse:1 and nse:2 are one file, taken by two lanes at once: the first downloaded is read, the other
+    # waits for that read and is copied from it, never read twice
+    read, copy = sorted((by['nse:1'], by['nse:2']), key=lambda r: r['status'] != 'read')
+    assert read['status'] == 'read' and read['shown'] == 1 and json.loads(read['fields'])[0]['number'] == 165.65
+    assert copy['status'] == 'same_file' and copy['same_as'] == read['event_id'] and copy['fields'] == read['fields']
     assert by['nse:3']['status'] == 'no_text'
+    # the idle lane, of the other provider, read it again: its one shown value agrees
+    other = ({'nvidia', 'zai'} - {read['reader'].split(':')[0]}).pop()
+    assert read['second_reader'] == f'{other}:m' and json.loads(read['agreed']) == {'price_per_share': True}
+    assert notes == {'not_reached': 0, 'cross_checked': 1} and len(rows) == 3
+    assert sum(len(lane.clients[n].asked) for n, lane in lanes.items()) == 2   # one read, one cross-check
     r2 = FakeR2()
     assert ar.write(r2, rows, '2026-10-13', date(2026, 10, 13)) == 3
     clean = pd.read_parquet(io.BytesIO(r2.objects[ar.CLEAN_KEY]))
     assert set(clean['event_id']) == {'nse:1', 'nse:2', 'nse:3'} and 'exchange' in clean and 'category' in clean
-    again = [dict(rows[2], status='read', tries=2)]
+    again = [dict(rows[-1], status='read', tries=2)]
     assert ar.write(r2, again, '2026-10-13', date(2026, 10, 13)) == 0   # replaced, not added
-    assert pd.read_parquet(io.BytesIO(r2.objects[ar.CLEAN_KEY])).set_index('event_id')['status']['nse:3'] == 'read'
 
 
-def test_main_lane_failing_falls_to_the_second_and_both_failing_is_counted(monkeypatch):
-    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))   # two different filings
+def test_a_filing_one_lane_cannot_read_goes_to_another_and_fails_only_when_all_have_tried(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))   # different filings
     boom = RuntimeError('all nvidia read models busy or refused (x: HTTP 503)')
-    lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': FakeClient([boom, boom])}),
-             'second': ar.Lane('second', ['zai:glm-4.5-flash'], {'zai': FakeClient([QIP, boom])})}
-    to_read = pd.DataFrame([_cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'QIP'),
-                            _cand('nse:2', 'NSE', 'INE2', '2026-10-13T11:00:00+05:30', 'QIP')])
-    rows, _ = ar.run(to_read, lanes, None, 600, fetch=lambda u: u.encode())
-    assert rows[0]['reader_lane'] == 'second' and rows[0]['shown'] == 1
-    assert rows[1]['status'] == 'failed' and '503' in rows[1]['reason'] and rows[1]['tries'] == 1
+    lanes = _lanes(nvidia=[boom] * 9, zai=[QIP, QIP, boom])
+    rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    by = {r['event_id']: r for r in rows}
+    read = [r for r in rows if r['status'] == 'read']
+    assert len(read) == 2 and all(r['reader_lane'] == 'zai' for r in read)
+    failed = [r for r in rows if r['status'] == 'failed']
+    assert len(failed) == 1 and 'nvidia:' in failed[0]['reason'] and 'zai:' in failed[0]['reason']
+    assert failed[0]['tries'] == 1 and set(by) == {'nse:1', 'nse:2', 'nse:3'} and notes['not_reached'] == 0
+
+
+def test_a_lane_at_its_daily_limit_stops_and_hands_its_work_on(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    monkeypatch.setattr(ar, 'DAILY_CALLS', {'groq:m': 100})
+    lanes = _lanes(groq=[QIP] * 5, zai=[QIP] * 5)
+    lanes['groq'].used_today = {'groq:m': 95}            # 95% of 100 already used today
+    assert lanes['groq'].models() == [] and lanes['zai'].models() == [('zai', 'm')]
+    rows, _ = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert [r['reader_lane'] for r in rows] == ['zai'] * 3 and lanes['groq'].clients['groq'].asked == []
 
 
 def test_time_budget_leaves_the_rest_for_the_next_run(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, []))
-    clock = iter([0, 0, 1000, 1000, 1000])
-    lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': FakeClient([QIP])})}
-    to_read = pd.DataFrame([_cand(f'nse:{i}', 'NSE', f'INE{i}', '2026-10-13T10:00:00+05:30', 'QIP') for i in (1, 2, 3)])
-    rows, notes = ar.run(to_read, lanes, None, 600, fetch=lambda u: u.encode(), now=lambda: next(clock))
+    ticks = iter([0, 0, 1000])                            # start, first take, then time is up
+    rows, notes = ar.run(_qips(3), _lanes(nvidia=[QIP]), None, 600, fetch=lambda u: u.encode(),
+                         now=lambda: next(ticks, 1000))
     assert len(rows) == 1 and notes['not_reached'] == 2
 
+
+def test_each_filing_is_saved_as_it_is_read_and_a_failed_save_waits_for_the_next(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    lanes, to_read = _lanes(nvidia=[QIP, QIP, QIP]), _qips(3)
+    r2, calls, clock = FakeR2(), [], iter([0, 20, 20, 25, 50])
+
+    def writer(r2_, rows, run_date, today):
+        calls.append([r['event_id'] for r in rows])
+        if len(calls) == 2:
+            raise OSError('R2 down')
+        return ar.write(r2_, rows, run_date, today)
+    saver = ar.Saver(r2, '2026-10-13', date(2026, 10, 13), every=15, now=lambda: next(clock), writer=writer)
+    rows, _ = ar.run(to_read, lanes, None, 600, fetch=lambda u: u.encode(), on_row=saver.add)
+    # nse:1 saved at once; nse:2's save fails and is kept; nse:3 comes 5 s later and waits; the last write has both
+    assert calls == [['nse:1'], ['nse:2']] and [r['event_id'] for r in saver.pending] == ['nse:2', 'nse:3']
+    saver.flush(final=True)
+    assert calls[-1] == ['nse:2', 'nse:3'] and saver.pending == [] and saver.added == 3 and saver.writes == 2
+    clean = pd.read_parquet(io.BytesIO(r2.objects[ar.CLEAN_KEY]))
+    assert sorted(clean['event_id']) == ['nse:1', 'nse:2', 'nse:3'] and len(rows) == 3
+
+
+def test_the_last_save_of_a_run_raises():
+    def writer(*_):
+        raise OSError('R2 down')
+    saver = ar.Saver(FakeR2(), '2026-10-13', date(2026, 10, 13), writer=writer)
+    saver.add({'event_id': 'nse:1'})   # the first save fails quietly and keeps the row
+    with pytest.raises(OSError):
+        saver.flush(final=True)
 
 @pytest.mark.parametrize('day,parts', [(date(2026, 10, 13), ['year=2026/month=09', 'year=2026/month=10']),
                                        (date(2026, 1, 1), ['year=2025/month=12', 'year=2026/month=01'])])
