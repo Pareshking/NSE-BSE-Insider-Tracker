@@ -118,7 +118,7 @@ def render():
                     kit.Col('value', 'Value', 'money'), kit.Col('day', 'Made public', 'date')], limit=50)
 
     # --- filings read: values from the filings themselves, each with its quote ------------------
-    filings_read.render(store.table('announcement_reads'), day)
+    filings_read.render(store.table('announcement_reads'), day, ctx, store.price_history())
 
     # --- what came in --------------------------------------------------------------------------
     cl = signals.clusters(e, ref)

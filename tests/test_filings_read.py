@@ -37,7 +37,7 @@ def test_card_shows_checked_values_with_quotes_and_counts_the_rest():
     assert 'in the filing' in html and 'table row' in html and '2 readers agree' in html
     assert 'listed' not in html.split('held back')[0]   # entity kept back
     assert '1 value held back: number not in its quote' in html and 'entity labels' not in html   # by design, not held
-    assert '10:15 IST' in html and 'href="/company?symbol=HYUNDAI"' in html and 'x.pdf' in html
+    assert '13 Oct, 10:15 · NSE' in html and 'href="/company?symbol=HYUNDAI"' in html and 'x.pdf' in html
 
 
 def test_recent_keeps_filings_with_shown_values_since_the_day():
@@ -54,11 +54,11 @@ def test_the_same_file_filed_again_is_one_card_with_where_else_it_was_filed():
                                      broadcast_at='2026-10-13T10:09:00+05:30'),
                           row(event_id='nse:2', status='same_file', same_as='nse:1', subject='General Updates',
                               broadcast_at='2026-10-13T10:20:00+05:30'),
-                          row(event_id='nse:7', status='same_file', same_as='nse:9')])   # its original not shown
+                          row(event_id='nse:7', status='same_file', same_as='nse:9', symbol='OTHER')])   # original not shown
     got = fr.recent(reads, pd.Timestamp('2026-10-12'))
     assert list(got['event_id']) == ['nse:1', 'nse:7']
     html = fr.card_html(got.iloc[0].to_dict())
-    assert 'Also filed: BSE 13 Oct, 10:09 · NSE 13 Oct, 10:20' in html
+    assert 'Also filed: <a href' in html and 'BSE 13 Oct, 10:09</a>' in html and 'NSE 13 Oct, 10:20 (General Updates)</a>' in html
     assert 'Also filed' not in fr.card_html(got.iloc[1].to_dict())
 
 
@@ -68,7 +68,7 @@ def test_held_back_reasons_are_counted_and_an_empty_period_is_not_written():
                 'quote': 'acquire c.89.8%', 'evidence': 'exact', 'shown': True}]
     html = fr.card_html(row(fields=json.dumps(fields), metrics=json.dumps(metrics)))
     assert '2 values held back: number not in its quote ×2' in html
-    assert 'Stake acquired</b>' in html and 'N/A' not in html
+    assert '<td>Stake acquired</td>' in html and 'N/A' not in html
 
 def test_card_waits_for_data_and_renders_when_there_is_some():
     code = APP_PATHS + f'''
@@ -81,7 +81,7 @@ filings_read.render(reads, pd.Timestamp('2026-10-12'))
     at = AppTest.from_string(code).run(timeout=60)
     assert not at.exception
     html = ' '.join(h.proto.body for h in at.get('html'))
-    assert html.count('<article class="rd">') == 1 and 'Filings read' in ' '.join(m.value for m in at.markdown) + html
+    assert html.count('<article class="rc">') == 1 and 'Filings read' in ' '.join(m.value for m in at.markdown) + html
 
 
 def test_no_currency_in_the_filing_means_none_on_the_site():
@@ -91,3 +91,65 @@ def test_no_currency_in_the_filing_means_none_on_the_site():
     assert fr.metric_text({'number': 2e9, 'unit': 'crore', 'value': '200.00', 'currency': None}) == '200.00 crore'
     assert fr.value_text({'name': 'amount', 'number': 2e9, 'value': '200.00', 'unit': 'crore'}) == '200.00 crore'
     assert fr.value_text({'name': 'price_per_share', 'number': 165.65, 'value': '165.65', 'currency': 'INR'}) == '₹165.65'
+
+
+def test_card_leads_with_its_checked_headline_and_points_and_shows_our_own_change():
+    headline = {'text': 'Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share', 'quote': 'up to Rs 12,000 Lakhs',
+                'evidence': 'exact', 'shown': True}
+    points = [{'text': 'Up to 10 Cr shares at Rs 12, record date October 15, 2026.', 'quote': 'q', 'evidence': 'exact', 'shown': True},
+              {'text': 'A point the checks held back', 'quote': 'x', 'shown': False, 'reason': 'a number not in its quote'}]
+    metrics = [{'label': 'Sales (Commercial Vehicles)', 'period': 'Sep 2026', 'value': '1071', 'unit': 'units',
+                'number': 1071, 'quote': '1071', 'evidence': 'table', 'shown': True, 'change_pct': 31.9}]
+    prices = {'market_cap': 2.23e9, 'mcap_bucket': 'Small'}
+    days = pd.date_range('2025-10-01', '2026-10-13', freq='D')
+    hist = {'INE1': (days.to_numpy(), [100.0] * (len(days) - 7) + [110.0] * 7)}
+    html = fr.card_html(row(isin='INE1', headline=json.dumps(headline), points=json.dumps(points),
+                            metrics=json.dumps(metrics)), prices, hist)
+    assert '<h4 class="rc-h">Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share</h4>' in html
+    assert '<b>10 Cr</b> shares at <b>Rs 12</b>' in html and 'A point the checks held back' not in html.split('<details')[0]
+    assert 'Sales (Commercial Vehicles) (Sep 2026)' in html and '+31.9% YoY' in html
+    assert 'Smallcap' in html and '₹223' in html and '1Y <b class="up">+10.0%</b>' in html
+    assert 'Key terms' in html and 'Price a share' in html and '2 readers agree' in html
+    assert "The filing's own words" in html.replace('&#x27;', "'") and 'a number not in its quote' in html
+
+
+def test_an_older_read_without_a_headline_still_gets_a_plain_one():
+    html = fr.card_html(row())
+    assert '<h4 class="rc-h">Hyundai Motor India Ltd: capacity / investment, USD 15.50 bn</h4>' in html
+
+
+def test_different_files_on_one_deal_are_one_card_and_other_deals_stay_apart():
+    deal = [dict(FIELDS[1], number=809e6), dict(FIELDS[0], number=165.65)]
+    other = [dict(FIELDS[1], number=95e6)]
+    reads = pd.DataFrame([
+        row(event_id='nse:1', subject='Press Release', fields=json.dumps(deal), shown=5),
+        row(event_id='nse:2', subject='General Updates', fields=json.dumps(deal[:1]), shown=4,
+            broadcast_at='2026-10-13T10:40:00+05:30', file_url='https://f/2.pdf'),
+        row(event_id='nse:3', subject='Acquisition', fields=json.dumps(other), shown=1),          # another deal
+        row(event_id='nse:4', subject='Press Release', fields=json.dumps(deal), category='qip'),  # another category
+        row(event_id='nse:5', subject='Press Release', fields=json.dumps(deal), broadcast_date='2026-10-15',
+            broadcast_at='2026-10-15T10:15:00+05:30')])                                          # two days later
+    got = fr.recent(reads, pd.Timestamp('2026-10-12')).set_index('event_id')
+    assert sorted(got.index) == ['nse:1', 'nse:3', 'nse:4', 'nse:5']
+    assert [a['event_id'] for a in got.loc['nse:1', 'also_filed']] == ['nse:2']   # the one with more values leads
+    html = fr.card_html(got.loc['nse:1'].to_dict() | {'event_id': 'nse:1'})
+    assert 'href="https://f/2.pdf"' in html and '(General Updates)' in html
+
+def test_before_this_is_built_from_our_own_tables_with_our_own_sums():
+    deal = [dict(FIELDS[0], number=12.0, currency='INR'), dict(FIELDS[1], number=1.2e9, currency='INR')]
+    r = row(isin='INE1', fields=json.dumps(deal), broadcast_at='2026-10-13T10:15:00+05:30')
+    reads = pd.DataFrame([r, row(event_id='nse:0', isin='INE1', category='preferential', broadcast_at='2026-09-20T12:00:00+05:30',
+                                 headline=json.dumps({'text': 'Board approves a preferential issue', 'shown': True})),
+                          row(event_id='nse:9', isin='INE1', category='rights', broadcast_at='2026-05-01T12:00:00+05:30')])
+    price = {'latest_close': 15.0, 'last_date': '2026-10-13', 'market_cap': 2.4e9}
+    holding = {'promoter_holding_pct': 63.8, 'promoter_pledge_pct': 0.0, 'quarter_end': '2026-06-30'}
+    insiders = pd.DataFrame([{'isin': 'INE1', 'side': 'BUY', 'value': 2.5e6, 'seen': pd.Timestamp('2026-10-01')},
+                             {'isin': 'INE1', 'side': 'BUY', 'value': 1e6, 'seen': pd.Timestamp('2026-08-01')}])   # too old
+    lines = fr.before_this(r, reads, price, holding, insiders)
+    assert lines[0] == 'The price of <b>₹12.00</b> is <b>20.0%</b> below the last close of ₹15.00 (13 Oct).'
+    assert lines[1] == "The size is <b>50.0%</b> of the company's market cap (₹240.00 Cr)."
+    assert lines[2] == 'Promoters hold <b>63.8%</b> (30 Jun 2026), none of it pledged.'
+    assert lines[3].startswith('Insiders bought <b>₹25.00 L</b>') and '1 filing' in lines[3]
+    assert lines[4] == '20 Sep: Board approves a preferential issue.' and len(lines) == 5   # May is past 90 days
+    assert 'Before this' in fr.card_html(r, price, None, lines)
+    assert fr.before_this(row(), None, None, None, None) == []

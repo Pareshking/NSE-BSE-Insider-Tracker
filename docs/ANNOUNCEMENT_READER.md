@@ -169,6 +169,16 @@ once: the second waits for the first's read); the lanes read different filings a
 every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
 so it ends before the next starts; what it does not reach waits for the next run.
 
+- Continuous (14 Oct, owner): each run starts the next when it ends (job `next` in the workflow, by
+  `workflow_dispatch`, which GitHub lets a workflow start with its own token), at least 10 minutes after
+  the last one started and 30 after a failure; a cancelled run ends the chain. GitHub's schedule (every 15
+  minutes) is kept only to restart the chain: on 13-14 Oct it started no run in the first hour after the
+  merge, and the nightly jobs start 1-3 hours late. **Off switch:** set the repository variable
+  `READER_LOOP` to `off` (Settings, Secrets and variables, Actions, Variables) or disable the workflow in
+  the Actions tab; on again: remove the variable and run the workflow by hand once. The public repo's
+  Actions minutes are free; each cycle collects NSE and BSE once (about 2 minutes).
+- A new prompt version re-reads once the filings of today and yesterday read with an older one (and their
+  copies), so every card has every part; an older read is never the source of a copy.
 - Saved as read: each filing's row goes to R2 as soon as it is read (at most one write every 15 seconds;
   a failed write keeps its rows for the next one, and only the run's last write fails the run). A run
   cut short keeps what it read. The site keeps this one table for 3 minutes instead of 10
@@ -188,6 +198,32 @@ so it ends before the next starts; what it does not reach waits for the next run
 - Shown: the reading lane's values that pass the checks (`reader_lane` says which). When nothing is left
   to read, an idle lane reads again a filing another provider read this run; the values both give alike
   are marked "2 readers agree" (`second_reader`, `agreed`). A failed cross-check changes nothing.
+- The card on the Brief (14 Oct, owner's examples from equisense; prompt `live-2`): the symbol, market cap
+  and size (from the price summary), date and exchange; the category; a headline and 2 to 4 points the
+  model writes from the filing; the figures of a periodic update with our own change on a year ago; the key
+  terms (price a share, shares, size, record date ...); the filing's own words behind a click; the stock's
+  1W, 1M and 1Y moves; the filing's link and its reader. The headline and each point carry a quote, and
+  every number in them must be one of the quote's numbers, as written or with its lakh, crore, million or
+  billion applied (12,000 lakh may be written 120 crore, within 0.5%): a number of the model's own, a growth
+  rate it worked out, or a quote not in the filing holds the sentence back. A point may also use the
+  numbers of the filing's values already checked (a floor price and its discount from two quotes); a
+  headline those of the shown points too. First trial on real filings (PR #59, 14 Oct 01:40): 3 of 3
+  headlines and 5 of 9 points shown before this, the rest held back for joining numbers of two quotes. A metric's year-earlier value
+  (`previous`, with its own quote) is checked the same way; the % change is ours. No "impact" label (13
+  Oct decision); "why it matters" waits for our own history ("before this", a next step): equisense's
+  draws on concalls and annual reports, which we do not collect, so it would be invented here. Reads
+  before `live-2` show a plain headline (company: category, size). The site's CSS hides every `footer`
+  element (Streamlit's), so the card's foot is a `div`; the first cards' link and reader never showed.
+- "Before this" on the card (our own tables, every figure computed by us): the issue price against the last
+  close; the size against market cap; promoter holding and pledge (latest quarter); insiders' open-market
+  buys and sells in the last 30 days; the company's earlier filings read in the last 90 days (their
+  headline). Nothing from a model and nothing we do not collect.
+- One card per deal: different files on one deal (Aegis: a press release and the board's outcome, both
+  US$ 809M for 89.8% of Tristar) fold into one card when they are the same company and category, made
+  public within 24 hours, and share a number of 100 or more, or two numbers. The card with the most shown
+  values leads; the others are listed under "Also filed" with their subject and a link.
+- Cross-check of figures: an idle lane's second read now also marks a business update's figures "2 readers
+  agree" when it gives the same number (labels differ between models, so the number is compared).
 - The card on the Brief: one card per file. The same file filed again (on the other exchange or under
   another subject) is folded into it as "Also filed: BSE 13 Oct, 21:12". Entity labels, not shown by
   design, are not counted as held back; repeated reasons are counted ("number not in its quote ×2"); a

@@ -6,6 +6,11 @@ name: Announcement reader
 # clean/reports/announcement_reader/. Every 15 minutes through the day (filings come at all hours), each
 # filing saved as soon as it is read.
 # On a PR: three filings read, nothing written, and only when the reader's own files change in the push.
+# Continuous on main: each run starts the next when it ends (job "next", workflow_dispatch, which GitHub
+# lets a workflow start with its own token), at least 10 minutes after the last one started, 30 after a
+# failure. The schedule below only restarts the chain if it stops (GitHub's schedules start late and
+# sometimes not at all). Off switch: set the repository variable READER_LOOP to "off" (Settings, Secrets
+# and variables, Actions, Variables), or cancel a run; on again: delete it or set "on", then run by hand.
 on:
   workflow_dispatch:
     inputs:
@@ -33,7 +38,11 @@ jobs:
   read:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      started: ${{ steps.start.outputs.at }}
     steps:
+      - id: start
+        run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -76,3 +85,27 @@ jobs:
           name: announcement-reader-dry-run
           path: announcement_reader_dry_run.json
           if-no-files-found: ignore
+
+  next:
+    # The next run of the chain; not on a PR, not after a run was cancelled, not when switched off.
+    needs: read
+    if: >-
+      ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+          && needs.read.result != 'cancelled' && vars.READER_LOOP != 'off' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "next run requested" >> "$GITHUB_STEP_SUMMARY"

@@ -68,7 +68,8 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
         _cand('nse:5', 'NSE', 'INE5', '2026-10-10T09:00:00+05:30', 'Rights Issue'),   # older than yesterday
         _cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'),
         _cand('nse:7', 'NSE', 'INE7', '2026-10-13T14:00:00+05:30', 'Buyback')])
-    done = pd.DataFrame([{**_cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'), 'status': 'read', 'tries': 1},
+    done = pd.DataFrame([{**_cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'), 'status': 'read', 'tries': 1,
+                          'prompt_version': ar.PROMPT_VERSION},
                          {**_cand('nse:7', 'NSE', 'INE7', '2026-10-13T14:00:00+05:30', 'Buyback'), 'status': 'failed', 'tries': 1}])
     to_read, status, counts = ar.choose(c, done, today)
     assert list(to_read['event_id']) == ['nse:7', 'nse:1', 'nse:4']   # today newest first, then yesterday
@@ -228,6 +229,36 @@ def test_the_last_save_of_a_run_raises():
     with pytest.raises(OSError):
         saver.flush(final=True)
 
+
+@pytest.mark.parametrize('text,quote,ok', [
+    ('Shivam Autotech sets ₹120 Cr rights issue at ₹12 per share', 'up to ₹ 12,000 Lakhs# ₹ 12 per Equity Share', True),
+    ('Evonile Pharma approves rights issue of up to ₹900 Cr', 'for an aggregate amount not exceeding ₹9,000 million', True),
+    ('16.45 lakh warrants at ₹152', 'up to 16,45,000 Warrants at an issue price of Rs. 152/-', True),
+    ('FM Goetze approves ₹335 Cr capex', 'Investment Required Indian Rupees 3,351 Million', True),   # 335.1, rounded
+    ('Sales up 32% in FY27', 'Sales FY 2026 812 FY 2027 1071', False),          # a growth rate of its own
+    ('Raises ₹150 Cr', 'aggregating up to Rs. 25,00,40,000/-', False)])
+def test_every_number_of_a_headline_or_point_must_be_in_its_quote(text, quote, ok):
+    assert ar.numbers_backed(text, [quote]) is ok
+
+
+def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
+    doc = ('the Board approved a Rights Issue of up to 10,00,00,000 Right Equity Shares. Issue Size up to ₹ 12,000 '
+           'Lakhs. Issue Price ₹ 12 per Equity Share. Sales FY 2026 812 FY 2027 1071')
+    out = {'category': 'rights', 'fields': [{'name': 'price_per_share', 'value': '12', 'quote': 'Issue Price ₹ 12 per Equity Share'}],
+           'metrics': [{'label': 'Sales', 'period': 'Sep 2026', 'value': '1071', 'unit': 'units', 'quote': 'FY 2027 1071',
+                        'previous': '812', 'previous_period': 'Sep 2025', 'previous_quote': 'FY 2026 812'}],
+           'headline': {'text': 'Company sets ₹120 Cr rights issue at ₹12', 'quote': 'Issue Size up to ₹ 12,000 Lakhs'},
+           'points': [{'text': 'Up to 10 Cr shares will be issued.', 'quote': 'up to 10,00,00,000 Right Equity Shares'},
+                      {'text': 'Raising ₹500 Cr.', 'quote': 'Issue Size up to ₹ 12,000 Lakhs'},
+                      {'text': 'Words the filing does not have.', 'quote': 'nowhere in it'}]}
+    cat, fields, metrics = ar.validate(out, doc)
+    metrics = [ar.with_previous(m, r, doc) for m, r in zip(metrics, out['metrics'])]
+    headline, points = ar.card_words(out, doc, fields, metrics)
+    assert headline['shown'] and [p['shown'] for p in points] == [True, False, False]
+    assert points[1]['reason'] == 'a number not in its quote' and points[2]['reason'] == 'quote not found in the filing'
+    assert metrics[0]['previous_number'] == 812 and metrics[0]['change_pct'] == 31.9   # our sum, not the model's
+    assert 'headline' in ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, doc).split('=== DOCUMENT ===')[0]
+
 @pytest.mark.parametrize('day,parts', [(date(2026, 10, 13), ['year=2026/month=09', 'year=2026/month=10']),
                                        (date(2026, 1, 1), ['year=2025/month=12', 'year=2026/month=01'])])
 def test_two_months_of_archive_are_read(day, parts):
@@ -253,3 +284,21 @@ def test_each_money_value_carries_its_own_or_the_filings_currency():
     f = {x['name']: x for x in fields}
     assert f['amount']['currency'] == 'USD' and f['price_per_share']['currency'] == 'USD'   # the filing's currency
     assert metrics[0]['currency'] == 'USD'
+
+
+
+def test_a_cross_check_compares_figures_by_number_whatever_their_labels():
+    main = [{'label': 'Sales Sep 2026', 'number': 1071, 'shown': True}, {'label': 'Exports', 'number': 53, 'shown': True},
+            {'label': 'held', 'number': 9, 'shown': False}]
+    second = [{'label': 'Commercial vehicle sales', 'number': 1071, 'shown': True}, {'label': 'x', 'number': 54, 'shown': True}]
+    assert ar.metric_agreement(main, second) == {'metric:0': True, 'metric:1': None}
+
+
+
+def test_a_read_with_an_older_prompt_is_read_again_once_and_never_copied():
+    today = date(2026, 10, 13)
+    c = pd.DataFrame([_cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'Buyback'),
+                      _cand('nse:2', 'NSE', 'INE2', '2026-10-13T11:00:00+05:30', 'Buyback')])
+    done = pd.DataFrame([{**c.iloc[0].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': 'live-1'},
+                         {**c.iloc[1].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': ar.PROMPT_VERSION}])
+    assert list(ar.choose(c, done, today)[0]['event_id']) == ['nse:1']

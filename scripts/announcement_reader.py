@@ -48,7 +48,7 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-1'
+PROMPT_VERSION = 'live-2'   # live-2: headline and points for the card, year-ago values of periodic figures
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -71,7 +71,7 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at')
+           'seconds', 'read_at', 'headline', 'points', 'market_cap')
 
 
 def log(*parts):
@@ -281,6 +281,100 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
     return cat, fields, metrics
 
 
+# --- the card's words: a headline and a few points, every number in them found in their quote --------------
+
+CARD_ASK = (
+    'Also return "headline": {"text": one line of at most 90 characters saying what the company did, with its '
+    'key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
+    'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
+    'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
+    'words that state it}. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
+    'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
+    'headline and points use only facts and numbers that their quote states, each number as written or '
+    'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
+    'rates you work out yourself.\n\n')
+_NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
+                  r'|thousand|k\b)?', re.IGNORECASE)
+_MULT = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'crores': 1e7, 'cr': 1e7, 'crs': 1e7,
+         'million': 1e6, 'mn': 1e6, 'm': 1e6, 'billion': 1e9, 'bn': 1e9, 'thousand': 1e3, 'k': 1e3}
+
+
+def card_prompt(row: dict, doc: str) -> str:
+    p = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
+                       'subject': row.get('subject')}, doc)
+    return p.replace('=== DOCUMENT ===', CARD_ASK + '=== DOCUMENT ===', 1)
+
+
+def numbers_in(text) -> list[tuple[float, float]]:
+    """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
+    out = []
+    for m in _NUM.finditer(str(text or '')):
+        try:
+            n = float(m.group(1).replace(',', ''))
+        except ValueError:
+            continue
+        out.append((n, n * _MULT.get((m.group(2) or '').lower().rstrip('.'), 1)))
+    return out
+
+
+def numbers_backed(text, quotes) -> bool:
+    """Every number of `text` is one of the quotes' numbers, as written or with its unit applied (within 0.5%):
+    the model may write 12,000 lakh as 120 crore, never a number of its own."""
+    have = {v for q in quotes for pair in numbers_in(q) for v in pair}
+    return all(any(abs(v - h) <= 0.005 * max(1.0, abs(h)) for h in have for v in pair) for pair in numbers_in(text))
+
+
+def check_words(item, doc: str, more_quotes=()) -> dict | None:
+    """A headline or point: shown only when its quote is in the filing and every number in it is in that quote
+    (it may also use the quotes of values already checked, and a headline those of the shown points)."""
+    if not isinstance(item, dict) or not str(item.get('text') or '').strip():
+        return None
+    text, quote = str(item['text']).strip(), item.get('quote')
+    qf = s.quote_found(quote, doc)
+    reasons = [] if qf else ['quote not found in the filing']
+    if not numbers_backed(text, [quote, *more_quotes]):
+        reasons.append('a number not in its quote')
+    return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
+            'reason': '; '.join(reasons) or None}
+
+
+def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[dict | None, list[dict]]:
+    out = out if isinstance(out, dict) else {}
+    values = [f['quote'] for f in fields + metrics if f.get('shown')]   # quotes already checked in the filing
+    points = [p for p in (check_words(x, doc, values) for x in (out.get('points') or [])[:4]) if p]
+    backed = [p['quote'] for p in points if p['shown']] + values
+    return check_words(out.get('headline'), doc, backed), points
+
+
+def with_previous(m: dict, raw: dict, doc: str) -> dict:
+    """A metric's year-earlier value, checked as the metric is; our own change in % when both are shown."""
+    prev, q = raw.get('previous'), raw.get('previous_quote')
+    if prev in (None, '') or not m.get('shown'):
+        return m
+    unit = m.get('unit')
+    money = str(unit or '').strip().lower().rstrip('.') in s.UNIT
+    n = s.in_units(prev, unit) if money else s._num(prev)
+    ok = bool(s.quote_found(q, doc)) and s.digits_in_quote(prev, q) and n is not None
+    m = {**m, 'previous': prev, 'previous_period': raw.get('previous_period'), 'previous_quote': q,
+         'previous_number': n if ok else None}
+    if ok and n and m.get('number') is not None:
+        m['change_pct'] = round((m['number'] - n) / abs(n) * 100, 1)
+    return m
+
+
+def metric_agreement(main: list[dict], second: list[dict]) -> dict:
+    """Per shown metric of the main read (key "metric:<position>"): True when the second read has a shown
+    metric of the same number (within 0.5%), else None. Two models label one figure differently, so the
+    number is what is compared; a figure the second read does not give is not counted against it."""
+    theirs = [m.get('number') for m in second if m.get('shown') and isinstance(m.get('number'), (int, float))]
+    out = {}
+    for i, m in enumerate(main):
+        n = m.get('number')
+        if m.get('shown') and isinstance(n, (int, float)):
+            out[f'metric:{i}'] = True if any(abs(n - t) <= 0.005 * max(1.0, abs(n)) for t in theirs) else None
+    return out
+
+
 def agreement(main: list[dict], second: list[dict]) -> dict:
     """Per shown field of the main read: True when the second read gives the same value, False when it
     gives another, None when it gives none."""
@@ -361,7 +455,10 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date) -> tuple
     tries = {}
     if done is not None and not done.empty:
         failed = done['status'] == 'failed'
-        finished = set(done.loc[~failed | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        # a read (or a copy of one) made with an older prompt is read again once, so its card has every part
+        stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
+            (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
+        finished = set(done.loc[(~failed & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip'])
     counts['routine_or_no_file'] = int((~keep).sum())
@@ -396,8 +493,7 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date) -> tuple
 def read_one(lane: Lane, row: dict, doc: str) -> dict:
     """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
     checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
-    prompt = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
-                            'subject': row.get('subject')}, doc)
+    prompt = card_prompt(row, doc)
     try:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
@@ -406,7 +502,12 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
     if out is None:
         return {'ok': False, 'error': f'{lane.name}: {used}: reply was not JSON'}
     cat, fields, metrics = validate(out, doc)
-    return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics}
+    raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
+    if len(raw) == len(metrics):
+        metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
+    headline, points = card_words(out, doc, fields, metrics)
+    return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
+            'headline': headline, 'points': points}
 
 
 def _sha(b) -> str:
@@ -419,8 +520,9 @@ def finish(rec: dict) -> dict:
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
     rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
         sum(not m['shown'] for m in rec.get('metrics') or [])
-    for k in ('fields', 'metrics', 'second_fields', 'agreed'):
+    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
+    rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
     return {c: rec.get(c) for c in COLUMNS}
 
 
@@ -443,7 +545,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     busy = set()                            # lanes reading now
     by_file, by_text, waiting, docs = {}, {}, {}, {}   # waiting: hash -> twins held until its read is done
     if earlier is not None and not earlier.empty:
-        for r in earlier[earlier['status'] == 'read'].to_dict('records'):
+        current = earlier['prompt_version'] == PROMPT_VERSION if 'prompt_version' in earlier else False
+        for r in earlier[(earlier['status'] == 'read') & current].to_dict('records'):
             by_file.setdefault(r.get('file_sha256'), r)
             by_text.setdefault(r.get('text_sha256'), r)
     checked = set()                         # event_ids cross-checked, or being cross-checked
@@ -461,8 +564,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
 
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
-        copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics',
-                                           'second_reader', 'second_category', 'second_fields', 'agreed')}
+        copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
+                                           'points', 'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
@@ -583,20 +686,20 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'seconds': res['seconds']})
+                      'headline': res['headline'], 'points': res['points'], 'seconds': res['seconds']})
         with lock:
-            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'])
+            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
         add_row(rec)
         for twin in done_reading(job, rec):
             add_row(copy_of(rec, twin))
         log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
 
     def cross_check(lane: Lane, rec: dict):
-        row, doc, fields = docs[rec['event_id']]
+        row, doc, fields, metrics = docs[rec['event_id']]
         res = read_one(lane, row, doc)
         if not res['ok']:
             return                          # a missing cross-check is not an error; the values stand as read
-        agreed = agreement(fields, res['fields'])
+        agreed = {**agreement(fields, res['fields']), **metric_agreement(metrics, res['metrics'])}
         with lock:
             notes['cross_checked'] += 1
         add_row({**rec, 'second_reader': res['reader'], 'second_category': res['category'],
