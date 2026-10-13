@@ -404,9 +404,16 @@ def finish(rec: dict) -> dict:
 
 
 def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | None, budget_seconds: float,
-        fetch=s.download, max_filings: int | None = None, now=time.monotonic) -> tuple[list[dict], dict]:
-    """Read the chosen filings in order until the time budget is used; (rows, notes)."""
+        fetch=s.download, max_filings: int | None = None, now=time.monotonic,
+        on_row=None) -> tuple[list[dict], dict]:
+    """Read the chosen filings in order until the time budget is used; (rows, notes). `on_row` gets each
+    filing's row as soon as it is done (the live run saves it then, not at the end)."""
     started, rows, notes = now(), [], {'not_reached': 0}
+
+    def add_row(rec: dict) -> None:
+        rows.append(rec)
+        if on_row is not None:
+            on_row(rec)
     by_file, by_text = {}, {}
     if earlier is not None and not earlier.empty:
         for r in earlier[earlier['status'] == 'read'].to_dict('records'):
@@ -424,7 +431,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 data = fetch(row['file_url'])
                 doc, doc_notes = s.text_of(data)
             except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
-                rows.append(finish({**base, 'status': 'failed', 'reason': f'download: {type(exc).__name__}: {exc}'[:300]}))
+                add_row(finish({**base, 'status': 'failed', 'reason': f'download: {type(exc).__name__}: {exc}'[:300]}))
                 continue
             base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
                         text_chars=len(doc))
@@ -434,14 +441,14 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
                 copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics',
                                                    'second_reader', 'second_category', 'second_fields', 'agreed')}
-                rows.append({c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
-                                 'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS})
+                add_row({c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
+                             'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS})
                 continue
             if not doc.strip():
-                rows.append(finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)}))
+                add_row(finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)}))
                 continue
             rec = finish({**base, **read_filing(row, doc, lanes, pool)})
-            rows.append(rec)
+            add_row(rec)
             if rec['status'] == 'read':
                 by_file.setdefault(rec['file_sha256'], rec)
                 by_text.setdefault(rec['text_sha256'], rec)
@@ -478,7 +485,9 @@ def write(r2, rows: list[dict], run_date: str, today: date) -> int:
             old = read_parquet(r2, k)
             if old is not None and not old.empty:
                 added += int((~g['event_id'].isin(old['event_id'])).sum())
-                g = pd.concat([old[~old['event_id'].isin(g['event_id'])], g], ignore_index=True)
+                cols = list(dict.fromkeys([*old.columns, *g.columns]))   # empty columns left out of the concat
+                parts = [p.dropna(axis=1, how='all') for p in (old[~old['event_id'].isin(g['event_id'])], g)]
+                g = pd.concat(parts, ignore_index=True).reindex(columns=cols)
             else:
                 added += len(g)
             for c in ('tries', 'text_chars', 'seconds', 'shown', 'held'):
@@ -490,6 +499,39 @@ def write(r2, rows: list[dict], run_date: str, today: date) -> int:
                       >= pd.Timestamp(today - timedelta(days=READ_DAYS))]
         put_parquet(r2, CLEAN_KEY, recent.reset_index(drop=True))
     return added
+
+
+class Saver:
+    """Rows written to R2 as the run reads them (at most one write every `every` seconds), so a filing reaches
+    the site minutes after it is read and a run cut short keeps what it has read. A write that fails keeps its
+    rows for the next one; only the last write, at the end of the run, raises."""
+
+    def __init__(self, r2, run_date: str, today: date, every: float = 15.0, now=time.monotonic, writer=None):
+        self.r2, self.run_date, self.today, self.every, self.now = r2, run_date, today, every, now
+        self.writer = writer or write
+        self.pending: list[dict] = []
+        self.added, self.writes, self.last = 0, 0, None
+
+    def add(self, rec: dict) -> None:
+        self.pending.append(rec)
+        if self.last is None or self.now() - self.last >= self.every:
+            self.flush()
+
+    def flush(self, final: bool = False) -> None:
+        if not self.pending:
+            return
+        try:
+            self.added += self.writer(self.r2, self.pending, self.run_date, self.today)
+        except Exception as exc:  # noqa: BLE001 -- kept for the next write
+            if final:
+                raise
+            log('save failed, kept for the next write:', type(exc).__name__, exc)
+            return
+        finally:
+            self.last = self.now()
+        self.writes += 1
+        log(f'saved {len(self.pending)} filings to R2')
+        self.pending = []
 
 
 def usage(clients: dict, lanes: dict[str, Lane]) -> dict:
@@ -614,9 +656,12 @@ def main(argv=None):
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
     to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
-    rows, notes_run = run(to_read, lanes, done, args.minutes * 60, max_filings=args.max)
-    rows += [finish({**r, 'prompt_version': PROMPT_VERSION, 'read_at': datetime.now(timezone.utc).isoformat()})
-             for r in status_rows.to_dict('records')]
+    saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
+    rows, notes_run = run(to_read, lanes, done, args.minutes * 60, max_filings=args.max,
+                          on_row=saver.add if saver else None)
+    status = [finish({**r, 'prompt_version': PROMPT_VERSION, 'read_at': datetime.now(timezone.utc).isoformat()})
+              for r in status_rows.to_dict('records')]
+    rows += status
     use = usage(clients, lanes)
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
@@ -627,7 +672,9 @@ def main(argv=None):
         Path('announcement_reader_dry_run.json').write_text(json.dumps(rows, indent=1, ensure_ascii=False, default=str),
                                                             encoding='utf-8')
         return 0
-    added = write(r2, rows, today.isoformat(), today)
+    saver.pending += status
+    saver.flush(final=True)
+    added = saver.added
     append_usage(r2, today.isoformat(), {'at': datetime.now(timezone.utc).isoformat(), 'counts': counts,
                                          'outcomes': pd.Series([r['status'] for r in rows]).value_counts().to_dict()
                                          if rows else {}, 'added': added, 'usage': use, 'notes': setup})

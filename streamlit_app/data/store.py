@@ -43,10 +43,26 @@ def configured() -> bool:
     return _local() is not None or r2_data.r2_configured()
 
 
-@st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES))
+FRESH = ('announcement_reads',)   # rewritten through the day as filings are read: kept for 3 minutes, not 10
+
+
 def table(name: str) -> pd.DataFrame:
+    return _fresh_table(name) if name in FRESH else _table(name)
+
+
+def _parquet(name: str) -> pd.DataFrame:
     body = _read(f'clean/current/{name}.parquet')
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+
+
+@st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES))
+def _table(name: str) -> pd.DataFrame:
+    return _parquet(name)
+
+
+@st.cache_data(ttl=180, show_spinner=False, max_entries=len(FRESH))
+def _fresh_table(name: str) -> pd.DataFrame:
+    return _parquet(name)
 
 
 @st.cache_data(ttl=600, show_spinner=False)

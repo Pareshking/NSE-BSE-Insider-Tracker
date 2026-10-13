@@ -7,7 +7,7 @@ Code:
 - Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
   `collectors/bse/announcements.py` (BSE), workflow `announcements.yml` (nightly, 3 days).
 - Live reader: `scripts/announcement_reader.py`, lanes in `scripts/announcement_readers.txt`, workflow
-  `announcement-reader.yml` (every 30 minutes on `main`; on a PR a 3-filing dry run, nothing written).
+  `announcement-reader.yml` (every 15 minutes on `main`; on a PR a 3-filing dry run, nothing written).
 - Site: Brief card "Filings read" (`streamlit_app/screens/filings_read.py`) from
   `clean/current/announcement_reads.parquet`.
 - Model test: `scripts/announcement_sample.py` (harness; prompts, clients and checks shared with the
@@ -28,7 +28,7 @@ Code:
 - Every value must carry a quote found in the PDF text, and prices and counts must have their digits in
   the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
   our code converts (lakh, crore, million, billion) and computes every % change.
-- Use free limits up to 95%, through the day (every 30 minutes), not only at night; today's filings first.
+- Use free limits up to 95%, through the day (every 15 minutes), not only at night; today's filings first.
 - The Brief (`/brief`) becomes the hub for critical and useful filings, crisp and tactical for the next
   day, with "before this" from our own data. No "impact" labels; gaps flagged neutrally.
 - Concall announcements are not collected (08 Oct decision).
@@ -151,12 +151,19 @@ lists (not collected yet).
 
 ## The live reader (coded 13 Oct, `scripts/announcement_reader.py`)
 
-Every 30 minutes (on `main`): collect yesterday's and today's NSE and BSE filings (BSE stops paging at the
+Every 15 minutes (on `main`, at :07, :22, :37 and :52; GitHub may start a run a few minutes late): collect yesterday's and today's NSE and BSE filings (BSE stops paging at the
 first page it already has; yesterday too, so a filing made public between the nightly collection at 22:45
 and midnight is read the same night); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
 skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
 copy instead of reading when the same file or text was read before; both lanes read each filing side by
-side; check every value; write. About 22 minutes of reading a run.
+side; check every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
+so it ends before the next starts; what it does not reach waits for the next run.
+
+- Saved as read: each filing's row goes to R2 as soon as it is read (at most one write every 15 seconds;
+  a failed write keeps its rows for the next one, and only the run's last write fails the run). A run
+  cut short keeps what it read. The site keeps this one table for 3 minutes instead of 10
+  (`FRESH` in `streamlit_app/data/store.py`), so a filing shows on the Brief about 5 to 20 minutes after
+  the exchange publishes it. The usage log is still written once, at the end of a run.
 
 - Lanes: `scripts/announcement_readers.txt`, one line each (`main`, `second`). Within a lane the next
   model takes over on busy, refusal or timeout; a model timing out twice running is left out for the run.

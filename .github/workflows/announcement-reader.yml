@@ -3,7 +3,8 @@ name: Announcement reader
 # Today's useful NSE and BSE filings read by the lanes of scripts/announcement_readers.txt, every value
 # checked against its quote (scripts/announcement_reader.py, docs/ANNOUNCEMENT_READER.md). Writes
 # archive/announcement_reads/, clean/current/announcement_reads.parquet and the day's usage log in
-# clean/reports/announcement_reader/. Every 30 minutes through the day (filings come at all hours).
+# clean/reports/announcement_reader/. Every 15 minutes through the day (filings come at all hours), each
+# filing saved as soon as it is read.
 # On a PR: three filings read, nothing written, and only when the reader's own files change in the push.
 on:
   workflow_dispatch:
@@ -13,7 +14,7 @@ on:
         required: false
         default: ''
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7,22,37,52 * * * *'
   pull_request:
     paths:
       - 'scripts/announcement_reader.py'
@@ -61,6 +62,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: '11'   # stop taking new filings after 11 minutes, so a run ends before the next starts
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

@@ -176,6 +176,36 @@ def test_time_budget_leaves_the_rest_for_the_next_run(monkeypatch):
     assert len(rows) == 1 and notes['not_reached'] == 2
 
 
+
+def test_each_filing_is_saved_as_it_is_read_and_a_failed_save_waits_for_the_next(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': FakeClient([QIP, QIP, QIP])})}
+    to_read = pd.DataFrame([_cand(f'nse:{i}', 'NSE', f'INE{i}', '2026-10-13T10:00:00+05:30', 'QIP') for i in (1, 2, 3)])
+    r2, calls, clock = FakeR2(), [], iter([0, 20, 20, 25, 50])
+
+    def writer(r2_, rows, run_date, today):
+        calls.append([r['event_id'] for r in rows])
+        if len(calls) == 2:
+            raise OSError('R2 down')
+        return ar.write(r2_, rows, run_date, today)
+    saver = ar.Saver(r2, '2026-10-13', date(2026, 10, 13), every=15, now=lambda: next(clock), writer=writer)
+    rows, _ = ar.run(to_read, lanes, None, 600, fetch=lambda u: u.encode(), on_row=saver.add)
+    # nse:1 saved at once; nse:2's save fails and is kept; nse:3 comes 5 s later and waits; the last write has both
+    assert calls == [['nse:1'], ['nse:2']] and [r['event_id'] for r in saver.pending] == ['nse:2', 'nse:3']
+    saver.flush(final=True)
+    assert calls[-1] == ['nse:2', 'nse:3'] and saver.pending == [] and saver.added == 3 and saver.writes == 2
+    clean = pd.read_parquet(io.BytesIO(r2.objects[ar.CLEAN_KEY]))
+    assert sorted(clean['event_id']) == ['nse:1', 'nse:2', 'nse:3'] and len(rows) == 3
+
+
+def test_the_last_save_of_a_run_raises():
+    def writer(*_):
+        raise OSError('R2 down')
+    saver = ar.Saver(FakeR2(), '2026-10-13', date(2026, 10, 13), writer=writer)
+    saver.add({'event_id': 'nse:1'})   # the first save fails quietly and keeps the row
+    with pytest.raises(OSError):
+        saver.flush(final=True)
+
 @pytest.mark.parametrize('day,parts', [(date(2026, 10, 13), ['year=2026/month=09', 'year=2026/month=10']),
                                        (date(2026, 1, 1), ['year=2025/month=12', 'year=2026/month=01'])])
 def test_two_months_of_archive_are_read(day, parts):
