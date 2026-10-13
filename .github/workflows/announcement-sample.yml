@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: announcement-sample
-  cancel-in-progress: true
+  cancel-in-progress: false   # a run in progress keeps its log; the next one waits
 
 jobs:
   sample:

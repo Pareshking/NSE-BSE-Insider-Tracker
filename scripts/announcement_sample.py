@@ -60,6 +60,10 @@ CATEGORIES = {
     'rights': 'rights issue of shares',
     'open_offer': 'open offer under the SAST takeover regulations',
     'debt_issue': 'debentures, bonds, commercial paper or other debt',
+    'capex': 'investment in new or expanded capacity, a plant, or approval to run more capacity',
+    'product_launch': 'a new product or product line launched',
+    'order_win': 'orders or contracts received or won',
+    'business_update': 'periodic operating or financial figures (monthly sales, quarterly update, order book, guidance)',
     'auditor_resignation': 'statutory auditor resigned',
     'rating_upgrade': 'credit rating raised',
     'rating_downgrade': 'credit rating lowered or put on watch negative',
@@ -68,19 +72,27 @@ CATEGORIES = {
     'routine': 'anything else (meetings, reminders, newspaper copies, compliance certificates)',
 }
 FIELDS = {
-    'price_per_share': 'issue, offer or buyback price per share in rupees (a fixed price only)',
-    'max_price_per_share': 'maximum price per share in rupees ("not exceeding"), for open-market buybacks',
-    'shares': 'number of shares or warrants issued, allotted, converted, offered or bought back',
-    'amount_rs': 'total size in rupees as a plain number (convert lakh, crore, million, billion)',
+    'entity': 'whose event it is: "listed" (the filing company), "subsidiary" (any subsidiary or step-down '
+              'subsidiary) or "parent_group" (a parent or group company)',
+    'price_per_share': 'issue, offer or buyback price per share, as written (a fixed price only)',
+    'max_price_per_share': 'maximum price per share ("not exceeding"), for open-market buybacks, as written',
+    'shares': 'number of shares or warrants issued, allotted, converted, offered or bought back, as written',
+    'amount': 'the total size or investment, the number exactly as written (e.g. 28,200.00 for "Rs 28,200.00 Lakhs")',
+    'amount_unit': 'unit of that number: rupees, thousand, lakh, crore, million or billion',
+    'currency': 'currency of the amount: INR, USD, CAD, EUR ...',
     'discount_pct': 'discount to the floor price, in percent',
     'allottee_is_promoter': 'true if the filing says the allottees or subscribers are promoters, false if it says not',
     'ratio': 'rights entitlement ratio as "new:held", e.g. "2:21"',
     'record_date': 'record date, YYYY-MM-DD',
     'offer_pct': 'open offer size as percent of share capital',
-    'about_listed_company': 'false when the event concerns a subsidiary rather than the listed company itself',
+    'capacity_from': 'capacity before, with its unit, as written',
+    'capacity_to': 'capacity after or of the new facility, with its unit, as written',
 }
-NUMERIC = ('price_per_share', 'max_price_per_share', 'shares', 'amount_rs', 'discount_pct', 'offer_pct')
-DIGITS_IN_QUOTE = ('price_per_share', 'max_price_per_share', 'shares')
+# Operating figures go in "metrics": [{"label", "period", "value", "unit", "quote"}] (business updates, orders).
+UNIT = {'rupees': 1, 'rs': 1, 'units': 1, 'thousand': 1e3, 'lakh': 1e5, 'lakhs': 1e5, 'crore': 1e7, 'crores': 1e7,
+        'cr': 1e7, 'million': 1e6, 'mn': 1e6, 'billion': 1e9, 'bn': 1e9}
+NUMERIC = ('price_per_share', 'max_price_per_share', 'shares', 'amount', 'discount_pct', 'offer_pct')
+DIGITS_IN_QUOTE = ('price_per_share', 'max_price_per_share', 'shares', 'amount')
 
 
 def sort_prompt(row: dict) -> str:
@@ -98,10 +110,14 @@ def read_prompt(row: dict, doc: str) -> str:
     return (f'Below is the text of an announcement filed with NSE by {row["symbol"]} (subject: {row["subject"]}).\n'
             f'Categories:\n{cats}\n\nFields:\n{fields}\n\n'
             'Return only JSON: {"category": one category name, "fields": [{"name": field name, '
-            '"value": number, true/false or text, "quote": the exact words from the document that state it}]}.\n'
-            'Rules: include a field only if the document states it; never compute or guess; the quote must be '
-            'copied character for character from the document, one sentence or table row at most; '
-            'leave fields out rather than invent them.\n\n=== DOCUMENT ===\n' + doc)
+            '"value": number, true/false or text, "quote": the exact words from the document that state it}], '
+            '"metrics": [{"label": what is measured, "period": e.g. "Sep 2026" or "H1 FY27", "value": the number '
+            'as written, "unit": rupees/lakh/crore/million/units/percent, "quote": the exact words}]}.\n'
+            'Rules: include a field or metric only if the document states it; never compute, convert or guess '
+            '(give numbers exactly as written, with their unit); the quote must be copied character for '
+            'character from the document, one sentence or table row at most; put the most important figures '
+            'of a business update, order announcement or capex in metrics; leave things out rather than '
+            'invent them.\n\n=== DOCUMENT ===\n' + doc)
 
 
 # --- the model API -----------------------------------------------------------------
@@ -182,7 +198,8 @@ def pdf_text(data: bytes) -> str:
     with tempfile.TemporaryDirectory() as d:
         src = Path(d) / 'f.pdf'
         src.write_bytes(data)
-        out = subprocess.run(['pdftotext', str(src), '-'], capture_output=True, timeout=180, check=False)
+        # -layout keeps a table's row on one line with its headers above (SML Mahindra's sales table)
+        out = subprocess.run(['pdftotext', '-layout', str(src), '-'], capture_output=True, timeout=180, check=False)
         return out.stdout.decode('utf-8', errors='replace')
 
 
@@ -240,6 +257,14 @@ def _num(v):
         return None
 
 
+def in_units(value, unit) -> float | None:
+    """A number as written times its unit ('28,200.00' lakh -> 2,820,000,000). Our code converts, not the model."""
+    v = _num(value)
+    if v is None:
+        return None
+    return v * UNIT.get(str(unit or 'rupees').strip().lower().rstrip('.'), 1)
+
+
 def same(name: str, expected, got) -> bool:
     if got is None:
         return False
@@ -250,24 +275,32 @@ def same(name: str, expected, got) -> bool:
         return str(got).strip().lower() in (('true', 'yes') if expected else ('false', 'no'))
     if name == 'ratio':
         return re.sub(r'\s', '', str(got)) == expected
-    return str(got).strip() == str(expected)
+    if name in ('capacity_from', 'capacity_to'):
+        return _norm(expected) in _norm(got)
+    return str(got).strip().lower() == str(expected).strip().lower()
 
 
 def check(row: dict, sort_out, read_out, doc: str) -> dict:
     exp = row['expected']
+    out = read_out if isinstance(read_out, dict) else {}
     fields = {}
-    for f in (read_out or {}).get('fields') or []:
+    for f in out.get('fields') or []:
         if isinstance(f, dict) and f.get('name') in FIELDS and f['name'] not in fields:
             fields[f['name']] = f
+    unit = (fields.get('amount_unit') or {}).get('value')
     lines, ok, total = [], 0, 0
-    for name in ['category'] + [k for k in exp if k != 'category'] + [k for k in fields if k not in exp]:
+    names = ['category'] + [k for k in exp if k not in ('category', 'metrics')]
+    names += [k for k in fields if k not in exp and k not in ('amount_unit',)]
+    for name in names:
         if name == 'category':
-            got, quote, qf, digits = (read_out or {}).get('category'), None, None, None
+            got, quote, qf, digits = out.get('category'), None, None, None
         else:
             f = fields.get(name, {})
             got, quote = f.get('value'), f.get('quote')
             qf = quote_found(quote, doc) if f else None
             digits = digits_in_quote(got, quote) if f and name in DIGITS_IN_QUOTE else None
+            if name == 'amount' and f:
+                got = in_units(got, unit)   # compared in rupees (or the filing's currency), as our code converts
         backed = qf is not False and digits is not False
         if name in exp:
             total += 1
@@ -277,9 +310,22 @@ def check(row: dict, sort_out, read_out, doc: str) -> dict:
             match = None   # the model gave a field the hand reading did not list
         lines.append({'field': name, 'expected': exp.get(name), 'model': got, 'match': match,
                       'quote_found': qf, 'digits_in_quote': digits, 'quote': quote})
-    s = sort_out or {}
+    metrics = [m for m in out.get('metrics') or [] if isinstance(m, dict)]
+    for want in exp.get('metrics', []):
+        total += 1
+        hit = next((m for m in metrics if (v := in_units(m.get('value'), m.get('unit'))) is not None
+                    and abs(v - want['value']) <= 0.005 * max(1.0, abs(want['value']))), None)
+        qf = quote_found(hit.get('quote'), doc) if hit else None
+        digits = digits_in_quote(hit.get('value'), hit.get('quote')) if hit else None
+        good = bool(hit) and qf is not False and digits is not False
+        ok += good
+        lines.append({'field': f"metric: {want['label']}", 'expected': want['value'],
+                      'model': (f"{hit.get('value')} {hit.get('unit') or ''} ({hit.get('label')}, {hit.get('period')})"
+                                if hit else None), 'match': good, 'quote_found': qf, 'digits_in_quote': digits,
+                      'quote': hit.get('quote') if hit else None})
+    s = sort_out if isinstance(sort_out, dict) else {}
     return {'symbol': row['symbol'], 'subject': row['subject'], 'score': [ok, total], 'fields': lines,
-            'sort_category': s.get('category'), 'sort_read_pdf': s.get('read_pdf'),
+            'metrics_given': len(metrics), 'sort_category': s.get('category'), 'sort_read_pdf': s.get('read_pdf'),
             'sort_category_right': s.get('category') == exp['category']}
 
 
