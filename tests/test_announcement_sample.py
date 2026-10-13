@@ -208,3 +208,15 @@ def test_a_small_context_model_gets_a_small_reply_budget():
     c.generate(['moonshotai/kimi-k3'], 'p', 'read', True)
     assert sent == [4096, 16384]
     assert a.PROVIDERS['zai'][0] == 'https://api.z.ai/api/paas/v4'   # keys from z.ai (owner's account)
+
+
+def test_a_reply_left_in_reasoning_content_is_read_and_zai_stays_free():
+    body = {'choices': [{'message': {'content': '', 'reasoning_content': '{"category": "qip"}'}}], 'usage': {}}
+    c = a.OpenAICompat('nvidia', 'https://x/v1', 'k', session=_Session([_Resp(200, body)]), sleep=lambda _: None)
+    assert a.parse_json(c.generate(['deepseek-ai/deepseek-v4.1-flash'], 'p', 'read', True)[0]) == {'category': 'qip'}
+    assert set(a.FREE_ONLY['zai']) == {'glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6v-flash'}   # Free on Z.ai's pricing page
+
+
+def test_each_zai_model_gets_its_own_job_with_its_thinking_variant():
+    jobs = a.matrix('readers: zai:glm-4.7-flash, zai:glm-4.7-flash+thinking, zai:glm-4.5-flash')
+    assert [j['reader'] for j in jobs] == ['zai:glm-4.7-flash, zai:glm-4.7-flash+thinking', 'zai:glm-4.5-flash']

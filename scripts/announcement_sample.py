@@ -235,7 +235,12 @@ class OpenAICompat:
                 if r.status_code != 200:
                     raise RuntimeError(f'{self.name}:{model}: HTTP {r.status_code}: {r.text[:300]}')
                 j = r.json()
-                text = ((j.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
+                msg = (j.get('choices') or [{}])[0].get('message') or {}
+                text = msg.get('content') or ''
+                if not text.strip():   # some reasoning models (DeepSeek v4.1 Flash) leave the answer in their notes
+                    text = msg.get('reasoning_content') or msg.get('reasoning') or ''
+                    if text:
+                        log(f'{kind} {self.name}:{model}: content empty, reply taken from reasoning_content')
                 text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)   # reasoning models' notes
                 u = j.get('usage') or {}
                 return text, {'promptTokenCount': u.get('prompt_tokens')}, model
@@ -250,7 +255,10 @@ PROVIDERS = {   # name: (base url, key secret, extra input limit in characters o
     'nvidia': ('https://integrate.api.nvidia.com/v1', 'NVIDIA_API_KEY', None),
     'zai': ('https://api.z.ai/api/paas/v4', 'ZAI_API_KEY', None),   # free Flash models: one request at a time
 }
-SERIAL = {'zai'}   # free tier: one request at a time, so one job
+# Z.ai: only the models its pricing page lists as Free (docs.z.ai pricing, 13 Oct 2026); its /models answer
+# leaves them out (13 Oct: only paid GLM 4.5-5.3 listed), so these are tried as named and nothing else is.
+FREE_ONLY = {'zai': ('glm-4.7-flash', 'glm-4.5-flash', 'glm-4.6v-flash')}
+SERIAL = {'zai'}   # free tier: one request at a time (per model or per account: not known), so one job per model
 OTHER_BASES = {'zai': ('https://open.bigmodel.cn/api/paas/v4', 'https://api.z.ai/v1')}   # bigmodel.cn keys work there
 # Models with a small context: (characters of input at most, reply tokens). Palmyra Fin takes 32K tokens in all.
 MODEL_LIMITS = {'writer/palmyra-fin-70b-32k': (75_000, 4096)}
@@ -275,8 +283,8 @@ def matrix(text: str) -> list[dict]:
     line = text if any(ln.strip().lower().startswith('readers:') for ln in text.splitlines()) \
         else 'readers: ' + DEFAULT_READERS
     jobs: dict[str, list[str]] = {}
-    for r in parse_readers(line):   # a provider allowing one request at a time gets one job for all its readers
-        jobs.setdefault(r.split(':')[0] if r.split(':')[0] in SERIAL else r, []).append(r)
+    for r in parse_readers(line):   # one request at a time (Z.ai free): one job per model, its thinking variant in it
+        jobs.setdefault(r.removesuffix('+thinking') if r.split(':')[0] in SERIAL else r, []).append(r)
     return [{'slug': re.sub(r'[^a-z0-9.]+', '-', '-'.join(rs).lower()).strip('-'), 'reader': ', '.join(rs),
              'flags': '' if 'gemini' in rs else '--no-sort'} for rs in jobs.values()]
 
@@ -682,9 +690,14 @@ def main(argv=None):
             emit(f'{prov}: {exc}\n')
             continue
         client, ids = clients[prov]
-        if ids is not None and model.removesuffix('+thinking') not in ids:
-            emit(f'{entry}: not in {prov}\'s model list ({", ".join(sorted(ids))[:600]}).\n')
+        if prov in FREE_ONLY and model.removesuffix('+thinking') not in FREE_ONLY[prov]:
+            emit(f'{entry}: not one of {prov}\'s free models ({", ".join(FREE_ONLY[prov])}); skipped, never paid for.\n')
             continue
+        if ids is not None and model.removesuffix('+thinking') not in ids:
+            if prov not in FREE_ONLY:
+                emit(f'{entry}: not in {prov}\'s model list ({", ".join(sorted(ids))[:600]}).\n')
+                continue
+            log(f'{entry}: not in {prov}\'s model list but on its free pricing list; tried as named')
         small = MODEL_LIMITS.get(model.removesuffix('+thinking'), (None,))[0]
         lanes.append((entry, client, [model], min(x for x in (limit, small) if x) if (limit or small) else None))
     log('readers:', ', '.join(lane[0] for lane in lanes))
