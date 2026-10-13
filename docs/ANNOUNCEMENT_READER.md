@@ -48,26 +48,39 @@ A value counts only when it is right and backed by a quote found in the PDF. Sco
 (poppler `pdftotext`); a laptop with xpdf's `pdftotext` lays some PDFs out differently and finds fewer
 quotes, so local rescoring is only a cross-check.
 
-| Reader | Right | Held back | Errors | Seconds a filing | Run |
-|---|---|---|---|---|---|
-| **Rerun of the chosen readers, 23:52-00:10 IST** (ADANIENT now `rights`) | | | | | 38446158568 |
-| NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 2 | 0 | 33 | 38446158568 |
-| NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 4 | 0 | 29 | 38446158568 |
-| Z.ai `glm-4.5-flash` (free) | 78 of 91 | 11 | 0 | 13 | 38446158568 |
-| **First runs, 13 Oct** | | | | | |
-| NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 4 | 0 | 29 | 38423386748 |
-| NVIDIA `nvidia/nemotron-3-ultra-550b-a55b` | 87 of 91 | 4 | 0 | 106 | 38432331574 |
-| NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 6 | 0 | 40 | 38423386748 |
-| Gemini 3.5 / 3.1 Flash-Lite | 80 of 91 | 12 | 0 | 76 (27 busy replies) | 38423386748 |
-| Z.ai `glm-4.5-flash` (free) | 77 of 91 | 10 | 0 | 15 | 38440817065 |
-| Groq `qwen/qwen3.8-27b` | 69 of 73 | 3 | 5 too big | 61 (paced) | 38423386748 |
-| NVIDIA `nvidia/nemotron-3-super-120b-a12b` | 68 of 91 | 14 | 0 | 23 | 38423386748 |
-| Groq `openai/gpt-oss-120b` | 62 of 73 | 6 | 5 too big | 61 (paced) | 38423386748 |
-| NVIDIA `nvidia/nemotron-3.5-lightning-30b-a3b` | 24 of 58 | 5 | 7 (time used up) | 205 | 38423386748 |
-| NVIDIA `deepseek-ai/deepseek-v4.1-flash` | 0 of 45 | 0 | 10 | 208 (replies empty) | 38423386748 |
-| NVIDIA `z-ai/glm-5.3` | 15 of 15 on the 4 filings it reached | 0 | 20 not reached | 474 (out: too slow) | 38432331574 |
-| NVIDIA `z-ai/glm-5.3-flash`, `deepseek-ai/deepseek-v4.1-flash` (reasoning field read) | running | | | | 38440817065 |
-| Z.ai `glm-4.7-flash`, thinking off and on (free) | running | | | | 38440817065 |
+All runs on the same 24 filings, 91 values read by hand. Times IST, 13-14 Oct. "Right" counts a value
+only when it is right and backed by its quote; "held back": a check failed, never shown. 429 / busy /
+timeouts: answers to the job's calls. "Wrong values that passed": wrong yet past the checks (would have
+reached the site). The first run's own `compare` table used the checks from before the 13 Oct fixes; its
+rows here are rescored with the current checks (the rerun on the runner gave Kimi K3 and Gemma 4 the same
+88 and 85).
+
+| # | Model | Provider (cost) | Run | Right | Held back | Not read | Seconds a filing | 429 | Busy (5xx) | Timeouts | Wrong values that passed | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `moonshotai/kimi-k3` | NVIDIA (free trial) | 38423386748 (21:05) / rerun 38446158568 (23:52) | **88 of 91** / **88 of 91** | 4 / 2 | 0 | 29 / 33 | 0 | 0 | 0 | none | **Main reader (chosen)** |
+| 2 | `nvidia/nemotron-3-ultra-550b-a55b` | NVIDIA (free trial) | 38432331574 (22:34) | 87 of 91 | 4 | 0 | 106 | 0 | 5 | 0 | none | Accurate but slow; spare |
+| 3 | `google/gemma-4-31b-it` | NVIDIA (free trial) | 38423386748 / rerun 38446158568 | 85 of 91 / 85 of 91 | 6 / 4 | 0 | 40 / 29 | 0 | 0 | 0 | none | **Main lane's backup (chosen)** |
+| 4 | Gemini 3.5 / 3.1 Flash-Lite | Google (free) | 38423386748 | 80 of 91 | 12 | 0 | 76 | 0 | 27 | 2 | none | Often busy; not used for now |
+| 5 | `glm-4.5-flash` | Z.ai (free) | 38440817065 (23:13) / rerun 38446158568 | 77 of 91 / 78 of 91 | 10 / 11 | 0 | 15 / 13 | 0 | 0 | 0 | 1, now held back (Hyundai USD 15.5 billion as 15.5) | **Second lane, cross-check (chosen)** |
+| 6 | `qwen/qwen3.8-27b` | Groq (free) | 38423386748 | 69 of 73 | 3 | 5 too big | 61 (paced) | 0 | 0 | 0 | none | Short filings only (8K tokens a minute) |
+| 7 | `nvidia/nemotron-3-super-120b-a12b` | NVIDIA (free trial) | 38423386748 | 68 of 91 | 14 | 0 | 23 | 0 | 0 | 0 | 1 (Hyundai `entity` "listed" for the parent group) | Out (accuracy) |
+| 8 | `openai/gpt-oss-120b` | Groq (free) | 38423386748 | 62 of 73 | 6 | 5 too big | 61 (paced) | 0 | 0 | 0 | 1 (Jubilant `entity` "listed" for a subsidiary) | Out (accuracy) |
+| 9 | `glm-4.7-flash`, thinking off | Z.ai (free) | 38440817065 | 60 of 73 | 4 | 4 (model busy) | 26 | 36 for 9 and 10 together, all "service may be temporarily overloaded" (code 1305) | 4 | 0 | none | Out: below GLM-4.5-Flash, often busy |
+| 10 | `glm-4.7-flash`, thinking on | Z.ai (free) | 38440817065 | 49 of 65 | 11 | 7 (model busy) | 86 | (same job) | | 0 | none | Out: lower and slower |
+| 11 | `nvidia/nemotron-3.5-lightning-30b-a3b` | NVIDIA (free trial) | 38423386748 | 24 of 58 | 5 | 7 (time used up) | 205 | 0 | 0 | 0 | 2, now held back (INOXGREEN, IIFL amounts 10 million times too big) | Out (slow, wrong) |
+| 12 | `z-ai/glm-5.3` | NVIDIA (free trial) | 38432331574 | 15 of 15 (4 filings only) | 0 | 20 (13 time up, 7 over 10 minutes each) | 474 | 0 | 0 | 0 | none | Out (8 minutes a filing) |
+| 13 | `deepseek-ai/deepseek-v4.1-flash` | NVIDIA (free trial) | 38423386748 | 0 of 45 | 0 | 10 | 208 | 0 | 0 | 4 | none | Replies empty (answer in `reasoning_content`); retest below |
+| 13r | `deepseek-ai/deepseek-v4.1-flash`, reasoning field read | NVIDIA (free trial) | 38440817065 | running | | | | | | | | |
+| 14 | `z-ai/glm-5.3-flash` | NVIDIA (free trial) | 38440817065 | running | | | | | | | | |
+| 15 | `nvidia/llama-3.1-nemotron-ultra-253b-v1`, `mistralai/mistral-large-2-instruct`, `moonshotai/kimi-k2.6`, `writer/palmyra-fin-70b-32k` | NVIDIA | 38432331574 | - | | all 24 | | 0 | 0 | 0 | | Withdrawn: HTTP 404 on every call, gone from NVIDIA's catalog |
+
+- No provider sent a 429 in any run except Z.ai's GLM-4.7-Flash, and those say the model was overloaded:
+  GLM-4.5-Flash ran at the same hours on the same key with none, so Z.ai's one-request-at-a-time limit
+  is not per account and each Z.ai model keeps its own job.
+- Run to run: the rerun at another hour gave the same scores; only the speeds moved.
+- Every wrong value found today is now caught by a check (rows 5, 11), except the `entity` labels
+  (rows 7, 8), which are kept off the site.
+- Earlier Gemini runs (A1-A3, B1, run 3): 48 of 48 values right on 14 filings.
 
 Not available to this key (13 Oct): NVIDIA `nvidia/llama-3.1-nemotron-ultra-253b-v1`,
 `mistralai/mistral-large-2-instruct`, `moonshotai/kimi-k2.6`, `writer/palmyra-fin-70b-32k` all answer
@@ -81,7 +94,7 @@ nemotron-3-super, nemotron-3-ultra, nemotron-3.5-lightning.
 Z.ai: the key's `/models` lists only paid models (GLM 4.5 to 5.3, 5.3-Flash and FlashX; GLM-5.3-Flash
 is $0.15 / $0.50 per million tokens). The free models (GLM-4.7-Flash, GLM-4.5-Flash, GLM-4.6V-Flash,
 under "Other Pricing" on docs.z.ai/guides/overview/pricing) are not listed but answer when called by name
-(GLM-4.5-Flash read all 24 filings, no 429). The harness and the reader try only those three on Z.ai
+(GLM-4.5-Flash and GLM-4.7-Flash both read the sample). The harness and the reader try only those three on Z.ai
 (`FREE_ONLY`); any other Z.ai id is refused, so nothing is ever paid for.
 
 NVIDIA 429s: none in any run, with up to five NVIDIA jobs at once. DeepSeek v4.1 Flash leaves its answer
@@ -105,8 +118,6 @@ then 29 seconds); no 429 from any provider in any run. No wrong value passed the
 - Each new check was rescored over every saved reply of both runs: no right value was lost.
 - The scorer compares dates as dates ("October 1, 2026" is 2026-10-01).
 
-Earlier Gemini runs (A1-A3, B1, run 3): 48 of 48 values right on 14 filings; Gemini was busy on most
-calls on 13 Oct.
 
 ## NSE and BSE: what each adds (measured 12 Oct 2026)
 
@@ -189,7 +200,7 @@ and deal is a later step).
 | 38418368623, 38419069858, 38420120800, 38421224640 (20:30-20:50) | Gemini runs on parts of the sample | finished |
 | 38423386748 (21:05-22:34) | nine readers on 24 filings | finished; rescored above |
 | 38432331574 (22:34-00:07) | NVIDIA GLM 5.3, Nemotron 3 Ultra, four withdrawn NVIDIA models, Z.ai | finished: Nemotron 3 Ultra 87 of 91; GLM 5.3 4 filings in 85 minutes; the four withdrawn models 404; Z.ai skipped (ids not on its list) |
-| 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; the rest running |
+| 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; GLM-4.7-Flash 60 of 73 off, 49 of 65 on (36 "overloaded" 429s); DeepSeek and GLM 5.3 Flash running |
 | 38446158568 (23:52-00:10) | the chosen readers again, another hour (Kimi K3, Gemma 4, GLM-4.5-Flash) | finished: 88, 85, 78 of 91 |
 | 38446158692 (23:52) | live reader, dry run on 3 real filings | green; found the currency problem |
 | 38447392891 (00:02) | dry run with the currency fix | green, but read nothing (the new day had no filings; fetched only today) |
@@ -230,8 +241,8 @@ steps. Subscribe to PR #56 and keep CI green."
 
 ## Next steps, in order
 
-1. Add the results of run 38440817065 (finishing by 00:53 IST on 14 Oct: NVIDIA GLM 5.3 Flash, DeepSeek
-   v4.1 Flash with its reasoning field read, Z.ai GLM-4.7-Flash thinking off and on) to the table above
+1. Add the last two rows of run 38440817065 (finishing by 00:53 IST on 14 Oct: NVIDIA GLM 5.3 Flash and
+   DeepSeek v4.1 Flash with its reasoning field read; GLM-4.7-Flash is in) to the table above
    (its `compare` job's log); change `scripts/announcement_readers.txt` only if one beats a chosen reader
    at a usable speed (about a minute a filing at most).
 2. Done: the reader's PR dry run on real filings is green with the currency fix (run 38448018056). The
