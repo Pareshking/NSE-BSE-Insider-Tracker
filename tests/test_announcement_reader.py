@@ -283,3 +283,11 @@ def test_each_money_value_carries_its_own_or_the_filings_currency():
     f = {x['name']: x for x in fields}
     assert f['amount']['currency'] == 'USD' and f['price_per_share']['currency'] == 'USD'   # the filing's currency
     assert metrics[0]['currency'] == 'USD'
+
+
+
+def test_a_cross_check_compares_figures_by_number_whatever_their_labels():
+    main = [{'label': 'Sales Sep 2026', 'number': 1071, 'shown': True}, {'label': 'Exports', 'number': 53, 'shown': True},
+            {'label': 'held', 'number': 9, 'shown': False}]
+    second = [{'label': 'Commercial vehicle sales', 'number': 1071, 'shown': True}, {'label': 'x', 'number': 54, 'shown': True}]
+    assert ar.metric_agreement(main, second) == {'metric:0': True, 'metric:1': None}

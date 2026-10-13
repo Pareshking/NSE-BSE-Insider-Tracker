@@ -361,6 +361,19 @@ def with_previous(m: dict, raw: dict, doc: str) -> dict:
     return m
 
 
+def metric_agreement(main: list[dict], second: list[dict]) -> dict:
+    """Per shown metric of the main read (key "metric:<position>"): True when the second read has a shown
+    metric of the same number (within 0.5%), else None. Two models label one figure differently, so the
+    number is what is compared; a figure the second read does not give is not counted against it."""
+    theirs = [m.get('number') for m in second if m.get('shown') and isinstance(m.get('number'), (int, float))]
+    out = {}
+    for i, m in enumerate(main):
+        n = m.get('number')
+        if m.get('shown') and isinstance(n, (int, float)):
+            out[f'metric:{i}'] = True if any(abs(n - t) <= 0.005 * max(1.0, abs(n)) for t in theirs) else None
+    return out
+
+
 def agreement(main: list[dict], second: list[dict]) -> dict:
     """Per shown field of the main read: True when the second read gives the same value, False when it
     gives another, None when it gives none."""
@@ -670,18 +683,18 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
                       'headline': res['headline'], 'points': res['points'], 'seconds': res['seconds']})
         with lock:
-            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'])
+            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
         add_row(rec)
         for twin in done_reading(job, rec):
             add_row(copy_of(rec, twin))
         log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
 
     def cross_check(lane: Lane, rec: dict):
-        row, doc, fields = docs[rec['event_id']]
+        row, doc, fields, metrics = docs[rec['event_id']]
         res = read_one(lane, row, doc)
         if not res['ok']:
             return                          # a missing cross-check is not an error; the values stand as read
-        agreed = agreement(fields, res['fields'])
+        agreed = {**agreement(fields, res['fields']), **metric_agreement(metrics, res['metrics'])}
         with lock:
             notes['cross_checked'] += 1
         add_row({**rec, 'second_reader': res['reader'], 'second_category': res['category'],

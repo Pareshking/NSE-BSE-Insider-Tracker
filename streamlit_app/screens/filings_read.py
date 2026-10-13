@@ -128,13 +128,13 @@ def _metric_label(m: dict) -> str:
     return ' '.join(x for x in (str(m.get('label') or ''), f'({period})' if period.lower() not in NO_PERIOD else '') if x)
 
 
-def card_html(r: dict, price: dict | None = None, history: dict | None = None) -> str:
+def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
     """One filing as a card: what happened (headline and points, every number in them found in the filing),
     its key terms, the figures of a periodic update with the change we compute, the filing's own words, and
     the stock's moves. Older reads without a headline show their checked values only."""
     price = price or {}
     fields = [f for f in _json(r.get('fields'), []) if f.get('shown') and f.get('name') in FIELD]
-    metrics = [m for m in _json(r.get('metrics'), []) if m.get('shown')]
+    metrics = [dict(m, _i=i) for i, m in enumerate(_json(r.get('metrics'), [])) if m.get('shown')]
     headline = _json(r.get('headline'), None)
     headline = headline if isinstance(headline, dict) and headline.get('shown') else None
     points = [p for p in _json(r.get('points'), []) if p.get('shown')]
@@ -160,7 +160,8 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None) -
     for m in metrics[:6]:
         ch = m.get('change_pct')
         tone = '' if ch is None else ' up' if ch > 0 else ' down' if ch < 0 else ''
-        figs += (f'<tr><td>{esc(_metric_label(m))}</td><td class="n">{esc(metric_text(m))}</td>'
+        both = ' ' + kit.tag('2 readers agree', 'buy') if agreed.get(f'metric:{m["_i"]}') is True else ''
+        figs += (f'<tr><td>{esc(_metric_label(m))}{both}</td><td class="n">{esc(metric_text(m))}</td>'
                  f'<td class="n rc-ch{tone}">{esc(kit.pct(ch, 1, signed=True) + " YoY") if ch is not None else ""}</td></tr>')
     figs = f'<div class="rc-box"><p class="rc-lbl">The figures</p><table class="rc-figs">{figs}</table></div>' if figs else ''
 
@@ -174,10 +175,15 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None) -
     src = (f'<details class="rc-src"><summary>The filing\'s own words</summary><ul>{src}</ul>{held_html}</details>'
            if src or held_html else '')
 
-    also = r.get('also_filed') or []
-    also_html = ' · '.join(
-        esc(f'{a["exchange"]} {pd.Timestamp(a["broadcast_at"]).tz_convert("Asia/Kolkata").strftime("%d %b, %H:%M")}')
-        for a in also)
+    also = list(r.get('also_filed') if r.get('also_filed') is not None else [])
+
+    def _also(a) -> str:
+        t = esc(f'{a["exchange"]} {pd.Timestamp(a["broadcast_at"]).tz_convert("Asia/Kolkata").strftime("%d %b, %H:%M")}')
+        sub = a.get('subject')
+        t += f' ({esc(str(sub))})' if sub and sub != r.get('subject') else ''
+        url = a.get('file_url')
+        return f'<a href="{esc(str(url))}" target="_blank" rel="noopener">{t}</a>' if url else t
+    also_html = ' · '.join(_also(a) for a in also)
     moves = ''.join(f'<span>{lbl} <b class="{"up" if v > 0 else "down" if v < 0 else ""}">{esc(kit.pct(v, 1, signed=True))}</b></span>'
                     for lbl, v in _moves(r.get('isin'), history))
     cap = _mcap(r, price)
@@ -186,7 +192,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None) -
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{body}{figs}{terms}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{body}{figs}{_before_html(before)}{terms}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(str(r.get("file_url") or "#"))}" target="_blank" rel="noopener">The filing ↗</a>'
@@ -205,25 +211,151 @@ def recent(reads: pd.DataFrame, since: pd.Timestamp) -> pd.DataFrame:
     if r.empty:
         return r
     r = r if 'same_as' in r else r.assign(same_as=None)
+    for c in ('subject', 'file_url'):
+        r = r if c in r else r.assign(**{c: None})
     copy = r['status'].ne('read') & r['same_as'].isin(r['event_id'])
-    also = {k: g[['exchange', 'broadcast_at']].to_dict('records')
-            for k, g in r[copy].sort_values('broadcast_at').groupby('same_as')}
+    keep = ['event_id', 'exchange', 'broadcast_at', 'subject', 'file_url']
+    also = {k: g[keep].to_dict('records') for k, g in r[copy].sort_values('broadcast_at').groupby('same_as')}
     r = r[~copy].copy()
     r['also_filed'] = r['event_id'].map(lambda e: also.get(e, []))
-    return r.sort_values('broadcast_at', ascending=False)
+    return same_deal(r).sort_values('broadcast_at', ascending=False)
 
 
-def render(reads: pd.DataFrame, since: pd.Timestamp, prices: pd.DataFrame | None = None,
-           history: dict | None = None) -> None:
+DEAL_HOURS = 24
+
+
+def _figures(r) -> set[float]:
+    """The shown numbers of a read (fields and metrics) that can name a deal: sizes, prices, share counts."""
+    out = set()
+    for f in _json(r.get('fields'), []) + _json(r.get('metrics'), []):
+        n = f.get('number')
+        if f.get('shown') and isinstance(n, (int, float)) and n == n and abs(n) >= 1:
+            out.add(round(float(n), 2))
+    return out
+
+
+def same_deal(r: pd.DataFrame) -> pd.DataFrame:
+    """Different files on one deal (Aegis, 13 Oct: a press release and the board's outcome, both US$ 809M for
+    89.8% of Tristar) are one card: same company and category, made public within DEAL_HOURS, and sharing a
+    number of 100 or more, or two numbers. The card kept is the one with the most shown values; the others
+    go in its `also_filed`, with their subject and link."""
+    if r.empty:
+        return r
+    r = r.reset_index(drop=True)
+    who = r['isin'].where(r['isin'].notna(), r['symbol']) if 'isin' in r else r['symbol']
+    figs = [_figures(x) for x in r.to_dict('records')]
+    at = pd.to_datetime(r['broadcast_at'], errors='coerce', utc=True)
+    shown = pd.to_numeric(r['shown'], errors='coerce').fillna(0)
+    parent = list(range(len(r)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for _, idx in r.groupby([who, r['category']]).groups.items():
+        idx = list(idx)
+        for a in idx:
+            for b in idx:
+                if a < b and abs((at[a] - at[b]).total_seconds()) <= DEAL_HOURS * 3600:
+                    both = figs[a] & figs[b]
+                    if len(both) >= 2 or any(abs(n) >= 100 for n in both):
+                        parent[root(b)] = root(a)
+    groups = {}
+    for i in range(len(r)):
+        groups.setdefault(root(i), []).append(i)
+    rows = []
+    for idx in groups.values():
+        lead = max(idx, key=lambda i: (shown[i], -at[i].value if pd.notna(at[i]) else 0))
+        rec = r.loc[lead].to_dict()
+        others = [r.loc[i].to_dict() for i in idx if i != lead]
+        extra = [{k: o.get(k) for k in ('event_id', 'exchange', 'broadcast_at', 'subject', 'file_url')} for o in others]
+        extra += [a for o in others for a in (o.get('also_filed') or [])]
+        rec['also_filed'] = sorted(list(rec.get('also_filed') or []) + extra, key=lambda a: str(a.get('broadcast_at')))
+        rows.append(rec)
+    return pd.DataFrame(rows)
+
+
+def _before_html(lines) -> str:
+    if not lines:
+        return ''
+    return ('<div class="rc-box rc-before"><p class="rc-lbl">Before this</p><ul class="rc-pts">'
+            + ''.join(f'<li>{x}</li>' for x in lines) + '</ul></div>')
+
+
+EARLIER_DAYS, INSIDER_DAYS = 90, 30
+
+
+def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
+                insiders: pd.DataFrame | None) -> list[str]:
+    """Context from our own tables, every figure computed here, never by a model: the company's earlier
+    filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
+    promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
+    out, isin, sym = [], r.get('isin'), r.get('symbol')
+    at = pd.to_datetime(r.get('broadcast_at'), errors='coerce', utc=True)
+    fields = {f['name']: f for f in _json(r.get('fields'), []) if f.get('shown')}
+    price = price or {}
+    close = price.get('latest_close')
+    for name in ('price_per_share', 'max_price_per_share'):
+        f = fields.get(name)
+        if f and f.get('currency') == 'INR' and f.get('number') and close and close == close:
+            gap = (f['number'] / close - 1) * 100
+            when = f' ({kit.day(price.get("last_date"), with_year=False)})' if price.get('last_date') else ''
+            word = 'above' if gap > 0 else 'below'
+            out.append(f'The price of <b>{esc(kit.price(f["number"]))}</b> is <b>{esc(kit.pct(abs(gap), 1))}</b> {word} '
+                       f'the last close of {esc(kit.price(close))}{esc(when)}.')
+            break
+    amt, cap = fields.get('amount'), price.get('market_cap') or r.get('market_cap')
+    if amt and amt.get('currency') == 'INR' and amt.get('number') and cap and cap == cap:
+        out.append(f'The size is <b>{esc(kit.pct(amt["number"] / cap * 100, 1))}</b> of the company\'s market cap '
+                   f'({esc(kit.rupees(cap))}).')
+    if holding:
+        pct, pledge = holding.get('promoter_holding_pct'), holding.get('promoter_pledge_pct')
+        if pct is not None and pct == pct:
+            q = f' ({kit.day(holding["quarter_end"])})' if holding.get('quarter_end') is not None else ''
+            pl = (f', <b>{esc(kit.pct(pledge, 1))}</b> of it pledged' if pledge is not None and pledge == pledge and pledge > 0
+                  else ', none of it pledged' if pledge == 0 else '')
+            out.append(f'Promoters hold <b>{esc(kit.pct(pct, 1))}</b>{esc(q)}{pl}.')
+    if insiders is not None and not insiders.empty and isin:
+        t = insiders[(insiders['isin'] == isin) & (insiders['seen'] >= (at.tz_convert(None).normalize() if pd.notna(at) else
+                     pd.Timestamp.now()) - np.timedelta64(INSIDER_DAYS, 'D'))]
+        for side, word in (('BUY', 'bought'), ('SELL', 'sold')):
+            x = t[t['side'] == side]
+            if len(x):
+                out.append(f'Insiders {word} <b>{esc(kit.rupees(x["value"].sum()))}</b> on the market in '
+                           f'{kit.plural(len(x), "filing")} in the last {INSIDER_DAYS} days.')
+    if reads is not None and not reads.empty and pd.notna(at):
+        e = reads[((reads['isin'] == isin) if isin and 'isin' in reads else (reads['symbol'] == sym))
+                  & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
+                  & reads['event_id'].ne(r.get('event_id'))]
+        t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
+        e = e[(t < at - np.timedelta64(DEAL_HOURS, 'h')) & (t >= at - np.timedelta64(EARLIER_DAYS, 'D'))]
+        for x in e.sort_values('broadcast_at', ascending=False).head(3).to_dict('records'):
+            h = _json(x.get('headline'), None)
+            what = h['text'] if isinstance(h, dict) and h.get('shown') else CATEGORY.get(x['category'], x['category'])
+            day = pd.Timestamp(x['broadcast_at']).tz_convert('Asia/Kolkata').strftime('%d %b')
+            out.append(f'{esc(day)}: {esc(str(what))}.')
+    return out
+
+
+def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | None = None) -> None:
     """The Brief's card: waits for its data (nothing shown before the reader has written its table)."""
     r = recent(reads, since)
     if r.empty:
         return
+    prices = getattr(ctx, 'prices', None)
     by_isin = (prices.drop_duplicates('isin').set_index('isin').to_dict('index')
                if prices is not None and not prices.empty and 'isin' in prices else {})
+    sh = getattr(ctx, 'shareholding', None)
+    holdings = ({} if sh is None or sh.empty or 'isin' not in sh else
+                sh.sort_values('quarter_end').drop_duplicates('isin', keep='last').set_index('isin').to_dict('index'))
+    insiders = getattr(ctx, 'eligible', None)
+
+    def card(x):
+        p = by_isin.get(x.get('isin'))
+        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders))
     with kit.card('Filings read', 'br_reads', f'since {kit.day(since)}: values checked against the filing\'s own words'):
         st.html('<p class="evl">' + kit.tag('in the filing', 'info') + 'quoted word for word '
                 + kit.tag('table row', 'warn') + 'found in one table of the filing, column not proven '
                 + kit.tag('2 readers agree', 'buy') + 'a second model read the same value</p>'
-                + '<div class="rds">' + ''.join(card_html(x, by_isin.get(x.get('isin')), history)
-                                                for x in r.head(LIMIT).to_dict('records')) + '</div>')
+                + '<div class="rds">' + ''.join(card(x) for x in r.head(LIMIT).to_dict('records')) + '</div>')

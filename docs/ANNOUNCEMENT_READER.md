@@ -201,6 +201,16 @@ so it ends before the next starts; what it does not reach waits for the next run
   draws on concalls and annual reports, which we do not collect, so it would be invented here. Reads
   before `live-2` show a plain headline (company: category, size). The site's CSS hides every `footer`
   element (Streamlit's), so the card's foot is a `div`; the first cards' link and reader never showed.
+- "Before this" on the card (our own tables, every figure computed by us): the issue price against the last
+  close; the size against market cap; promoter holding and pledge (latest quarter); insiders' open-market
+  buys and sells in the last 30 days; the company's earlier filings read in the last 90 days (their
+  headline). Nothing from a model and nothing we do not collect.
+- One card per deal: different files on one deal (Aegis: a press release and the board's outcome, both
+  US$ 809M for 89.8% of Tristar) fold into one card when they are the same company and category, made
+  public within 24 hours, and share a number of 100 or more, or two numbers. The card with the most shown
+  values leads; the others are listed under "Also filed" with their subject and a link.
+- Cross-check of figures: an idle lane's second read now also marks a business update's figures "2 readers
+  agree" when it gives the same number (labels differ between models, so the number is compared).
 - The card on the Brief: one card per file. The same file filed again (on the other exchange or under
   another subject) is folded into it as "Also filed: BSE 13 Oct, 21:12". Entity labels, not shown by
   design, are not counted as held back; repeated reasons are counted ("number not in its quote ×2"); a
