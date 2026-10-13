@@ -195,7 +195,10 @@ so it ends before the next starts; what it does not reach waits for the next run
   1W, 1M and 1Y moves; the filing's link and its reader. The headline and each point carry a quote, and
   every number in them must be one of the quote's numbers, as written or with its lakh, crore, million or
   billion applied (12,000 lakh may be written 120 crore, within 0.5%): a number of the model's own, a growth
-  rate it worked out, or a quote not in the filing holds the sentence back. A metric's year-earlier value
+  rate it worked out, or a quote not in the filing holds the sentence back. A point may also use the
+  numbers of the filing's values already checked (a floor price and its discount from two quotes); a
+  headline those of the shown points too. First trial on real filings (PR #59, 14 Oct 01:40): 3 of 3
+  headlines and 5 of 9 points shown before this, the rest held back for joining numbers of two quotes. A metric's year-earlier value
   (`previous`, with its own quote) is checked the same way; the % change is ours. No "impact" label (13
   Oct decision); "why it matters" waits for our own history ("before this", a next step): equisense's
   draws on concalls and annual reports, which we do not collect, so it would be invented here. Reads

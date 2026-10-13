@@ -326,7 +326,7 @@ def numbers_backed(text, quotes) -> bool:
 
 def check_words(item, doc: str, more_quotes=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing and every number in it is in that quote
-    (a headline may also use the shown points' and values' quotes)."""
+    (it may also use the quotes of values already checked, and a headline those of the shown points)."""
     if not isinstance(item, dict) or not str(item.get('text') or '').strip():
         return None
     text, quote = str(item['text']).strip(), item.get('quote')
@@ -340,8 +340,9 @@ def check_words(item, doc: str, more_quotes=()) -> dict | None:
 
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
-    points = [p for p in (check_words(x, doc) for x in (out.get('points') or [])[:4]) if p]
-    backed = [p['quote'] for p in points if p['shown']] + [f['quote'] for f in fields + metrics if f.get('shown')]
+    values = [f['quote'] for f in fields + metrics if f.get('shown')]   # quotes already checked in the filing
+    points = [p for p in (check_words(x, doc, values) for x in (out.get('points') or [])[:4]) if p]
+    backed = [p['quote'] for p in points if p['shown']] + values
     return check_words(out.get('headline'), doc, backed), points
 
 
