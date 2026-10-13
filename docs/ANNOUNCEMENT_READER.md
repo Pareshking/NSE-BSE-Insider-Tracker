@@ -115,6 +115,42 @@ that get a card today, then the backlog newest first. Each result stores its
 model and prompt version (`PROMPT_VERSION`). Weekly check of each provider's
 model list (models get renamed and retired).
 
+## Current recommendation (to confirm with the queued run)
+
+Kimi K3 on NVIDIA as the main reader, Gemma 4 on NVIDIA as its backup,
+Gemini Flash-Lite as a second lane, Groq Qwen 3.8 for short filings only
+(under ~20,000 characters), Gemma 4 on the Gemini key for sorting; Z.ai
+decided by the queued run.
+
+## How to pick up (for a new session)
+
+- Results of run 38423386748: the six finished readers are in the table
+  above. DeepSeek v4.1 Flash and Nemotron 3.5 Lightning were still running at
+  handoff. That run's own `compare` table uses the checks from before the
+  13 Oct fixes and understates: download each job's artifact
+  (`announcement_sample_results.json`) into one folder and run
+  `--combine <folder> --rescore`.
+- The queued run is the next "Announcement reader sample" run on this
+  branch; its `compare` job already rescores with the current checks.
+- Report per reader: right, held back, errors, seconds a filing; and every
+  wrong value that passed the checks (field rows `| no | exact |` or
+  `| no | table |`). Note any NVIDIA 429s with six jobs at once.
+- Any push to PR #56 re-runs the sample workflow (its paths filter compares
+  the whole PR diff, not the last commit); one run at a time, a newer
+  pending run replaces the older pending one. Put `[skip ci]` in doc-only
+  commits.
+- Readers come from the `readers:` line of
+  `scripts/announcement_sample_run.txt` (one job each; `zai` readers share
+  one job); without it, `DEFAULT_READERS` in the script.
+- Check every model id against the live list each job prints at its start;
+  a wrong id is skipped, never guessed (13 Oct: `glm-5-3` instead of
+  `glm-5.3` cost a run). Small-context models get their own limits in
+  `MODEL_LIMITS` (Palmyra Fin, 32K tokens).
+- Z.ai key is from z.ai (`https://api.z.ai/api/paas/v4`, tried first; the
+  harness falls back to bigmodel.cn and `api.z.ai/v1`).
+- No model identifiers in commit messages, PR text or code comments beyond
+  what is already there.
+
 ## Next steps, in order
 
 1. Read the final table of run 38423386748 and of the queued run; pick the
