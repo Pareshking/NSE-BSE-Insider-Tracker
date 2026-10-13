@@ -58,6 +58,32 @@ def test_amounts_are_converted_by_our_code_and_metrics_found_by_value():
     assert a.parse_json('no json here') is None
 
 
+
+def test_a_unit_must_not_multiply_a_number_written_in_full():
+    # 13 Oct: two amounts from one reader passed the quote and digit checks with "crore" as their unit
+    q = ('Rs. 299,99,99,852.45 (Rupees Two Hundred Ninety-Nine Crore Ninety-Nine Lakh Ninety-Nine Thousand '
+         'Eight Hundred Fifty-Two and Paise Forty-Five only)')
+    assert a.unit_backed('299,99,99,852.45', 'crore', q, 'exact') is False   # crore only in the words
+    assert a.unit_backed('95,00,00,000', 'crore', 'Size of Issue: INR 95,00,00,000', 'table') is False
+    assert a.unit_backed('299,99,99,852.45', 'rupees', q, 'exact') is None
+    assert a.unit_backed('28,200.00', 'lakh', 'not exceeding ₹ 28,200.00 Lakhs (Rupees', 'exact') is True
+    assert a.unit_backed('102', 'Cr', 'worth Rs. 102 Cr. out of which', 'exact') is True
+    assert a.unit_backed('200.00', 'crore', 'Total 200.00', 'table') is True   # unit in the column heading
+    assert a.unit_backed('200.00', 'crore', 'Total 200.00 and 5 crore', 'exact') is False
+    row = {'symbol': 'X', 'subject': 's', 'expected': {'category': 'qip', 'amount': 2_999_999_852.45}}
+    out = {'category': 'qip', 'fields': [{'name': 'amount', 'value': '299,99,99,852.45', 'quote': q},
+                                         {'name': 'amount_unit', 'value': 'crore', 'quote': q}]}
+    f = next(x for x in a.check(row, None, out, q)['fields'] if x['field'] == 'amount')
+    assert f['unit_backed'] is False and f['match'] is False
+
+
+
+def test_dates_compare_as_dates_whatever_the_writing():
+    for written in ('October 1, 2026', '1st October, 2026', '01.10.2026', '01/10/2026', '1-Oct-2026', '2026-10-01'):
+        assert a.same('record_date', '2026-10-01', written), written
+    assert not a.same('record_date', '2026-10-01', 'September 30, 2026') and not a.same('record_date', '2026-10-01', 'soon')
+
+
 def test_sample_file_lists_real_filings_with_their_links():
     rows = json.loads((Path(a.HERE) / 'announcement_sample_expected.json').read_text(encoding='utf-8'))
     assert len(rows) == 24 and len({r["seq_id"] for r in rows}) == 24

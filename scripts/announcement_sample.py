@@ -32,6 +32,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -381,6 +382,33 @@ def digits_in_quote(value, quote) -> bool:
     return any(abs(n - v) < 1e-6 * max(1, abs(v)) for n in numbers)
 
 
+# The words that may follow a number for each unit in UNIT ('Rs. 300 Cr.', '28,200.00 Lakhs', 'ZAR 238 mn').
+UNIT_WORDS = {1e3: r'thousand', 1e5: r'lakhs?|lacs?', 1e7: r'crores?|crs?\.?', 1e6: r'million|mn', 1e9: r'billion|bn'}
+
+
+def unit_backed(value, unit, quote, found) -> bool | None:
+    """A lakh, crore, million or billion is backed by its quote (None when the unit multiplies nothing).
+    Not backed when the number is already written in full (7 or more digits before the point: '95,00,00,000'
+    crore would be 9.5e16), or, in an exact quote, when the unit's word does not follow the number: a
+    filing's amount in words ('Rupees Two Hundred Ninety-Nine Crore ...') does not make 299,99,99,852.45
+    a number of crores. A table quote keeps its unit in the column heading, so only the first test applies."""
+    mult = UNIT.get(str(unit or 'rupees').strip().lower().rstrip('.'), 1)
+    if mult == 1:
+        return None
+    v = _num(value)
+    if v is None:
+        return False
+    if len(str(int(abs(v)))) >= 7:
+        return False
+    if found != 'exact':
+        return True
+    for m in re.finditer(NUMBER, str(quote or '')):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)) and re.match(
+                r'\s*(?:' + UNIT_WORDS[mult] + r')(?![a-z])', quote[m.end():], re.IGNORECASE):
+            return True
+    return False
+
+
 def _num(v):
     """A number, also when written with its currency or unit ('₹162/-', 'Rs. 29/-', '1,81,10,473 Equity
     Shares'); None when there is no number or more than one (our code never picks between two)."""
@@ -403,6 +431,23 @@ def in_units(value, unit) -> float | None:
     return v * UNIT.get(str(unit or 'rupees').strip().lower().rstrip('.'), 1)
 
 
+DATE_FORMATS = ('%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%d %B %Y', '%d %b %Y', '%d-%b-%Y', '%d-%B-%Y',
+                '%B %d, %Y', '%b %d, %Y', '%B %d %Y')   # Indian filings write the day first: 01/10/2026 is 1 Oct
+
+
+def as_date(v) -> str | None:
+    """'October 1, 2026', '1st October, 2026', '01.10.2026' -> '2026-10-01'; None when not one of DATE_FORMATS."""
+    s = re.sub(r'(\d)(st|nd|rd|th)\b', r'\1', str(v or '').strip(), flags=re.IGNORECASE).replace(',', ', ')
+    s = re.sub(r'\s+', ' ', s).replace(' ,', ',')
+    for fmt in DATE_FORMATS:
+        for text in (s, s.replace(',', '')):
+            try:
+                return datetime.strptime(text, fmt).date().isoformat()
+            except ValueError:
+                pass
+    return None
+
+
 def same(name: str, expected, got) -> bool:
     if got is None:
         return False
@@ -413,6 +458,8 @@ def same(name: str, expected, got) -> bool:
         return str(got).strip().lower() in (('true', 'yes') if expected else ('false', 'no'))
     if name == 'ratio':
         return re.sub(r'\s', '', str(got)) == expected
+    if name.endswith('_date'):
+        return as_date(got) is not None and as_date(got) == as_date(expected)
     if name in ('capacity_from', 'capacity_to'):
         return _norm(expected) in _norm(got)
     return str(got).strip().lower() == str(expected).strip().lower()
@@ -431,15 +478,16 @@ def check(row: dict, sort_out, read_out, doc: str) -> dict:
     names += [k for k in fields if k not in exp and k not in ('amount_unit',)]
     for name in names:
         if name == 'category':
-            got, quote, qf, digits = out.get('category'), None, None, None
+            got, quote, qf, digits, units = out.get('category'), None, None, None, None
         else:
             f = fields.get(name, {})
             got, quote = f.get('value'), f.get('quote')
             qf = quote_found(quote, doc) if f else None
             digits = digits_in_quote(got, quote) if f and name in DIGITS_IN_QUOTE else None
+            units = unit_backed(got, unit, quote, qf) if f and name == 'amount' else None
             if name == 'amount' and f:
                 got = in_units(got, unit)   # compared in rupees (or the filing's currency), as our code converts
-        backed = qf is not False and digits is not False
+        backed = qf is not False and digits is not False and units is not False
         if name in exp:
             total += 1
             match = same(name, exp[name], got) if name != 'category' else got == exp[name]
@@ -447,7 +495,7 @@ def check(row: dict, sort_out, read_out, doc: str) -> dict:
         else:
             match = None   # the model gave a field the hand reading did not list
         lines.append({'field': name, 'expected': exp.get(name), 'model': got, 'match': match,
-                      'quote_found': qf, 'digits_in_quote': digits, 'quote': quote})
+                      'quote_found': qf, 'digits_in_quote': digits, 'unit_backed': units, 'quote': quote})
     metrics = [m for m in out.get('metrics') or [] if isinstance(m, dict)]
     for want in exp.get('metrics', []):
         total += 1
@@ -455,12 +503,13 @@ def check(row: dict, sort_out, read_out, doc: str) -> dict:
                     and abs(v - want['value']) <= 0.005 * max(1.0, abs(want['value']))), None)
         qf = quote_found(hit.get('quote'), doc) if hit else None
         digits = digits_in_quote(hit.get('value'), hit.get('quote')) if hit else None
-        good = bool(hit) and qf is not False and digits is not False
+        units = unit_backed(hit.get('value'), hit.get('unit'), hit.get('quote'), qf) if hit else None
+        good = bool(hit) and qf is not False and digits is not False and units is not False
         ok += good
         lines.append({'field': f"metric: {want['label']}", 'expected': want['value'],
                       'model': (f"{hit.get('value')} {hit.get('unit') or ''} ({hit.get('label')}, {hit.get('period')})"
                                 if hit else None), 'match': good, 'quote_found': qf, 'digits_in_quote': digits,
-                      'quote': hit.get('quote') if hit else None})
+                      'unit_backed': units, 'quote': hit.get('quote') if hit else None})
     s = sort_out if isinstance(sort_out, dict) else {}
     return {'symbol': row['symbol'], 'subject': row['subject'], 'score': [ok, total], 'fields': lines,
             'metrics_given': len(metrics), 'sort_category': s.get('category'), 'sort_read_pdf': s.get('read_pdf'),
@@ -474,7 +523,7 @@ def _cell(v) -> str:
 def _summary(results: list[dict]) -> tuple[int, int, int]:
     ok = sum(r['score'][0] for r in results if 'score' in r)
     total = sum(r['score'][1] for r in results if 'score' in r)
-    held = sum(f['quote_found'] is False or f['digits_in_quote'] is False
+    held = sum(f['quote_found'] is False or f['digits_in_quote'] is False or f.get('unit_backed') is False
                for r in results for f in r.get('fields', []))
     return ok, total, held
 
@@ -509,9 +558,11 @@ def report_markdown(results: list[dict], models: dict) -> str:
         if 'fields' not in r:
             continue
         out += ['', f"**{r['symbol']}**, {r.get('reader', 'gemini')}", '',
-                '| Field | From the PDF | Model | Right | Quote in PDF | Digits in quote |', '|---|---|---|---|---|---|']
+                '| Field | From the PDF | Model | Right | Quote in PDF | Digits in quote | Unit in quote |',
+                '|---|---|---|---|---|---|---|']
         out += [f"| {f['field']} | {_cell(f['expected'])} | {_cell(f['model'])} | {_cell(f['match'])} | "
-                f"{_cell(f['quote_found'])} | {_cell(f['digits_in_quote'])} |" for f in r['fields']]
+                f"{_cell(f['quote_found'])} | {_cell(f['digits_in_quote'])} | {_cell(f.get('unit_backed'))} |"
+                for f in r['fields']]
     return '\n'.join(out) + '\n'
 
 
