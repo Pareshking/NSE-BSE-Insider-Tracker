@@ -55,8 +55,10 @@ Hyundai not read because both Flash-Lite models were 503 "busy" for 3 minutes.
 Gemini was busy on most calls on 13 Oct; NVIDIA gave no 429/503 in 72 calls.
 
 Queued next (run file): NVIDIA `z-ai/glm-5.3`,
-`nvidia/nemotron-3-ultra-550b-a55b`, Z.ai `glm-4.7-flash` thinking off and
-on (one job, its free tier takes one request at a time). Z.ai claims
+`nvidia/nemotron-3-ultra-550b-a55b`, `writer/palmyra-fin-70b-32k` (a finance
+model, 32K context), `mistralai/mistral-large-2-instruct`,
+`moonshotai/kimi-k2.6`, `nvidia/llama-3.1-nemotron-ultra-253b-v1`; Z.ai
+`glm-4.7-flash` thinking off and on (one job, its free tier takes one request at a time). Z.ai claims
 (unlimited, 60 RPM, 200K context) are not verified; the run will show.
 
 To see the combined table of any run: the `compare` job's log. To rescore
@@ -86,6 +88,11 @@ daily limit (usage log in R2, to build).
 | Gemma 4 on the Gemini key | 30 a minute, 14.4K a day, 16K tokens a minute | sorting |
 | Groq (Qwen 3.8 27B) | 30 a minute, 1K a day, 8K tokens a minute, 200K a day | short filings only (~50 a day per model) |
 | Z.ai GLM 4.7 Flash | one request at a time | to be decided by the queued run |
+
+Many NVIDIA models do not mean many times the limit: whether NVIDIA's ~40 a
+minute is per account or per model is not confirmed (watch for 429s when
+several NVIDIA jobs run at once). Their worth is a ready fallback when a
+model is busy or retired, and a cross-check: two models agreeing on a value.
 
 Before any model: subject-line groups drop routine; same file or same text
 read once (file hash, then text hash; ~963 a month repeat a file); concall
