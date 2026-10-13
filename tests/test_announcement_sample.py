@@ -32,7 +32,7 @@ def test_a_right_value_with_an_invented_quote_does_not_score():
     assert c['score'] == [2, 3] and not c['sort_category_right']
     extra = next(f for f in c['fields'] if f['field'] == 'amount')
     assert extra['match'] is None and extra['quote_found'] is False
-    assert 'held back' in a.report_markdown([c], {'read': 'r', 'sort': 's'})
+    assert '| gemini | **2 of 3** | 2 |' in a.report_markdown([c], {'read': 'r', 'sort': 's'})   # 2 held back
 
 
 def test_values_compare_as_filed_numbers_flags_and_ratios():
@@ -79,7 +79,7 @@ class _Session:
         self.answers, self.asked, self.headers = list(answers), [], {}
 
     def post(self, url, **kw):
-        self.asked.append(url.split('/models/')[1].split(':')[0])
+        self.asked.append(url.split('/models/')[1].split(':')[0] if '/models/' in url else kw['json']['model'])
         return self.answers.pop(0)
 
 
@@ -97,3 +97,15 @@ def test_a_busy_model_hands_over_to_the_next_at_once():
         raise AssertionError('should have given up')
     except RuntimeError as exc:
         assert 'busy' in str(exc) and len(s.asked) == 4   # two rounds over both models
+
+
+def test_other_providers_answer_in_the_openai_form_and_readers_come_from_the_run_file():
+    body = {'choices': [{'message': {'content': '<think>{x}</think>{"category": "rights"}'}}],
+            'usage': {'prompt_tokens': 900}}
+    s = _Session([_Resp(429), _Resp(200, body)])
+    c = a.OpenAICompat('groq', 'https://x/v1', 'k', session=s, sleep=lambda _: None)
+    text, usage, used = c.generate(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'], 'p', 'read', True)
+    assert (a.parse_json(text), usage['promptTokenCount'], used) == ({'category': 'rights'}, 900, 'qwen/qwen3.8-27b')
+    assert a.parse_readers('# x\nGLOBAL\nreaders: gemini, groq:openai/gpt-oss-120b\n') == [
+        'gemini', 'groq:openai/gpt-oss-120b']
+    assert a.parse_readers('GLOBAL') == ['gemini']

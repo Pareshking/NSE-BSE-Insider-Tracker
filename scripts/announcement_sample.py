@@ -42,7 +42,7 @@ PROMPT_VERSION = 'sample-1'
 # Preferred model ids, first found in the account's model list wins.
 READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-a4b-it', 'gemma-4-31b-it')   # ids as listed by the API on 13 Oct 2026
-PACE = {'read': 6.0, 'sort': 3.0}   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
+PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 2.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
 PER_FILING_SECONDS = 480           # one filing never holds up the rest
 CALL_SECONDS = 180                 # Flash-Lite took 55-110 s a filing on 13 Oct
 RUN_SECONDS = 24 * 60               # stop taking new filings before the workflow's 30-minute limit
@@ -177,6 +177,74 @@ class Gemini:
                 text = ''.join(p.get('text', '') for p in parts if not p.get('thought'))
                 return text, j.get('usageMetadata', {}), model
         raise RuntimeError(f'all {kind} models busy or refused ({last})')
+
+
+class OpenAICompat:
+    """Groq and NVIDIA's free endpoints (the OpenAI chat-completions form), with Gemini's interface:
+    models() for the live list, generate() trying the given models in order."""
+
+    def __init__(self, name: str, base: str, key: str, session=None, sleep=time.sleep):
+        self.name, self.base, self.sleep = name, base, sleep
+        self.s = session or requests.Session()
+        self.s.headers['Authorization'] = f'Bearer {key}'
+        self.last = {}
+
+    def models(self) -> list[dict]:
+        r = self.s.get(f'{self.base}/models', timeout=60)
+        log(f'{self.name} models list: HTTP', r.status_code)
+        if r.status_code == 401:
+            raise RuntimeError(f'{self.name}: key refused (HTTP 401) - expired or wrong; renew the GitHub secret')
+        r.raise_for_status()
+        return [{'name': m['id'], 'supportedGenerationMethods': ['generateContent']} for m in r.json().get('data', [])]
+
+    def generate(self, models: list[str], prompt: str, kind: str, json_mode: bool) -> tuple[str, dict, str]:
+        last = ''
+        for round_ in range(2):
+            if round_:
+                self.sleep(45)
+            for model in models:
+                wait = PACE.get(f'{self.name}:{kind}', PACE[kind]) - (time.monotonic() - self.last.get(kind, -1e9))
+                if wait > 0:
+                    self.sleep(wait)
+                body = {'model': model, 'temperature': 0, 'max_tokens': 4096,
+                        'messages': [{'role': 'user', 'content': prompt}],
+                        **({'response_format': {'type': 'json_object'}} if json_mode else {})}
+                self.last[kind] = time.monotonic()
+                try:
+                    r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=CALL_SECONDS)
+                    if r.status_code == 400 and json_mode and 'response_format' in r.text:
+                        body.pop('response_format')   # a model without JSON mode: the prompt asks for JSON anyway
+                        r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=CALL_SECONDS)
+                except requests.RequestException as exc:
+                    log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
+                    last = f'{model}: {type(exc).__name__}'
+                    continue
+                log(f'{kind} {self.name}:{model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
+                if r.status_code in (429, 500, 502, 503, 504):
+                    last = f'{model}: HTTP {r.status_code}'
+                    continue
+                if r.status_code != 200:
+                    raise RuntimeError(f'{self.name}:{model}: HTTP {r.status_code}: {r.text[:300]}')
+                j = r.json()
+                text = ((j.get('choices') or [{}])[0].get('message') or {}).get('content') or ''
+                text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)   # reasoning models' notes
+                u = j.get('usage') or {}
+                return text, {'promptTokenCount': u.get('prompt_tokens')}, model
+        raise RuntimeError(f'all {self.name} {kind} models busy or refused ({last})')
+
+
+PROVIDERS = {   # name: (base url, key secret, extra input limit in characters or None)
+    'groq': ('https://api.groq.com/openai/v1', 'GROQ_API_KEY', 24_000),   # 8K tokens a minute on the free plan
+    'nvidia': ('https://integrate.api.nvidia.com/v1', 'NVIDIA_API_KEY', None),
+}
+
+
+def parse_readers(text: str) -> list[str]:
+    """'readers:' line of the run file: gemini (3.5 then 3.1 Flash-Lite) or provider:model entries."""
+    for ln in text.splitlines():
+        if ln.strip().lower().startswith('readers:'):
+            return [x.strip() for x in ln.split(':', 1)[1].split(',') if x.strip()]
+    return ['gemini']
 
 
 def available_of(models: list[dict], wanted: tuple[str, ...]) -> list[str]:
@@ -344,31 +412,43 @@ def _cell(v) -> str:
     return '' if v is None else ('yes' if v is True else 'no' if v is False else str(v).replace('|', '/')[:90])
 
 
-def report_markdown(results: list[dict], models: dict) -> str:
+def _summary(results: list[dict]) -> tuple[int, int, int]:
     ok = sum(r['score'][0] for r in results if 'score' in r)
     total = sum(r['score'][1] for r in results if 'score' in r)
-    sorted_right = sum(bool(r.get('sort_category_right')) for r in results)
     held = sum(f['quote_found'] is False or f['digits_in_quote'] is False
                for r in results for f in r.get('fields', []))
-    head = (f"Reader `{models.get('read')}`, sorter `{models.get('sort')}`. "
-            f"Values right and backed by a quote found in the PDF: **{ok} of {total}**. "
-            f"Sorter's category right from the subject line alone: **{sorted_right} of {len(results)}**. "
-            f"Fields held back (quote not in the PDF, or its digits not in the quote): **{held}**.")
-    out = [f"### Announcement reader sample ({PROMPT_VERSION})", '', head, '',
-           '| Filing | Score | Sorter (subject only) | Notes |', '|---|---|---|---|']
+    return ok, total, held
+
+
+def report_markdown(results: list[dict], models: dict) -> str:
+    readers = list(dict.fromkeys(r.get('reader', 'gemini') for r in results))
+    out = [f"### Announcement reader sample ({PROMPT_VERSION})", '',
+           f"Sorter `{models.get('sort')}`. A value counts only when it is right and backed by a quote found in the PDF.", '']
+    out += ['| Reader | Right | Held back | Errors |', '|---|---|---|---|']
+    for rd in readers:
+        rs = [r for r in results if r.get('reader', 'gemini') == rd]
+        ok, total, held = _summary(rs)
+        out.append(f"| {rd} | **{ok} of {total}** | {held} | {sum('error' in r for r in rs)} |")
+    symbols = list(dict.fromkeys(r['symbol'] for r in results))
+    out += ['', '| Filing | ' + ' | '.join(readers) + ' |', '|---|' + '---|' * len(readers)]
+    for sym in symbols:
+        cells = []
+        for rd in readers:
+            r = next((x for x in results if x['symbol'] == sym and x.get('reader', 'gemini') == rd), None)
+            cells.append('-' if r is None else (f"error: {_cell(r['error'])[:40]}" if 'error' in r
+                                                 else f"{r['score'][0]}/{r['score'][1]}"))
+        out.append(f"| {sym} | " + ' | '.join(cells) + ' |')
+    out += ['', '| Filing | Sorter (subject only) | Notes |', '|---|---|---|']
     for r in results:
-        if 'error' in r:
-            out.append(f"| {r['symbol']} | - | - | error: {_cell(r['error'])} |")
-            continue
-        out.append(f"| {r['symbol']} ({_cell(r['subject'])}) | {r['score'][0]}/{r['score'][1]} | "
-                   f"{_cell(r['sort_category'])}{' ✓' if r['sort_category_right'] else ' ✗'}"
-                   f"{' (sorter busy)' if r.get('sort_error') else ''}, read PDF: "
-                   f"{_cell(r['sort_read_pdf'])} | {_cell('; '.join(r.get('notes', [])))} |")
+        if 'score' in r:
+            out.append(f"| {r['symbol']} ({_cell(r.get('reader', 'gemini'))}) | {_cell(r.get('sort_category'))}"
+                       f"{' ✓' if r.get('sort_category_right') else ' ✗'}{' (sorter busy)' if r.get('sort_error') else ''}"
+                       f", read PDF: {_cell(r.get('sort_read_pdf'))} | {_cell('; '.join(r.get('notes', [])))} |")
     for r in results:
         if 'fields' not in r:
             continue
-        out += ['', f"**{r['symbol']}**", '', '| Field | From the PDF | Model | Right | Quote in PDF | Digits in quote |',
-                '|---|---|---|---|---|---|']
+        out += ['', f"**{r['symbol']}**, {r.get('reader', 'gemini')}", '',
+                '| Field | From the PDF | Model | Right | Quote in PDF | Digits in quote |', '|---|---|---|---|---|---|']
         out += [f"| {f['field']} | {_cell(f['expected'])} | {_cell(f['model'])} | {_cell(f['match'])} | "
                 f"{_cell(f['quote_found'])} | {_cell(f['digits_in_quote'])} |" for f in r['fields']]
     return '\n'.join(out) + '\n'
@@ -394,7 +474,8 @@ def main(argv=None):
     rows = json.loads((HERE / 'announcement_sample_expected.json').read_text(encoding='utf-8'))
     run_file = HERE / 'announcement_sample_run.txt'
     only = args.only or (run_file.read_text().strip() if run_file.exists() else '')
-    lines = [ln for ln in only.splitlines() if not ln.strip().startswith('#')]
+    lines = [ln for ln in only.splitlines()
+             if not ln.strip().startswith('#') and not ln.strip().lower().startswith('readers:')]
     wanted = {x.strip() for x in ','.join(lines).split(',') if x.strip()}
     rows = [r for r in rows if not wanted or r['symbol'] in wanted]
     log('filings this run:', ', '.join(r['symbol'] for r in rows))
@@ -409,7 +490,36 @@ def main(argv=None):
     if not readers:
         emit(f'None of {READERS} is in this key\'s model list: {", ".join(names)}\n')
         sys.exit(1)
+    # Who reads each filing: "gemini" (3.5 then 3.1 Flash-Lite) and/or provider:model entries, each scored alone.
+    lanes, clients = [], {}
+    for entry in parse_readers(run_file.read_text() if run_file.exists() else ''):
+        if entry == 'gemini':
+            lanes.append(('gemini', g, readers, None))
+            continue
+        prov, _, model = entry.partition(':')
+        if prov not in PROVIDERS:
+            log('unknown reader', entry)
+            continue
+        base, secret, limit = PROVIDERS[prov]
+        pkey = os.environ.get(secret, '').strip()
+        if not pkey:
+            emit(f'{secret} is not set; {entry} skipped.\n')
+            continue
+        try:
+            if prov not in clients:
+                clients[prov] = (OpenAICompat(prov, base, pkey), None)
+                clients[prov] = (clients[prov][0], {m['name'] for m in clients[prov][0].models()})
+        except Exception as exc:  # noqa: BLE001
+            emit(f'{prov}: {exc}\n')
+            continue
+        client, ids = clients[prov]
+        if model not in ids:
+            emit(f'{entry}: not in {prov}\'s model list ({", ".join(sorted(ids))[:600]}).\n')
+            continue
+        lanes.append((entry, client, [model], limit))
+    log('readers:', ', '.join(lane[0] for lane in lanes))
     results, started = [], time.monotonic()
+    per_filing = PER_FILING_SECONDS * max(1, len(lanes))
 
     def save():
         """Results so far, after every filing: a stall or a cancelled run keeps what was read."""
@@ -418,7 +528,7 @@ def main(argv=None):
                        ensure_ascii=False, default=str))
 
     def too_long(signum, frame):
-        raise TimeoutError(f'gave up after {PER_FILING_SECONDS} s')
+        raise TimeoutError('gave up: the filing took too long')
 
     signal.signal(signal.SIGALRM, too_long)
     for row in rows:
@@ -426,32 +536,42 @@ def main(argv=None):
             results.append({'symbol': row['symbol'], 'subject': row['subject'], 'error': 'not read: run time used up'})
             continue
         log('---', row['symbol'], row['subject'])
-        res = {'symbol': row['symbol'], 'subject': row['subject']}
-        signal.alarm(PER_FILING_SECONDS)
+        signal.alarm(per_filing)
         try:
-            sort_out = None
+            sort_res = {}
             if sorters:   # sorting failing never stops the reading
                 try:
                     text, usage, used = g.generate(sorters, sort_prompt(row), 'sort', json_mode=True)
-                    sort_out = parse_json(text)
-                    res.update(sort_raw=text[:500], sort_tokens=usage.get('promptTokenCount'), sort_model=used)
+                    sort_res = {'out': parse_json(text), 'raw': text[:500], 'model': used}
                 except RuntimeError as exc:
-                    res['sort_error'] = str(exc)[:200]
-            doc, notes = document(row['file_url'])
-            text, usage, used = g.generate(readers, read_prompt(row, doc), 'read', json_mode=True)
-            read_out = parse_json(text)
-            res['read_model'] = used
-            notes.append(f"{used}, {usage.get('promptTokenCount', '?')} tokens in")
-            if read_out is None:
-                notes.append('reply was not JSON')
-            res.update(check(row, sort_out, read_out, doc), notes=notes, read_raw=text[:4000])
+                    sort_res = {'error': str(exc)[:200]}
+            doc, doc_notes = document(row['file_url'])
         except Exception as exc:  # noqa: BLE001 -- one filing failing must not stop the sample
-            res['error'] = f'{type(exc).__name__}: {exc}'[:300]
-        finally:
             signal.alarm(0)
-        results.append(res)
-        save()
-        log(row['symbol'], res.get('score'), res.get('error', ''))
+            results.append({'symbol': row['symbol'], 'subject': row['subject'],
+                            'error': f'{type(exc).__name__}: {exc}'[:300]})
+            save()
+            continue
+        for name, client, models_, limit in lanes:
+            res = {'symbol': row['symbol'], 'subject': row['subject'], 'reader': name,
+                   **({'sort_error': sort_res['error']} if 'error' in sort_res else {})}
+            try:
+                prompt = read_prompt(row, doc)
+                if limit and len(prompt) > limit:
+                    raise RuntimeError(f'{len(prompt):,} characters, over {name}\'s free limit per call')
+                text, usage, used = client.generate(models_, prompt, 'read', json_mode=True)
+                read_out = parse_json(text)
+                notes = doc_notes + [f"{used}, {usage.get('promptTokenCount', '?')} tokens in"]
+                if read_out is None:
+                    notes.append('reply was not JSON')
+                res.update(check(row, sort_res.get('out'), read_out, doc), notes=notes, read_raw=text[:4000],
+                           read_model=used)
+            except Exception as exc:  # noqa: BLE001
+                res['error'] = f'{type(exc).__name__}: {exc}'[:300]
+            results.append(res)
+            save()
+            log(row['symbol'], name, res.get('score'), res.get('error', ''))
+        signal.alarm(0)
     save()
     emit(report_markdown(results, models))
 
