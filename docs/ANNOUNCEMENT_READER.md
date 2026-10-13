@@ -188,6 +188,19 @@ so it ends before the next starts; what it does not reach waits for the next run
 - Shown: the reading lane's values that pass the checks (`reader_lane` says which). When nothing is left
   to read, an idle lane reads again a filing another provider read this run; the values both give alike
   are marked "2 readers agree" (`second_reader`, `agreed`). A failed cross-check changes nothing.
+- The card on the Brief (14 Oct, owner's examples from equisense; prompt `live-2`): the symbol, market cap
+  and size (from the price summary), date and exchange; the category; a headline and 2 to 4 points the
+  model writes from the filing; the figures of a periodic update with our own change on a year ago; the key
+  terms (price a share, shares, size, record date ...); the filing's own words behind a click; the stock's
+  1W, 1M and 1Y moves; the filing's link and its reader. The headline and each point carry a quote, and
+  every number in them must be one of the quote's numbers, as written or with its lakh, crore, million or
+  billion applied (12,000 lakh may be written 120 crore, within 0.5%): a number of the model's own, a growth
+  rate it worked out, or a quote not in the filing holds the sentence back. A metric's year-earlier value
+  (`previous`, with its own quote) is checked the same way; the % change is ours. No "impact" label (13
+  Oct decision); "why it matters" waits for our own history ("before this", a next step): equisense's
+  draws on concalls and annual reports, which we do not collect, so it would be invented here. Reads
+  before `live-2` show a plain headline (company: category, size). The site's CSS hides every `footer`
+  element (Streamlit's), so the card's foot is a `div`; the first cards' link and reader never showed.
 - The card on the Brief: one card per file. The same file filed again (on the other exchange or under
   another subject) is folded into it as "Also filed: BSE 13 Oct, 21:12". Entity labels, not shown by
   design, are not counted as held back; repeated reasons are counted ("number not in its quote ×2"); a
