@@ -158,7 +158,7 @@ def test_before_this_is_built_from_our_own_tables_with_our_own_sums():
 
 def test_filings_page_filters_by_heading_size_search_and_agreement(tmp_path, monkeypatch):
     from screens import filings
-    assert filings.heading_of('rights') == 'Fund raising' and filings.heading_of('acquisition') == 'Acquisitions & deals'
+    assert filings.heading_of('rights') == 'Fund raising' and filings.heading_of('acquisition') == 'Acquisitions & restructuring'
     assert filings.heading_of('something_new') == 'Other'   # a new category is never hidden
     assert filings.heading_of('legal_regulatory') == 'Legal & regulatory' and filings.heading_of('deal_or_dispute') == 'Other'
     now = pd.Timestamp.now(tz='Asia/Kolkata')
@@ -213,3 +213,15 @@ def test_a_card_without_a_headline_uses_the_exchanges_own_words_and_a_bse_only_c
     assert '<h4 class="rc-h">Parvati Sweetners and Power Ltd: Acquisition of 51% stake in Shree Parvati' in html
     assert '>Parvati Sweetners and Power Ltd</a>' in html and '>541347<' not in html
     assert '<td>Amount awarded</td>' in html
+
+
+
+def test_every_category_of_the_live_reader_has_a_label_and_a_heading():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+    import announcement_reader as ar
+    from screens import filings
+    shown = set(ar.CATEGORIES) - {'routine'}
+    assert shown <= set(fr.CATEGORY), shown - set(fr.CATEGORY)
+    assert all(filings.heading_of(c) != filings.OTHER for c in shown), [c for c in shown if filings.heading_of(c) == 'Other']

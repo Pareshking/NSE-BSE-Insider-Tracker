@@ -224,12 +224,24 @@ so it ends before the next starts; what it does not reach waits for the next run
   values leads; the others are listed under "Also filed" with their subject and a link.
 - Cross-check of figures: an idle lane's second read now also marks a business update's figures "2 readers
   agree" when it gives the same number (labels differ between models, so the number is compared).
-- Categories (prompt `live-3`, 14 Oct, owner): the harness's `deal_or_dispute` is split in four for the live
-  reader (`SPLIT` in `announcement_reader.py`): `acquisition`, `divestment`, `merger_demerger`,
-  `legal_regulatory`. An acquisition under a "dispute" label read as trouble (Aegis, Welspun, Hero Motors
-  next to the ED's seizure at Reliance Power). Reads before `live-3` keep `deal_or_dispute`, shown as "Deal
-  or legal matter" and under Other on the page; today's and yesterday's are read again by the new version.
-  The test harness keeps the old list, so the 24-filing test stays comparable.
+- Categories (prompt `live-3`, 14 Oct, owner): the live reader's list (`CATEGORIES` in
+  `announcement_reader.py`, 35 besides `routine`) follows what listed companies file, after SEBI's LODR
+  Schedule III (Regulation 30) and what the exchanges carry besides: the harness's list without
+  `deal_or_dispute` (an acquisition under a "dispute" label read as trouble), plus ESOP, dividend, bonus
+  or split, acquisition, divestment, merger or demerger, agreement or JV, delisting, licence or approval,
+  operations started, financial results, default, debt settlement, insolvency, legal or regulatory,
+  fraud or forensic audit, disruption, management change, corporate change. The page groups them in 11
+  headings (Fund raising; Buybacks & payouts; Acquisitions & restructuring; Orders & business; Capex &
+  capacity; Results; Ratings; Debt & distress; Legal & regulatory; Disruption; Management & governance), a
+  test keeps every category labelled and headed. Reads before `live-3` keep `deal_or_dispute` ("Deal or
+  legal matter", under Other); today's and yesterday's are read again. The harness keeps its shorter list,
+  so the 24-filing test stays comparable.
+- Which filings are read at all is still the collector's subject-line groups (`READING_GROUPS`, NSE and
+  BSE): board outcomes, general updates, press releases, fund raising, takeovers, ratings, auditor and
+  director resignations, fraud and insolvency subjects, BSE's acquisition and scheme subjects. Subjects
+  outside them (NSE's own subjects for orders, acquisitions, results, dividends and the like) are routine
+  and never read. **Next:** extend the groups from the real subject counts in
+  `clean/reports/announcements/{date}.json` (exact names only; the volume of results season to be weighed).
 - Owner's review of the live cards (14 Oct, 02:03): the first reads (before `live-2`) said only "Company:
   deal or dispute"; GTPL's "Before this" set Rs 937.50, the price a share of the company GTPL buys, against
   GTPL's own close (1,551% "above"). Fixed: a price is set against the close only for the company's own
