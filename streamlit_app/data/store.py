@@ -18,6 +18,7 @@ TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings'
           'buybacks', 'bse_sast', 'bse_actions')
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
+TABLES += ('announcement_reads',)   # filings read by scripts/announcement_reader.py, values checked
 
 
 def _local() -> Path | None:

@@ -1,181 +1,198 @@
-# Announcement reader: state and plan (13 Oct 2026)
+# Announcement reader: state and plan (13 Oct 2026, evening)
 
-Where the announcement reader stands, so any session can pick it up. TODO item
-29 points here. Code: `collectors/nse_events/announcements.py` (collector, no
-model), `scripts/announcement_sample.py` (model test harness),
-`scripts/announcement_sample_expected.json` (24 filings read by hand),
-`scripts/announcement_sample_run.txt` (what the next test run reads),
-workflows `announcements.yml` (nightly counts) and `announcement-sample.yml`
-(model test). All on PR #56, branch `ccr-5fbf9503-x2spo0`, not merged.
+Where the announcement reader stands, so any session can pick it up. TODO item 29 points here. All on
+PR #56, branch `ccr-5fbf9503-x2spo0`, not merged (owner merges). Times are IST.
 
-## Decisions (owner, 13 Oct)
+Code:
+- Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
+  `collectors/bse/announcements.py` (BSE), workflow `announcements.yml` (nightly, 3 days).
+- Live reader: `scripts/announcement_reader.py`, lanes in `scripts/announcement_readers.txt`, workflow
+  `announcement-reader.yml` (every 30 minutes on `main`; on a PR a 3-filing dry run, nothing written).
+- Site: Brief card "Filings read" (`streamlit_app/screens/filings_read.py`) from
+  `clean/current/announcement_reads.parquet`.
+- Model test: `scripts/announcement_sample.py` (harness; prompts, clients and checks shared with the
+  reader), `scripts/announcement_sample_expected.json` (24 filings read by hand),
+  `scripts/announcement_sample_run.txt` (next test run), workflow `announcement-sample.yml`.
 
-- Models run only in the backend (GitHub Actions); the site never calls a
-  model, it reads the tables the backend writes. No chat box on the site.
-- Keys live only in GitHub Actions secrets: `GEMINI_API_KEY` (its own AI
-  Studio project), `GROQ_API_KEY`, `NVIDIA_API_KEY` (valid 6 months from
-  13 Oct 2026: renew by early Apr 2027, same secret name; an expired key
-  shows as "key refused (HTTP 401) ... renew the GitHub secret"),
-  `ZAI_API_KEY` (added 13 Oct). Never in the repo or Streamlit secrets.
-- Only public filing text goes in a prompt; nothing personal.
-- Models get extracted text (`pdftotext -layout`, ZIPs opened), never PDFs.
-- Every value must carry a quote found in the PDF text, and prices and counts
-  must have their digits in the quote; otherwise it is held back, never shown.
-  The model gives numbers as written with their unit; our code converts
-  (lakh, crore, million, billion) and computes every % change.
-- Use free limits up to 95%, through the day (every 30 minutes), not only
-  at night; today's filings first with ~150 reads in reserve.
-- The Brief (`/brief`) becomes the hub: every critical and useful filing,
-  crisp and tactical for the next day (style: equisense cards), with "before
-  this" from our own archive and our own data (dilution, promoter holding and
-  pledge, issue price vs CMP, size vs market cap, insider and deal activity).
-  No "impact" labels; gaps flagged neutrally (Avonmore: filing says ~214%,
-  its own numbers give +114%).
+## Decisions (owner)
+
+13 Oct, earlier:
+- Models run only in the backend (GitHub Actions); the site never calls a model, it reads the tables the
+  backend writes. No chat box on the site.
+- Keys live only in GitHub Actions secrets: `GEMINI_API_KEY`, `GROQ_API_KEY`, `NVIDIA_API_KEY` (valid
+  6 months from 13 Oct 2026: renew by early Apr 2027, same secret name; an expired key shows as "key
+  refused (HTTP 401) ... renew the GitHub secret"), `ZAI_API_KEY`. Never in the repo or Streamlit secrets,
+  so models cannot be called from a laptop.
+- Only public filing text goes in a prompt; nothing personal. Models get extracted text
+  (`pdftotext -layout`, ZIPs opened), never PDFs.
+- Every value must carry a quote found in the PDF text, and prices and counts must have their digits in
+  the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
+  our code converts (lakh, crore, million, billion) and computes every % change.
+- Use free limits up to 95%, through the day (every 30 minutes), not only at night; today's filings first.
+- The Brief (`/brief`) becomes the hub for critical and useful filings, crisp and tactical for the next
+  day, with "before this" from our own data. No "impact" labels; gaps flagged neutrally.
 - Concall announcements are not collected (08 Oct decision).
 - Stocks below Rs 100 Cr market cap: their PDFs do not go to a model.
-  **Open:** should they also be hidden across the site? (owner to answer)
 
-## Model test results (13 Oct, 24 filings, 91 values)
+13 Oct, evening:
+- **Readers for the first live version: Kimi K3 on NVIDIA (main), Gemma 4 on NVIDIA (backup in the same
+  lane), GLM-4.5-Flash on Z.ai (free) as the second lane and cross-check.**
+- Below Rs 100 Cr: keep these companies on the site for the time being (still never sent to a model).
+- ADANIENT-type filings (reminder to pay call money on partly paid rights shares) count as `rights`.
+- The reader reads whichever exchange's copy of a filing comes first and skips the other.
+- Times are given in IST.
 
-Run 38423386748, one job per model in parallel, rescored with the 13 Oct
-checks (numbers written with their currency read once; table quotes marked
-`table`, weaker than `exact`, since they cannot prove the column).
+## Model test results (24 filings, 91 values)
 
-| Reader | Right | Held back | Not sent | Seconds a filing |
-|---|---|---|---|---|
-| NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 1 | 0 | 29 |
-| NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 4 | 0 | 40 |
-| Groq `qwen/qwen3.8-27b` | 69 of 73 | 3 | 5 too big | 61 (paced) |
-| NVIDIA `nvidia/nemotron-3-super-120b-a12b` | 68 of 91 | 13 | 0 | 23 |
-| Groq `openai/gpt-oss-120b` | 62 of 73 | 5 | 5 too big | 61 (paced) |
-| Gemini 3.5 / 3.1 Flash-Lite | 80 of 91 | 9 | 0 | 76 |
-| NVIDIA DeepSeek v4.1 Flash, Nemotron 3.5 Lightning | still running after 55 minutes (slow) | | | |
+A value counts only when it is right and backed by a quote found in the PDF. Scores are the runner's
+(poppler `pdftotext`); a laptop with xpdf's `pdftotext` lays some PDFs out differently and finds fewer
+quotes, so local rescoring is only a cross-check.
 
-Wrong values that passed the checks (would have reached the site), all
-readers: two `entity` labels from the weakest readers (Nemotron 3 Super:
-Hyundai "listed" for the parent group; gpt-oss: Jubilant "listed" for a
-subsidiary), plus ADANIENT's disputed category. No wrong number passed in
-any reader. Gemini's misses are values not given (Chandan franchises,
-Jubilant CAD 94.5M) or held back (SML table quotes it rebuilt in its own
-words); in B1 the same Gemini read Chandan 6/6, so runs vary.
+| Reader | Right | Held back | Errors | Seconds a filing | Run |
+|---|---|---|---|---|---|
+| NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 4 | 0 | 29 | 38423386748 |
+| NVIDIA `nvidia/nemotron-3-ultra-550b-a55b` | 87 of 91 | 4 | 0 | 106 | 38432331574 |
+| NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 6 | 0 | 40 | 38423386748 |
+| Gemini 3.5 / 3.1 Flash-Lite | 80 of 91 | 12 | 0 | 76 (27 busy replies) | 38423386748 |
+| Z.ai `glm-4.5-flash` (free) | 77 of 91 | 10 | 0 | 15 | 38440817065 |
+| Groq `qwen/qwen3.8-27b` | 69 of 73 | 3 | 5 too big | 61 (paced) | 38423386748 |
+| NVIDIA `nvidia/nemotron-3-super-120b-a12b` | 68 of 91 | 14 | 0 | 23 | 38423386748 |
+| Groq `openai/gpt-oss-120b` | 62 of 73 | 6 | 5 too big | 61 (paced) | 38423386748 |
+| NVIDIA `nvidia/nemotron-3.5-lightning-30b-a3b` | 24 of 58 | 5 | 7 (time used up) | 205 | 38423386748 |
+| NVIDIA `deepseek-ai/deepseek-v4.1-flash` | 0 of 45 | 0 | 10 | 208 (replies empty) | 38423386748 |
+| NVIDIA `z-ai/glm-5.3` | running | | | | 38432331574 |
+| NVIDIA `z-ai/glm-5.3-flash`, `deepseek-ai/deepseek-v4.1-flash` (reasoning field read) | running | | | | 38440817065 |
+| Z.ai `glm-4.7-flash`, thinking off and on (free) | running | | | | 38440817065 |
 
-Earlier Gemini runs (A1-A3, B1, run 3): 48 of 48 values right on 14 filings;
-Hyundai not read because both Flash-Lite models were 503 "busy" for 3 minutes.
-Gemini was busy on most calls on 13 Oct; NVIDIA gave no 429/503 in 72 calls.
+Not available to this key (13 Oct): NVIDIA `nvidia/llama-3.1-nemotron-ultra-253b-v1`,
+`mistralai/mistral-large-2-instruct`, `moonshotai/kimi-k2.6`, `writer/palmyra-fin-70b-32k` all answer
+HTTP 404 "Function ... Not found for account" on every call although `/v1/models` still lists them.
+None is in NVIDIA's catalog (build.nvidia.com/models) any more; Kimi K2.6 and Mistral Large 2's pages are
+gone, and other users report the same 404 for Kimi K2.6 since July 2026 (NVIDIA developer forums). So
+NVIDIA's `/v1/models` is stale: **check a model against the catalog page, not only the list.** Current
+free catalog (13 Oct): kimi-k3, glm-5.3, glm-5.3-flash, deepseek-v4.1-flash, gemma-4-31b-it,
+nemotron-3-super, nemotron-3-ultra, nemotron-3.5-lightning.
 
-Queued next (run file): NVIDIA `z-ai/glm-5.3`,
-`nvidia/nemotron-3-ultra-550b-a55b`, `writer/palmyra-fin-70b-32k` (a finance
-model, 32K context), `mistralai/mistral-large-2-instruct`,
-`moonshotai/kimi-k2.6`, `nvidia/llama-3.1-nemotron-ultra-253b-v1`; Z.ai
-`glm-4.7-flash` thinking off and on, and `glm-4.5-flash`. Z.ai's pricing page
-(13 Oct) lists only GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash (vision)
-as free; every other GLM model there is paid per token, so only those go in
-the readers line for `zai` (GLM 5.3 is tested free through NVIDIA instead).
-GLM-4.6V-Flash is a candidate later for scanned PDFs with no text layer (one job, its free tier takes one request at a time). Z.ai claims
-(unlimited, 60 RPM, 200K context) are not verified; the run will show.
+Z.ai: the key's `/models` lists only paid models (GLM 4.5 to 5.3, 5.3-Flash and FlashX; GLM-5.3-Flash
+is $0.15 / $0.50 per million tokens). The free models (GLM-4.7-Flash, GLM-4.5-Flash, GLM-4.6V-Flash,
+under "Other Pricing" on docs.z.ai/guides/overview/pricing) are not listed but answer when called by name
+(GLM-4.5-Flash read all 24 filings, no 429). The harness and the reader try only those three on Z.ai
+(`FREE_ONLY`); any other Z.ai id is refused, so nothing is ever paid for.
 
-To see the combined table of any run: the `compare` job's log. To rescore
-saved replies after a change to the checks, without new calls:
-`python scripts/announcement_sample.py --combine <folder of results json> --rescore`.
+NVIDIA 429s: none in any run, with up to five NVIDIA jobs at once. DeepSeek v4.1 Flash leaves its answer
+in `reasoning_content` with `content` empty (GitHub issues on DeepSeek; NVIDIA's card samples read that
+field); the harness now reads it. Speed in one run depends on the hour and the provider's load: one run's
+seconds only rule out the clearly slow (DeepSeek, Lightning, GLM 5.3 on 13 Oct, 10-15 minutes a filing
+with timeouts). The reader logs every call so speed is judged over many runs.
 
-Findings to act on:
-- ADANIENT (call-money reminder on partly paid rights shares): hand reading
-  says `routine`, every model says `rights`. Likely needs its own category
-  (rights call money) rather than a miss.
-- AEQUS promoter allottee: every model right, no quote found; held back (safe).
-- Gemma sorter from the subject line alone: about 6 of 11 and 1 of 4 right.
-  Sort from subject plus the first ~1,500 characters of text instead; useful
-  groups are always read in full.
-- Groq's 8K tokens a minute: filings over ~20,000 characters are not sent.
+### Wrong values that passed the checks
 
-## Plan: divide the work, one lane per provider
+- Two `entity` labels from the weakest readers (Nemotron 3 Super: Hyundai "listed" for the parent group;
+  gpt-oss: Jubilant "listed" for a subsidiary). Entity labels are kept but not shown on the site yet.
+- Nemotron 3.5 Lightning: two amounts 10 million times too big (INOXGREEN `299,99,99,852.45` with unit
+  "crore", the word coming from the amount in words; IIFL `95,00,00,000` "crore"). Now held back: a lakh,
+  crore, million or billion must be backed by the quote (never on a number written in full, 7 or more
+  digits; in an exact quote the unit's word follows the number).
+- GLM-4.5-Flash: Hyundai's USD 15.5 billion given as 15.5 with no unit. Now held back: with no unit, a
+  quote with a unit's word right after the number does not back it.
+- Each new check was rescored over every saved reply of both runs: no right value was lost.
+- The scorer compares dates as dates ("October 1, 2026" is 2026-10-01).
 
-Each provider runs as its own job with its own spacing between calls, so
-three or four run at once without coordinating; each stops at 95% of its
-daily limit (usage log in R2, to build).
+Earlier Gemini runs (A1-A3, B1, run 3): 48 of 48 values right on 14 filings; Gemini was busy on most
+calls on 13 Oct.
 
-| Lane | Free limits (as listed 13 Oct) | Use |
-|---|---|---|
-| NVIDIA (Kimi K3 if it holds) | ~40 a minute, ~10K a day "may vary"; terms for regular automated use not yet confirmed | main reader, long filings, backlog |
-| Gemini 3.5 + 3.1 Flash-Lite | 15 a minute, 500 a day each, 250K tokens a minute; resets midnight Pacific | second reader |
-| Gemma 4 on the Gemini key | 30 a minute, 14.4K a day, 16K tokens a minute | sorting |
-| Groq (Qwen 3.8 27B) | 30 a minute, 1K a day, 8K tokens a minute, 200K a day | short filings only (~50 a day per model) |
-| Z.ai GLM 4.7 Flash | one request at a time | to be decided by the queued run |
+## NSE and BSE: what each adds (measured 12 Oct 2026)
 
-Many NVIDIA models do not mean many times the limit: whether NVIDIA's ~40 a
-minute is per account or per model is not confirmed (watch for 429s when
-several NVIDIA jobs run at once). Their worth is a ready fallback when a
-model is busy or retired, and a cross-check: two models agreeing on a value.
+NSE's SME feed (`index=sme`) has the same fields and numbering as the main board's, and no filing in
+both (6-12 Oct: 3,318 main board, 699 SME). BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
+first, with the day's count; attachments at `www.bseindia.com/xml-data/corpfiling/AttachLive/<name>`
+(confirmed from a machine in India; the runner falls back to the in-page fetch if BSE refuses it).
 
-Before any model: subject-line groups drop routine; same file or same text
-read once (file hash, then text hash; ~963 a month repeat a file); concall
-and below-100 Cr filings skipped. A busy or full lane puts the filing back in
-the queue for the next lane. Order: today, then past filings of companies
-that get a card today, then the backlog newest first. Each result stores its
-model and prompt version (`PROMPT_VERSION`). Weekly check of each provider's
-model list (models get renamed and retired).
+12 Oct, concalls removed: BSE 1,103 filings from 894 companies (284 not routine), NSE 711 from 432
+(188 not routine). Pairing by company, subject words and time (the two copies are different files:
+each is addressed to its own exchange, so file size or hash cannot pair them):
 
-## Current recommendation (to confirm with the queued run)
+| Useful filings, 12 Oct | |
+|---|---|
+| NSE, company also filed on BSE that day | 129 |
+| NSE only: SME board (not on BSE at all) | 37 |
+| NSE only: main board | 17 |
+| BSE only: companies not on NSE (354 companies) | 83 |
+| BSE only: codes missing from the 1 Sep security master | 40 |
 
-Kimi K3 on NVIDIA as the main reader, Gemma 4 on NVIDIA as its backup,
-Gemini Flash-Lite as a second lane, Groq Qwen 3.8 for short filings only
-(under ~20,000 characters), Gemma 4 on the Gemini key for sorting; Z.ai
-decided by the queued run.
+Same filing on both (347 pairs): BSE first by over a minute 204 times, NSE 89, within a minute 54;
+median BSE ahead by 2.0 minutes (useful filings: 91 pairs, 48 vs 21, median 1.2 minutes); over 30 minutes
+ahead: BSE 13, NSE 3. So both exchanges stay: BSE adds about 120 useful filings a day and is usually a
+minute or two ahead; NSE adds its SME board. Read once: same ISIN, within six hours, subjects alike.
 
-## Open questions for the owner (ask, do not decide)
+Regulation heads (Reg 30, 74(5) ...) as a filter: NSE's feed names one on 75 of 576 filings, BSE's mostly
+74(5) (already its own subcategory, routine) or 30 (on nearly everything). The subject lines already carry
+the routine heads; inside the PDF the opening lines name the regulation, which the sorter can read later.
+Exchange trading groups (BSE Z/T, NSE BE/BZ) could be a later filter, from the exchanges' own security
+lists (not collected yet).
 
-1. Stocks below Rs 100 Cr market cap: their PDFs never go to a model
-   (decided). Should these companies also be hidden across the whole site?
-2. ADANIENT-type filings (reminder to pay call money on partly paid rights
-   shares): a category of their own ("rights call money"), or routine?
-3. Merge PR #56 when the owner is ready (owner merges).
+## The live reader (coded 13 Oct, `scripts/announcement_reader.py`)
+
+Every 30 minutes (on `main`): collect today's NSE and BSE filings (BSE stops paging at the first page it
+already has); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
+skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
+copy instead of reading when the same file or text was read before; both lanes read each filing side by
+side; check every value; write. About 22 minutes of reading a run.
+
+- Lanes: `scripts/announcement_readers.txt`, one line each (`main`, `second`). Within a lane the next
+  model takes over on busy, refusal or timeout; a model timing out twice running is left out for the run.
+  Changing a reader is a one-line change to that file.
+- Shown: the main lane's values that pass the checks; the second lane's same value marks
+  "2 readers agree". When the main lane fails, the second lane's checked values are used.
+- Written: `archive/announcement_reads/year=YYYY/month=MM.parquet` (by event_id; statuses `read`,
+  `same_file`, `same_text`, `same_filing_other_exchange`, `below_100_cr`, `no_text`, `failed` with tries,
+  given up after 3), `clean/current/announcement_reads.parquet` (last 60 days), and
+  `clean/reports/announcement_reader/{date}.json` (each run: counts, outcomes, every call by model with
+  its answers and median seconds, models left out as slow).
+- Expected volume: about 250-300 filings a day to read after dedup and the Rs 100 Cr rule; cards appear
+  only where a value passes, so roughly 100-200 cards a day.
+
+## Open questions for the owner
+
+1. Merge PR #56 when ready (owner merges). Nothing runs on a schedule and the site shows nothing new
+   until then.
+2. NVIDIA's free API is a "trial service" under NVIDIA's API Trial Terms of Service; forum users read
+   them as testing and evaluation only (the PDF itself not read). Daily automated reading may be outside
+   them. Z.ai's free models carry no such label that was found.
 
 ## How to pick up (for a new session)
 
-Start prompt: "Read CLAUDE.md, then docs/ANNOUNCEMENT_READER.md, then TODO
-29. Collect the results of run 38423386748 (rescored) and of the next
-Announcement reader sample run on branch ccr-5fbf9503-x2spo0, report one
-table for all readers, pick the readers, record the split here and in TODO
-29, ask the owner the open questions, then continue with Next steps.
-Subscribe to PR #56 and keep CI green."
+Start prompt: "Read CLAUDE.md, then docs/ANNOUNCEMENT_READER.md, then TODO 29. Collect the results of
+the latest Announcement reader sample runs and the live reader's usage log, report one table for all
+readers, update the split here and in TODO 29, ask the owner the open questions, then continue with Next
+steps. Subscribe to PR #56 and keep CI green."
 
-
-- Results of run 38423386748: the six finished readers are in the table
-  above. DeepSeek v4.1 Flash and Nemotron 3.5 Lightning were still running at
-  handoff. That run's own `compare` table uses the checks from before the
-  13 Oct fixes and understates: download each job's artifact
-  (`announcement_sample_results.json`) into one folder and run
-  `--combine <folder> --rescore`.
-- The queued run is the next "Announcement reader sample" run on this
-  branch; its `compare` job already rescores with the current checks.
-- Report per reader: right, held back, errors, seconds a filing; and every
-  wrong value that passed the checks (field rows `| no | exact |` or
-  `| no | table |`). Note any NVIDIA 429s with six jobs at once.
-- Any push to PR #56 re-runs the sample workflow (its paths filter compares
-  the whole PR diff, not the last commit); one run at a time, a newer
-  pending run replaces the older pending one. Put `[skip ci]` in doc-only
-  commits.
-- Readers come from the `readers:` line of
-  `scripts/announcement_sample_run.txt` (one job each; `zai` readers share
-  one job); without it, `DEFAULT_READERS` in the script.
-- Check every model id against the live list each job prints at its start;
-  a wrong id is skipped, never guessed (13 Oct: `glm-5-3` instead of
-  `glm-5.3` cost a run). Small-context models get their own limits in
-  `MODEL_LIMITS` (Palmyra Fin, 32K tokens).
-- Z.ai key is from z.ai (`https://api.z.ai/api/paas/v4`, tried first; the
-  harness falls back to bigmodel.cn and `api.z.ai/v1`).
-- No model identifiers in commit messages, PR text or code comments beyond
-  what is already there.
+- The `compare` job of a sample run gives its combined table, rescored with the current checks on the
+  runner. Job logs come only after a job finishes (the API answers 404 while it runs; the live log needs
+  a signed-in browser). To rescore saved replies after a change to the checks without new calls: download
+  each job's artifact into one folder and run `--combine <folder> --rescore` (on the runner for exact
+  scores).
+- Sample runs go side by side; only the same reader waits for its own job in an earlier run. A PR push
+  starts a sample run only when the sample's own files changed in that push, and the reader's 3-filing dry
+  run only when the reader's files (or the shared harness) changed. Put `[skip ci]` in doc-only commits.
+- Within one reader's job the filings go one at a time (free limits; Z.ai takes one request at a time).
+  Each Z.ai model has its own job (a model and its `+thinking` variant share one).
+- Check every model id against the provider's catalog page and the live list each job prints; a wrong or
+  withdrawn id is skipped, never guessed. Small-context models get their own limits in `MODEL_LIMITS`.
+- Z.ai key is from z.ai (`https://api.z.ai/api/paas/v4`, tried first; the harness falls back to
+  bigmodel.cn and `api.z.ai/v1`). Only Z.ai's free models.
+- No model identifiers in commit messages or PR text.
 
 ## Next steps, in order
 
-1. Read the final table of run 38423386748 and of the queued run; pick the
-   readers.
-2. Decide ADANIENT's category; record the split above in TODO 29.
-3. Collector: add NSE's SME feed (`index=sme`, works), file hash dedup,
-   BSE-only companies (BSE endpoint not confirmed; BSE refuses the dev
-   container, probe from the runner); probe XBRL (`hasXbrl` true on all rows,
-   no URL given).
-4. The all-day reader with the usage log and lanes; results table per filing.
-5. Brief cards and per-company history from the results table.
-6. Owner merges PR #56.
+1. Add the results of the runs still going (GLM 5.3, GLM 5.3 Flash, DeepSeek with its reasoning field,
+   GLM-4.7-Flash thinking off and on) and of the rerun of the chosen readers (another hour, run-to-run
+   variance) to the table above; change `scripts/announcement_readers.txt` if they say so.
+2. The reader's PR dry run on real filings (3 filings) green; then the owner merges PR #56.
+3. After the merge: the first live runs; check the usage log (calls, 429s, seconds), the Brief card, and
+   the BSE step from the runner (plain requests or in-page fetch).
+4. Brief cards: "before this" from our own data (dilution, promoter holding and pledge, issue price vs
+   CMP, size vs market cap, insider and deal activity); per-company history on the Company page.
+5. Sorter for `to_sort` filings from the subject plus the first ~1,500 characters (with the regulation
+   cited there), so routine board outcomes are not read in full.
+6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.

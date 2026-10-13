@@ -116,19 +116,35 @@ def parse(rows: list[dict]) -> pd.DataFrame:
     return df
 
 
-def fetch_day(bse: BSEClient, day: date) -> tuple[list[dict], dict]:
-    """Every page of one day; (rows, {'bse_count', 'pages', 'rows', 'short'})."""
-    rows, total, page = [], None, 0
+def fetch_day(bse: BSEClient, day: date, known: set | None = None) -> tuple[list[dict], dict]:
+    """Every page of one day; (rows, {'bse_count', 'pages', 'rows', 'short'}). With `known` (NEWSIDs already
+    archived), paging stops at the first page holding only known filings: pages run newest first, so the
+    rest are known too (the announcement reader's top-ups through the day)."""
+    rows, total, page, caught_up = [], None, 0, False
     while page < MAX_PAGES:
         page += 1
         got, count = bse.announcements(day, page)
         total = count if count is not None else total
         rows += got
+        if known is not None and got and all(str(r.get('NEWSID') or '').lower() in known for r in got
+                                             if r.get('NEWSID') and r.get('SUBCATNAME') not in NOT_COLLECTED):
+            caught_up = True
+            break
         if not got or (total is not None and len(rows) >= total):
             break
     unique = {r.get('NEWSID') for r in rows}
     return rows, {'day': day.isoformat(), 'bse_count': total, 'pages': page, 'rows': len(rows),
-                  'unique': len(unique), 'short': total is not None and len(unique) < total}
+                  'unique': len(unique), 'caught_up': caught_up,
+                  'short': not caught_up and total is not None and len(unique) < total}
+
+
+def known_ids(r2, day: date) -> set:
+    """event ids (NEWSIDs, lower case) of `day` already in the archive."""
+    from clean_writer import read_parquet
+    arch = read_parquet(r2, f'{PREFIX}{partition(day.isoformat())}.parquet')
+    if arch is None or arch.empty:
+        return set()
+    return set(arch.loc[arch['broadcast_date'] == day.isoformat(), 'news_id'].astype(str).str.lower())
 
 
 def partition(broadcast_date) -> str:
@@ -185,8 +201,9 @@ def counts(df: pd.DataFrame, listed: pd.Series | None = None) -> dict:
 
 
 def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date | None = None,
-        master=None) -> dict:
-    """The nightly window, or every day from `start` (history). `r2` None = dry run."""
+        master=None, write_report: bool = True, incremental: bool = False) -> dict:
+    """The nightly window, or every day from `start` (history). `r2` None = dry run. `write_report` False:
+    the announcement reader's daytime top-ups, which must not replace the nightly report."""
     from clean_writer import put
     run_date = today.isoformat()
     first = start or today - timedelta(days=days - 1)
@@ -196,7 +213,7 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
     day = first
     while day <= today:
         try:
-            rows, stats = fetch_day(bse, day)
+            rows, stats = fetch_day(bse, day, known_ids(r2, day) if incremental and r2 is not None else None)
         except Blocked as exc:
             report['notes'].append(f'BSE refused ({exc}); stopped, what was fetched is kept')
             break
@@ -220,7 +237,7 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
     report['added'], report['partitions_written'] = merge_into_archive(r2, new, run_date) if r2 else (0, [])
     report['window_counts'] = counts(new, on_nse(new, master) if new is not None else None)
     report['bse_calls'], report['via'] = bse.calls, bse.via
-    if r2 is not None:
+    if r2 is not None and write_report:
         put(r2, f'clean/reports/announcements_bse/{run_date}.json',
             json.dumps(report, indent=2, default=str).encode(), 'application/json')
     return report

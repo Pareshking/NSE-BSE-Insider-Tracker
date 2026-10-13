@@ -30,16 +30,28 @@ jobs:
       jobs: ${{ steps.m.outputs.jobs }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
       - id: m
-        run: echo "jobs=$(python3 scripts/announcement_sample.py --matrix)" >> "$GITHUB_OUTPUT"
+        # On a PR push, only when the sample's own files changed in that push: the paths filter above sees
+        # the whole PR's diff, so without this every push would read the 24 filings again.
+        run: |
+          before="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ -n "$before" ] && git cat-file -e "$before" 2>/dev/null              && ! git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_sample(\.py|_expected\.json|_run\.txt)|\.github/workflows/announcement-sample\.yml)$'; then
+            echo "jobs=[]" >> "$GITHUB_OUTPUT"
+            echo "The sample's files did not change in this push; no model called." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "jobs=$(python3 scripts/announcement_sample.py --matrix)" >> "$GITHUB_OUTPUT"
+          fi
 
   sample:
     needs: plan
+    if: needs.plan.outputs.jobs != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 100
     strategy:
@@ -77,8 +89,8 @@ jobs:
           if-no-files-found: ignore
 
   compare:
-    needs: sample
-    if: always()
+    needs: [plan, sample]
+    if: always() && needs.plan.outputs.jobs != '[]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

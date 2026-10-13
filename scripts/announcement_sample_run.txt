@@ -1,3 +1,3 @@
 # Filings for the next sample run (symbols, comma-separated); empty = all. A push that changes this file starts a run.
 # readers: one workflow job each; without this line, the script's default list (DEFAULT_READERS). zai: model+thinking turns reasoning on.
-readers: nvidia:deepseek-ai/deepseek-v4.1-flash, nvidia:z-ai/glm-5.3-flash, zai:glm-4.7-flash, zai:glm-4.7-flash+thinking, zai:glm-4.5-flash
+readers: nvidia:moonshotai/kimi-k3, nvidia:google/gemma-4-31b-it, zai:glm-4.5-flash

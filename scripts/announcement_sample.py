@@ -112,7 +112,8 @@ def sort_prompt(row: dict) -> str:
 def read_prompt(row: dict, doc: str) -> str:
     cats = '\n'.join(f'- {k}: {v}' for k, v in CATEGORIES.items())
     fields = '\n'.join(f'- {k}: {v}' for k, v in FIELDS.items())
-    return (f'Below is the text of an announcement filed with NSE by {row["symbol"]} (subject: {row["subject"]}).\n'
+    return (f'Below is the text of an announcement filed with {row.get("exchange", "NSE")} by {row["symbol"]} '
+            f'(subject: {row["subject"]}).\n'
             f'Categories:\n{cats}\n\nFields:\n{fields}\n\n'
             'Return only JSON: {"category": one category name, "fields": [{"name": field name, '
             '"value": number, true/false or text, "quote": the exact words from the document that state it}], '
@@ -190,6 +191,7 @@ class OpenAICompat:
         self.s.headers['Authorization'] = f'Bearer {key}'
         self.last = {}
         self.call_seconds = CALL_SECONDS_OF.get(name, CALL_SECONDS)
+        self.attempts = []   # (model, HTTP status or error name, seconds) for every call: the reader's usage log
 
     def models(self) -> list[dict] | None:
         """The live model list; None when the provider has no list (models are then tried, not checked)."""
@@ -218,7 +220,7 @@ class OpenAICompat:
                         **({'response_format': {'type': 'json_object'}} if json_mode else {}),
                         # Z.ai's switch for its reasoning step; "model+thinking" in the readers line turns it on
                         **({'thinking': {'type': 'enabled' if thinking else 'disabled'}} if self.name == 'zai' else {})}
-                self.last[kind] = time.monotonic()
+                self.last[kind] = t0 = time.monotonic()
                 try:
                     r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
                     if r.status_code == 400 and json_mode and 'response_format' in r.text:
@@ -226,8 +228,10 @@ class OpenAICompat:
                         r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
                 except requests.RequestException as exc:
                     log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
+                    self.attempts.append((model, type(exc).__name__, round(time.monotonic() - t0, 1)))
                     last = f'{model}: {type(exc).__name__}'
                     continue
+                self.attempts.append((model, r.status_code, round(time.monotonic() - t0, 1)))
                 log(f'{kind} {self.name}:{model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
                 if r.status_code in (429, 500, 502, 503, 504):
                     last = f'{model}: HTTP {r.status_code}'
@@ -324,14 +328,24 @@ def pdf_text(data: bytes) -> str:
         return out.stdout.decode('utf-8', errors='replace')
 
 
-def document(url: str, session=None) -> tuple[str, list[str]]:
-    """(text, notes). A ZIP's PDFs are read in name order, each under a header line."""
+def download(url: str, session=None) -> bytes:
+    """The attachment's bytes, asked for with its own exchange as referer."""
     s = session or requests
+    referer = 'https://www.bseindia.com/' if 'bseindia.com' in url else 'https://www.nseindia.com/'
     log('download', url.rsplit('/', 1)[-1])
-    r = s.get(url, headers={'User-Agent': UA, 'Referer': 'https://www.nseindia.com/'}, timeout=(15, 120))
+    r = s.get(url, headers={'User-Agent': UA, 'Referer': referer}, timeout=(15, 120))
     log('download: HTTP', r.status_code, f'{len(r.content):,} bytes')
     r.raise_for_status()
-    data, notes = r.content, [f'{len(r.content) / 1024 ** 2:.1f} MB']
+    return r.content
+
+
+def document(url: str, session=None) -> tuple[str, list[str]]:
+    """(text, notes). A ZIP's PDFs are read in name order, each under a header line."""
+    return text_of(download(url, session))
+
+
+def text_of(data: bytes) -> tuple[str, list[str]]:
+    notes = [f'{len(data) / 1024 ** 2:.1f} MB']
     if data[:2] == b'PK':
         z = zipfile.ZipFile(io.BytesIO(data))
         pdfs = sorted(n for n in z.namelist() if n.lower().endswith('.pdf'))

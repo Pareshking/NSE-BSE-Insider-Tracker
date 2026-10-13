@@ -209,7 +209,9 @@ def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
 
 
 def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
-        backfill_from: date | None = None) -> dict:
+        backfill_from: date | None = None, write_report: bool = True) -> dict:
+    """The window's filings into raw and the archive; the count report unless `write_report` is False
+    (the announcement reader's daytime top-ups, which must not replace the nightly report)."""
     from clean_writer import put
     run_date = today.isoformat()
     start = backfill_from or today - timedelta(days=days - 1)
@@ -245,8 +247,9 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     report['added'], report['partitions_written'] = merge_into_archive(r2, new, run_date)
     report['window_counts'] = counts(new)
     report['nse_calls'] = nse.calls
-    put(r2, f'clean/reports/announcements/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),
-        'application/json')
+    if write_report:
+        put(r2, f'clean/reports/announcements/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),
+            'application/json')
     return report
 
 

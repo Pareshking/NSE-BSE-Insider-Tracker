@@ -1,0 +1,6 @@
+# Lanes of the announcement reader (scripts/announcement_reader.py). Changing a model is a change to this file.
+# Each lane reads every chosen filing; within a lane the next model is used when one is busy, refused or too slow.
+# main: its values are shown when they pass the checks. second: cross-check, and the source when main fails.
+# Picked 13 Oct 2026 from the 24-filing test (docs/ANNOUNCEMENT_READER.md). Z.ai: free models only.
+main: nvidia:moonshotai/kimi-k3, nvidia:google/gemma-4-31b-it
+second: zai:glm-4.5-flash

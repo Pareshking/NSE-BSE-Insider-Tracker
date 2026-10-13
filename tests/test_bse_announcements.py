@@ -101,3 +101,11 @@ def test_bse_only_share_from_the_security_master():
     unmatched = sum(code not in ('516038', '544462') for code in df['bse_code'])
     assert c['bse_only']['announcements'] == unmatched + int((df['bse_code'] == '516038').sum())
     assert ann.counts(df, ann.on_nse(df, None)).get('bse_only') is None
+
+
+def test_incremental_run_stops_paging_at_known_filings():
+    r2 = FakeR2()
+    ann.run(r2, FakeBSE(ROWS), date(2026, 10, 12), days=1)
+    bse = FakeBSE(ROWS)
+    rep = ann.run(r2, bse, date(2026, 10, 12), days=1, incremental=True)
+    assert bse.calls == 1 and rep['days'][0]['caught_up'] and not rep['days'][0]['short'] and rep['added'] == 0
