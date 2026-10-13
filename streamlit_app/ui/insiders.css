@@ -246,3 +246,23 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .evl { margin: 0 0 10px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.5; }
 .evl .tg { margin-right: 6px; }
 .sc-t td.sc-pre { background: #F4F2FF; } .sc-t td.sc-pre b { color: var(--accent-ink); }
+
+/* Filings read (screens/filings_read.py): one card per filing, each value with its quote */
+.rds { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.rd { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); min-width: 0; }
+.rd header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rd header a { font-weight: 600; color: var(--ink); text-decoration: none; margin-right: 2px; }
+.rd header a:hover { color: var(--accent-ink); }
+.rd .rd-t { margin-left: auto; font-size: var(--fs-label); color: var(--ink-3); white-space: nowrap; }
+.rd .rd-s { margin: 4px 0 6px; font-size: var(--fs-small); color: var(--ink-3); }
+.rd ul { list-style: none; margin: 0; padding: 0; }
+.rd li { padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-body); line-height: 1.45; }
+.rd li b { font-weight: 500; color: var(--ink-2); margin-right: 4px; }
+.rd li .rd-v { font-weight: 600; color: var(--ink); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.rd li .tg { margin-right: 4px; }
+.rd li q { display: block; margin-top: 2px; font-size: var(--fs-small); color: var(--ink-3); quotes: "\201C" "\201D";
+  overflow-wrap: anywhere; }
+.rd .rd-held { margin: 6px 0 0; font-size: var(--fs-label); color: var(--warn-ink); }
+.rd footer { margin-top: 6px; font-size: var(--fs-label); color: var(--ink-3); }
+.rd footer a { color: var(--accent-ink); }
+@media (max-width: 640px) { .rds { grid-template-columns: 1fr; } }

@@ -14,6 +14,8 @@ import streamlit as st
 from ui import kit
 
 from insiders_clean import actions, signals
+from data import store
+from screens import filings_read
 from screens.capital_raises import issue_rows, lock_in_calendar
 from screens.ctx import load, need_data, with_flags, with_prices
 
@@ -114,6 +116,9 @@ def render():
                     if not ctx.securities.empty else None), ctx.prices)), [
                     kit.Col('company', 'Company', 'co'), kit.Col('what', 'What'), kit.Col('who', 'Who', phone=False),
                     kit.Col('value', 'Value', 'money'), kit.Col('day', 'Made public', 'date')], limit=50)
+
+    # --- filings read: values from the filings themselves, each with its quote ------------------
+    filings_read.render(store.table('announcement_reads'), day)
 
     # --- what came in --------------------------------------------------------------------------
     cl = signals.clusters(e, ref)

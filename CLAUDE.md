@@ -8,13 +8,13 @@ decision) and `docs/TODO.md` (where things stand, what is next) first.
 - `insiders_clean/`: cleaning, archive, raw store, signals, prices.
 - `collectors/nse_events/`: SAST, corporate actions, board meetings, shareholding.
 - `streamlit_app/`: the site (`app.py`, `screens/` pages, `ui/` design kit, `data/store.py` reads R2). Deployed from `main` to insiders.streamlit.app.
-- `docs/`: `PRODUCT.md`, `DATA_TO_PAGES.md`, `SIGNALS.md`, `CLEAN_LAYER.md`, `DATA_DICTIONARY.md`, `TODO.md`.
+- `docs/`: `PRODUCT.md`, `DATA_TO_PAGES.md`, `SIGNALS.md`, `CLEAN_LAYER.md`, `DATA_DICTIONARY.md`, `TODO.md`, `ANNOUNCEMENT_READER.md` (model reader: state, decisions, plan).
 
 ## Commands
 - Setup: `pip install -r requirements.txt -r streamlit_app/requirements.txt pytest`
 - Test: `python -m pytest tests -q`
 - Site locally: `python scripts/dev_ui.py FOLDER` (a local copy of `clean/current/`); R2 secrets live only in GitHub Actions and Streamlit Cloud.
-- Workflows (GitHub Actions): R2 Storage Write (nightly), Clean only, NSE History Backfill, Price backfill, Precompute slim assets, Site preview (screenshots on real data, runs on PRs).
+- Workflows (GitHub Actions): R2 Storage Write (nightly), Clean only, NSE History Backfill, Price backfill, Precompute slim assets, NSE Announcements (nightly, counts only), Site preview (screenshots on real data, runs on PRs).
 
 ## Rules
 1. Data correctness first; the site never cleans, it reads the clean tables.

@@ -16,6 +16,11 @@ Endpoints, parameters and caps confirmed with real answers on 12 Oct 2026
   YYYYMMDD. Filters on the first acquisition date. Some windows answer []
   although a wider window holds rows for those days (08-14 Mar 2026: [] ;
   01-31 Mar 2026: 315 rows in it), so callers tile and split (events.py).
+* announcements: AnnSubCategoryGetData/w?pageno=N&strCat=-1&strPrevDate=YYYYMMDD
+  &strScrip=&strSearch=P&strToDate=YYYYMMDD&strType=C&subcategory=-1 (13 Oct
+  2026): 50 rows a page, newest first, Table1 ROWCNT the day's count. The
+  attachment is at www.bseindia.com/xml-data/corpfiling/AttachLive/<ATTACHMENTNAME>
+  (its size equals Fld_Attachsize).
 * corporate actions: DefaultData/w?ddlcategorys=E&ddlindustrys=&segment=0
   &strSearch=S&Fdate=YYYYMMDD&TDate=YYYYMMDD&Purposecode=&scripcode=.
   Filters on the ex-date; a year in one call = the sum of its months.
@@ -200,6 +205,23 @@ class BSEClient:
         return self._json('DefaultData/w', {'ddlcategorys': 'E', 'ddlindustrys': '', 'segment': '0', 'strSearch': 'S',
                                             'Fdate': ymd(a), 'TDate': ymd(b), 'Purposecode': '', 'scripcode': ''},
                           'corporate_actions', {'from': a.isoformat(), 'to': b.isoformat()})
+
+    def announcements(self, day: date, page: int) -> tuple[list[dict], int | None]:
+        """One page (50 rows, newest first) of the filings BSE disseminated on `day`, and BSE's count for the
+        day (Table1 ROWCNT). Confirmed 13 Oct 2026: 12 Oct = 1,136 rows in 23 pages, no row on two pages."""
+        body = self.get('AnnSubCategoryGetData/w', {'pageno': page, 'strCat': '-1', 'strPrevDate': ymd(day),
+                                                    'strScrip': '', 'strSearch': 'P', 'strToDate': ymd(day),
+                                                    'strType': 'C', 'subcategory': '-1'},
+                        'announcements', {'day': day.isoformat(), 'page': page})
+        try:
+            payload = json.loads(body.decode('utf-8', errors='replace'))
+        except ValueError:
+            raise Blocked(f'not JSON from AnnSubCategoryGetData ({body[:60]!r})') from None
+        rows = payload.get('Table') if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            raise Blocked('JSON without a row list from AnnSubCategoryGetData')
+        total = (payload.get('Table1') or [{}])[0].get('ROWCNT')
+        return rows, int(total) if isinstance(total, (int, float)) else None
 
     def close(self):
         if self.in_page is not None:

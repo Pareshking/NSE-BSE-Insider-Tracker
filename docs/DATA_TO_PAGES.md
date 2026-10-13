@@ -33,6 +33,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D12 | Trading calendar | NSE sessions, special sessions | from 30 Sep 2024, extends nightly | In |
 | D13 | Measured outcomes | returns after each signal from broadcast time, after costs, with case counts | from D1h + D2h + D11 | Pending (TODO 7) |
 | D15 | Tradability | NSE ASM / GSM / ESM stage, IBC code, trade for trade, SME, price band, circuit-locked days (20 sessions) | NSE, daily snapshots from 12 Oct 2026; series and circuit days from the bhavcopy | In (no suspended list: NSE's ends in 2012) |
+| D16 | Announcements (Reg 30 and the rest) | subject, NSE one-line text / BSE category, subcategory and headline, attachment link and size, broadcast time, market (NSE main board, NSE SME, BSE) | NSE (both boards) and BSE, nightly 3 days and every 30 minutes for today; concalls not collected | Coded 13 Oct (PR #56), waits on merge |
+| D16r | Announcement reads | per filing: category, values each with its quote and evidence (`exact` or `table`), values held back with the reason, second reader's agreement, reader and prompt version; read once across exchanges | useful groups of today and yesterday, companies of Rs 100 Cr and up | Coded 13 Oct (PR #56): Brief card "Filings read" |
 | D14 | Named-investor aliases | curated list mapping spellings of known investors and funds to one name | — | Pending (to add to TODO) |
 
 ## Step 2: what the data can answer

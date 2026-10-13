@@ -1,0 +1,109 @@
+"""NSE announcements: parser on real rows fetched 13 Oct 2026 (broadcast in
+Sep 2026, tests/fixtures/nse_events/announcements.json) and the nightly run
+against an in-memory R2."""
+from __future__ import annotations
+
+import io
+import json
+from datetime import date
+
+import pandas as pd
+from conftest import FIXTURES
+from test_archive_and_writer import FakeR2
+
+from collectors.nse_events import announcements as ann
+from collectors.nse_events.client import Blocked
+
+ROWS = json.loads((FIXTURES / 'nse_events' / 'announcements.json').read_text(encoding='utf-8'))
+
+
+def test_parse_keeps_values_as_filed_with_broadcast_time_in_ist():
+    df = ann.parse(ROWS)
+    assert len(df) == len(ROWS) and df['event_id'].is_unique
+    tci = df[df['seq_id'] == '106799938'].iloc[0]
+    assert (tci['symbol'], tci['isin'], tci['subject']) == ('TCI', 'INE688A01022', 'Buyback')
+    assert tci['broadcast_at'] == '2026-09-29T14:13:30+05:30' and tci['broadcast_date'] == '2026-09-29'
+    assert tci['file_url'].endswith('_TCIL.pdf') and tci['file_type'] == 'pdf'
+    assert tci['file_bytes'] == int(969.94 * 1024)
+
+
+def test_unreadable_time_and_missing_seq_id_are_kept_not_guessed():
+    row = dict(ROWS[0], an_dt='not a date', seq_id=None, attFileSize='', fileSize=None)
+    df = ann.parse([row, row])
+    assert df['broadcast_date'].isna().all() and df['file_bytes'].isna().all()
+    none = ann.parse([dict(ROWS[0], attchmntFile='-', attFileSize='0 Bytes')]).iloc[0]   # NSE's "no file"
+    assert none['file_url'] is None and none['file_type'] is None and pd.isna(none['file_bytes'])
+    assert ann.file_type('https://nsearchives.nseindia.com/corporate/BLS_ROSA_99452_KMP_Doc.zip') == 'zip'
+    assert df['event_id'].iloc[0] == df['event_id'].iloc[1]   # same row, same hashed id
+    assert ann.partition(None) == 'month=unknown'
+    assert ann.size_bytes('0 Bytes') == 0 and ann.size_bytes('2.05 MB') == int(2.05 * 1024 ** 2)
+
+
+def test_groups_come_from_nse_subject_only():
+    assert ann.group_of('Post Buyback Public Announcement') == 'buyback'
+    assert ann.group_of('Qualified Institutional Placement') == 'fund_raise'
+    assert ann.group_of('Outcome of Board Meeting') == 'to_sort'
+    assert ann.group_of('Trading Window') == 'routine' and ann.group_of(None) == 'routine'
+    assert ann.group_of('Allotment of Securities', 'IIFL Finance Limited has informed the Exchange regarding '
+                        'allotment of Non-Convertible Debentures on Private Placement basis.') == 'debt'
+    assert ann.group_of('Allotment of Securities', 'Allotment of Equity Shares to QIBs') == 'fund_raise'
+    c = ann.counts(ann.parse(ROWS))
+    assert c['by_group']['buyback']['announcements'] == 7   # Sep held one post-buyback announcement
+    assert sum(g['announcements'] for g in c['by_group'].values()) == len(ROWS)
+
+
+class FakeNSE:
+    def __init__(self, rows, block=False, sme=()):
+        self.rows, self.block, self.calls, self.on_response, self.asked = rows, block, 0, None, []
+        self.sme = list(sme)
+
+    def announcements(self, a, b, index='equities'):
+        self.calls += 1
+        self.asked.append((a, b, index))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return self.rows if index == 'equities' else self.sme
+
+
+def test_nightly_run_archives_by_month_and_twice_adds_nothing(monkeypatch):
+    r2 = FakeR2()
+    concall = dict(ROWS[0], seq_id='1', desc='Analysts/Institutional Investor Meet/Con. Call Updates')
+    rep = ann.run(r2, FakeNSE(ROWS + [concall]), date(2026, 10, 1))
+    assert rep['window'] == ['2026-09-29', '2026-10-01']
+    assert rep['added'] == len(ROWS) and rep['calls'][0]['not_archived_concall'] == 1
+    keys = [k for k in r2.objects if k.startswith(ann.PREFIX)]
+    assert keys and all('/year=2026/month=' in k for k in keys)
+    arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in keys])
+    assert len(arch) == len(ROWS) and '1' not in set(arch['seq_id'])
+    assert json.loads(r2.objects['clean/reports/announcements/2026-10-01.json'])['window_counts']['announcements'] \
+        == len(ROWS)
+    assert ann.run(r2, FakeNSE(ROWS), date(2026, 10, 1))['added'] == 0
+    assert 'buyback' in ann.summary_markdown(rep)
+
+
+def test_backfill_goes_month_by_month_and_refusal_stops():
+    r2 = FakeR2()
+    nse = FakeNSE(ROWS)
+    ann.run(r2, nse, date(2026, 10, 5), backfill_from=date(2026, 8, 20))
+    assert nse.asked == [(a, b, m) for a, b in [(date(2026, 8, 20), date(2026, 8, 31)),
+                                                 (date(2026, 9, 1), date(2026, 9, 30)),
+                                                 (date(2026, 10, 1), date(2026, 10, 5))]
+                         for m in ('equities', 'sme')]
+    rep = ann.run(FakeR2(), FakeNSE(ROWS, block=True), date(2026, 10, 5), backfill_from=date(2026, 8, 20))
+    assert rep['calls'] == [] and rep['added'] == 0 and 'refused' in rep['notes'][0]
+
+
+def test_sme_feed_is_archived_with_its_market_and_old_rows_count_as_equities():
+    r2 = FakeR2()
+    sme = [dict(ROWS[0], seq_id='900000001', symbol='SMEX', desc='Preferential issue')]
+    rep = ann.run(r2, FakeNSE(ROWS[:3]), date(2026, 10, 1))
+    for k in [k for k in r2.objects if k.startswith(ann.PREFIX)]:   # an archive written before the market column
+        old = pd.read_parquet(io.BytesIO(r2.objects[k])).drop(columns='market')
+        buf = io.BytesIO(); old.to_parquet(buf); r2.objects[k] = buf.getvalue()
+    rep = ann.run(r2, FakeNSE(ROWS[:3], sme=sme), date(2026, 10, 1))
+    assert rep['added'] == 1 and [c['market'] for c in rep['calls']] == ['equities', 'sme']
+    assert rep['window_counts']['by_market'] == {'equities': 3, 'sme': 1}
+    arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in r2.objects if k.startswith(ann.PREFIX)])
+    assert arch.set_index('seq_id')['market'].to_dict() == {
+        **{r['seq_id']: 'equities' for r in ROWS[:3]}, '900000001': 'sme'}
+    assert 'sme 1' in ann.summary_markdown(rep)
