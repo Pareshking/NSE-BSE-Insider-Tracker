@@ -8,7 +8,7 @@ decision) and `docs/TODO.md` (where things stand, what is next) first.
 - `insiders_clean/`: cleaning, archive, raw store, signals, prices.
 - `collectors/nse_events/`: SAST, corporate actions, board meetings, shareholding.
 - `streamlit_app/`: the site (`app.py`, `screens/` pages, `ui/` design kit, `data/store.py` reads R2). Deployed from `main` to insiders.streamlit.app.
-- `docs/`: `PRODUCT.md`, `DATA_TO_PAGES.md`, `SIGNALS.md`, `CLEAN_LAYER.md`, `DATA_DICTIONARY.md`, `TODO.md`.
+- `docs/`: `PRODUCT.md`, `DATA_TO_PAGES.md`, `SIGNALS.md`, `CLEAN_LAYER.md`, `DATA_DICTIONARY.md`, `TODO.md`, `ANNOUNCEMENT_READER.md` (model reader: state, decisions, plan).
 
 ## Commands
 - Setup: `pip install -r requirements.txt -r streamlit_app/requirements.txt pytest`
