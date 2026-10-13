@@ -42,10 +42,10 @@ PROMPT_VERSION = 'sample-1'
 # Preferred model ids, first found in the account's model list wins.
 READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-a4b-it', 'gemma-4-31b-it')   # ids as listed by the API on 13 Oct 2026
-PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 2.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
-PER_FILING_SECONDS = 480           # one filing never holds up the rest
+PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 10.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
+PER_FILING_SECONDS = 600           # one filing never holds up the rest
 CALL_SECONDS = 180                 # Flash-Lite took 55-110 s a filing on 13 Oct
-RUN_SECONDS = 24 * 60               # stop taking new filings before the workflow's 30-minute limit
+RUN_SECONDS = int(os.environ.get('SAMPLE_MINUTES', '24')) * 60   # stop taking new filings before the job's limit
 MAX_CHARS = 300_000                 # about 75K tokens, under Flash-Lite's 250K a minute
 def log(*parts):
     """Progress on the run log, at once (a step that stalls must show where)."""
@@ -188,6 +188,7 @@ class OpenAICompat:
         self.s = session or requests.Session()
         self.s.headers['Authorization'] = f'Bearer {key}'
         self.last = {}
+        self.call_seconds = CALL_SECONDS_OF.get(name, CALL_SECONDS)
 
     def models(self) -> list[dict]:
         r = self.s.get(f'{self.base}/models', timeout=60)
@@ -195,6 +196,7 @@ class OpenAICompat:
         if r.status_code == 401:
             raise RuntimeError(f'{self.name}: key refused (HTTP 401) - expired or wrong; renew the GitHub secret')
         r.raise_for_status()
+        log(f'{self.name} models:', ', '.join(sorted(m['id'] for m in r.json().get('data', []))))
         return [{'name': m['id'], 'supportedGenerationMethods': ['generateContent']} for m in r.json().get('data', [])]
 
     def generate(self, models: list[str], prompt: str, kind: str, json_mode: bool) -> tuple[str, dict, str]:
@@ -206,15 +208,15 @@ class OpenAICompat:
                 wait = PACE.get(f'{self.name}:{kind}', PACE[kind]) - (time.monotonic() - self.last.get(kind, -1e9))
                 if wait > 0:
                     self.sleep(wait)
-                body = {'model': model, 'temperature': 0, 'max_tokens': 4096,
+                body = {'model': model, 'temperature': 0, 'max_tokens': MAX_TOKENS.get(self.name, 4096),
                         'messages': [{'role': 'user', 'content': prompt}],
                         **({'response_format': {'type': 'json_object'}} if json_mode else {})}
                 self.last[kind] = time.monotonic()
                 try:
-                    r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=CALL_SECONDS)
+                    r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
                     if r.status_code == 400 and json_mode and 'response_format' in r.text:
                         body.pop('response_format')   # a model without JSON mode: the prompt asks for JSON anyway
-                        r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=CALL_SECONDS)
+                        r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
                 except requests.RequestException as exc:
                     log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
                     last = f'{model}: {type(exc).__name__}'
@@ -233,8 +235,11 @@ class OpenAICompat:
         raise RuntimeError(f'all {self.name} {kind} models busy or refused ({last})')
 
 
+MAX_TOKENS = {'groq': 2048, 'nvidia': 16384}   # Groq counts the reply in its 8K a minute; reasoning models need room
+CALL_SECONDS_OF = {'nvidia': 300}              # large free models queue
+
 PROVIDERS = {   # name: (base url, key secret, extra input limit in characters or None)
-    'groq': ('https://api.groq.com/openai/v1', 'GROQ_API_KEY', 24_000),   # 8K tokens a minute on the free plan
+    'groq': ('https://api.groq.com/openai/v1', 'GROQ_API_KEY', 20_000),   # 8K tokens a minute on the free plan
     'nvidia': ('https://integrate.api.nvidia.com/v1', 'NVIDIA_API_KEY', None),
 }
 
@@ -424,11 +429,13 @@ def report_markdown(results: list[dict], models: dict) -> str:
     readers = list(dict.fromkeys(r.get('reader', 'gemini') for r in results))
     out = [f"### Announcement reader sample ({PROMPT_VERSION})", '',
            f"Sorter `{models.get('sort')}`. A value counts only when it is right and backed by a quote found in the PDF.", '']
-    out += ['| Reader | Right | Held back | Errors |', '|---|---|---|---|']
+    out += ['| Reader | Right | Held back | Errors | Seconds a filing (median) |', '|---|---|---|---|---|']
     for rd in readers:
         rs = [r for r in results if r.get('reader', 'gemini') == rd]
         ok, total, held = _summary(rs)
-        out.append(f"| {rd} | **{ok} of {total}** | {held} | {sum('error' in r for r in rs)} |")
+        secs = sorted(r['seconds'] for r in rs if 'score' in r and r.get('seconds') is not None)
+        med = secs[len(secs) // 2] if secs else '-'
+        out.append(f"| {rd} | **{ok} of {total}** | {held} | {sum('error' in r for r in rs)} | {med} |")
     symbols = list(dict.fromkeys(r['symbol'] for r in results))
     out += ['', '| Filing | ' + ' | '.join(readers) + ' |', '|---|' + '---|' * len(readers)]
     for sym in symbols:
@@ -458,6 +465,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--only', help='symbols from the sample, comma-separated (default: announcement_sample_run.txt, '
                                    'else all)')
+    ap.add_argument('--readers', help='readers, comma-separated, as on the run file\'s readers: line (overrides it)')
+    ap.add_argument('--no-sort', action='store_true', help='skip the sorter (another job in the same run sorts)')
+    ap.add_argument('--combine', help='folder of results files from parallel jobs: print one report, call nothing')
     args = ap.parse_args(argv)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
 
@@ -467,6 +477,13 @@ def main(argv=None):
             with open(summary, 'a', encoding='utf-8') as f:
                 f.write(text)
 
+    if args.combine:
+        files = sorted(Path(args.combine).rglob('*.json'))
+        merged = [json.loads(f.read_text(encoding='utf-8')) for f in files]
+        results = [r for m in merged for r in m.get('results', [])]
+        models = next((m['models'] for m in merged if m.get('models', {}).get('sort')), {})
+        emit(report_markdown(results, models) if results else f'No results files in {args.combine}.\n')
+        return
     key = os.environ.get('GEMINI_API_KEY', '').strip()
     if not key:
         emit('GEMINI_API_KEY is not set (Settings → Secrets and variables → Actions); nothing was sent.\n')
@@ -492,7 +509,11 @@ def main(argv=None):
         sys.exit(1)
     # Who reads each filing: "gemini" (3.5 then 3.1 Flash-Lite) and/or provider:model entries, each scored alone.
     lanes, clients = [], {}
-    for entry in parse_readers(run_file.read_text() if run_file.exists() else ''):
+    if args.no_sort:
+        sorters, models['sort'] = [], ''
+    chosen = (parse_readers('readers: ' + args.readers) if args.readers
+              else parse_readers(run_file.read_text() if run_file.exists() else ''))
+    for entry in chosen:
         if entry == 'gemini':
             lanes.append(('gemini', g, readers, None))
             continue
@@ -533,7 +554,8 @@ def main(argv=None):
     signal.signal(signal.SIGALRM, too_long)
     for row in rows:
         if time.monotonic() - started > RUN_SECONDS:
-            results.append({'symbol': row['symbol'], 'subject': row['subject'], 'error': 'not read: run time used up'})
+            results += [{'symbol': row['symbol'], 'subject': row['subject'], 'reader': lane[0],
+                         'error': 'not read: run time used up'} for lane in lanes]
             continue
         log('---', row['symbol'], row['subject'])
         signal.alarm(per_filing)
@@ -555,6 +577,7 @@ def main(argv=None):
         for name, client, models_, limit in lanes:
             res = {'symbol': row['symbol'], 'subject': row['subject'], 'reader': name,
                    **({'sort_error': sort_res['error']} if 'error' in sort_res else {})}
+            t0 = time.monotonic()
             try:
                 prompt = read_prompt(row, doc)
                 if limit and len(prompt) > limit:
@@ -568,6 +591,7 @@ def main(argv=None):
                            read_model=used)
             except Exception as exc:  # noqa: BLE001
                 res['error'] = f'{type(exc).__name__}: {exc}'[:300]
+            res['seconds'] = round(time.monotonic() - t0, 1)
             results.append(res)
             save()
             log(row['symbol'], name, res.get('score'), res.get('error', ''))

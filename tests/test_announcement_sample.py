@@ -109,3 +109,16 @@ def test_other_providers_answer_in_the_openai_form_and_readers_come_from_the_run
     assert a.parse_readers('# x\nGLOBAL\nreaders: gemini, groq:openai/gpt-oss-120b\n') == [
         'gemini', 'groq:openai/gpt-oss-120b']
     assert a.parse_readers('GLOBAL') == ['gemini']
+
+
+def test_parallel_jobs_combine_into_one_report(tmp_path, capsys):
+    rows = {'groq:openai/gpt-oss-120b': {'score': [3, 3], 'seconds': 8.0},
+            'nvidia:nvidia/nemotron-3-super-120b-a12b': {'error': 'RuntimeError: busy'}}
+    for i, (rd, extra) in enumerate(rows.items()):
+        (tmp_path / f'job{i}').mkdir()
+        (tmp_path / f'job{i}' / 'announcement_sample_results.json').write_text(json.dumps(
+            {'models': {'sort': 'gemma' if i else ''}, 'results': [{'symbol': 'GLOBAL', 'subject': 's',
+                                                                    'reader': rd, **extra}]}))
+    a.main(['--combine', str(tmp_path)])
+    out = capsys.readouterr().out
+    assert '| GLOBAL | 3/3 | error: RuntimeError: busy |' in out and 'Sorter `gemma`' in out

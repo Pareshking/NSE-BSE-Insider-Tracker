@@ -1,14 +1,16 @@
 name: Announcement reader sample
 
-# 12 real NSE filings read by the model and compared with values read from
-# each PDF by hand (scripts/announcement_sample.py). About 24 model calls per
-# run, well inside the free tier. Runs when the sample or its script changes
-# on a PR, or by hand. Writes nothing to R2.
+# Real NSE filings (scripts/announcement_sample_expected.json) read by each
+# model and compared with values read from each PDF by hand
+# (scripts/announcement_sample.py). One job per reader, in parallel, each on
+# the same filings and scored alone; a last job puts them in one table.
+# Runs when the sample or its script changes on a PR, or by hand. Writes
+# nothing to R2.
 on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'One symbol from the sample (empty = all 12)'
+        description: 'Symbols from the sample, comma-separated (empty = the run file, else all)'
         required: false
         default: ''
   pull_request:
@@ -28,7 +30,21 @@ concurrency:
 jobs:
   sample:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        include:   # gemini also sorts; the others only read
+          - {slug: gemini, reader: gemini, flags: ''}
+          - {slug: groq-gpt-oss-120b, reader: 'groq:openai/gpt-oss-120b', flags: --no-sort}
+          - {slug: groq-qwen3.8-27b, reader: 'groq:qwen/qwen3.8-27b', flags: --no-sort}
+          - {slug: nvidia-nemotron-3-super, reader: 'nvidia:nvidia/nemotron-3-super-120b-a12b', flags: --no-sort}
+          - {slug: nvidia-nemotron-3.5-lightning, reader: 'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b', flags: --no-sort}
+          - {slug: nvidia-deepseek-v4.1-flash, reader: 'nvidia:deepseek-ai/deepseek-v4.1-flash', flags: --no-sort}
+          - {slug: nvidia-gemma-4-31b, reader: 'nvidia:google/gemma-4-31b-it', flags: --no-sort}
+          - {slug: nvidia-kimi-k3, reader: 'nvidia:moonshotai/kimi-k3', flags: --no-sort}
+          - {slug: nvidia-glm-5-3, reader: 'nvidia:z-ai/glm-5-3', flags: --no-sort}
+    name: read (${{ matrix.slug }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,10 +58,30 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ONLY: ${{ inputs.only || '' }}
-        run: python -u scripts/announcement_sample.py ${ONLY:+--only "$ONLY"}
+          READER: ${{ matrix.reader }}
+          SAMPLE_MINUTES: '85'
+        run: python -u scripts/announcement_sample.py --readers "$READER" ${{ matrix.flags }} ${ONLY:+--only "$ONLY"}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: announcement-sample-results
+          name: announcement-sample-${{ matrix.slug }}
           path: announcement_sample_results.json
           if-no-files-found: ignore
+
+  compare:
+    needs: sample
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: announcement-sample-*
+          path: results
+      - name: One table for all readers
+        run: python -u scripts/announcement_sample.py --combine results
