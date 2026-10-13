@@ -67,7 +67,11 @@ Queued next (run file): NVIDIA `z-ai/glm-5.3`,
 `nvidia/nemotron-3-ultra-550b-a55b`, `writer/palmyra-fin-70b-32k` (a finance
 model, 32K context), `mistralai/mistral-large-2-instruct`,
 `moonshotai/kimi-k2.6`, `nvidia/llama-3.1-nemotron-ultra-253b-v1`; Z.ai
-`glm-4.7-flash` thinking off and on (one job, its free tier takes one request at a time). Z.ai claims
+`glm-4.7-flash` thinking off and on, and `glm-4.5-flash`. Z.ai's pricing page
+(13 Oct) lists only GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash (vision)
+as free; every other GLM model there is paid per token, so only those go in
+the readers line for `zai` (GLM 5.3 is tested free through NVIDIA instead).
+GLM-4.6V-Flash is a candidate later for scanned PDFs with no text layer (one job, its free tier takes one request at a time). Z.ai claims
 (unlimited, 60 RPM, 200K context) are not verified; the run will show.
 
 To see the combined table of any run: the `compare` job's log. To rescore
