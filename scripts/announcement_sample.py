@@ -212,7 +212,7 @@ class OpenAICompat:
                 if wait > 0:
                     self.sleep(wait)
                 model_id, thinking = model.removesuffix('+thinking'), model.endswith('+thinking')
-                body = {'model': model_id, 'temperature': 0, 'max_tokens': MAX_TOKENS.get(self.name, 4096),
+                body = {'model': model_id, 'temperature': 0, 'max_tokens': MODEL_LIMITS.get(model_id, (0, MAX_TOKENS.get(self.name, 4096)))[1],
                         'messages': [{'role': 'user', 'content': prompt}],
                         **({'response_format': {'type': 'json_object'}} if json_mode else {}),
                         # Z.ai's switch for its reasoning step; "model+thinking" in the readers line turns it on
@@ -250,7 +250,9 @@ PROVIDERS = {   # name: (base url, key secret, extra input limit in characters o
     'zai': ('https://api.z.ai/api/paas/v4', 'ZAI_API_KEY', None),   # free Flash models: one request at a time
 }
 SERIAL = {'zai'}   # free tier: one request at a time, so one job
-OTHER_BASES = {'zai': ('https://open.bigmodel.cn/api/paas/v4',)}   # a key from bigmodel.cn works only there
+OTHER_BASES = {'zai': ('https://open.bigmodel.cn/api/paas/v4', 'https://api.z.ai/v1')}   # bigmodel.cn keys work there
+# Models with a small context: (characters of input at most, reply tokens). Palmyra Fin takes 32K tokens in all.
+MODEL_LIMITS = {'writer/palmyra-fin-70b-32k': (75_000, 4096)}
 
 
 def parse_readers(text: str) -> list[str]:
@@ -607,18 +609,24 @@ def main(argv=None):
             continue
         try:
             if prov not in clients:
-                for b in (base, *OTHER_BASES.get(prov, ())):
+                found, unlisted, err = None, None, None
+                for b in (base, *OTHER_BASES.get(prov, ())):   # the first address that lists its models wins
                     client = OpenAICompat(prov, b, pkey)
                     try:
                         listed = client.models()
-                        break
-                    except Exception as exc:  # noqa: BLE001 -- the next base, if any
+                    except Exception as exc:  # noqa: BLE001 -- the next address, if any
                         err = exc
-                else:
+                        continue
+                    if listed is not None:
+                        found = (client, {m['name'] for m in listed})
+                        break
+                    unlisted = unlisted or client
+                if found is None and unlisted is None:
                     raise err
-                clients[prov] = (client, None if listed is None else {m['name'] for m in listed})
-                if listed is None:
-                    log(f'{prov}: no model list; models are tried as named')
+                if found is None:
+                    log(f'{prov}: no address lists its models; trying {unlisted.base} with the models as named')
+                    found = (unlisted, None)
+                clients[prov] = found
         except Exception as exc:  # noqa: BLE001
             emit(f'{prov}: {exc}\n')
             continue
@@ -626,7 +634,8 @@ def main(argv=None):
         if ids is not None and model.removesuffix('+thinking') not in ids:
             emit(f'{entry}: not in {prov}\'s model list ({", ".join(sorted(ids))[:600]}).\n')
             continue
-        lanes.append((entry, client, [model], limit))
+        small = MODEL_LIMITS.get(model.removesuffix('+thinking'), (None,))[0]
+        lanes.append((entry, client, [model], min(x for x in (limit, small) if x) if (limit or small) else None))
     log('readers:', ', '.join(lane[0] for lane in lanes))
     results, started = [], time.monotonic()
     per_filing = PER_FILING_SECONDS * max(1, len(lanes))

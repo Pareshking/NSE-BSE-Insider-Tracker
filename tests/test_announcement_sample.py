@@ -169,3 +169,16 @@ def test_numbers_written_with_currency_or_unit_are_read_once_never_guessed():
         162, 29, 231.55, 18110473, -2.5]
     assert a._num('from ₹350 Cr to ₹600 crore') is None and a._num('nil') is None and a._num(True) is None
     assert a.digits_in_quote('₹162/-', 'at a price of ₹162/- per share')
+
+
+def test_a_small_context_model_gets_a_small_reply_budget():
+    body = {'choices': [{'message': {'content': '{}'}}], 'usage': {}}
+    s = _Session([_Resp(200, body), _Resp(200, body)])
+    sent = []
+    post = s.post
+    s.post = lambda url, **kw: (sent.append(kw['json']['max_tokens']), post(url, **kw))[1]
+    c = a.OpenAICompat('nvidia', 'https://x/v1', 'k', session=s, sleep=lambda _: None)
+    c.generate(['writer/palmyra-fin-70b-32k'], 'p', 'read', True)
+    c.generate(['moonshotai/kimi-k3'], 'p', 'read', True)
+    assert sent == [4096, 16384]
+    assert a.PROVIDERS['zai'][0] == 'https://api.z.ai/api/paas/v4'   # keys from z.ai (owner's account)
