@@ -1,0 +1,48 @@
+name: Announcement reader sample
+
+# 12 real NSE filings read by the model and compared with values read from
+# each PDF by hand (scripts/announcement_sample.py). About 24 model calls per
+# run, well inside the free tier. Runs when the sample or its script changes
+# on a PR, or by hand. Writes nothing to R2.
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'One symbol from the sample (empty = all 12)'
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - 'scripts/announcement_sample.py'
+      - 'scripts/announcement_sample_expected.json'
+      - '.github/workflows/announcement-sample.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: announcement-sample
+  cancel-in-progress: true
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt && sudo apt-get install -y -qq poppler-utils
+      - name: Read the sample
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ONLY: ${{ inputs.only || '' }}
+        run: python scripts/announcement_sample.py ${ONLY:+--only "$ONLY"}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: announcement-sample-results
+          path: announcement_sample_results.json
+          if-no-files-found: ignore

@@ -14,7 +14,7 @@ seq_id), so re-fetching never adds a filing twice; the month is the
 broadcast date's (IST). Concall announcements are not archived
 (NOT_COLLECTED, counted in the report). Nothing goes to clean/current/: no
 page reads this yet. clean/reports/announcements/{date}.json counts the
-window by day, subject and reading group (READING_GROUPS) and the PDF sizes.
+window by day, subject and reading group (READING_GROUPS) and the attachment types and sizes.
 
 The groups come from NSE's own subject line only, so they are a first cut:
 an 'Outcome of Board Meeting' or 'General Updates' filing may hold a fund
@@ -42,8 +42,8 @@ from collectors.nse_events.client import Blocked, NSEClient
 IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 3   # late broadcasts of the last two days are picked up again
 PREFIX = 'archive/announcements/nse/'
-COLUMNS = ('event_id', 'seq_id', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'pdf_url',
-           'pdf_size', 'pdf_bytes', 'has_xbrl', 'broadcast_at', 'disseminated_at', 'broadcast_date')
+COLUMNS = ('event_id', 'seq_id', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
+           'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
 # NSE subject lines (the `desc` field, exactly as in Sep 2026's 104 subjects)
 # for each later reading job. Everything else is routine for that purpose.
@@ -69,14 +69,18 @@ READING_GROUPS = {
 # or selling); counted in the report. The raw copy keeps NSE's whole answer.
 NOT_COLLECTED = ('Analysts/Institutional Investor Meet/Con. Call Updates',)
 GROUP_OF = {s: g for g, subjects in READING_GROUPS.items() for s in subjects}
+# 'Allotment of Securities' also covers debt (IIFL Finance's perpetual NCDs,
+# 30 Sep 2026); NSE's one-line text names it, so such filings count as debt.
+DEBT = re.compile(r'\bdebentures?\b|\bNCDs?\b|commercial paper|\bbonds?\b', re.IGNORECASE)
 SIZE_BANDS = ((256 * 1024, 'under_256KB'), (1024 ** 2, '256KB_1MB'), (5 * 1024 ** 2, '1MB_5MB'),
               (float('inf'), 'over_5MB'))
 _SIZE = re.compile(r'^\s*([\d.]+)\s*(B|BYTES|KB|MB|GB)\s*$', re.IGNORECASE)
 _UNIT = {'B': 1, 'BYTES': 1, 'KB': 1024, 'MB': 1024 ** 2, 'GB': 1024 ** 3}
 
 
-def group_of(subject) -> str:
-    return GROUP_OF.get(str(subject or '').strip(), 'routine')
+def group_of(subject, text=None) -> str:
+    g = GROUP_OF.get(str(subject or '').strip(), 'routine')
+    return 'debt' if g == 'fund_raise' and DEBT.search(str(text or '')) else g
 
 
 def size_bytes(text) -> int | None:
@@ -96,6 +100,17 @@ def _text(v):
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+def _file(v):
+    """NSE's attachment link, or None where it shows '-' (259 filings in Sep 2026)."""
+    v = _text(v)
+    return v if v and v.lower().startswith('http') else None
+
+
+def file_type(url) -> str | None:
+    """'pdf', 'zip' (224 in Sep 2026: several PDFs, or a PDF and its XML) or another extension."""
+    return url.rsplit('.', 1)[-1].lower() if isinstance(url, str) and '.' in url.rsplit('/', 1)[-1] else None
+
+
 def parse(rows: list[dict]) -> pd.DataFrame:
     """One row per announcement, NSE's values as filed. A row without a
     seq_id gets an id hashed from its own fields; a row whose broadcast time
@@ -110,15 +125,16 @@ def parse(rows: list[dict]) -> pd.DataFrame:
             'event_id': f'nse:{seq}', 'seq_id': seq, 'symbol': _text(r.get('symbol')), 'isin': _text(r.get('sm_isin')),
             'company': _text(r.get('sm_name')), 'industry': _text(r.get('smIndustry')),
             'subject': _text(r.get('desc')), 'text': _text(r.get('attchmntText')),
-            'pdf_url': _text(r.get('attchmntFile')), 'pdf_size': _text(r.get('attFileSize') or r.get('fileSize')),
-            'pdf_bytes': size_bytes(r.get('attFileSize') or r.get('fileSize')),
+            'file_url': (url := _file(r.get('attchmntFile'))), 'file_type': file_type(url),
+            'file_size': _text(r.get('attFileSize') or r.get('fileSize')) if url else None,
+            'file_bytes': size_bytes(r.get('attFileSize') or r.get('fileSize')) if url else None,
             'has_xbrl': bool(r.get('hasXbrl')) if r.get('hasXbrl') is not None else None,
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
             'broadcast_date': at.date().isoformat() if at is not None else None,
         })
     df = pd.DataFrame(out, columns=list(COLUMNS))
-    df['pdf_bytes'] = df['pdf_bytes'].astype('Int64')
+    df['file_bytes'] = df['file_bytes'].astype('Int64')
     df['has_xbrl'] = df['has_xbrl'].astype('boolean')
     return df
 
@@ -146,29 +162,30 @@ def merge_into_archive(r2, new: pd.DataFrame, run_date: str) -> tuple[int, list]
 
 
 def counts(df: pd.DataFrame) -> dict:
-    """What the window held: by broadcast day, subject, reading group and PDF size. Counts only."""
+    """What the window held: by broadcast day, subject, reading group and attachment. Counts only."""
     if df is None or df.empty:
         return {'announcements': 0}
-    groups = df['subject'].map(group_of)
-    sizes = df['pdf_bytes'].map(lambda b: 'size_unreadable' if pd.isna(b) else 'zero_as_filed' if b == 0 else
+    groups = pd.Series([group_of(s, t) for s, t in zip(df['subject'], df['text'])], index=df.index)
+    sizes = df['file_bytes'].map(lambda b: 'size_unreadable' if pd.isna(b) else 'zero_as_filed' if b == 0 else
                                 next(name for limit, name in SIZE_BANDS if b < limit))
     by_group = {}
-    for g in list(READING_GROUPS) + ['routine']:
+    for g in list(READING_GROUPS) + ['debt', 'routine']:
         sub = df[groups == g]
         if sub.empty:
             continue
         by_group[g] = {'announcements': len(sub),
                        'subjects': {str(k): int(v) for k, v in sub['subject'].fillna('(none)').value_counts().items()},
-                       'pdf_mb_total': round(float(sub['pdf_bytes'].dropna().sum()) / 1024 ** 2, 1),
-                       'pdf_sizes': {str(k): int(v) for k, v in sizes[groups == g].value_counts().items()}}
+                       'file_mb_total': round(float(sub['file_bytes'].dropna().sum()) / 1024 ** 2, 1),
+                       'file_sizes': {str(k): int(v) for k, v in sizes[groups == g].value_counts().items()}}
     return {
         'announcements': len(df),
         'companies': int(df['symbol'].nunique()),
         'by_day': {str(k): int(v) for k, v in df['broadcast_date'].fillna('unknown').value_counts().sort_index().items()},
-        'without_pdf': int(df['pdf_url'].isna().sum()),
+        'without_file': int(df['file_url'].isna().sum()),
+        'file_types': {str(k): int(v) for k, v in df['file_type'].fillna('none').value_counts().items()},
         'without_broadcast_time': int(df['broadcast_date'].isna().sum()),
         'text_chars_median': int(df['text'].fillna('').str.len().median()),
-        'pdf_sizes': {str(k): int(v) for k, v in sizes.value_counts().items()},
+        'file_sizes': {str(k): int(v) for k, v in sizes.value_counts().items()},
         'by_group': by_group,
         'subjects': len(df['subject'].dropna().unique()),
         'subjects_seen': {str(k): int(v) for k, v in df['subject'].fillna('(none)').value_counts().items()},
@@ -228,9 +245,9 @@ def summary_markdown(report: dict) -> str:
     lines = [f"### NSE announcements {report['window'][0]} to {report['window'][1]}", '',
              (f"{c.get('announcements', 0)} announcements from {c.get('companies', 0)} companies, "
               f"{report.get('added', 0)} new to the archive; {concall} concall announcements not archived."), '',
-             '| Reading group | Announcements | PDF MB |', '|---|---|---|']
+             '| Reading group | Announcements | File MB |', '|---|---|---|']
     for g, e in c.get('by_group', {}).items():
-        lines.append(f"| {g} | {e['announcements']} | {e['pdf_mb_total']} |")
+        lines.append(f"| {g} | {e['announcements']} | {e['file_mb_total']} |")
     lines += ['', '| Day | Announcements |', '|---|---|']
     lines += [f'| {d} | {n} |' for d, n in c.get('by_day', {}).items()]
     lines += [f'- note: {n}' for n in report.get('notes', [])]

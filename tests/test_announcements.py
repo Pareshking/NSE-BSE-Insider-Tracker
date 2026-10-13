@@ -23,13 +23,17 @@ def test_parse_keeps_values_as_filed_with_broadcast_time_in_ist():
     tci = df[df['seq_id'] == '106799938'].iloc[0]
     assert (tci['symbol'], tci['isin'], tci['subject']) == ('TCI', 'INE688A01022', 'Buyback')
     assert tci['broadcast_at'] == '2026-09-29T14:13:30+05:30' and tci['broadcast_date'] == '2026-09-29'
-    assert tci['pdf_url'].endswith('_TCIL.pdf') and tci['pdf_bytes'] == int(969.94 * 1024)
+    assert tci['file_url'].endswith('_TCIL.pdf') and tci['file_type'] == 'pdf'
+    assert tci['file_bytes'] == int(969.94 * 1024)
 
 
 def test_unreadable_time_and_missing_seq_id_are_kept_not_guessed():
     row = dict(ROWS[0], an_dt='not a date', seq_id=None, attFileSize='', fileSize=None)
     df = ann.parse([row, row])
-    assert df['broadcast_date'].isna().all() and df['pdf_bytes'].isna().all()
+    assert df['broadcast_date'].isna().all() and df['file_bytes'].isna().all()
+    none = ann.parse([dict(ROWS[0], attchmntFile='-', attFileSize='0 Bytes')]).iloc[0]   # NSE's "no file"
+    assert none['file_url'] is None and none['file_type'] is None and pd.isna(none['file_bytes'])
+    assert ann.file_type('https://nsearchives.nseindia.com/corporate/BLS_ROSA_99452_KMP_Doc.zip') == 'zip'
     assert df['event_id'].iloc[0] == df['event_id'].iloc[1]   # same row, same hashed id
     assert ann.partition(None) == 'month=unknown'
     assert ann.size_bytes('0 Bytes') == 0 and ann.size_bytes('2.05 MB') == int(2.05 * 1024 ** 2)
@@ -40,6 +44,9 @@ def test_groups_come_from_nse_subject_only():
     assert ann.group_of('Qualified Institutional Placement') == 'fund_raise'
     assert ann.group_of('Outcome of Board Meeting') == 'to_sort'
     assert ann.group_of('Trading Window') == 'routine' and ann.group_of(None) == 'routine'
+    assert ann.group_of('Allotment of Securities', 'IIFL Finance Limited has informed the Exchange regarding '
+                        'allotment of Non-Convertible Debentures on Private Placement basis.') == 'debt'
+    assert ann.group_of('Allotment of Securities', 'Allotment of Equity Shares to QIBs') == 'fund_raise'
     c = ann.counts(ann.parse(ROWS))
     assert c['by_group']['buyback']['announcements'] == 7   # Sep held one post-buyback announcement
     assert sum(g['announcements'] for g in c['by_group'].values()) == len(ROWS)
