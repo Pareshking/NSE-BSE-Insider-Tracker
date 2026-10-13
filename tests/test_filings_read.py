@@ -17,7 +17,7 @@ FIELDS = [
     {'name': 'price_per_share', 'value': '165.65', 'number': 165.65, 'quote': 'at the issue price of Rs. 165.65',
      'evidence': 'exact', 'shown': True},
     {'name': 'amount', 'value': '15.5', 'number': 15.5e9, 'unit': 'billion', 'quote': 'USD 15.5 billion',
-     'evidence': 'table', 'shown': True},
+     'evidence': 'table', 'shown': True, 'currency': 'USD'},
     {'name': 'currency', 'value': 'USD', 'quote': 'USD 15.5 billion', 'evidence': 'exact', 'shown': True},
     {'name': 'entity', 'value': 'listed', 'quote': 'the Company', 'shown': False, 'reason': 'entity labels not shown yet'},
     {'name': 'shares', 'value': '10', 'number': 10, 'quote': 'ten', 'shown': False, 'reason': 'number not in its quote'}]
@@ -60,3 +60,12 @@ filings_read.render(reads, pd.Timestamp('2026-10-12'))
     assert not at.exception
     html = ' '.join(h.proto.body for h in at.get('html'))
     assert html.count('<article class="rd">') == 1 and 'Filings read' in ' '.join(m.value for m in at.markdown) + html
+
+
+def test_no_currency_in_the_filing_means_none_on_the_site():
+    # 13 Oct dry run: Tristar's US$ metrics would have shown as rupees; a value is written in rupees only
+    # when its filing says so, and as the filing writes it when the filing names no currency
+    assert fr.metric_text({'number': 1.4e9, 'unit': 'billion', 'value': '1.4', 'currency': 'USD'}) == 'USD 1.40 bn'
+    assert fr.metric_text({'number': 2e9, 'unit': 'crore', 'value': '200.00', 'currency': None}) == '200.00 crore'
+    assert fr.value_text({'name': 'amount', 'number': 2e9, 'value': '200.00', 'unit': 'crore'}) == '200.00 crore'
+    assert fr.value_text({'name': 'price_per_share', 'number': 165.65, 'value': '165.65', 'currency': 'INR'}) == '₹165.65'

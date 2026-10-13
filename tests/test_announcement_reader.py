@@ -180,3 +180,24 @@ def test_time_budget_leaves_the_rest_for_the_next_run(monkeypatch):
                                        (date(2026, 1, 1), ['year=2025/month=12', 'year=2026/month=01'])])
 def test_two_months_of_archive_are_read(day, parts):
     assert ar.months_back(day) == parts
+
+
+@pytest.mark.parametrize('value,quote,cur', [
+    ('809', 'for an equity consideration of US$ 809mn (including', 'USD'), ('1.4', 'generated c.US$ 1.4bn of revenue', 'USD'),
+    ('165.65', 'at the issue price of Rs. 165.65 per', 'INR'), ('28,200.00', 'not exceeding ₹ 28,200.00 Lakhs', 'INR'),
+    ('5', 'a price of C$ 5 a share', 'CAD'), ('2', 'S$ 2 million', 'SGD'), ('200.00', 'Total 200.00', None)])
+def test_currency_comes_from_the_quote_never_assumed(value, quote, cur):
+    assert ar.currency_in_quote(value, quote) == cur
+
+
+def test_each_money_value_carries_its_own_or_the_filings_currency():
+    doc = 'consideration of US$ 809mn for the stake. Currency: USD. Issue price 120 per share'
+    _, fields, metrics = ar.validate({'fields': [
+        {'name': 'amount', 'value': '809', 'quote': 'consideration of US$ 809mn for the stake'},
+        {'name': 'amount_unit', 'value': 'million', 'quote': 'US$ 809mn'},
+        {'name': 'currency', 'value': 'USD', 'quote': 'Currency: USD'},
+        {'name': 'price_per_share', 'value': '120', 'quote': 'Issue price 120 per share'}],
+        'metrics': [{'label': 'x', 'value': '809', 'unit': 'million', 'quote': 'consideration of US$ 809mn for the stake'}]}, doc)
+    f = {x['name']: x for x in fields}
+    assert f['amount']['currency'] == 'USD' and f['price_per_share']['currency'] == 'USD'   # the filing's currency
+    assert metrics[0]['currency'] == 'USD'

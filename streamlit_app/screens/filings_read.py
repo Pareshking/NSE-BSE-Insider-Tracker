@@ -44,15 +44,21 @@ def _money(n, currency) -> str:
     return f'{cur} {n / 1e9:,.2f} bn' if abs(n) >= 1e9 else f'{cur} {n / 1e6:,.1f} M' if abs(n) >= 1e6 else f'{cur} {n:,.0f}'
 
 
-def value_text(f: dict, currency=None) -> str:
-    """A checked value as the site writes it; our own conversion, never the model's."""
-    name, n = f.get('name'), f.get('number')
+def _as_written(f: dict) -> str:
+    return ' '.join(str(x) for x in (f.get('value'), f.get('unit')) if x not in (None, ''))
+
+
+def value_text(f: dict) -> str:
+    """A checked value as the site writes it; our own conversion, never the model's. A sum of money gets a
+    currency only when the filing writes one (the reader reads it from the quote or the filing's currency);
+    otherwise it is written as the filing writes it, never with Rs assumed."""
+    name, n, cur = f.get('name'), f.get('number'), f.get('currency')
     if name in ('price_per_share', 'max_price_per_share') and n is not None:
-        return _money(n, currency) if str(currency or 'INR').upper() != 'INR' else kit.price(n)
+        return kit.price(n) if cur == 'INR' else _money(n, cur) if cur else _as_written(f)
     if name == 'shares' and n is not None:
         return kit.shares(n)
     if name == 'amount' and n is not None:
-        return _money(n, currency)
+        return _money(n, cur) if cur else _as_written(f)
     if name in ('discount_pct', 'offer_pct') and n is not None:
         return kit.pct(n)
     if name == 'record_date' and f.get('date'):
@@ -69,7 +75,7 @@ def metric_text(m: dict) -> str:
     if unit in ('percent', '%'):
         return kit.pct(n)
     if unit in ('rupees', 'rs', 'thousand', 'lakh', 'lakhs', 'crore', 'crores', 'cr', 'million', 'mn', 'billion', 'bn'):
-        return kit.rupees(n)
+        return _money(n, m['currency']) if m.get('currency') else _as_written(m)   # no currency: as written
     return f'{kit.indian(n)} {esc(str(m.get("unit") or ""))}'.strip()
 
 
@@ -82,13 +88,11 @@ def card_html(r: dict) -> str:
     metrics = [m for m in _json(r.get('metrics'), []) if m.get('shown')]
     agreed = _json(r.get('agreed'), {})
     held = [f for f in _json(r.get('fields'), []) + _json(r.get('metrics'), []) if not f.get('shown')]
-    currency = next((f.get('value') for f in _json(r.get('fields'), []) if f.get('name') == 'currency' and f.get('shown')),
-                    None)
     when = pd.Timestamp(r['broadcast_at']).tz_convert('Asia/Kolkata') if r.get('broadcast_at') else None
     rows = []
     for f in fields:
         both = kit.tag('2 readers agree', 'buy') if agreed.get(f['name']) is True else ''
-        rows.append(f'<li><b>{esc(FIELD[f["name"]])}</b> <span class="rd-v">{esc(value_text(f, currency))}</span>'
+        rows.append(f'<li><b>{esc(FIELD[f["name"]])}</b> <span class="rd-v">{esc(value_text(f))}</span>'
                     f'{_evidence(f.get("evidence"))}{both}<q>{esc(str(f.get("quote") or ""))}</q></li>')
     for m in metrics[:6]:
         label = ' '.join(x for x in (str(m.get('label') or ''), f'({m["period"]})' if m.get('period') else '') if x)

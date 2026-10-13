@@ -146,6 +146,28 @@ def usable(entries: list[str]) -> list[str]:
 
 # --- checks ----------------------------------------------------------------------------
 
+# Currency marks as filings write them, right before a number ('US$ 809mn', 'Rs. 165.65', '₹ 28,200.00').
+CURRENCY_MARKS = (('CAD', r'CAD|C\$'), ('AUD', r'AUD|A\$'), ('SGD', r'SGD|(?<!U)S\$'),   # before the plain $
+                  ('USD', r'US\s?\$|USD|\$'), ('INR', r'₹|Rs\.?|INR|Rupees'), ('EUR', r'€|EUR'), ('GBP', r'£|GBP'),
+                  ('AED', r'AED'), ('ZAR', r'ZAR'), ('JPY', r'JPY|¥'))
+MONEY_FIELDS = ('price_per_share', 'max_price_per_share', 'amount')
+
+
+def currency_in_quote(value, quote) -> str | None:
+    """The currency the quote writes right before the value's number; None when it writes none."""
+    v = s._num(value)
+    if v is None:
+        return None
+    q = str(quote or '')
+    for m in re.finditer(s.NUMBER, q):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+            before = q[max(0, m.start() - 14):m.start()].rstrip()
+            for code, pat in CURRENCY_MARKS:
+                if re.search(r'(?:' + pat + r')$', before, re.IGNORECASE):
+                    return code
+    return None
+
+
 def _bool(v):
     t = str(v).strip().lower()
     return True if t in ('true', 'yes') else False if t in ('false', 'no') else None
@@ -159,6 +181,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if isinstance(f, dict) and f.get('name') in s.FIELDS and f['name'] not in named:
             named[f['name']] = f
     unit = (named.get('amount_unit') or {}).get('value')
+    cur = named.get('currency') or {}
+    filing_currency = str(cur.get('value')).strip().upper() if cur.get('value') and s.quote_found(cur.get('quote'), doc)         else None
     fields = []
     for name, f in named.items():
         if name == 'amount_unit':
@@ -177,7 +201,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                 rec['unit'] = unit
                 if s.unit_backed(value, unit, quote, qf) is False:
                     reasons.append('unit not backed by its quote')
-        elif name.endswith('_date'):
+        if name in MONEY_FIELDS:   # the site writes the currency only when the filing does
+            rec['currency'] = currency_in_quote(value, quote) or filing_currency
+        if name.endswith('_date'):
             rec['date'] = s.as_date(value)
             if rec['date'] is None:
                 reasons.append('date not readable')
@@ -206,6 +232,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('unit not backed by its quote')
         metrics.append({'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
+                        'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
     cat = out.get('category') if out.get('category') in s.CATEGORIES else None
     return cat, fields, metrics

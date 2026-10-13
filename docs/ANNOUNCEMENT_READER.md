@@ -149,8 +149,41 @@ side; check every value; write. About 22 minutes of reading a run.
   given up after 3), `clean/current/announcement_reads.parquet` (last 60 days), and
   `clean/reports/announcement_reader/{date}.json` (each run: counts, outcomes, every call by model with
   its answers and median seconds, models left out as slow).
-- Expected volume: about 250-300 filings a day to read after dedup and the Rs 100 Cr rule; cards appear
-  only where a value passes, so roughly 100-200 cards a day.
+- Currency: a sum of money gets a currency only when the filing writes one, read from the value's own
+  quote (US$, USD, Rs, INR, EUR ... right before the number) or from the filing's checked `currency`
+  field; otherwise the site writes it as the filing does ("200.00 crore"), never with Rs assumed (the
+  13 Oct dry run had Tristar's US$ 1.4 billion revenue about to show as Rs 140 Cr).
+- Expected volume: the dry run on 13 Oct found 332 filings to read from that day alone (1,762 fetched;
+  1,288 routine or without a file, 74 below Rs 100 Cr, 68 the same filing on the other exchange). At about
+  40 filings a run, a day's filings take about 8 runs (4 hours). Cards appear only where a value passes.
+
+### Dry run on real filings (PR, 13 Oct, 23:52-23:56 IST, run 38446158692)
+
+Green. Collected 13 Oct from both exchanges and read three filings (the PR cap), writing nothing:
+
+| Filing | Category | Shown | Held back | Notes |
+|---|---|---|---|---|
+| BSE ICICIPRULI, General | routine | 0 | 1 | director appointment; only an entity label, kept back |
+| NSE AEGISLOG, Press Release | deal_or_dispute | 5 | 1 | Tristar stake for US$ 809 mn; revenue US$ 1.4 bn, EBITDA US$ 257 mn, net profit US$ 82 mn |
+| NSE AEGISLOG, General Updates (board outcome) | deal_or_dispute | 4 | 4 | same deal; three table rows held (their unit is in the column heading) |
+
+Kimi K3 answered all three (median 26 s), GLM-4.5-Flash all three (11 s); no 429, no error; the second
+lane agreed on the currency. Found: the currency problem above (fixed before going live), and the same
+deal filed twice on NSE by one company (press release and board outcome: two cards; one card per company
+and deal is a later step).
+
+## Runs on 13 Oct (IST)
+
+| Run | What | Status |
+|---|---|---|
+| 38408604144 (19:22) | first 24-filing run | failed before any model call: Ubuntu's mirror answered 404 for poppler-utils; the workflow now refreshes the package list first |
+| 38418368623, 38419069858, 38420120800, 38421224640 (20:30-20:50) | Gemini runs on parts of the sample | finished |
+| 38423386748 (21:05-22:34) | nine readers on 24 filings | finished; rescored above |
+| 38432331574 (22:34-00:14) | NVIDIA GLM 5.3, Nemotron 3 Ultra, four withdrawn NVIDIA models, Z.ai | Nemotron 3 Ultra 87 of 91; the four withdrawn models 404; Z.ai skipped (ids not on its list); GLM 5.3 running |
+| 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; the rest running |
+| 38446158568 (23:52-) | the chosen readers again, another hour (Kimi K3, Gemma 4, GLM-4.5-Flash) | running |
+| 38446158692 (23:52) | live reader, dry run on 3 real filings | green |
+| Twelve others | replaced by a newer push before starting (two duplicates cancelled by hand) | cancelled, no model called |
 
 ## Open questions for the owner
 
@@ -188,7 +221,8 @@ steps. Subscribe to PR #56 and keep CI green."
 1. Add the results of the runs still going (GLM 5.3, GLM 5.3 Flash, DeepSeek with its reasoning field,
    GLM-4.7-Flash thinking off and on) and of the rerun of the chosen readers (another hour, run-to-run
    variance) to the table above; change `scripts/announcement_readers.txt` if they say so.
-2. The reader's PR dry run on real filings (3 filings) green; then the owner merges PR #56.
+2. The reader's PR dry run on real filings: green on 13 Oct (above); green again with the currency fix;
+   then the owner merges PR #56.
 3. After the merge: the first live runs; check the usage log (calls, 429s, seconds), the Brief card, and
    the BSE step from the runner (plain requests or in-page fetch).
 4. Brief cards: "before this" from our own data (dilution, promoter holding and pledge, issue price vs
