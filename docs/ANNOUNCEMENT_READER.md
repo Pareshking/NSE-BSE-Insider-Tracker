@@ -48,7 +48,16 @@ checks (numbers written with their currency read once; table quotes marked
 | Groq `qwen/qwen3.8-27b` | 69 of 73 | 3 | 5 too big | 61 (paced) |
 | NVIDIA `nvidia/nemotron-3-super-120b-a12b` | 68 of 91 | 13 | 0 | 23 |
 | Groq `openai/gpt-oss-120b` | 62 of 73 | 5 | 5 too big | 61 (paced) |
-| Gemini 3.5 / 3.1 Flash-Lite, DeepSeek v4.1 Flash, Nemotron 3.5 Lightning | still running at handoff | | | |
+| Gemini 3.5 / 3.1 Flash-Lite | 80 of 91 | 9 | 0 | 76 |
+| NVIDIA DeepSeek v4.1 Flash, Nemotron 3.5 Lightning | still running after 55 minutes (slow) | | | |
+
+Wrong values that passed the checks (would have reached the site), all
+readers: two `entity` labels from the weakest readers (Nemotron 3 Super:
+Hyundai "listed" for the parent group; gpt-oss: Jubilant "listed" for a
+subsidiary), plus ADANIENT's disputed category. No wrong number passed in
+any reader. Gemini's misses are values not given (Chandan franchises,
+Jubilant CAD 94.5M) or held back (SML table quotes it rebuilt in its own
+words); in B1 the same Gemini read Chandan 6/6, so runs vary.
 
 Earlier Gemini runs (A1-A3, B1, run 3): 48 of 48 values right on 14 filings;
 Hyundai not read because both Flash-Lite models were 503 "busy" for 3 minutes.
