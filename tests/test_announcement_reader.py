@@ -68,7 +68,8 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
         _cand('nse:5', 'NSE', 'INE5', '2026-10-10T09:00:00+05:30', 'Rights Issue'),   # older than yesterday
         _cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'),
         _cand('nse:7', 'NSE', 'INE7', '2026-10-13T14:00:00+05:30', 'Buyback')])
-    done = pd.DataFrame([{**_cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'), 'status': 'read', 'tries': 1},
+    done = pd.DataFrame([{**_cand('nse:6', 'NSE', 'INE6', '2026-10-13T13:00:00+05:30', 'Buyback'), 'status': 'read', 'tries': 1,
+                          'prompt_version': ar.PROMPT_VERSION},
                          {**_cand('nse:7', 'NSE', 'INE7', '2026-10-13T14:00:00+05:30', 'Buyback'), 'status': 'failed', 'tries': 1}])
     to_read, status, counts = ar.choose(c, done, today)
     assert list(to_read['event_id']) == ['nse:7', 'nse:1', 'nse:4']   # today newest first, then yesterday
@@ -291,3 +292,13 @@ def test_a_cross_check_compares_figures_by_number_whatever_their_labels():
             {'label': 'held', 'number': 9, 'shown': False}]
     second = [{'label': 'Commercial vehicle sales', 'number': 1071, 'shown': True}, {'label': 'x', 'number': 54, 'shown': True}]
     assert ar.metric_agreement(main, second) == {'metric:0': True, 'metric:1': None}
+
+
+
+def test_a_read_with_an_older_prompt_is_read_again_once_and_never_copied():
+    today = date(2026, 10, 13)
+    c = pd.DataFrame([_cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'Buyback'),
+                      _cand('nse:2', 'NSE', 'INE2', '2026-10-13T11:00:00+05:30', 'Buyback')])
+    done = pd.DataFrame([{**c.iloc[0].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': 'live-1'},
+                         {**c.iloc[1].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': ar.PROMPT_VERSION}])
+    assert list(ar.choose(c, done, today)[0]['event_id']) == ['nse:1']

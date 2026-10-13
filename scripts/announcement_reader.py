@@ -455,7 +455,10 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date) -> tuple
     tries = {}
     if done is not None and not done.empty:
         failed = done['status'] == 'failed'
-        finished = set(done.loc[~failed | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        # a read (or a copy of one) made with an older prompt is read again once, so its card has every part
+        stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
+            (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
+        finished = set(done.loc[(~failed & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip'])
     counts['routine_or_no_file'] = int((~keep).sum())
@@ -542,7 +545,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     busy = set()                            # lanes reading now
     by_file, by_text, waiting, docs = {}, {}, {}, {}   # waiting: hash -> twins held until its read is done
     if earlier is not None and not earlier.empty:
-        for r in earlier[earlier['status'] == 'read'].to_dict('records'):
+        current = earlier['prompt_version'] == PROMPT_VERSION if 'prompt_version' in earlier else False
+        for r in earlier[(earlier['status'] == 'read') & current].to_dict('records'):
             by_file.setdefault(r.get('file_sha256'), r)
             by_text.setdefault(r.get('text_sha256'), r)
     checked = set()                         # event_ids cross-checked, or being cross-checked

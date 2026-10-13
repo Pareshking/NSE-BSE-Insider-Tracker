@@ -169,6 +169,16 @@ once: the second waits for the first's read); the lanes read different filings a
 every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
 so it ends before the next starts; what it does not reach waits for the next run.
 
+- Continuous (14 Oct, owner): each run starts the next when it ends (job `next` in the workflow, by
+  `workflow_dispatch`, which GitHub lets a workflow start with its own token), at least 10 minutes after
+  the last one started and 30 after a failure; a cancelled run ends the chain. GitHub's schedule (every 15
+  minutes) is kept only to restart the chain: on 13-14 Oct it started no run in the first hour after the
+  merge, and the nightly jobs start 1-3 hours late. **Off switch:** set the repository variable
+  `READER_LOOP` to `off` (Settings, Secrets and variables, Actions, Variables) or disable the workflow in
+  the Actions tab; on again: remove the variable and run the workflow by hand once. The public repo's
+  Actions minutes are free; each cycle collects NSE and BSE once (about 2 minutes).
+- A new prompt version re-reads once the filings of today and yesterday read with an older one (and their
+  copies), so every card has every part; an older read is never the source of a copy.
 - Saved as read: each filing's row goes to R2 as soon as it is read (at most one write every 15 seconds;
   a failed write keeps its rows for the next one, and only the run's last write fails the run). A run
   cut short keeps what it read. The site keeps this one table for 3 minutes instead of 10
