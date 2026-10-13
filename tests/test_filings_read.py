@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 from test_ui_pages import APP_PATHS
 
@@ -137,7 +138,7 @@ def test_different_files_on_one_deal_are_one_card_and_other_deals_stay_apart():
 
 def test_before_this_is_built_from_our_own_tables_with_our_own_sums():
     deal = [dict(FIELDS[0], number=12.0, currency='INR'), dict(FIELDS[1], number=1.2e9, currency='INR')]
-    r = row(isin='INE1', fields=json.dumps(deal), broadcast_at='2026-10-13T10:15:00+05:30')
+    r = row(isin='INE1', fields=json.dumps(deal), broadcast_at='2026-10-13T10:15:00+05:30', category='preferential')
     reads = pd.DataFrame([r, row(event_id='nse:0', isin='INE1', category='preferential', broadcast_at='2026-09-20T12:00:00+05:30',
                                  headline=json.dumps({'text': 'Board approves a preferential issue', 'shown': True})),
                           row(event_id='nse:9', isin='INE1', category='rights', broadcast_at='2026-05-01T12:00:00+05:30')])
@@ -153,3 +154,74 @@ def test_before_this_is_built_from_our_own_tables_with_our_own_sums():
     assert lines[4] == '20 Sep: Board approves a preferential issue.' and len(lines) == 5   # May is past 90 days
     assert 'Before this' in fr.card_html(r, price, None, lines)
     assert fr.before_this(row(), None, None, None, None) == []
+
+
+def test_filings_page_filters_by_heading_size_search_and_agreement(tmp_path, monkeypatch):
+    from screens import filings
+    assert filings.heading_of('rights') == 'Fund raising' and filings.heading_of('acquisition') == 'Acquisitions & restructuring'
+    assert filings.heading_of('something_new') == 'Other'   # a new category is never hidden
+    assert filings.heading_of('legal_regulatory') == 'Legal & regulatory' and filings.heading_of('deal_or_dispute') == 'Other'
+    now = pd.Timestamp.now(tz='Asia/Kolkata')
+    at, day = now.isoformat(), now.strftime('%Y-%m-%d')
+    reads = pd.DataFrame([row(event_id='nse:1', isin='A', category='rights', broadcast_at=at, broadcast_date=day),
+                          row(event_id='bse:2', isin='B', exchange='BSE', symbol='AEGISLOG', company='Aegis Logistics',
+                              category='acquisition', broadcast_at=at, broadcast_date=day, agreed='{}'),
+                          row(event_id='nse:3', isin='C', category='capex', symbol='JUBLPHARMA', company='Jubilant',
+                              broadcast_at=at, broadcast_date=day, fields=json.dumps([FIELDS[2]]), agreed='{}')])
+    r = fr.recent(reads, now.tz_localize(None).normalize() - pd.Timedelta(days=7))
+    size = {'A': 'Small', 'B': 'Mid', 'C': 'Large'}
+    ids = lambda **kw: sorted(filings.pick(r, **{'headings': list(filings.HEADINGS), 'exchanges': ['NSE', 'BSE'],
+                                                 'sizes': list(filings.SIZES), 'query': '', 'agreed_only': False,
+                                                 'size_of': size, **kw})['event_id'])
+    assert ids() == ['bse:2', 'nse:1', 'nse:3']
+    assert ids(headings=['Fund raising']) == ['nse:1'] and ids(exchanges=['BSE']) == ['bse:2']
+    assert ids(sizes=['Large']) == ['nse:3'] and ids(query='aegis') == ['bse:2'] and ids(agreed_only=True) == ['nse:1']
+    cur = tmp_path / 'clean' / 'current'
+    cur.mkdir(parents=True)
+    reads.to_parquet(cur / 'announcement_reads.parquet')
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(tmp_path))
+    st.cache_data.clear()   # the site caches tables by name: other tests' data must not leak in, nor this one's out
+    at_ = AppTest.from_string(APP_PATHS + '''
+import streamlit as st
+st.query_params['h'] = 'Fund raising'
+from ui import theme
+theme.inject()
+from screens import filings
+filings.render()
+''', default_timeout=60).run()
+    assert not at_.exception, at_.exception[0].value
+    st.cache_data.clear()
+    html = ' '.join(h.proto.body for h in at_.get('html'))
+    assert html.count('<article class="rc">') == 1 and 'HYUNDAI' in html
+
+
+
+def test_a_price_is_set_against_the_close_only_for_the_companys_own_shares():
+    deal = [dict(FIELDS[0], number=937.5, currency='INR')]
+    price = {'latest_close': 56.77, 'last_date': '2026-10-12', 'market_cap': 6.38e9}
+    gtpl = row(isin='INE1', category='acquisition', fields=json.dumps(deal))   # the target's price (GTPL, 13 Oct)
+    assert not any('last close' in x for x in fr.before_this(gtpl, None, price, None, None))
+    own = row(isin='INE1', category='rights', fields=json.dumps(deal))
+    assert any('last close' in x for x in fr.before_this(own, None, price, None, None))
+
+
+def test_a_card_without_a_headline_uses_the_exchanges_own_words_and_a_bse_only_company_its_name():
+    html = fr.card_html(row(symbol='541347', company='Parvati Sweetners and Power Ltd', subject='Acquisition',
+                            detail='Acquisition of 51% stake in Shree Parvati Agro Pvt Ltd for Rs 2 crore',
+                            metrics=json.dumps([{'label': 'amount awarded', 'number': 2.566e8, 'value': '25.66', 'unit': 'crore',
+                                                 'currency': 'INR', 'quote': 'q', 'shown': True}])))
+    assert '<h4 class="rc-h">Parvati Sweetners and Power Ltd: Acquisition of 51% stake in Shree Parvati' in html
+    assert '>Parvati Sweetners and Power Ltd</a>' in html and '>541347<' not in html
+    assert '<td>Amount awarded</td>' in html
+
+
+
+def test_every_category_of_the_live_reader_has_a_label_and_a_heading():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+    import announcement_reader as ar
+    from screens import filings
+    shown = set(ar.CATEGORIES) - {'routine'}
+    assert shown <= set(fr.CATEGORY), shown - set(fr.CATEGORY)
+    assert all(filings.heading_of(c) != filings.OTHER for c in shown), [c for c in shown if filings.heading_of(c) == 'Other']

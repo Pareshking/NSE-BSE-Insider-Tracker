@@ -22,7 +22,14 @@ CATEGORY = {
     'open_offer': 'Open offer', 'debt_issue': 'Debt issue', 'capex': 'Capacity / investment',
     'product_launch': 'Product launch', 'order_win': 'Order win', 'business_update': 'Business update',
     'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_downgrade': 'Rating lowered',
-    'rating_reaffirmed': 'Rating kept', 'deal_or_dispute': 'Deal or dispute',
+    'rating_reaffirmed': 'Rating kept', 'esop': 'ESOP allotment', 'dividend': 'Dividend', 'bonus_split': 'Bonus or split',
+    'acquisition': 'Acquisition', 'divestment': 'Sale or divestment', 'merger_demerger': 'Merger or demerger',
+    'agreement': 'Agreement or JV', 'delisting': 'Delisting', 'licence_approval': 'Licence or approval',
+    'operations_start': 'Operations started', 'financial_results': 'Financial results', 'default': 'Default',
+    'restructuring': 'Debt settlement', 'insolvency': 'Insolvency', 'legal_regulatory': 'Legal or regulatory',
+    'fraud': 'Fraud or forensic audit', 'disruption': 'Disruption', 'management_change': 'Management change',
+    'corporate_change': 'Corporate change',
+    'deal_or_dispute': 'Deal or legal matter',   # reads before live-3, when deals and legal matters were one
 }
 FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
          'amount': 'Size', 'discount_pct': 'Discount', 'allottee_is_promoter': 'To promoters', 'ratio': 'Ratio',
@@ -124,8 +131,15 @@ def _mcap(r: dict, price: dict) -> str:
 
 
 def _metric_label(m: dict) -> str:
-    period = str(m.get('period') or '').strip()
-    return ' '.join(x for x in (str(m.get('label') or ''), f'({period})' if period.lower() not in NO_PERIOD else '') if x)
+    period, label = str(m.get('period') or '').strip(), str(m.get('label') or '').strip()
+    label = label[:1].upper() + label[1:]
+    return ' '.join(x for x in (label, f'({period})' if period.lower() not in NO_PERIOD else '') if x)
+
+
+def _name(r: dict) -> str:
+    """The card's name: the NSE symbol; for a BSE-only company (its 'symbol' is BSE's number) its name."""
+    sym = str(r.get('symbol') or '').strip()
+    return str(r.get('company') or sym) if not sym or sym.isdigit() else sym
 
 
 def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
@@ -145,8 +159,12 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     sym = r.get('symbol')
     category = CATEGORY.get(r.get('category'), str(r.get('category') or ''))
 
+    # Without a checked headline (reads before live-2): the exchange's own one-line description of the filing,
+    # else the company and category with its size.
+    detail = str(r.get('detail') or '').strip()
     title = headline['text'] if headline else (
-        f'{r.get("company") or sym}: {category.lower()}'
+        f'{r.get("company") or sym}: {detail[:160]}' if len(detail) > 12 and detail.lower() != str(r.get('subject') or '').lower()
+        else f'{r.get("company") or sym}: {category.lower()}'
         + (f', {value_text(next(f for f in fields if f["name"] == "amount"))}' if any(f['name'] == 'amount' for f in fields) else ''))
     body = ''.join(f'<li>{_bold_figures(p["text"])}</li>' for p in points)
     body = f'<ul class="rc-pts">{body}</ul>' if body else ''
@@ -188,7 +206,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
                     for lbl, v in _moves(r.get('isin'), history))
     cap = _mcap(r, price)
     return (f'<article class="rc">'
-            f'<div class="rc-top"><a class="rc-sym" href="{kit.company_href(sym)}" target="_self">{esc(str(sym or ""))}</a>'
+            f'<div class="rc-top"><a class="rc-sym" href="{kit.company_href(sym)}" target="_self">{esc(_name(r))}</a>'
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
@@ -284,6 +302,7 @@ def _before_html(lines) -> str:
 
 
 EARLIER_DAYS, INSIDER_DAYS = 90, 30
+OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_open_market', 'buyback_tender', 'open_offer')
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
@@ -296,7 +315,9 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     fields = {f['name']: f for f in _json(r.get('fields'), []) if f.get('shown')}
     price = price or {}
     close = price.get('latest_close')
-    for name in ('price_per_share', 'max_price_per_share'):
+    # Only a price for the company's own shares is set against its close: in an acquisition the price is
+    # the target's (GTPL, 13 Oct: Rs 937.50 a share of the company it buys, 1,551% "above" GTPL's Rs 56.77).
+    for name in (('price_per_share', 'max_price_per_share') if r.get('category') in OWN_SHARES else ()):
         f = fields.get(name)
         if f and f.get('currency') == 'INR' and f.get('number') and close and close == close:
             gap = (f['number'] / close - 1) * 100
@@ -338,11 +359,13 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     return out
 
 
-def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | None = None) -> None:
-    """The Brief's card: waits for its data (nothing shown before the reader has written its table)."""
-    r = recent(reads, since)
-    if r.empty:
-        return
+LEGEND = ('<p class="evl">' + kit.tag('in the filing', 'info') + 'quoted word for word '
+          + kit.tag('table row', 'warn') + 'found in one table of the filing, column not proven '
+          + kit.tag('2 readers agree', 'buy') + 'a second model read the same value</p>')
+
+
+def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | None = None, limit: int = LIMIT) -> str:
+    """The cards of `r` (rows from `recent`), with each company's price, holding and insider context."""
     prices = getattr(ctx, 'prices', None)
     by_isin = (prices.drop_duplicates('isin').set_index('isin').to_dict('index')
                if prices is not None and not prices.empty and 'isin' in prices else {})
@@ -354,8 +377,14 @@ def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | N
     def card(x):
         p = by_isin.get(x.get('isin'))
         return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders))
+    return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
+
+
+def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | None = None) -> None:
+    """The Brief's card: waits for its data (nothing shown before the reader has written its table)."""
+    r = recent(reads, since)
+    if r.empty:
+        return
     with kit.card('Filings read', 'br_reads', f'since {kit.day(since)}: values checked against the filing\'s own words'):
-        st.html('<p class="evl">' + kit.tag('in the filing', 'info') + 'quoted word for word '
-                + kit.tag('table row', 'warn') + 'found in one table of the filing, column not proven '
-                + kit.tag('2 readers agree', 'buy') + 'a second model read the same value</p>'
-                + '<div class="rds">' + ''.join(card(x) for x in r.head(LIMIT).to_dict('records')) + '</div>')
+        st.html(LEGEND + cards_html(r, reads, ctx, history)
+                + '<p class="evl"><a href="/filings" target="_self">Every filing read, with filters →</a></p>')

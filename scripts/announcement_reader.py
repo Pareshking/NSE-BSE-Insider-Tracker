@@ -48,7 +48,7 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-2'   # live-2: headline and points for the card, year-ago values of periodic figures
+PROMPT_VERSION = 'live-3'   # live-2: headline, points, year-ago values; live-3: the full list of categories
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -66,6 +66,34 @@ DAILY_CALLS = {'groq:qwen/qwen3.8-27b': 1000, 'gemini:gemini-3.5-flash-lite': 50
                'gemini:gemini-3.1-flash-lite': 500, 'nvidia': 10_000}
 DAILY_SHARE = 0.95
 PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemini: its own client
+# The live reader's categories (14 Oct, owner): the kinds of event listed companies file, after SEBI's LODR
+# Schedule III (Regulation 30) and what the exchanges carry besides (results, monthly updates, ratings). The
+# test harness keeps its shorter list (its "deal_or_dispute" is split here, as an acquisition filed under
+# "dispute" read as trouble), so the 24-filing test stays comparable. Reads before live-3 keep their category.
+ADDED = {
+    'esop': 'shares allotted or options granted to employees (ESOP, ESPS)',
+    'dividend': 'dividend declared or recommended, or its record date',
+    'bonus_split': 'bonus issue, stock split or consolidation of shares',
+    'acquisition': 'buying a company, a stake or a business, or setting up a subsidiary',
+    'divestment': 'selling a company, a stake, a business, a unit or an asset',
+    'merger_demerger': 'merger, demerger, amalgamation or another scheme of arrangement',
+    'agreement': 'joint venture, partnership, MoU, licensing, shareholder or other strategic agreement',
+    'delisting': 'voluntary delisting of the shares',
+    'licence_approval': 'a licence, approval, patent or clearance granted, renewed, suspended or withdrawn',
+    'operations_start': 'commercial production or operations started at a plant, unit or project',
+    'financial_results': 'quarterly, half-year or annual financial results',
+    'default': 'delay or default in paying interest or principal on loans or debt securities',
+    'restructuring': 'one-time settlement, debt restructuring or a resolution plan with lenders',
+    'insolvency': 'insolvency (CIRP), liquidation or winding-up proceedings',
+    'legal_regulatory': 'litigation, arbitration, a tax or regulatory order, a penalty, a search or a seizure',
+    'fraud': 'fraud, arrest of a promoter, director or officer, or a forensic audit',
+    'disruption': 'fire, accident, strike, lockout, shutdown or natural calamity disrupting operations',
+    'management_change': 'appointment, resignation or removal of a director, CEO, CFO or other key officer',
+    'corporate_change': 'change of name, registered office, share transfer agent, or of the memorandum or articles',
+}
+CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **ADDED,
+              'routine': s.CATEGORIES['routine']}
+KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
            'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
@@ -277,7 +305,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
-    cat = out.get('category') if out.get('category') in s.CATEGORIES else None
+    cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None
     return cat, fields, metrics
 
 
@@ -288,7 +316,8 @@ CARD_ASK = (
     'key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
     'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
-    'words that state it}. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
+    'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
+    'the price; for a legal or regulatory matter, who acted, against whom, and the amount. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
     'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
@@ -302,6 +331,10 @@ _MULT = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'cror
 def card_prompt(row: dict, doc: str) -> str:
     p = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
                        'subject': row.get('subject')}, doc)
+    head, rest = p.split('Categories:\n', 1)
+    rest = rest.split('\n\nFields:', 1)[1]
+    cats = '\n'.join(f'- {k}: {v}' for k, v in CATEGORIES.items())
+    p = f'{head}Categories:\n{cats}\n\nFields:{rest}'
     return p.replace('=== DOCUMENT ===', CARD_ASK + '=== DOCUMENT ===', 1)
 
 
