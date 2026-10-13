@@ -97,7 +97,7 @@ def data_dir(tmp_path_factory, real_nse_rows):
 PAGES = [('actions', {}), ('other_filings', {}), ('today', {}), ('screener', {}), ('insider_trades', {}), ('deals', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
          ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('sast', {}), ('transfers', {}),
-         ('shareholding', {}), ('coming', {})]
+         ('shareholding', {}), ('coming', {}), ('filings', {})]
 
 
 @pytest.mark.parametrize(('screen', 'params'), PAGES, ids=[f'{s}-{bool(p)}' for s, p in PAGES])

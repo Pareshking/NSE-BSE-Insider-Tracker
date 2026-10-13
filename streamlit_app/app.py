@@ -50,6 +50,7 @@ from screens import (
     data_status,
     deals,
     entity,
+    filings,
     insider_trades,
     other_filings,
     screener,
@@ -73,6 +74,7 @@ SECTIONS = {
     ],
     'Filings': [
         st.Page(today.render, title='Latest session', icon=M('space_dashboard'), url_path='today'),
+        st.Page(filings.render, title='Filings read', icon=M('article'), url_path='filings'),
         st.Page(insider_trades.render, title='Insider & promoter trades', icon=M('swap_vert'), url_path='insider-trades'),
         st.Page(deals.render, title='Bulk & block deals', icon=M('handshake'), url_path='deals'),
         st.Page(other_filings.render, title='Other filings', icon=M('account_tree'), url_path='other-filings'),

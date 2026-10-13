@@ -338,11 +338,13 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     return out
 
 
-def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | None = None) -> None:
-    """The Brief's card: waits for its data (nothing shown before the reader has written its table)."""
-    r = recent(reads, since)
-    if r.empty:
-        return
+LEGEND = ('<p class="evl">' + kit.tag('in the filing', 'info') + 'quoted word for word '
+          + kit.tag('table row', 'warn') + 'found in one table of the filing, column not proven '
+          + kit.tag('2 readers agree', 'buy') + 'a second model read the same value</p>')
+
+
+def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | None = None, limit: int = LIMIT) -> str:
+    """The cards of `r` (rows from `recent`), with each company's price, holding and insider context."""
     prices = getattr(ctx, 'prices', None)
     by_isin = (prices.drop_duplicates('isin').set_index('isin').to_dict('index')
                if prices is not None and not prices.empty and 'isin' in prices else {})
@@ -354,8 +356,14 @@ def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | N
     def card(x):
         p = by_isin.get(x.get('isin'))
         return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders))
+    return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
+
+
+def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | None = None) -> None:
+    """The Brief's card: waits for its data (nothing shown before the reader has written its table)."""
+    r = recent(reads, since)
+    if r.empty:
+        return
     with kit.card('Filings read', 'br_reads', f'since {kit.day(since)}: values checked against the filing\'s own words'):
-        st.html('<p class="evl">' + kit.tag('in the filing', 'info') + 'quoted word for word '
-                + kit.tag('table row', 'warn') + 'found in one table of the filing, column not proven '
-                + kit.tag('2 readers agree', 'buy') + 'a second model read the same value</p>'
-                + '<div class="rds">' + ''.join(card(x) for x in r.head(LIMIT).to_dict('records')) + '</div>')
+        st.html(LEGEND + cards_html(r, reads, ctx, history)
+                + '<p class="evl"><a href="/filings" target="_self">Every filing read, with filters →</a></p>')
