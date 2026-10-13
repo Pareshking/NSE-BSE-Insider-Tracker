@@ -394,7 +394,8 @@ def main(argv=None):
     rows = json.loads((HERE / 'announcement_sample_expected.json').read_text(encoding='utf-8'))
     run_file = HERE / 'announcement_sample_run.txt'
     only = args.only or (run_file.read_text().strip() if run_file.exists() else '')
-    wanted = {x.strip() for x in only.replace('\n', ',').split(',') if x.strip() and not x.startswith('#')}
+    lines = [ln for ln in only.splitlines() if not ln.strip().startswith('#')]
+    wanted = {x.strip() for x in ','.join(lines).split(',') if x.strip()}
     rows = [r for r in rows if not wanted or r['symbol'] in wanted]
     log('filings this run:', ', '.join(r['symbol'] for r in rows))
     g = Gemini(key)
