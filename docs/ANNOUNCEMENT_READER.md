@@ -122,7 +122,23 @@ Gemini Flash-Lite as a second lane, Groq Qwen 3.8 for short filings only
 (under ~20,000 characters), Gemma 4 on the Gemini key for sorting; Z.ai
 decided by the queued run.
 
+## Open questions for the owner (ask, do not decide)
+
+1. Stocks below Rs 100 Cr market cap: their PDFs never go to a model
+   (decided). Should these companies also be hidden across the whole site?
+2. ADANIENT-type filings (reminder to pay call money on partly paid rights
+   shares): a category of their own ("rights call money"), or routine?
+3. Merge PR #56 when the owner is ready (owner merges).
+
 ## How to pick up (for a new session)
+
+Start prompt: "Read CLAUDE.md, then docs/ANNOUNCEMENT_READER.md, then TODO
+29. Collect the results of run 38423386748 (rescored) and of the next
+Announcement reader sample run on branch ccr-5fbf9503-x2spo0, report one
+table for all readers, pick the readers, record the split here and in TODO
+29, ask the owner the open questions, then continue with Next steps.
+Subscribe to PR #56 and keep CI green."
+
 
 - Results of run 38423386748: the six finished readers are in the table
   above. DeepSeek v4.1 Flash and Nemotron 3.5 Lightning were still running at
