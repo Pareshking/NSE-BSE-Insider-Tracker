@@ -28,22 +28,28 @@ concurrency:
   cancel-in-progress: false   # a run in progress keeps its log; the next one waits
 
 jobs:
+  plan:   # readers come from the run file's readers: line, else the script's default list
+    runs-on: ubuntu-latest
+    outputs:
+      jobs: ${{ steps.m.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - id: m
+        run: echo "jobs=$(python3 scripts/announcement_sample.py --matrix)" >> "$GITHUB_OUTPUT"
+
   sample:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
-        include:   # gemini also sorts; the others only read
-          - {slug: gemini, reader: gemini, flags: ''}
-          - {slug: groq-gpt-oss-120b, reader: 'groq:openai/gpt-oss-120b', flags: --no-sort}
-          - {slug: groq-qwen3.8-27b, reader: 'groq:qwen/qwen3.8-27b', flags: --no-sort}
-          - {slug: nvidia-nemotron-3-super, reader: 'nvidia:nvidia/nemotron-3-super-120b-a12b', flags: --no-sort}
-          - {slug: nvidia-nemotron-3.5-lightning, reader: 'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b', flags: --no-sort}
-          - {slug: nvidia-deepseek-v4.1-flash, reader: 'nvidia:deepseek-ai/deepseek-v4.1-flash', flags: --no-sort}
-          - {slug: nvidia-gemma-4-31b, reader: 'nvidia:google/gemma-4-31b-it', flags: --no-sort}
-          - {slug: nvidia-kimi-k3, reader: 'nvidia:moonshotai/kimi-k3', flags: --no-sort}
-          - {slug: nvidia-glm-5-3, reader: 'nvidia:z-ai/glm-5-3', flags: --no-sort}
+        include: ${{ fromJSON(needs.plan.outputs.jobs) }}
     name: read (${{ matrix.slug }})
     steps:
       - uses: actions/checkout@v4

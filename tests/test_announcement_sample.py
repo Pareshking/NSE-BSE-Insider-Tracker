@@ -122,3 +122,10 @@ def test_parallel_jobs_combine_into_one_report(tmp_path, capsys):
     a.main(['--combine', str(tmp_path)])
     out = capsys.readouterr().out
     assert '| GLOBAL | 3/3 | error: RuntimeError: busy |' in out and 'Sorter `gemma`' in out
+
+
+def test_one_job_per_reader_and_only_gemini_sorts():
+    jobs = a.matrix('GLOBAL\nreaders: gemini, nvidia:z-ai/glm-5.3\n')
+    assert jobs == [{'slug': 'gemini', 'reader': 'gemini', 'flags': ''},
+                    {'slug': 'nvidia-z-ai-glm-5.3', 'reader': 'nvidia:z-ai/glm-5.3', 'flags': '--no-sort'}]
+    assert len(a.matrix('# all')) == len(a.DEFAULT_READERS.split(','))

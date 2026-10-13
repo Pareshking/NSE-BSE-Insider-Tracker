@@ -252,6 +252,20 @@ def parse_readers(text: str) -> list[str]:
     return ['gemini']
 
 
+DEFAULT_READERS = ('gemini, groq:openai/gpt-oss-120b, groq:qwen/qwen3.8-27b, '
+                   'nvidia:nvidia/nemotron-3-ultra-550b-a55b, nvidia:nvidia/nemotron-3-super-120b-a12b, '
+                   'nvidia:nvidia/nemotron-3.5-lightning-30b-a3b, nvidia:deepseek-ai/deepseek-v4.1-flash, '
+                   'nvidia:google/gemma-4-31b-it, nvidia:moonshotai/kimi-k3, nvidia:z-ai/glm-5.3')
+
+
+def matrix(text: str) -> list[dict]:
+    """One workflow job per reader (the run file's readers: line, else DEFAULT_READERS); only gemini sorts."""
+    line = text if any(ln.strip().lower().startswith('readers:') for ln in text.splitlines()) \
+        else 'readers: ' + DEFAULT_READERS
+    return [{'slug': re.sub(r'[^a-z0-9.]+', '-', r.lower()).strip('-'), 'reader': r,
+             'flags': '' if r == 'gemini' else '--no-sort'} for r in parse_readers(line)]
+
+
 def available_of(models: list[dict], wanted: tuple[str, ...]) -> list[str]:
     """The wanted model ids this key can call, in order of preference."""
     names = {m['name'].split('/', 1)[-1] for m in models
@@ -467,6 +481,7 @@ def main(argv=None):
                                    'else all)')
     ap.add_argument('--readers', help='readers, comma-separated, as on the run file\'s readers: line (overrides it)')
     ap.add_argument('--no-sort', action='store_true', help='skip the sorter (another job in the same run sorts)')
+    ap.add_argument('--matrix', action='store_true', help='print the workflow\'s job list as JSON, call nothing')
     ap.add_argument('--combine', help='folder of results files from parallel jobs: print one report, call nothing')
     args = ap.parse_args(argv)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
@@ -477,6 +492,10 @@ def main(argv=None):
             with open(summary, 'a', encoding='utf-8') as f:
                 f.write(text)
 
+    if args.matrix:
+        run_file = HERE / 'announcement_sample_run.txt'
+        print(json.dumps(matrix(run_file.read_text() if run_file.exists() else '')))
+        return
     if args.combine:
         files = sorted(Path(args.combine).rglob('*.json'))
         merged = [json.loads(f.read_text(encoding='utf-8')) for f in files]
