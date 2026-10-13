@@ -304,6 +304,7 @@ have no row.
 | `event_id`, `kind`, `stage`, `app_id`, `posted_on`, `xbrl_url`, `xbrl_status`, `xbrl_json`, `raw_json` | `archive/nse_events/issues/year=YYYY.parquet` | One row per further-issue filing (`{kind}:{stage}:{appId}`), NSE's list row as JSON, and the parsed XBRL facts (`{'main': ..., 'groups': ...}`) for preferential filings and QIP listings |
 | `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
 | `raw_v2/nse/shareholding_xbrl/` | R2 | Each shareholding XBRL fetched from 12 Oct 2026, gzip-compressed (`.gz`, no timestamp, so the same file is one blob); the fetch record's `params.sha256_as_sent` is the hash of the uncompressed bytes |
+| `event_id` (`nse:{seq_id}`), `seq_id`, `symbol`, `isin`, `company`, `industry`, `subject`, `text`, `pdf_url`, `pdf_size`, `pdf_bytes`, `has_xbrl`, `broadcast_at`, `disseminated_at`, `broadcast_date` | `archive/announcements/nse/year=YYYY/month=MM.parquet` | One row per NSE announcement from 13 Oct 2026 (`collectors/nse_events/announcements.py`), values as filed: `subject` is NSE's subject line, `text` its one-line description, `broadcast_at` NSE's broadcast time in IST. `pdf_bytes` is read from NSE's size text (`0` where NSE shows "0 Bytes"). Concall announcements are not archived (counted per run). No clean table yet |
 
 ## Insider trades: results dates and the trading window
 

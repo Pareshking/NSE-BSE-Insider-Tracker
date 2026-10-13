@@ -119,6 +119,18 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporates-daily-buyback?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j.get('data', []) if isinstance(j, dict) else j
 
+    # --- announcements (confirmed 13 Oct 2026) -------------------------------
+    # Every Reg 30 announcement NSE broadcast in the window, each with its
+    # PDF link. No cap seen: 01-30 Sep 2026 gave 17,127 rows in one call;
+    # 08-12 Oct gave 1,999, the sum of its days.
+
+    def announcements_url(self, start: date, end: date) -> str:
+        return f'{BASE}/api/corporate-announcements?index=equities&from_date={self._d(start)}&to_date={self._d(end)}'
+
+    def announcements(self, start: date, end: date) -> list[dict]:
+        j = self.get(self.announcements_url(start, end))
+        return j if isinstance(j, list) else j.get('data', [])
+
     # --- further issues (confirmed 12 Oct 2026) -----------------------------
     # Preferential, rights and QIP, each in two stages. With from_date/to_date
     # NSE returns every filing it posted in the window, not only the latest
