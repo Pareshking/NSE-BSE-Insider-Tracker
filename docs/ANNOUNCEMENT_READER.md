@@ -40,6 +40,15 @@ Code:
 - Below Rs 100 Cr: keep these companies on the site for the time being (still never sent to a model).
 - ADANIENT-type filings (reminder to pay call money on partly paid rights shares) count as `rights`.
 - The reader reads whichever exchange's copy of a filing comes first and skips the other.
+
+14 Oct, 01:00 IST (after the first live run):
+- **Four lanes in parallel, one per provider, each taking the next filing** (NVIDIA Kimi K3 with Gemma 4
+  as backup; Z.ai GLM-4.5-Flash; Groq Qwen 3.8 for filings under ~20,000 characters; Gemini 3.5 / 3.1
+  Flash-Lite), instead of two lanes reading every filing. Every reader is above the owner's 80% bar (in
+  the test: 97%, 86%, 95%, 88%), and no wrong number passed the checks for any of them; a weaker reader
+  shows fewer values, never unchecked ones. "2 readers agree" now comes from an idle lane reading again
+  a filing another provider read.
+- Each filing saved as read; a run every 15 minutes; the site keeps the reads table 3 minutes.
 - Times are given in IST.
 
 ## Model test results (24 filings, 91 values)
@@ -155,8 +164,9 @@ Every 15 minutes (on `main`, at :07, :22, :37 and :52; GitHub may start a run a 
 first page it already has; yesterday too, so a filing made public between the nightly collection at 22:45
 and midnight is read the same night); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
 skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
-copy instead of reading when the same file or text was read before; both lanes read each filing side by
-side; check every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
+copy instead of reading when the same file or text was read before (also when two lanes take one file at
+once: the second waits for the first's read); the lanes read different filings at the same time; check
+every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
 so it ends before the next starts; what it does not reach waits for the next run.
 
 - Saved as read: each filing's row goes to R2 as soon as it is read (at most one write every 15 seconds;
@@ -165,11 +175,24 @@ so it ends before the next starts; what it does not reach waits for the next run
   (`FRESH` in `streamlit_app/data/store.py`), so a filing shows on the Brief about 5 to 20 minutes after
   the exchange publishes it. The usage log is still written once, at the end of a run.
 
-- Lanes: `scripts/announcement_readers.txt`, one line each (`main`, `second`). Within a lane the next
-  model takes over on busy, refusal or timeout; a model timing out twice running is left out for the run.
-  Changing a reader is a one-line change to that file.
-- Shown: the main lane's values that pass the checks; the second lane's same value marks
-  "2 readers agree". When the main lane fails, the second lane's checked values are used.
+- Lanes: `scripts/announcement_readers.txt`, one line a lane, one provider a line (`nvidia`, `zai`,
+  `groq`, `gemini`). Each lane is a worker taking the next filing, newest first, so a slow provider holds
+  up only its own filing. Within a lane the next model takes over on busy, refusal or timeout; a model
+  timing out twice running is left out for the run. A filing a lane cannot read (every model busy, too
+  slow, the reply not JSON, too long for Groq) goes to a lane that has not tried it; it is `failed` only
+  when every lane still running has tried it. A lane without its key is left out. Changing a reader is a
+  one-line change to that file.
+- Daily limits: `DAILY_CALLS` in the reader (Groq Qwen 1,000, each Gemini Flash-Lite 500, NVIDIA ~10,000
+  "may vary"; Z.ai lists none). A lane stops a model at 95% of it, counting today's earlier runs from the
+  usage log and this run's calls; a lane with no model left stops and hands its work on.
+- Shown: the reading lane's values that pass the checks (`reader_lane` says which). When nothing is left
+  to read, an idle lane reads again a filing another provider read this run; the values both give alike
+  are marked "2 readers agree" (`second_reader`, `agreed`). A failed cross-check changes nothing.
+- The card on the Brief: one card per file. The same file filed again (on the other exchange or under
+  another subject) is folded into it as "Also filed: BSE 13 Oct, 21:12". Entity labels, not shown by
+  design, are not counted as held back; repeated reasons are counted ("number not in its quote ×2"); a
+  metric's empty period ("N/A") is not written. Different files on one deal (Aegis: press release and
+  board outcome) are still two cards: one card per company and deal is a next step.
 - Written: `archive/announcement_reads/year=YYYY/month=MM.parquet` (by event_id; statuses `read`,
   `same_file`, `same_text`, `same_filing_other_exchange`, `below_100_cr`, `no_text`, `failed` with tries,
   given up after 3), `clean/current/announcement_reads.parquet` (last 60 days), and
@@ -214,6 +237,33 @@ and deal is a later step).
 | 38448018056 (00:08) | dry run, yesterday collected too | green: the same 3 filings, every shown US$ value with USD |
 | 38447393120, 38448018013 | sample runs on pushes that did not touch the sample | skipped by the gate, no model called |
 | Twelve others | replaced by a newer push before starting (two duplicates cancelled by hand) | cancelled, no model called |
+
+## First live run (14 Oct, IST)
+
+Run 38452625630 (00:39-01:06, started by hand after PR #56 merged; two lanes reading every filing, saved
+at the end). Collecting took 3 minutes, reading 23; it ended 4 minutes before the job's 30-minute limit.
+
+| | |
+|---|---|
+| Filings found, yesterday and today, NSE and BSE | 1,685 |
+| Routine or no file (no model) | 1,226 |
+| Below Rs 100 Cr | 73 |
+| Same filing on the other exchange | 68 |
+| Chosen | 318 |
+| Read / same file copied | 17 / 7 |
+| Not reached, left for later runs | 294 |
+
+| Model | Calls | Answers | Median seconds |
+|---|---|---|---|
+| NVIDIA Kimi K3 | 18 | 17 OK, one 429 (NVIDIA's first) | 76.7 (29-33 in the tests) |
+| Z.ai GLM-4.5-Flash | 17 | 17 OK | 10.6 |
+
+- Every filing waited for Kimi K3 while Z.ai had answered in about 10 seconds: hence the parallel lanes.
+- BSE works from the runner: 9 of the 17 read came from BSE; a filing on both exchanges was read once.
+- On the Brief (owner, 01:15): 43 values on 11 filings; every number checked by hand against its quote
+  was right (Aurum 51,00,000 x Rs 231.42 = Rs 118.02 Cr; Oil India 50,000 x Rs 10 = Rs 5 lakh; Reliance
+  Power Rs 2,026.65 Cr; Aegis US$ 809M, 89.8%). Cards to fix: the same file shown 2-3 times (Hero
+  Motors, Anlon, Reliance Power, Aegis), "entity labels not shown yet" on every card, a "(N/A)" period.
 
 ## Open questions for the owner
 

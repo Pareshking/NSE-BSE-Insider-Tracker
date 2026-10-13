@@ -1,6 +1,11 @@
 # Lanes of the announcement reader (scripts/announcement_reader.py). Changing a model is a change to this file.
-# Each lane reads every chosen filing; within a lane the next model is used when one is busy, refused or too slow.
-# main: its values are shown when they pass the checks. second: cross-check, and the source when main fails.
-# Picked 13 Oct 2026 from the 24-filing test (docs/ANNOUNCEMENT_READER.md). Z.ai: free models only.
-main: nvidia:moonshotai/kimi-k3, nvidia:google/gemma-4-31b-it
-second: zai:glm-4.5-flash
+# One line a lane: "name: provider:model, ..." (a different provider on each line). Every lane takes the next
+# filing, so the providers read different filings at once; within a lane the next model is used when one is
+# busy, refused, too slow or at its daily limit; a filing a lane cannot read goes to another lane. When nothing
+# is left to read, an idle lane reads again a filing another provider read ("2 readers agree").
+# Picked 13-14 Oct 2026 from the 24-filing test and the first live run (docs/ANNOUNCEMENT_READER.md).
+# Z.ai: free models only. Groq: filings under ~20,000 characters only (8K tokens a minute).
+nvidia: nvidia:moonshotai/kimi-k3, nvidia:google/gemma-4-31b-it
+zai: zai:glm-4.5-flash
+groq: groq:qwen/qwen3.8-27b
+gemini: gemini:gemini-3.5-flash-lite, gemini:gemini-3.1-flash-lite

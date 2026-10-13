@@ -66,6 +66,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAX: ${{ github.event_name == 'pull_request' && '3' || inputs.max || '' }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
         run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}

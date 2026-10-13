@@ -34,7 +34,7 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -60,6 +60,12 @@ SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
 SLOW_STRIKES = 2              # timeouts in a row before a model is left out for the run
+# Free calls a day (as listed 13 Oct), by provider:model or provider; a lane stops a model at 95% of it,
+# counting today's earlier runs (usage log) and this one. NVIDIA's ~10K a day "may vary"; Z.ai lists none.
+DAILY_CALLS = {'groq:qwen/qwen3.8-27b': 1000, 'gemini:gemini-3.5-flash-lite': 500,
+               'gemini:gemini-3.1-flash-lite': 500, 'nvidia': 10_000}
+DAILY_SHARE = 0.95
+PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemini: its own client
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
            'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
@@ -75,25 +81,41 @@ def log(*parts):
 # --- lanes ---------------------------------------------------------------------------
 
 def lanes_of(text: str) -> dict[str, list[str]]:
-    """{'main': ['nvidia:moonshotai/kimi-k3', ...], 'second': [...]} from the lanes file."""
+    """{'nvidia': ['nvidia:moonshotai/kimi-k3', ...], 'zai': [...], ...} from the lanes file, in its order."""
     out = {}
     for ln in text.splitlines():
         ln = ln.split('#', 1)[0].strip()
-        if ':' in ln and ln.split(':', 1)[0].strip() in ('main', 'second'):
-            name, rest = ln.split(':', 1)
-            out[name.strip()] = [x.strip() for x in rest.split(',') if x.strip()]
+        m = re.match(r'([a-z][a-z0-9_-]*)\s*:\s*(\S.*)$', ln)
+        if m and ':' in m.group(2):
+            out[m.group(1)] = [x.strip() for x in m.group(2).split(',') if x.strip()]
     return out
 
 
 class Lane:
     """One lane's models, each provider's in turn; slow models are left out after SLOW_STRIKES timeouts."""
 
-    def __init__(self, name: str, entries: list[str], clients: dict):
+    def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None):
         self.name, self.entries, self.clients = name, list(entries), clients
         self.strikes, self.dropped = {}, []
+        self.used_today = used_today or {}   # calls by provider:model in today's earlier runs
+
+    def calls_today(self, key: str) -> int:
+        """Calls today under a DAILY_CALLS key (provider:model or provider), earlier runs and this one."""
+        prov = key.split(':', 1)[0]
+        earlier = sum(n for k, n in self.used_today.items() if k == key or k.startswith(f'{key}:'))
+        c = self.clients.get(prov)
+        now = sum(1 for m, *_ in getattr(c, 'attempts', []) if key in (prov, f'{prov}:{m}'))
+        return earlier + now
+
+    def at_daily_limit(self, entry: str) -> bool:
+        keys = [k for k in (entry, entry.split(':', 1)[0]) if k in DAILY_CALLS]
+        return any(self.calls_today(k) >= DAILY_SHARE * DAILY_CALLS[k] for k in keys)
 
     def models(self) -> list[tuple[str, str]]:
-        return [tuple(e.split(':', 1)) for e in self.entries if e not in self.dropped]
+        return [tuple(e.split(':', 1)) for e in self.entries if e not in self.dropped and not self.at_daily_limit(e)]
+
+    def providers(self) -> set[str]:
+        return {e.split(':', 1)[0] for e in self.entries}
 
     def read(self, prompt: str) -> tuple[str, str, float]:
         """(reply text, entry that answered, seconds). RuntimeError when every model failed."""
@@ -102,7 +124,7 @@ class Lane:
             client = self.clients.get(prov)
             if client is None:
                 continue
-            limit = s.MODEL_LIMITS.get(model.removesuffix('+thinking'), (None,))[0] or s.PROVIDERS[prov][2]
+            limit = s.MODEL_LIMITS.get(model.removesuffix('+thinking'), (None,))[0] or PROVIDERS[prov][2]
             if limit and len(prompt) > limit:
                 errors.append(f'{prov}:{model}: {len(prompt):,} characters, over its limit')
                 continue
@@ -118,27 +140,46 @@ class Lane:
                     if self.strikes[entry] >= SLOW_STRIKES and entry not in self.dropped:
                         self.dropped.append(entry)
                         log(f'{self.name}: {entry} timed out {SLOW_STRIKES} times running; left out this run')
-        raise RuntimeError('; '.join(errors) or f'{self.name}: no model available')
+        raise RuntimeError('; '.join(errors) or f'{self.name}: no model available (slow, or at its daily limit)')
 
 
 def clients_for(entries, env=os.environ) -> tuple[dict, list[str]]:
     """A client per provider named in the lanes (keys from the environment); notes for what is missing."""
     clients, notes = {}, []
     for prov in dict.fromkeys(e.split(':', 1)[0] for e in entries):
-        if prov not in s.PROVIDERS:
+        if prov not in PROVIDERS:
             notes.append(f'{prov}: unknown provider')
             continue
-        base, secret, _ = s.PROVIDERS[prov]
+        base, secret, _ = PROVIDERS[prov]
         key = env.get(secret, '').strip()
         if not key:
             notes.append(f'{secret} is not set; {prov} lanes skipped')
             continue
-        clients[prov] = s.OpenAICompat(prov, base, key)
+        clients[prov] = s.OpenAICompat(prov, base, key) if prov != 'gemini' else GeminiCalls(key)
     for e in entries:
         prov, model = e.split(':', 1)
         if prov in s.FREE_ONLY and model.removesuffix('+thinking') not in s.FREE_ONLY[prov]:
             notes.append(f'{e}: not one of {prov}\'s free models; never used')
     return clients, notes
+
+
+class GeminiCalls(s.Gemini):
+    """Gemini's client with the call log the usage report and daily limits read (as OpenAICompat keeps)."""
+
+    def __init__(self, key: str, **kw):
+        super().__init__(key, **kw)
+        self.attempts = []
+
+    def generate(self, models, prompt, kind, json_mode):
+        t0 = time.monotonic()
+        try:
+            text, u, used = super().generate(models, prompt, kind, json_mode)
+        except RuntimeError as exc:
+            self.attempts.append((models[0], 'busy or refused' if 'busy' in str(exc) else 'error',
+                                  round(time.monotonic() - t0, 1)))
+            raise
+        self.attempts.append((used, 200, round(time.monotonic() - t0, 1)))
+        return text, u, used
 
 
 def usable(entries: list[str]) -> list[str]:
@@ -352,40 +393,20 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date) -> tuple
 
 # --- reading ---------------------------------------------------------------------------
 
-def read_filing(row: dict, doc: str, lanes: dict[str, Lane], pool: ThreadPoolExecutor | None = None) -> dict:
-    """Both lanes on one filing, side by side; the main lane's checked values are the ones shown."""
+def read_one(lane: Lane, row: dict, doc: str) -> dict:
+    """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
+    checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
     prompt = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
                             'subject': row.get('subject')}, doc)
-
-    def one(lane):
-        try:
-            text, used, secs = lane.read(prompt)
-            return {'ok': True, 'reader': used, 'seconds': secs, 'out': s.parse_json(text)}
-        except RuntimeError as exc:
-            return {'ok': False, 'error': str(exc)[:300]}
-
-    names = [n for n in ('main', 'second') if n in lanes]
-    if pool is not None:
-        res = dict(zip(names, pool.map(one, [lanes[n] for n in names])))
-    else:
-        res = {n: one(lanes[n]) for n in names}
-    main, second = res.get('main') or {'ok': False}, res.get('second') or {'ok': False}
-    rec = {'status': 'read', 'reader': None, 'reader_lane': None, 'category': None, 'fields': [], 'metrics': [],
-           'second_reader': None, 'second_category': None, 'second_fields': [], 'reason': None}
-    used = main if main['ok'] and main['out'] is not None else second if second['ok'] and second['out'] is not None \
-        else None
-    if used is None:
-        rec.update(status='failed', reason='; '.join(x.get('error') or 'reply was not JSON' for x in (main, second)
-                                                     if x)[:500])
-        return rec
-    cat, fields, metrics = validate(used['out'], doc)
-    rec.update(reader=used['reader'], reader_lane='main' if used is main else 'second', category=cat,
-               fields=fields, metrics=metrics, seconds=used['seconds'])
-    if used is main and second['ok'] and second['out'] is not None:
-        cat2, fields2, _ = validate(second['out'], doc)
-        rec.update(second_reader=second['reader'], second_category=cat2, second_fields=fields2)
-        rec['agreed'] = agreement(fields, fields2)
-    return rec
+    try:
+        text, used, secs = lane.read(prompt)
+    except RuntimeError as exc:
+        return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
+    out = s.parse_json(text)
+    if out is None:
+        return {'ok': False, 'error': f'{lane.name}: {used}: reply was not JSON'}
+    cat, fields, metrics = validate(out, doc)
+    return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics}
 
 
 def _sha(b) -> str:
@@ -404,55 +425,192 @@ def finish(rec: dict) -> dict:
 
 
 def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | None, budget_seconds: float,
-        fetch=s.download, max_filings: int | None = None, now=time.monotonic,
-        on_row=None) -> tuple[list[dict], dict]:
-    """Read the chosen filings in order until the time budget is used; (rows, notes). `on_row` gets each
-    filing's row as soon as it is done (the live run saves it then, not at the end)."""
-    started, rows, notes = now(), [], {'not_reached': 0}
+        fetch=s.download, max_filings: int | None = None, now=time.monotonic, on_row=None,
+        idle_wait: float = 1.0) -> tuple[list[dict], dict]:
+    """Read the chosen filings, newest first, until the time budget is used; (rows, notes).
 
-    def add_row(rec: dict) -> None:
-        rows.append(rec)
-        if on_row is not None:
-            on_row(rec)
-    by_file, by_text = {}, {}
+    Each lane is a worker taking the next filing, so the providers read different filings at once and a slow
+    one holds up only its own. A filing a lane cannot read (busy, refused, too slow, too long for it) goes to a
+    lane that has not tried it; it fails only when every lane has. When nothing is left to read, an idle lane
+    reads again a filing another provider read this run: values both give alike are marked "2 readers agree".
+    `on_row` gets each filing's row as soon as it is done, and again when a cross-check adds to it."""
+    started, notes = now(), {'not_reached': 0, 'cross_checked': 0}
+    lock = threading.Lock()
+    rows, index = [], {}                    # rows in the order done; event_id -> position
+    fresh = list(to_read.to_dict('records')) if to_read is not None else []
+    taken = 0                               # fresh filings handed out
+    retry = []                              # jobs a lane could not read: {'row', 'base', 'doc', 'tried', 'errors'}
+    busy = set()                            # lanes reading now
+    by_file, by_text, waiting, docs = {}, {}, {}, {}   # waiting: hash -> twins held until its read is done
     if earlier is not None and not earlier.empty:
         for r in earlier[earlier['status'] == 'read'].to_dict('records'):
             by_file.setdefault(r.get('file_sha256'), r)
             by_text.setdefault(r.get('text_sha256'), r)
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        for i, row in enumerate(to_read.to_dict('records') if to_read is not None else []):
-            if (max_filings is not None and i >= max_filings) or now() - started > budget_seconds:
-                notes['not_reached'] += 1
+    checked = set()                         # event_ids cross-checked, or being cross-checked
+    alive = set(lanes)                      # lanes still taking work
+
+    def add_row(rec: dict) -> None:
+        with lock:
+            if rec['event_id'] in index:
+                rows[index[rec['event_id']]] = rec
+            else:
+                index[rec['event_id']] = len(rows)
+                rows.append(rec)
+        if on_row is not None:
+            on_row(rec)
+
+    def copy_of(twin: dict, base: dict) -> dict:
+        status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
+        copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics',
+                                           'second_reader', 'second_category', 'second_fields', 'agreed')}
+        return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
+                    'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
+
+    def take(lane: Lane):
+        """('read', job) / ('fail', job) / ('check', rec) / ('wait', None) / ('stop', None), under the lock."""
+        nonlocal taken
+        if now() - started > budget_seconds or not lane.models():   # time up, or every model slow or at its limit
+            alive.discard(lane.name)
+            return 'stop', None
+        for job in retry:
+            if lane.name not in job['tried']:
+                retry.remove(job)
+                return 'read', job
+        for job in retry:
+            if not alive - job['tried']:    # the lanes that had not tried it have stopped
+                retry.remove(job)
+                return 'fail', job
+        if fresh and (max_filings is None or taken < max_filings):
+            taken += 1
+            return 'read', {'row': fresh.pop(0), 'tried': set(), 'errors': []}
+        for rec in rows:
+            if (rec['status'] == 'read' and rec['event_id'] in docs and rec['event_id'] not in checked
+                    and not rec.get('second_reader') and str(rec.get('reader')).split(':', 1)[0] not in lane.providers()):
+                checked.add(rec['event_id'])
+                return 'check', rec
+        if retry or (busy - {lane.name}):
+            return 'wait', None             # another lane may yet hand back a filing this one can take
+        alive.discard(lane.name)
+        return 'stop', None
+
+    def prepare(job: dict):
+        """Download and text of a fresh filing; a row when it needs no reading (failed, copied, no text)."""
+        row = job['row']
+        base = {**row, 'tries': int(row.get('tries') or 0) + 1, 'prompt_version': PROMPT_VERSION,
+                'read_at': datetime.now(timezone.utc).isoformat()}
+        log('---', row['exchange'], row.get('symbol'), row.get('subject'))
+        try:
+            data = fetch(row['file_url'])
+            doc, doc_notes = s.text_of(data)
+        except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
+            return finish({**base, 'status': 'failed', 'reason': f'download: {type(exc).__name__}: {exc}'[:300]})
+        base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()), text_chars=len(doc))
+        if not doc.strip():
+            return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
+        with lock:
+            twin = by_file.get(base['file_sha256']) or by_text.get(base['text_sha256'])
+            if twin is None:
+                for h in (base['file_sha256'], base['text_sha256']):
+                    if h in waiting:        # the same file is being read right now: wait for that read
+                        waiting[h].append(base)
+                        return 'held'
+                waiting[base['file_sha256']] = []
+                waiting.setdefault(base['text_sha256'], [])
+        if twin is not None:
+            return copy_of(twin, base)
+        job.update(base=base, doc=doc)
+        return None
+
+    def done_reading(job: dict, rec: dict | None) -> list:
+        """Registers a finished read; the twins that waited for it, now to be copied (or failed with it)."""
+        base = job['base']
+        with lock:
+            if rec is not None and rec['status'] == 'read':
+                by_file.setdefault(base['file_sha256'], rec)
+                by_text.setdefault(base['text_sha256'], rec)
+            return waiting.pop(base['file_sha256'], []) + waiting.pop(base['text_sha256'], [])
+
+    def worker(lane: Lane):
+        while True:
+            with lock:
+                what, item = take(lane)
+                if what in ('read', 'check'):
+                    busy.add(lane.name)
+            if what == 'stop':
+                return
+            if what == 'wait':
+                time.sleep(idle_wait)
                 continue
-            base = {**row, 'tries': int(row.get('tries') or 0) + 1, 'prompt_version': PROMPT_VERSION,
-                    'read_at': datetime.now(timezone.utc).isoformat()}
-            log('---', row['exchange'], row.get('symbol'), row.get('subject'))
             try:
-                data = fetch(row['file_url'])
-                doc, doc_notes = s.text_of(data)
-            except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
-                add_row(finish({**base, 'status': 'failed', 'reason': f'download: {type(exc).__name__}: {exc}'[:300]}))
-                continue
-            base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
-                        text_chars=len(doc))
-            twin = by_file.get(base['file_sha256'])
-            twin = twin or (by_text.get(base['text_sha256']) if doc.strip() else None)
-            if twin is not None:
-                status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
-                copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics',
-                                                   'second_reader', 'second_category', 'second_fields', 'agreed')}
-                add_row({c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
-                             'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS})
-                continue
-            if not doc.strip():
-                add_row(finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)}))
-                continue
-            rec = finish({**base, **read_filing(row, doc, lanes, pool)})
-            add_row(rec)
-            if rec['status'] == 'read':
-                by_file.setdefault(rec['file_sha256'], rec)
-                by_text.setdefault(rec['text_sha256'], rec)
-            log(row.get('symbol'), rec['status'], rec.get('reader'), f"shown {rec.get('shown')}, held {rec.get('held')}")
+                if what == 'check':
+                    cross_check(lane, item)
+                elif what == 'fail':
+                    fail_job(item)
+                else:
+                    read_job(lane, item)
+            except Exception as exc:  # noqa: BLE001 -- a bug on one filing never stops the lane
+                log(f'{lane.name}: {type(exc).__name__}: {exc}')
+                if what == 'read':
+                    add_row(finish({**item.get('base', {**item['row'], 'tries': int(item['row'].get('tries') or 0) + 1}),
+                                    'status': 'failed', 'reason': f'reader error: {type(exc).__name__}: {exc}'[:300]}))
+            finally:
+                with lock:
+                    busy.discard(lane.name)
+
+    def fail_job(job: dict):
+        rec = finish({**job['base'], 'status': 'failed', 'reason': '; '.join(job['errors'])[:500]})
+        for twin in done_reading(job, None):
+            add_row(finish({**twin, 'status': 'failed', 'reason': f"its twin {job['row']['event_id']} failed"}))
+        add_row(rec)
+
+    def read_job(lane: Lane, job: dict):
+        if 'base' not in job:
+            out = prepare(job)
+            if out == 'held':
+                return
+            if out is not None:
+                add_row(out)
+                return
+        res = read_one(lane, job['row'], job['doc'])
+        if not res['ok']:
+            job['tried'].add(lane.name)
+            job['errors'].append(res['error'])
+            with lock:
+                if alive - job['tried']:
+                    retry.insert(0, job)
+                    return
+            fail_job(job)
+            return
+        rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
+                      'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
+                      'seconds': res['seconds']})
+        with lock:
+            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'])
+        add_row(rec)
+        for twin in done_reading(job, rec):
+            add_row(copy_of(rec, twin))
+        log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
+
+    def cross_check(lane: Lane, rec: dict):
+        row, doc, fields = docs[rec['event_id']]
+        res = read_one(lane, row, doc)
+        if not res['ok']:
+            return                          # a missing cross-check is not an error; the values stand as read
+        agreed = agreement(fields, res['fields'])
+        with lock:
+            notes['cross_checked'] += 1
+        add_row({**rec, 'second_reader': res['reader'], 'second_category': res['category'],
+                 'second_fields': json.dumps(res['fields'], ensure_ascii=False, default=str),
+                 'agreed': json.dumps(agreed, ensure_ascii=False, default=str)})
+        log(row.get('symbol'), 'cross-checked by', res['reader'], f"{sum(v is True for v in agreed.values())} agree")
+
+    threads = [threading.Thread(target=worker, args=(lane,), name=f'lane-{n}', daemon=True)
+               for n, lane in lanes.items()]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    notes['not_reached'] = len(fresh) + len(retry) + sum(len(v) for v in waiting.values())
     return rows, notes
 
 
@@ -511,13 +669,19 @@ class Saver:
         self.writer = writer or write
         self.pending: list[dict] = []
         self.added, self.writes, self.last = 0, 0, None
+        self.lock = threading.RLock()        # the lanes add from their own threads
 
     def add(self, rec: dict) -> None:
-        self.pending.append(rec)
-        if self.last is None or self.now() - self.last >= self.every:
-            self.flush()
+        with self.lock:
+            self.pending.append(rec)
+            if self.last is None or self.now() - self.last >= self.every:
+                self.flush()
 
     def flush(self, final: bool = False) -> None:
+        with self.lock:
+            self._flush(final)
+
+    def _flush(self, final: bool) -> None:
         if not self.pending:
             return
         try:
@@ -550,6 +714,17 @@ def usage(clients: dict, lanes: dict[str, Lane]) -> dict:
     return {'models': out, 'left_out_as_slow': {n: lane.dropped for n, lane in lanes.items() if lane.dropped}}
 
 
+def used_today(r2, run_date: str) -> dict:
+    """Calls by provider:model in today's earlier runs, from the usage log (the daily limits count them)."""
+    from clean_writer import get
+    body = get(r2, f'clean/reports/announcement_reader/{run_date}.json')
+    out = {}
+    for run_ in (json.loads(body).get('runs', []) if body else []):
+        for m, e in ((run_.get('usage') or {}).get('models') or {}).items():
+            out[m] = out.get(m, 0) + int(e.get('calls') or 0)
+    return out
+
+
 def append_usage(r2, run_date: str, entry: dict):
     from clean_writer import get, put
     key = f'clean/reports/announcement_reader/{run_date}.json'
@@ -566,16 +741,18 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
              f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; below Rs 100 Cr "
              f"{counts.get('below_100_cr', 0)}; same filing on the other exchange "
              f"{counts.get('same_filing_other_exchange', 0)}; chosen {counts.get('to_read', 0)}, "
-             f"not reached this run {notes.get('not_reached', 0)}.", '',
+             f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
+             f"{notes.get('cross_checked', 0)}.", '',
              '| Outcome | Filings |', '|---|---|'] + [f'| {k} | {v} |' for k, v in st.items()]
     lines += ['', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
     lines += [f"| {m} | {e['calls']} | {', '.join(f'{k}: {v}' for k, v in e['by_status'].items())} | "
               f"{e['median_seconds_ok']} |" for m, e in use.get('models', {}).items()]
     read = [r for r in rows if r['status'] == 'read']
     if read:
-        lines += ['', '| Filing | Category | Reader | Shown | Held back |', '|---|---|---|---|---|']
-        lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('shown')} | "
-                  f"{r.get('held')} |" for r in read]
+        lines += ['', '| Filing | Category | Reader | Seconds | Shown | Held back | Cross-check |',
+                  '|---|---|---|---|---|---|---|']
+        lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('seconds')} | "
+                  f"{r.get('shown')} | {r.get('held')} | {r.get('second_reader') or ''} |" for r in read]
     lines += [f'- note: {n}' for n in setup]
     return '\n'.join(lines) + '\n'
 
@@ -634,8 +811,10 @@ def main(argv=None):
     entries = [e for es in lane_spec.values() for e in es]
     clients, notes = clients_for(entries)
     setup += notes
-    lanes = {n: Lane(n, usable(es), clients) for n, es in lane_spec.items()}
-    if not any(lane.models() and any(p in clients for p, _ in lane.models()) for lane in lanes.values()):
+    lanes = {n: Lane(n, [e for e in usable(es) if e.split(':', 1)[0] in clients], clients)
+             for n, es in lane_spec.items()}
+    lanes = {n: lane for n, lane in lanes.items() if lane.entries}
+    if not lanes:
         print('No lane has a usable model and key; nothing read.\n' + '\n'.join(setup))
         return 0
     r2 = None
@@ -653,6 +832,10 @@ def main(argv=None):
             master = security_master(r2, today.isoformat(), setup)
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
+    if r2 is not None:
+        used = used_today(r2, today.isoformat())
+        for lane in lanes.values():
+            lane.used_today = used
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
     to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
