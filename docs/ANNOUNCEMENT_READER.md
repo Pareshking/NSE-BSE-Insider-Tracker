@@ -1,4 +1,4 @@
-# Announcement reader: state and plan (13 Oct 2026, evening)
+# Announcement reader: state and plan (14 Oct 2026, 00:15 IST)
 
 Where the announcement reader stands, so any session can pick it up. TODO item 29 points here. All on
 PR #56, branch `ccr-5fbf9503-x2spo0`, not merged (owner merges). Times are IST.
@@ -50,6 +50,11 @@ quotes, so local rescoring is only a cross-check.
 
 | Reader | Right | Held back | Errors | Seconds a filing | Run |
 |---|---|---|---|---|---|
+| **Rerun of the chosen readers, 23:52-00:10 IST** (ADANIENT now `rights`) | | | | | 38446158568 |
+| NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 2 | 0 | 33 | 38446158568 |
+| NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 4 | 0 | 29 | 38446158568 |
+| Z.ai `glm-4.5-flash` (free) | 78 of 91 | 11 | 0 | 13 | 38446158568 |
+| **First runs, 13 Oct** | | | | | |
 | NVIDIA `moonshotai/kimi-k3` | **88 of 91** | 4 | 0 | 29 | 38423386748 |
 | NVIDIA `nvidia/nemotron-3-ultra-550b-a55b` | 87 of 91 | 4 | 0 | 106 | 38432331574 |
 | NVIDIA `google/gemma-4-31b-it` | 85 of 91 | 6 | 0 | 40 | 38423386748 |
@@ -60,7 +65,7 @@ quotes, so local rescoring is only a cross-check.
 | Groq `openai/gpt-oss-120b` | 62 of 73 | 6 | 5 too big | 61 (paced) | 38423386748 |
 | NVIDIA `nvidia/nemotron-3.5-lightning-30b-a3b` | 24 of 58 | 5 | 7 (time used up) | 205 | 38423386748 |
 | NVIDIA `deepseek-ai/deepseek-v4.1-flash` | 0 of 45 | 0 | 10 | 208 (replies empty) | 38423386748 |
-| NVIDIA `z-ai/glm-5.3` | running | | | | 38432331574 |
+| NVIDIA `z-ai/glm-5.3` | 15 of 15 on the 4 filings it reached | 0 | 20 not reached | 474 (out: too slow) | 38432331574 |
 | NVIDIA `z-ai/glm-5.3-flash`, `deepseek-ai/deepseek-v4.1-flash` (reasoning field read) | running | | | | 38440817065 |
 | Z.ai `glm-4.7-flash`, thinking off and on (free) | running | | | | 38440817065 |
 
@@ -83,7 +88,9 @@ NVIDIA 429s: none in any run, with up to five NVIDIA jobs at once. DeepSeek v4.1
 in `reasoning_content` with `content` empty (GitHub issues on DeepSeek; NVIDIA's card samples read that
 field); the harness now reads it. Speed in one run depends on the hour and the provider's load: one run's
 seconds only rule out the clearly slow (DeepSeek, Lightning, GLM 5.3 on 13 Oct, 10-15 minutes a filing
-with timeouts). The reader logs every call so speed is judged over many runs.
+with timeouts). The reader logs every call so speed is judged over many runs. The rerun at another hour
+gave the same scores (Kimi K3 88, Gemma 4 85, GLM-4.5-Flash 77 then 78) with different speeds (Gemma 4: 40
+then 29 seconds); no 429 from any provider in any run. No wrong value passed the checks in the rerun.
 
 ### Wrong values that passed the checks
 
@@ -181,10 +188,13 @@ and deal is a later step).
 | 38408604144 (19:22) | first 24-filing run | failed before any model call: Ubuntu's mirror answered 404 for poppler-utils; the workflow now refreshes the package list first |
 | 38418368623, 38419069858, 38420120800, 38421224640 (20:30-20:50) | Gemini runs on parts of the sample | finished |
 | 38423386748 (21:05-22:34) | nine readers on 24 filings | finished; rescored above |
-| 38432331574 (22:34-00:14) | NVIDIA GLM 5.3, Nemotron 3 Ultra, four withdrawn NVIDIA models, Z.ai | Nemotron 3 Ultra 87 of 91; the four withdrawn models 404; Z.ai skipped (ids not on its list); GLM 5.3 running |
+| 38432331574 (22:34-00:07) | NVIDIA GLM 5.3, Nemotron 3 Ultra, four withdrawn NVIDIA models, Z.ai | finished: Nemotron 3 Ultra 87 of 91; GLM 5.3 4 filings in 85 minutes; the four withdrawn models 404; Z.ai skipped (ids not on its list) |
 | 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; the rest running |
-| 38446158568 (23:52-) | the chosen readers again, another hour (Kimi K3, Gemma 4, GLM-4.5-Flash) | running |
-| 38446158692 (23:52) | live reader, dry run on 3 real filings | green |
+| 38446158568 (23:52-00:10) | the chosen readers again, another hour (Kimi K3, Gemma 4, GLM-4.5-Flash) | finished: 88, 85, 78 of 91 |
+| 38446158692 (23:52) | live reader, dry run on 3 real filings | green; found the currency problem |
+| 38447392891 (00:02) | dry run with the currency fix | green, but read nothing (the new day had no filings; fetched only today) |
+| 38448018056 (00:08) | dry run, yesterday collected too | green: the same 3 filings, every shown US$ value with USD |
+| 38447393120, 38448018013 | sample runs on pushes that did not touch the sample | skipped by the gate, no model called |
 | Twelve others | replaced by a newer push before starting (two duplicates cancelled by hand) | cancelled, no model called |
 
 ## Open questions for the owner
@@ -220,11 +230,12 @@ steps. Subscribe to PR #56 and keep CI green."
 
 ## Next steps, in order
 
-1. Add the results of the runs still going (GLM 5.3, GLM 5.3 Flash, DeepSeek with its reasoning field,
-   GLM-4.7-Flash thinking off and on) and of the rerun of the chosen readers (another hour, run-to-run
-   variance) to the table above; change `scripts/announcement_readers.txt` if they say so.
-2. The reader's PR dry run on real filings: green on 13 Oct (above); green again with the currency fix;
-   then the owner merges PR #56.
+1. Add the results of run 38440817065 (finishing by 00:53 IST on 14 Oct: NVIDIA GLM 5.3 Flash, DeepSeek
+   v4.1 Flash with its reasoning field read, Z.ai GLM-4.7-Flash thinking off and on) to the table above
+   (its `compare` job's log); change `scripts/announcement_readers.txt` only if one beats a chosen reader
+   at a usable speed (about a minute a filing at most).
+2. Done: the reader's PR dry run on real filings is green with the currency fix (run 38448018056). The
+   owner merges PR #56.
 3. After the merge: the first live runs; check the usage log (calls, 429s, seconds), the Brief card, and
    the BSE step from the runner (plain requests or in-page fetch).
 4. Brief cards: "before this" from our own data (dilution, promoter holding and pledge, issue price vs
