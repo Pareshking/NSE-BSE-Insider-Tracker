@@ -145,3 +145,27 @@ def test_zai_thinking_is_switched_by_the_readers_line():
     c.generate(['glm-4.7-flash'], 'p', 'read', True)
     assert [(b['model'], b['thinking']['type']) for b in sent] == [
         ('glm-4.7-flash', 'enabled'), ('glm-4.7-flash', 'disabled')]
+
+
+SML = """                                  Production                              Sales                                 Export
+ Particulars
+                        FY 2026             FY 2027          FY 2026           FY 2027                 FY 2026         FY 2027
+Commercial
+                                1049            1257              812               1071                  138              53
+Vehicles
+
+You are requested to take the same on your records."""
+
+
+def test_a_table_row_joined_to_its_headings_counts_as_table_not_exact():
+    assert a.quote_found('Sales Commercial Vehicles FY 2027 1071', SML) == 'table'
+    assert a.quote_found('Commercial Vehicles Sales FY 2027 1999', SML) is False   # number not in the table
+    assert a.quote_found('Domestic Sales FY 2027 1071', SML) is False             # a word the block lacks
+    assert a.quote_found('You are requested to take the same', SML) == 'exact'
+
+
+def test_numbers_written_with_currency_or_unit_are_read_once_never_guessed():
+    assert [a._num(v) for v in ('₹162/-', 'Rs. 29/-', 'INR 231.55/-', '1,81,10,473 Equity Shares', '-2.5%')] == [
+        162, 29, 231.55, 18110473, -2.5]
+    assert a._num('from ₹350 Cr to ₹600 crore') is None and a._num('nil') is None and a._num(True) is None
+    assert a.digits_in_quote('₹162/-', 'at a price of ₹162/- per share')

@@ -91,4 +91,4 @@ jobs:
           pattern: announcement-sample-*
           path: results
       - name: One table for all readers
-        run: python -u scripts/announcement_sample.py --combine results
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils && python -u scripts/announcement_sample.py --combine results --rescore

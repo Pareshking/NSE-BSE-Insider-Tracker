@@ -344,27 +344,53 @@ def _norm(s: str) -> str:
     return re.sub(r'\s+', '', s)
 
 
-def quote_found(quote, doc: str) -> bool:
-    """The quote is in the document, ignoring case and all whitespace (pdftotext breaks lines and columns)."""
+NUMBER = r'\d[\d,]*(?:\.\d+)?'
+
+
+def quote_found(quote, doc: str) -> str | bool:
+    """'exact': the quote is in the document, ignoring case and all whitespace (pdftotext breaks lines and
+    columns). 'table': not word for word, but a number in it stands on a line of the document and every other
+    word of the quote is within that line's table block (6 lines above, 2 below), as when a model joins a row
+    to its column headings. False otherwise."""
     q = _norm(quote or '')
-    return len(q) >= 8 and q in _norm(doc)
+    if len(q) < 8:
+        return False
+    if q in _norm(doc):
+        return 'exact'
+    words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]
+    numbers = {w.replace(',', '') for w in words if w[0].isdigit()}
+    if not numbers or len(words) < 2:
+        return False
+    lines = doc.lower().splitlines()
+    for i, ln in enumerate(lines):
+        if numbers & {n.replace(',', '') for n in re.findall(NUMBER, ln)}:
+            block = _norm(' '.join(lines[max(0, i - 6):i + 3]))
+            if all(_norm(w) in block for w in words):
+                return 'table'
+    return False
 
 
 def digits_in_quote(value, quote) -> bool:
     """A price or count is backed by its quote: its digits (Indian or Western commas, '.00' allowed) appear."""
-    try:
-        v = float(str(value).replace(',', ''))
-    except ValueError:
+    v = _num(value)
+    if v is None:
         return False
     numbers = [float(n.replace(',', '')) for n in re.findall(r'\d[\d,]*(?:\.\d+)?', str(quote or ''))]
     return any(abs(n - v) < 1e-6 * max(1, abs(v)) for n in numbers)
 
 
 def _num(v):
-    try:
-        return float(str(v).replace(',', '').replace('%', '').strip())
-    except (TypeError, ValueError):
+    """A number, also when written with its currency or unit ('₹162/-', 'Rs. 29/-', '1,81,10,473 Equity
+    Shares'); None when there is no number or more than one (our code never picks between two)."""
+    if isinstance(v, bool) or v is None:
         return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    found = re.findall(NUMBER, str(v))
+    if len(found) != 1:
+        return None
+    n = float(found[0].replace(',', ''))
+    return -n if re.match(r'\s*[-−]\s*\d', str(v)) else n
 
 
 def in_units(value, unit) -> float | None:
@@ -487,6 +513,24 @@ def report_markdown(results: list[dict], models: dict) -> str:
     return '\n'.join(out) + '\n'
 
 
+def rescore(results: list[dict], rows: list[dict]) -> None:
+    """The saved replies scored again with the current checks: a fix to the checks needs no new model calls.
+    A reply that no longer parses (saved cut at 4,000 characters) keeps its old score, marked as such."""
+    by_symbol, docs = {r['symbol']: r for r in rows}, {}
+    for res in results:
+        row = by_symbol.get(res['symbol'])
+        if row is None or 'read_raw' not in res:
+            continue
+        out = parse_json(res['read_raw'])
+        if out is None:
+            res.setdefault('notes', []).append('not rescored: saved reply cut short')
+            continue
+        if row['symbol'] not in docs:
+            docs[row['symbol']] = document(row['file_url'])[0]
+        sort = {k: res.get(k) for k in ('sort_category', 'sort_read_pdf', 'sort_category_right')}
+        res.update(check(row, None, out, docs[row['symbol']]), **sort)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--only', help='symbols from the sample, comma-separated (default: announcement_sample_run.txt, '
@@ -494,6 +538,8 @@ def main(argv=None):
     ap.add_argument('--readers', help='readers, comma-separated, as on the run file\'s readers: line (overrides it)')
     ap.add_argument('--no-sort', action='store_true', help='skip the sorter (another job in the same run sorts)')
     ap.add_argument('--matrix', action='store_true', help='print the workflow\'s job list as JSON, call nothing')
+    ap.add_argument('--rescore', action='store_true', help='with --combine: score the saved replies again with '
+                                                           'the current checks (downloads each filing once)')
     ap.add_argument('--combine', help='folder of results files from parallel jobs: print one report, call nothing')
     args = ap.parse_args(argv)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
@@ -512,6 +558,8 @@ def main(argv=None):
         files = sorted(Path(args.combine).rglob('*.json'))
         merged = [json.loads(f.read_text(encoding='utf-8')) for f in files]
         results = [r for m in merged for r in m.get('results', [])]
+        if args.rescore:
+            rescore(results, json.loads((HERE / 'announcement_sample_expected.json').read_text(encoding='utf-8')))
         models = next((m['models'] for m in merged if m.get('models', {}).get('sort')), {})
         emit(report_markdown(results, models) if results else f'No results files in {args.combine}.\n')
         return
