@@ -158,13 +158,14 @@ def test_before_this_is_built_from_our_own_tables_with_our_own_sums():
 
 def test_filings_page_filters_by_heading_size_search_and_agreement(tmp_path, monkeypatch):
     from screens import filings
-    assert filings.heading_of('rights') == 'Fund raising' and filings.heading_of('deal_or_dispute') == 'Acquisitions & deals'
+    assert filings.heading_of('rights') == 'Fund raising' and filings.heading_of('acquisition') == 'Acquisitions & deals'
     assert filings.heading_of('something_new') == 'Other'   # a new category is never hidden
+    assert filings.heading_of('legal_regulatory') == 'Legal & regulatory' and filings.heading_of('deal_or_dispute') == 'Other'
     now = pd.Timestamp.now(tz='Asia/Kolkata')
     at, day = now.isoformat(), now.strftime('%Y-%m-%d')
     reads = pd.DataFrame([row(event_id='nse:1', isin='A', category='rights', broadcast_at=at, broadcast_date=day),
                           row(event_id='bse:2', isin='B', exchange='BSE', symbol='AEGISLOG', company='Aegis Logistics',
-                              category='deal_or_dispute', broadcast_at=at, broadcast_date=day, agreed='{}'),
+                              category='acquisition', broadcast_at=at, broadcast_date=day, agreed='{}'),
                           row(event_id='nse:3', isin='C', category='capex', symbol='JUBLPHARMA', company='Jubilant',
                               broadcast_at=at, broadcast_date=day, fields=json.dumps([FIELDS[2]]), agreed='{}')])
     r = fr.recent(reads, now.tz_localize(None).normalize() - pd.Timedelta(days=7))

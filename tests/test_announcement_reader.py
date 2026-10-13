@@ -302,3 +302,12 @@ def test_a_read_with_an_older_prompt_is_read_again_once_and_never_copied():
     done = pd.DataFrame([{**c.iloc[0].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': 'live-1'},
                          {**c.iloc[1].to_dict(), 'status': 'read', 'tries': 1, 'prompt_version': ar.PROMPT_VERSION}])
     assert list(ar.choose(c, done, today)[0]['event_id']) == ['nse:1']
+
+
+
+def test_the_live_reader_asks_for_the_split_categories_and_still_knows_the_old_one():
+    p = ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, 'DOC')
+    assert all(f'- {c}:' in p for c in ('acquisition', 'divestment', 'merger_demerger', 'legal_regulatory'))
+    assert 'deal_or_dispute' not in p and p.index('- legal_regulatory') < p.index('- routine')
+    assert ar.validate({'category': 'acquisition'}, 'DOC')[0] == 'acquisition'
+    assert ar.validate({'category': 'deal_or_dispute'}, 'DOC')[0] == 'deal_or_dispute'   # older reads

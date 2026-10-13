@@ -48,7 +48,7 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-2'   # live-2: headline and points for the card, year-ago values of periodic figures
+PROMPT_VERSION = 'live-3'   # live-2: headline, points, year-ago values; live-3: deal_or_dispute split in four
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -66,6 +66,17 @@ DAILY_CALLS = {'groq:qwen/qwen3.8-27b': 1000, 'gemini:gemini-3.5-flash-lite': 50
                'gemini:gemini-3.1-flash-lite': 500, 'nvidia': 10_000}
 DAILY_SHARE = 0.95
 PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemini: its own client
+# The live reader's categories: the test harness's, with its "deal_or_dispute" split in four (14 Oct, owner:
+# an acquisition filed under "dispute" reads as trouble). Reads before live-3 keep deal_or_dispute.
+SPLIT = {
+    'acquisition': 'buying a company, a stake or a business, or setting up a subsidiary or joint venture',
+    'divestment': 'selling a company, a stake, a business or an asset',
+    'merger_demerger': 'merger, demerger, amalgamation or another scheme of arrangement',
+    'legal_regulatory': 'litigation, arbitration, a tax or regulatory order, a penalty, a search or a seizure',
+}
+CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **SPLIT,
+              'routine': s.CATEGORIES['routine']}
+KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
            'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
@@ -277,7 +288,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
-    cat = out.get('category') if out.get('category') in s.CATEGORIES else None
+    cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None
     return cat, fields, metrics
 
 
@@ -302,6 +313,10 @@ _MULT = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'cror
 def card_prompt(row: dict, doc: str) -> str:
     p = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
                        'subject': row.get('subject')}, doc)
+    head, rest = p.split('Categories:\n', 1)
+    rest = rest.split('\n\nFields:', 1)[1]
+    cats = '\n'.join(f'- {k}: {v}' for k, v in CATEGORIES.items())
+    p = f'{head}Categories:\n{cats}\n\nFields:{rest}'
     return p.replace('=== DOCUMENT ===', CARD_ASK + '=== DOCUMENT ===', 1)
 
 

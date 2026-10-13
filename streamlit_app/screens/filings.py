@@ -16,13 +16,14 @@ from screens.ctx import load
 HEADINGS = {
     'Fund raising': ('qip', 'preferential', 'rights', 'warrant_conversion', 'debt_issue'),
     'Buybacks': ('buyback_open_market', 'buyback_tender'),
-    'Acquisitions & deals': ('deal_or_dispute', 'open_offer'),
+    'Acquisitions & deals': ('acquisition', 'divestment', 'merger_demerger', 'open_offer'),
     'Capex & capacity': ('capex', 'product_launch'),
     'Orders': ('order_win',),
     'Business updates': ('business_update',),
     'Ratings': ('rating_upgrade', 'rating_downgrade', 'rating_reaffirmed'),
+    'Legal & regulatory': ('legal_regulatory',),
     'Governance': ('auditor_resignation',),
-}
+}   # 'deal_or_dispute' (reads before live-3: deals and disputes in one) goes under Other
 OTHER = 'Other'
 PERIODS = {1: 'Today and yesterday', 7: 'Last 7 days', 30: 'Last 30 days', 60: 'Last 60 days'}
 SIZES = ('Large', 'Mid', 'Small', 'Micro')

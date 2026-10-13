@@ -224,6 +224,12 @@ so it ends before the next starts; what it does not reach waits for the next run
   values leads; the others are listed under "Also filed" with their subject and a link.
 - Cross-check of figures: an idle lane's second read now also marks a business update's figures "2 readers
   agree" when it gives the same number (labels differ between models, so the number is compared).
+- Categories (prompt `live-3`, 14 Oct, owner): the harness's `deal_or_dispute` is split in four for the live
+  reader (`SPLIT` in `announcement_reader.py`): `acquisition`, `divestment`, `merger_demerger`,
+  `legal_regulatory`. An acquisition under a "dispute" label read as trouble (Aegis, Welspun, Hero Motors
+  next to the ED's seizure at Reliance Power). Reads before `live-3` keep `deal_or_dispute`, shown as "Deal
+  or legal matter" and under Other on the page; today's and yesterday's are read again by the new version.
+  The test harness keeps the old list, so the 24-filing test stays comparable.
 - Page "Filings read" (`/filings`, menu Filings; owner, 14 Oct): every filing read in the last 60 days as the
   Brief's cards, filtered by heading (Fund raising, Buybacks, Acquisitions & deals, Capex & capacity,
   Orders, Business updates, Ratings, Governance, Other for a category not mapped yet), period (2, 7, 30,

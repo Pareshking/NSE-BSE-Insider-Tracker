@@ -22,7 +22,9 @@ CATEGORY = {
     'open_offer': 'Open offer', 'debt_issue': 'Debt issue', 'capex': 'Capacity / investment',
     'product_launch': 'Product launch', 'order_win': 'Order win', 'business_update': 'Business update',
     'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_downgrade': 'Rating lowered',
-    'rating_reaffirmed': 'Rating kept', 'deal_or_dispute': 'Deal or dispute',
+    'rating_reaffirmed': 'Rating kept', 'acquisition': 'Acquisition', 'divestment': 'Sale or divestment',
+    'merger_demerger': 'Merger or demerger', 'legal_regulatory': 'Legal or regulatory',
+    'deal_or_dispute': 'Deal or legal matter',   # reads before live-3, when the four above were one category
 }
 FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
          'amount': 'Size', 'discount_pct': 'Discount', 'allottee_is_promoter': 'To promoters', 'ratio': 'Ratio',
