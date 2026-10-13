@@ -133,8 +133,9 @@ lists (not collected yet).
 
 ## The live reader (coded 13 Oct, `scripts/announcement_reader.py`)
 
-Every 30 minutes (on `main`): collect today's NSE and BSE filings (BSE stops paging at the first page it
-already has); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
+Every 30 minutes (on `main`): collect yesterday's and today's NSE and BSE filings (BSE stops paging at the
+first page it already has; yesterday too, so a filing made public between the nightly collection at 22:45
+and midnight is read the same night); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
 skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
 copy instead of reading when the same file or text was read before; both lanes read each filing side by
 side; check every value; write. About 22 minutes of reading a run.
@@ -159,7 +160,8 @@ side; check every value; write. About 22 minutes of reading a run.
 
 ### Dry run on real filings (PR, 13 Oct, 23:52-23:56 IST, run 38446158692)
 
-Green. Collected 13 Oct from both exchanges and read three filings (the PR cap), writing nothing:
+Green. (A second dry run at 00:02 on 14 Oct read nothing: it fetched only the new day, which had no filings
+yet; the reader now collects yesterday too.) Collected 13 Oct from both exchanges and read three filings (the PR cap), writing nothing:
 
 | Filing | Category | Shown | Held back | Notes |
 |---|---|---|---|---|

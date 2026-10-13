@@ -6,8 +6,8 @@
 Runs in GitHub Actions through the day (workflow Announcement reader); the site never calls a model, it
 reads clean/current/announcement_reads.parquet. docs/ANNOUNCEMENT_READER.md has the decisions behind it.
 
-1. Collect: today's NSE (main board and SME) and BSE filings into raw_v2/ and the archive, as the nightly
-   collectors do (their count reports are left to the nightly run).
+1. Collect: yesterday's and today's NSE (main board and SME) and BSE filings into raw_v2/ and the archive,
+   as the nightly collectors do (their count reports are left to the nightly run).
 2. Choose: filings of today and yesterday, newest first, in a reading group (not routine, not concalls),
    with a PDF or ZIP. Read once: a filing already in the reads archive is skipped; the same filing on the
    other exchange (same ISIN, within six hours, subjects alike; the two copies are different files) and a
@@ -53,6 +53,8 @@ LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
 READ_DAYS = 60
+COLLECT_DAYS = 2              # yesterday too: a filing made public after the nightly collection (22:45) and
+                              # before midnight is read the same night; BSE stops at its first known page
 MIN_MCAP = 100 * 1e7          # Rs 100 Cr: smaller companies' PDFs never go to a model
 SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
@@ -542,33 +544,34 @@ def collect(r2, today: date, dry_run: bool, notes: list):
     from collectors.bse.client import BSEClient
     from collectors.nse_events import announcements as nann
     from collectors.nse_events.client import NSEClient
+    yesterday = today - timedelta(days=1)
     if dry_run:
         nse = NSEClient()
         frames = []
         for market in nann.FEEDS:
             try:
-                frames.append(nann.parse(nse.announcements(today, today, market), market))
+                frames.append(nann.parse(nse.announcements(yesterday, today, market), market))
             except Exception as exc:  # noqa: BLE001
                 notes.append(f'NSE {market}: {type(exc).__name__}: {exc}'[:200])
-        bse = BSEClient()
+        bse, bframes = BSEClient(), []
         try:
-            b = bann.parse(bann.fetch_day(bse, today)[0])
+            for day in (today, yesterday):
+                bframes.append(bann.parse(bann.fetch_day(bse, day)[0]))
         except Exception as exc:  # noqa: BLE001
             notes.append(f'BSE: {type(exc).__name__}: {exc}'[:200])
-            b = None
         finally:
             bse.close()
-        return (pd.concat(frames, ignore_index=True) if frames else None), b
+        return (pd.concat(frames, ignore_index=True) if frames else None),             (pd.concat(bframes, ignore_index=True) if bframes else None)
     from insiders_clean.raw_store import RawStore
     from r2_writer import BUCKET
     try:
-        nann.run(r2, NSEClient(), today, days=1, raw=RawStore(r2, bucket=BUCKET, collector='nse_announcements'),
+        nann.run(r2, NSEClient(), today, days=COLLECT_DAYS, raw=RawStore(r2, bucket=BUCKET, collector='nse_announcements'),
                  write_report=False)
     except Exception as exc:  # noqa: BLE001 -- the archive may still hold earlier filings
         notes.append(f'NSE collect: {type(exc).__name__}: {exc}'[:200])
     bse = BSEClient(raw=RawStore(r2, collector='bse_announcements'))
     try:
-        bann.run(r2, bse, today, days=1, write_report=False, incremental=True)   # stops at known pages
+        bann.run(r2, bse, today, days=COLLECT_DAYS, write_report=False, incremental=True)   # stops at known pages
     except Exception as exc:  # noqa: BLE001
         notes.append(f'BSE collect: {type(exc).__name__}: {exc}'[:200])
     finally:
