@@ -267,6 +267,21 @@ def test_link_to_nse_and_pages_show_each_once(master):
     assert bse_events.with_bse(nse, pd.DataFrame()).equals(nse.assign(listed_on='nse'))
 
 
+
+def test_with_bse_no_dtype_warning_and_keeps_every_column():
+    import warnings
+    # 'shares' has numbers on NSE and is all empty (object) on BSE: the case pandas warns about
+    nse = pd.DataFrame({'event_id': ['n1'], 'isin': ['INE1'], 'shares': [1.5], 'remarks': [None]})
+    bse = pd.DataFrame({'event_id': ['b1'], 'isin': ['INE2'], 'shares': [None], 'remarks': [None],
+                        'bse_code': [None], 'on_nse': [False], 'listed_on': ['bse']}).astype({'shares': object})
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', FutureWarning)
+        shown = bse_events.with_bse(nse, bse)
+    assert list(shown.columns) == ['event_id', 'isin', 'shares', 'remarks', 'listed_on', 'bse_code', 'on_nse']
+    assert shown['shares'].dtype == 'float64' and shown['shares'].iloc[0] == 1.5 and pd.isna(shown['shares'].iloc[1])
+    assert list(shown['event_id']) == ['n1', 'b1'] and list(shown['listed_on']) == ['nse', 'bse']
+    assert shown['remarks'].isna().all() and shown['bse_code'].isna().all()
+
 def test_actions_link_on_isin_purpose_and_ex_date(master):
     df, _ = parsers.parse_actions(js('actions_20251008_20251015.json'))
     df = bse_events.add_identity(df, master)
