@@ -71,7 +71,7 @@ rows here are rescored with the current checks (the rerun on the runner gave Kim
 | 12 | `z-ai/glm-5.3` | NVIDIA (free trial) | 38432331574 | 15 of 15 (4 filings only) | 0 | 20 (13 time up, 7 over 10 minutes each) | 474 | 0 | 0 | 0 | none | Out (8 minutes a filing) |
 | 13 | `deepseek-ai/deepseek-v4.1-flash` | NVIDIA (free trial) | 38423386748 | 0 of 45 | 0 | 10 | 208 | 0 | 0 | 4 | none | Replies empty (answer in `reasoning_content`); retest below |
 | 13r | `deepseek-ai/deepseek-v4.1-flash`, reasoning field read | NVIDIA (free trial) | 38440817065 | running | | | | | | | | |
-| 14 | `z-ai/glm-5.3-flash` | NVIDIA (free trial) | 38440817065 | running | | | | | | | | |
+| 14 | `z-ai/glm-5.3-flash` | NVIDIA (free trial) | 38440817065 | 80 of 82 | 2 | 3 (ADANIENT, FMGOETZE, 63MOONS: no reply within 5 minutes, twice each) | 114 | 0 | 0 | 8 | none | Out: accurate but about 2 minutes a filing and 8 timeouts; spare |
 | 15 | `nvidia/llama-3.1-nemotron-ultra-253b-v1`, `mistralai/mistral-large-2-instruct`, `moonshotai/kimi-k2.6`, `writer/palmyra-fin-70b-32k` | NVIDIA | 38432331574 | - | | all 24 | | 0 | 0 | 0 | | Withdrawn: HTTP 404 on every call, gone from NVIDIA's catalog |
 
 - No provider sent a 429 in any run except Z.ai's GLM-4.7-Flash, and those say the model was overloaded:
