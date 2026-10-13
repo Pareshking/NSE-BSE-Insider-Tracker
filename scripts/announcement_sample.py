@@ -26,6 +26,7 @@ import io
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -42,6 +43,8 @@ PROMPT_VERSION = 'sample-1'
 READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-it', 'gemma-4-31b-it')
 PACE = {'read': 6.0, 'sort': 3.0}   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
+PER_FILING_SECONDS = 150           # one filing never holds up the rest
+RUN_SECONDS = 24 * 60               # stop taking new filings before the workflow's 30-minute limit
 MAX_CHARS = 300_000                 # about 75K tokens, under Flash-Lite's 250K a minute
 def log(*parts):
     """Progress on the run log, at once (a step that stalls must show where)."""
@@ -390,10 +393,25 @@ def main(argv=None):
     if not models['read']:
         emit(f'None of {READERS} is in this key\'s model list: {", ".join(names)}\n')
         sys.exit(1)
-    results = []
+    results, started = [], time.monotonic()
+
+    def save():
+        """Results so far, after every filing: a stall or a cancelled run keeps what was read."""
+        Path('announcement_sample_results.json').write_text(
+            json.dumps({'prompt_version': PROMPT_VERSION, 'models': models, 'results': results}, indent=1,
+                       ensure_ascii=False, default=str))
+
+    def too_long(signum, frame):
+        raise TimeoutError(f'gave up after {PER_FILING_SECONDS} s')
+
+    signal.signal(signal.SIGALRM, too_long)
     for row in rows:
+        if time.monotonic() - started > RUN_SECONDS:
+            results.append({'symbol': row['symbol'], 'subject': row['subject'], 'error': 'not read: run time used up'})
+            continue
         log('---', row['symbol'], row['subject'])
         res = {'symbol': row['symbol'], 'subject': row['subject']}
+        signal.alarm(PER_FILING_SECONDS)
         try:
             sort_out = None
             if models['sort']:
@@ -409,11 +427,12 @@ def main(argv=None):
             res.update(check(row, sort_out, read_out, doc), notes=notes, read_raw=text[:4000])
         except Exception as exc:  # noqa: BLE001 -- one filing failing must not stop the sample
             res['error'] = f'{type(exc).__name__}: {exc}'[:300]
+        finally:
+            signal.alarm(0)
         results.append(res)
+        save()
         log(row['symbol'], res.get('score'), res.get('error', ''))
-    Path('announcement_sample_results.json').write_text(
-        json.dumps({'prompt_version': PROMPT_VERSION, 'models': models, 'results': results}, indent=1,
-                   ensure_ascii=False, default=str))
+    save()
     emit(report_markdown(results, models))
 
 
