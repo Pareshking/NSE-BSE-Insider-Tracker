@@ -88,4 +88,8 @@ def with_bse(nse: pd.DataFrame, bse: pd.DataFrame) -> pd.DataFrame:
     extra = bse[~bse['on_nse'].astype('boolean').fillna(False)]
     if nse.empty:
         return extra.reset_index(drop=True)
-    return pd.concat([nse, extra], ignore_index=True)
+    # Columns empty in one part are left out of the concat (pandas deprecates letting them set the
+    # result's dtypes); the reindex brings them back, empty where that part had nothing.
+    cols = list(dict.fromkeys([*nse.columns, *extra.columns]))
+    parts = [p.dropna(axis=1, how='all') for p in (nse, extra)]
+    return pd.concat(parts, ignore_index=True).reindex(columns=cols)
