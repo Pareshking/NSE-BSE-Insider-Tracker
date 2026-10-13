@@ -15,6 +15,7 @@ on:
     paths:
       - 'scripts/announcement_sample.py'
       - 'scripts/announcement_sample_expected.json'
+      - 'scripts/announcement_sample_run.txt'
       - '.github/workflows/announcement-sample.yml'
 
 permissions:

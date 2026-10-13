@@ -41,9 +41,10 @@ API = 'https://generativelanguage.googleapis.com/v1beta'
 PROMPT_VERSION = 'sample-1'
 # Preferred model ids, first found in the account's model list wins.
 READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
-SORTERS = ('gemma-4-26b-it', 'gemma-4-31b-it')
+SORTERS = ('gemma-4-26b-a4b-it', 'gemma-4-31b-it')   # ids as listed by the API on 13 Oct 2026
 PACE = {'read': 6.0, 'sort': 3.0}   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
-PER_FILING_SECONDS = 150           # one filing never holds up the rest
+PER_FILING_SECONDS = 480           # one filing never holds up the rest
+CALL_SECONDS = 180                 # Flash-Lite took 55-110 s a filing on 13 Oct
 RUN_SECONDS = 24 * 60               # stop taking new filings before the workflow's 30-minute limit
 MAX_CHARS = 300_000                 # about 75K tokens, under Flash-Lite's 250K a minute
 def log(*parts):
@@ -145,37 +146,44 @@ class Gemini:
             if not token:
                 return out
 
-    def generate(self, model: str, prompt: str, kind: str, json_mode: bool) -> tuple[str, dict]:
-        wait = PACE[kind] - (time.monotonic() - self.last.get(kind, -1e9))
-        if wait > 0:
-            self.sleep(wait)
+    def generate(self, models: list[str], prompt: str, kind: str, json_mode: bool) -> tuple[str, dict, str]:
+        """(text, usage, model that answered). On 429/500/503 the next model is tried at once; when all
+        are busy, one more round after a pause (free-tier refusals come in spells: 13 Oct, 14:25 UTC)."""
         body = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
                 'generationConfig': {'temperature': 0, **({'responseMimeType': 'application/json'} if json_mode else {})}}
-        for attempt in range(3):
-            self.last[kind] = time.monotonic()
-            r = self.s.post(f'{API}/models/{model}:generateContent', json=body, timeout=120)
-            log(f'{kind} {model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:300])
-            if r.status_code == 400 and json_mode and 'mime' in r.text.lower():
-                body['generationConfig'].pop('responseMimeType', None)   # a model without JSON mode
-                json_mode = False
-                continue
-            if r.status_code in (429, 500, 503):
-                if attempt == 2:
-                    break
-                self.sleep(20 * (attempt + 1))
-                continue
-            if r.status_code != 200:
-                raise RuntimeError(f'{model}: HTTP {r.status_code}: {r.text[:300]}')
-            j = r.json()
-            parts = (j.get('candidates') or [{}])[0].get('content', {}).get('parts', [])
-            return ''.join(p.get('text', '') for p in parts if not p.get('thought')), j.get('usageMetadata', {})
-        raise RuntimeError(f'{model}: still refused after retries')
+        last = ''
+        for round_ in range(2):
+            if round_:
+                self.sleep(45)
+            for model in models:
+                wait = PACE[kind] - (time.monotonic() - self.last.get(kind, -1e9))
+                if wait > 0:
+                    self.sleep(wait)
+                self.last[kind] = time.monotonic()
+                try:
+                    r = self.s.post(f'{API}/models/{model}:generateContent', json=body, timeout=CALL_SECONDS)
+                except requests.RequestException as exc:
+                    log(f'{kind} {model}: {type(exc).__name__}')
+                    last = f'{model}: {type(exc).__name__}'
+                    continue
+                log(f'{kind} {model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
+                if r.status_code in (429, 500, 503):
+                    last = f'{model}: HTTP {r.status_code}'
+                    continue
+                if r.status_code != 200:
+                    raise RuntimeError(f'{model}: HTTP {r.status_code}: {r.text[:300]}')
+                j = r.json()
+                parts = (j.get('candidates') or [{}])[0].get('content', {}).get('parts', [])
+                text = ''.join(p.get('text', '') for p in parts if not p.get('thought'))
+                return text, j.get('usageMetadata', {}), model
+        raise RuntimeError(f'all {kind} models busy or refused ({last})')
 
 
-def pick(models: list[dict], wanted: tuple[str, ...]) -> str | None:
+def available_of(models: list[dict], wanted: tuple[str, ...]) -> list[str]:
+    """The wanted model ids this key can call, in order of preference."""
     names = {m['name'].split('/', 1)[-1] for m in models
              if 'generateContent' in m.get('supportedGenerationMethods', [])}
-    return next((w for w in wanted if w in names), None)
+    return [w for w in wanted if w in names]
 
 
 def parse_json(text: str):
@@ -353,7 +361,8 @@ def report_markdown(results: list[dict], models: dict) -> str:
             out.append(f"| {r['symbol']} | - | - | error: {_cell(r['error'])} |")
             continue
         out.append(f"| {r['symbol']} ({_cell(r['subject'])}) | {r['score'][0]}/{r['score'][1]} | "
-                   f"{_cell(r['sort_category'])}{' ✓' if r['sort_category_right'] else ' ✗'}, read PDF: "
+                   f"{_cell(r['sort_category'])}{' ✓' if r['sort_category_right'] else ' ✗'}"
+                   f"{' (sorter busy)' if r.get('sort_error') else ''}, read PDF: "
                    f"{_cell(r['sort_read_pdf'])} | {_cell('; '.join(r.get('notes', [])))} |")
     for r in results:
         if 'fields' not in r:
@@ -367,7 +376,8 @@ def report_markdown(results: list[dict], models: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument('--only', help='one symbol from the sample')
+    ap.add_argument('--only', help='symbols from the sample, comma-separated (default: announcement_sample_run.txt, '
+                                   'else all)')
     args = ap.parse_args(argv)
     summary = os.environ.get('GITHUB_STEP_SUMMARY')
 
@@ -382,15 +392,20 @@ def main(argv=None):
         emit('GEMINI_API_KEY is not set (Settings → Secrets and variables → Actions); nothing was sent.\n')
         return
     rows = json.loads((HERE / 'announcement_sample_expected.json').read_text(encoding='utf-8'))
-    rows = [r for r in rows if not args.only or r['symbol'] == args.only]
+    run_file = HERE / 'announcement_sample_run.txt'
+    only = args.only or (run_file.read_text().strip() if run_file.exists() else '')
+    wanted = {x.strip() for x in only.replace('\n', ',').split(',') if x.strip() and not x.startswith('#')}
+    rows = [r for r in rows if not wanted or r['symbol'] in wanted]
+    log('filings this run:', ', '.join(r['symbol'] for r in rows))
     g = Gemini(key)
     available = g.models()
-    models = {'read': pick(available, READERS), 'sort': pick(available, SORTERS)}
+    readers, sorters = available_of(available, READERS), available_of(available, SORTERS)
+    models = {'read': ', '.join(readers), 'sort': ', '.join(sorters)}
     names = sorted(m['name'].split('/', 1)[-1] for m in available
                    if 'generateContent' in m.get('supportedGenerationMethods', []))
     log('models with generateContent:', ', '.join(names))
     log('reader', models['read'], 'sorter', models['sort'])
-    if not models['read']:
+    if not readers:
         emit(f'None of {READERS} is in this key\'s model list: {", ".join(names)}\n')
         sys.exit(1)
     results, started = [], time.monotonic()
@@ -414,14 +429,18 @@ def main(argv=None):
         signal.alarm(PER_FILING_SECONDS)
         try:
             sort_out = None
-            if models['sort']:
-                text, usage = g.generate(models['sort'], sort_prompt(row), 'sort', json_mode=True)
-                sort_out = parse_json(text)
-                res['sort_raw'], res['sort_tokens'] = text[:500], usage.get('promptTokenCount')
+            if sorters:   # sorting failing never stops the reading
+                try:
+                    text, usage, used = g.generate(sorters, sort_prompt(row), 'sort', json_mode=True)
+                    sort_out = parse_json(text)
+                    res.update(sort_raw=text[:500], sort_tokens=usage.get('promptTokenCount'), sort_model=used)
+                except RuntimeError as exc:
+                    res['sort_error'] = str(exc)[:200]
             doc, notes = document(row['file_url'])
-            text, usage = g.generate(models['read'], read_prompt(row, doc), 'read', json_mode=True)
+            text, usage, used = g.generate(readers, read_prompt(row, doc), 'read', json_mode=True)
             read_out = parse_json(text)
-            notes.append(f"{usage.get('promptTokenCount', '?')} tokens in")
+            res['read_model'] = used
+            notes.append(f"{used}, {usage.get('promptTokenCount', '?')} tokens in")
             if read_out is None:
                 notes.append('reply was not JSON')
             res.update(check(row, sort_out, read_out, doc), notes=notes, read_raw=text[:4000])

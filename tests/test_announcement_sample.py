@@ -64,3 +64,36 @@ def test_sample_file_lists_real_filings_with_their_links():
     assert all(r['file_url'].startswith('https://nsearchives.nseindia.com/corporate/') for r in rows)
     assert all(r['expected']['category'] in a.CATEGORIES for r in rows)
     assert all(set(r['expected']) - {'category', 'metrics'} <= set(a.FIELDS) for r in rows)
+
+
+class _Resp:
+    def __init__(self, status, body=None):
+        self.status_code, self._body, self.text = status, body or {}, json.dumps(body or {})
+
+    def json(self):
+        return self._body
+
+
+class _Session:
+    def __init__(self, answers):
+        self.answers, self.asked, self.headers = list(answers), [], {}
+
+    def post(self, url, **kw):
+        self.asked.append(url.split('/models/')[1].split(':')[0])
+        return self.answers.pop(0)
+
+
+def test_a_busy_model_hands_over_to_the_next_at_once():
+    ok = _Resp(200, {'candidates': [{'content': {'parts': [{'text': '{"category": "qip"}'}]}}],
+                     'usageMetadata': {'promptTokenCount': 12}})
+    s = _Session([_Resp(503), ok])
+    g = a.Gemini('k', session=s, sleep=lambda _: None)
+    text, usage, used = g.generate(['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], 'p', 'read', True)
+    assert (text, usage['promptTokenCount']) == ('{"category": "qip"}', 12)
+    assert used == 'gemini-3.1-flash-lite' and s.asked == ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
+    s = _Session([_Resp(503), _Resp(500), _Resp(503), _Resp(429)])
+    try:
+        a.Gemini('k', session=s, sleep=lambda _: None).generate(['m1', 'm2'], 'p', 'read', True)
+        raise AssertionError('should have given up')
+    except RuntimeError as exc:
+        assert 'busy' in str(exc) and len(s.asked) == 4   # two rounds over both models
