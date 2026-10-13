@@ -126,8 +126,15 @@ def _mcap(r: dict, price: dict) -> str:
 
 
 def _metric_label(m: dict) -> str:
-    period = str(m.get('period') or '').strip()
-    return ' '.join(x for x in (str(m.get('label') or ''), f'({period})' if period.lower() not in NO_PERIOD else '') if x)
+    period, label = str(m.get('period') or '').strip(), str(m.get('label') or '').strip()
+    label = label[:1].upper() + label[1:]
+    return ' '.join(x for x in (label, f'({period})' if period.lower() not in NO_PERIOD else '') if x)
+
+
+def _name(r: dict) -> str:
+    """The card's name: the NSE symbol; for a BSE-only company (its 'symbol' is BSE's number) its name."""
+    sym = str(r.get('symbol') or '').strip()
+    return str(r.get('company') or sym) if not sym or sym.isdigit() else sym
 
 
 def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
@@ -147,8 +154,12 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     sym = r.get('symbol')
     category = CATEGORY.get(r.get('category'), str(r.get('category') or ''))
 
+    # Without a checked headline (reads before live-2): the exchange's own one-line description of the filing,
+    # else the company and category with its size.
+    detail = str(r.get('detail') or '').strip()
     title = headline['text'] if headline else (
-        f'{r.get("company") or sym}: {category.lower()}'
+        f'{r.get("company") or sym}: {detail[:160]}' if len(detail) > 12 and detail.lower() != str(r.get('subject') or '').lower()
+        else f'{r.get("company") or sym}: {category.lower()}'
         + (f', {value_text(next(f for f in fields if f["name"] == "amount"))}' if any(f['name'] == 'amount' for f in fields) else ''))
     body = ''.join(f'<li>{_bold_figures(p["text"])}</li>' for p in points)
     body = f'<ul class="rc-pts">{body}</ul>' if body else ''
@@ -190,7 +201,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
                     for lbl, v in _moves(r.get('isin'), history))
     cap = _mcap(r, price)
     return (f'<article class="rc">'
-            f'<div class="rc-top"><a class="rc-sym" href="{kit.company_href(sym)}" target="_self">{esc(str(sym or ""))}</a>'
+            f'<div class="rc-top"><a class="rc-sym" href="{kit.company_href(sym)}" target="_self">{esc(_name(r))}</a>'
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
@@ -286,6 +297,7 @@ def _before_html(lines) -> str:
 
 
 EARLIER_DAYS, INSIDER_DAYS = 90, 30
+OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_open_market', 'buyback_tender', 'open_offer')
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
@@ -298,7 +310,9 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     fields = {f['name']: f for f in _json(r.get('fields'), []) if f.get('shown')}
     price = price or {}
     close = price.get('latest_close')
-    for name in ('price_per_share', 'max_price_per_share'):
+    # Only a price for the company's own shares is set against its close: in an acquisition the price is
+    # the target's (GTPL, 13 Oct: Rs 937.50 a share of the company it buys, 1,551% "above" GTPL's Rs 56.77).
+    for name in (('price_per_share', 'max_price_per_share') if r.get('category') in OWN_SHARES else ()):
         f = fields.get(name)
         if f and f.get('currency') == 'INR' and f.get('number') and close and close == close:
             gap = (f['number'] / close - 1) * 100

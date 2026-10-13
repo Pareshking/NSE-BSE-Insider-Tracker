@@ -230,6 +230,13 @@ so it ends before the next starts; what it does not reach waits for the next run
   next to the ED's seizure at Reliance Power). Reads before `live-3` keep `deal_or_dispute`, shown as "Deal
   or legal matter" and under Other on the page; today's and yesterday's are read again by the new version.
   The test harness keeps the old list, so the 24-filing test stays comparable.
+- Owner's review of the live cards (14 Oct, 02:03): the first reads (before `live-2`) said only "Company:
+  deal or dispute"; GTPL's "Before this" set Rs 937.50, the price a share of the company GTPL buys, against
+  GTPL's own close (1,551% "above"). Fixed: a price is set against the close only for the company's own
+  shares (preferential, QIP, rights, warrants, buybacks, open offers); a card without a checked headline
+  shows the exchange's own one-line description; a BSE-only company shows its name, not its number; the
+  prompt asks an acquisition, sale or merger for the company bought or sold, the stake and the price, and
+  a legal matter for who acted, against whom and the amount.
 - Page "Filings read" (`/filings`, menu Filings; owner, 14 Oct): every filing read in the last 60 days as the
   Brief's cards, filtered by heading (Fund raising, Buybacks, Acquisitions & deals, Capex & capacity,
   Orders, Business updates, Ratings, Governance, Other for a category not mapped yet), period (2, 7, 30,
