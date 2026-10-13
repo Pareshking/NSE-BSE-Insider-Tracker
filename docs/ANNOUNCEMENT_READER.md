@@ -70,7 +70,7 @@ rows here are rescored with the current checks (the rerun on the runner gave Kim
 | 11 | `nvidia/nemotron-3.5-lightning-30b-a3b` | NVIDIA (free trial) | 38423386748 | 24 of 58 | 5 | 7 (time used up) | 205 | 0 | 0 | 0 | 2, now held back (INOXGREEN, IIFL amounts 10 million times too big) | Out (slow, wrong) |
 | 12 | `z-ai/glm-5.3` | NVIDIA (free trial) | 38432331574 | 15 of 15 (4 filings only) | 0 | 20 (13 time up, 7 over 10 minutes each) | 474 | 0 | 0 | 0 | none | Out (8 minutes a filing) |
 | 13 | `deepseek-ai/deepseek-v4.1-flash` | NVIDIA (free trial) | 38423386748 | 0 of 45 | 0 | 10 | 208 | 0 | 0 | 4 | none | Replies empty (answer in `reasoning_content`); retest below |
-| 13r | `deepseek-ai/deepseek-v4.1-flash`, reasoning field read | NVIDIA (free trial) | 38440817065 | running | | | | | | | | |
+| 13r | `deepseek-ai/deepseek-v4.1-flash`, reasoning field read | NVIDIA (free trial) | 38440817065 | 51 of 53 (16 filings) | 2 | 8 (5 no reply within 5 minutes, twice each; 3 run time used up) | 174 | 0 | 0 | 10 | none | Out: right when it answers, but about 3 minutes a filing and a third of the filings not read |
 | 14 | `z-ai/glm-5.3-flash` | NVIDIA (free trial) | 38440817065 | 80 of 82 | 2 | 3 (ADANIENT, FMGOETZE, 63MOONS: no reply within 5 minutes, twice each) | 114 | 0 | 0 | 8 | none | Out: accurate but about 2 minutes a filing and 8 timeouts; spare |
 | 15 | `nvidia/llama-3.1-nemotron-ultra-253b-v1`, `mistralai/mistral-large-2-instruct`, `moonshotai/kimi-k2.6`, `writer/palmyra-fin-70b-32k` | NVIDIA | 38432331574 | - | | all 24 | | 0 | 0 | 0 | | Withdrawn: HTTP 404 on every call, gone from NVIDIA's catalog |
 
@@ -200,7 +200,7 @@ and deal is a later step).
 | 38418368623, 38419069858, 38420120800, 38421224640 (20:30-20:50) | Gemini runs on parts of the sample | finished |
 | 38423386748 (21:05-22:34) | nine readers on 24 filings | finished; rescored above |
 | 38432331574 (22:34-00:07) | NVIDIA GLM 5.3, Nemotron 3 Ultra, four withdrawn NVIDIA models, Z.ai | finished: Nemotron 3 Ultra 87 of 91; GLM 5.3 4 filings in 85 minutes; the four withdrawn models 404; Z.ai skipped (ids not on its list) |
-| 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; GLM-4.7-Flash 60 of 73 off, 49 of 65 on (36 "overloaded" 429s); DeepSeek and GLM 5.3 Flash running |
+| 38440817065 (23:13-00:53) | DeepSeek v4.1 Flash (reasoning field), NVIDIA GLM 5.3 Flash, Z.ai GLM-4.5-Flash, GLM-4.7-Flash off and on | GLM-4.5-Flash 77 of 91; GLM-4.7-Flash 60 of 73 off, 49 of 65 on (36 "overloaded" 429s); NVIDIA GLM 5.3 Flash 80 of 82 (114 s a filing, 8 timeouts); DeepSeek v4.1 Flash 51 of 53 (174 s a filing, 10 timeouts); neither beats the chosen readers |
 | 38446158568 (23:52-00:10) | the chosen readers again, another hour (Kimi K3, Gemma 4, GLM-4.5-Flash) | finished: 88, 85, 78 of 91 |
 | 38446158692 (23:52) | live reader, dry run on 3 real filings | green; found the currency problem |
 | 38447392891 (00:02) | dry run with the currency fix | green, but read nothing (the new day had no filings; fetched only today) |
