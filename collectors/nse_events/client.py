@@ -124,11 +124,13 @@ class NSEClient:
     # PDF link. No cap seen: 01-30 Sep 2026 gave 17,127 rows in one call;
     # 08-12 Oct gave 1,999, the sum of its days.
 
-    def announcements_url(self, start: date, end: date) -> str:
-        return f'{BASE}/api/corporate-announcements?index=equities&from_date={self._d(start)}&to_date={self._d(end)}'
+    # index=sme (confirmed 13 Oct 2026): the SME board's filings, same fields and
+    # the same seq_id numbering as equities, no seq_id or symbol in both.
+    def announcements_url(self, start: date, end: date, index: str = 'equities') -> str:
+        return f'{BASE}/api/corporate-announcements?index={index}&from_date={self._d(start)}&to_date={self._d(end)}'
 
-    def announcements(self, start: date, end: date) -> list[dict]:
-        j = self.get(self.announcements_url(start, end))
+    def announcements(self, start: date, end: date, index: str = 'equities') -> list[dict]:
+        j = self.get(self.announcements_url(start, end, index))
         return j if isinstance(j, list) else j.get('data', [])
 
     # --- further issues (confirmed 12 Oct 2026) -----------------------------

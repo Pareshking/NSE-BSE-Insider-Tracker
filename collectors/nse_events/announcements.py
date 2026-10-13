@@ -11,8 +11,10 @@ Each answer is stored byte for byte in raw_v2/nse/announcements/ first (a
 failed raw write fails the run, rule 5). Rows are merged into
 archive/announcements/nse/year=YYYY/month=MM.parquet by event_id (NSE's
 seq_id), so re-fetching never adds a filing twice; the month is the
-broadcast date's (IST). Concall announcements are not archived
-(NOT_COLLECTED, counted in the report). Nothing goes to clean/current/: no
+broadcast date's (IST). Two feeds, `market` equities (main board) and sme
+(SME board; 6-12 Oct 2026: 3,318 and 699 filings, no seq_id in both).
+Concall announcements are not archived (NOT_COLLECTED, counted in the
+report). Nothing goes to clean/current/: no
 page reads this yet. clean/reports/announcements/{date}.json counts the
 window by day, subject and reading group (READING_GROUPS) and the attachment types and sizes.
 
@@ -42,7 +44,8 @@ from collectors.nse_events.client import Blocked, NSEClient
 IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 3   # late broadcasts of the last two days are picked up again
 PREFIX = 'archive/announcements/nse/'
-COLUMNS = ('event_id', 'seq_id', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
+FEEDS = ('equities', 'sme')   # NSE's index= values; stored as `market`
+COLUMNS = ('event_id', 'seq_id', 'market', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
            'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
 # NSE subject lines (the `desc` field, exactly as in Sep 2026's 104 subjects)
@@ -111,8 +114,8 @@ def file_type(url) -> str | None:
     return url.rsplit('.', 1)[-1].lower() if isinstance(url, str) and '.' in url.rsplit('/', 1)[-1] else None
 
 
-def parse(rows: list[dict]) -> pd.DataFrame:
-    """One row per announcement, NSE's values as filed. A row without a
+def parse(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
+    """One row per announcement, NSE's values as filed, `market` the feed it came from. A row without a
     seq_id gets an id hashed from its own fields; a row whose broadcast time
     can't be read keeps broadcast_date empty (archived under month=unknown)."""
     out = []
@@ -122,7 +125,7 @@ def parse(rows: list[dict]) -> pd.DataFrame:
             seq = 'h' + hashlib.sha256(json.dumps(r, sort_keys=True, default=str).encode()).hexdigest()[:16]
         at, sent = _ist(r.get('an_dt')), _ist(r.get('exchdisstime'))
         out.append({
-            'event_id': f'nse:{seq}', 'seq_id': seq, 'symbol': _text(r.get('symbol')), 'isin': _text(r.get('sm_isin')),
+            'event_id': f'nse:{seq}', 'seq_id': seq, 'market': market, 'symbol': _text(r.get('symbol')), 'isin': _text(r.get('sm_isin')),
             'company': _text(r.get('sm_name')), 'industry': _text(r.get('smIndustry')),
             'subject': _text(r.get('desc')), 'text': _text(r.get('attchmntText')),
             'file_url': (url := _file(r.get('attchmntFile'))), 'file_type': file_type(url),
@@ -154,7 +157,10 @@ def merge_into_archive(r2, new: pd.DataFrame, run_date: str) -> tuple[int, list]
         return 0, written
     for part, rows in new.groupby(new['broadcast_date'].map(partition)):
         key = f'{PREFIX}{part}.parquet'
-        merged, n = archive.merge(read_parquet(r2, key), rows, run_date, key='event_id')
+        old = read_parquet(r2, key)
+        if old is not None and not old.empty and 'market' not in old:
+            old = old.assign(market='equities')   # archived before 13 Oct: the equities feed was the only one
+        merged, n = archive.merge(old, rows, run_date, key='event_id')
         put_parquet(r2, key, merged)
         written.append(part)
         added += n
@@ -180,6 +186,7 @@ def counts(df: pd.DataFrame) -> dict:
     return {
         'announcements': len(df),
         'companies': int(df['symbol'].nunique()),
+        'by_market': {str(k): int(v) for k, v in df['market'].value_counts().items()},
         'by_day': {str(k): int(v) for k, v in df['broadcast_date'].fillna('unknown').value_counts().sort_index().items()},
         'without_file': int(df['file_url'].isna().sum()),
         'file_types': {str(k): int(v) for k, v in df['file_type'].fillna('none').value_counts().items()},
@@ -208,26 +215,31 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     start = backfill_from or today - timedelta(days=days - 1)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'calls': [], 'notes': []}
     frames = []
+    blocked = False
     for a, b in (month_chunks(start, today) if backfill_from else [(start, today)]):
-        if raw is not None:
-            def hook(url, resp, a=a, b=b):   # exact bytes before parsing; a failed write stops the run
-                raw.put('nse', 'announcements', resp.content, url=url, status=resp.status_code,
-                        content_type=resp.headers.get('Content-Type'),
-                        covers={'from': a.isoformat(), 'to': b.isoformat()})
-            nse.on_response = hook
-        try:
-            rows = nse.announcements(a, b)
-        except Blocked as exc:
-            report['notes'].append(f'NSE refused ({exc}); stopped, what was fetched is kept')
+        for market in FEEDS:
+            if raw is not None:
+                def hook(url, resp, a=a, b=b, market=market):   # exact bytes before parsing; a failed write stops the run
+                    raw.put('nse', 'announcements', resp.content, url=url, status=resp.status_code,
+                            content_type=resp.headers.get('Content-Type'),
+                            covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market})
+                nse.on_response = hook
+            try:
+                rows = nse.announcements(a, b, market)
+            except Blocked as exc:
+                report['notes'].append(f'NSE refused ({exc}); stopped, what was fetched is kept')
+                blocked = True
+                break
+            except Exception as exc:  # noqa: BLE001 -- one failing month or feed must not lose the others
+                report['notes'].append(f'{market} {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
+                continue
+            df = parse(rows, market)
+            skip = df['subject'].isin(NOT_COLLECTED)
+            report['calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(df),
+                                    'not_archived_concall': int(skip.sum())})
+            frames.append(df[~skip])
+        if blocked:
             break
-        except Exception as exc:  # noqa: BLE001 -- one failing month must not lose the others
-            report['notes'].append(f'{a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
-            continue
-        df = parse(rows)
-        skip = df['subject'].isin(NOT_COLLECTED)
-        report['calls'].append({'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(df),
-                                'not_archived_concall': int(skip.sum())})
-        frames.append(df[~skip])
     nse.on_response = None
     new = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last') if frames else None
     report['added'], report['partitions_written'] = merge_into_archive(r2, new, run_date)
@@ -243,7 +255,8 @@ def summary_markdown(report: dict) -> str:
     c = report.get('window_counts', {})
     concall = sum(x['not_archived_concall'] for x in report.get('calls', []))
     lines = [f"### NSE announcements {report['window'][0]} to {report['window'][1]}", '',
-             (f"{c.get('announcements', 0)} announcements from {c.get('companies', 0)} companies, "
+             (f"{c.get('announcements', 0)} announcements from {c.get('companies', 0)} companies "
+              f"({', '.join(f'{k} {v}' for k, v in c.get('by_market', {}).items())}), "
               f"{report.get('added', 0)} new to the archive; {concall} concall announcements not archived."), '',
              '| Reading group | Announcements | File MB |', '|---|---|---|']
     for g, e in c.get('by_group', {}).items():

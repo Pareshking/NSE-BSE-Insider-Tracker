@@ -53,15 +53,16 @@ def test_groups_come_from_nse_subject_only():
 
 
 class FakeNSE:
-    def __init__(self, rows, block=False):
+    def __init__(self, rows, block=False, sme=()):
         self.rows, self.block, self.calls, self.on_response, self.asked = rows, block, 0, None, []
+        self.sme = list(sme)
 
-    def announcements(self, a, b):
+    def announcements(self, a, b, index='equities'):
         self.calls += 1
-        self.asked.append((a, b))
+        self.asked.append((a, b, index))
         if self.block:
             raise Blocked('HTTP 403')
-        return self.rows
+        return self.rows if index == 'equities' else self.sme
 
 
 def test_nightly_run_archives_by_month_and_twice_adds_nothing(monkeypatch):
@@ -84,7 +85,25 @@ def test_backfill_goes_month_by_month_and_refusal_stops():
     r2 = FakeR2()
     nse = FakeNSE(ROWS)
     ann.run(r2, nse, date(2026, 10, 5), backfill_from=date(2026, 8, 20))
-    assert nse.asked == [(date(2026, 8, 20), date(2026, 8, 31)), (date(2026, 9, 1), date(2026, 9, 30)),
-                         (date(2026, 10, 1), date(2026, 10, 5))]
+    assert nse.asked == [(a, b, m) for a, b in [(date(2026, 8, 20), date(2026, 8, 31)),
+                                                 (date(2026, 9, 1), date(2026, 9, 30)),
+                                                 (date(2026, 10, 1), date(2026, 10, 5))]
+                         for m in ('equities', 'sme')]
     rep = ann.run(FakeR2(), FakeNSE(ROWS, block=True), date(2026, 10, 5), backfill_from=date(2026, 8, 20))
     assert rep['calls'] == [] and rep['added'] == 0 and 'refused' in rep['notes'][0]
+
+
+def test_sme_feed_is_archived_with_its_market_and_old_rows_count_as_equities():
+    r2 = FakeR2()
+    sme = [dict(ROWS[0], seq_id='900000001', symbol='SMEX', desc='Preferential issue')]
+    rep = ann.run(r2, FakeNSE(ROWS[:3]), date(2026, 10, 1))
+    for k in [k for k in r2.objects if k.startswith(ann.PREFIX)]:   # an archive written before the market column
+        old = pd.read_parquet(io.BytesIO(r2.objects[k])).drop(columns='market')
+        buf = io.BytesIO(); old.to_parquet(buf); r2.objects[k] = buf.getvalue()
+    rep = ann.run(r2, FakeNSE(ROWS[:3], sme=sme), date(2026, 10, 1))
+    assert rep['added'] == 1 and [c['market'] for c in rep['calls']] == ['equities', 'sme']
+    assert rep['window_counts']['by_market'] == {'equities': 3, 'sme': 1}
+    arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in r2.objects if k.startswith(ann.PREFIX)])
+    assert arch.set_index('seq_id')['market'].to_dict() == {
+        **{r['seq_id']: 'equities' for r in ROWS[:3]}, '900000001': 'sme'}
+    assert 'sme 1' in ann.summary_markdown(rep)
