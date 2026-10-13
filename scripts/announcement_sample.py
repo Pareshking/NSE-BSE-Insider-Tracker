@@ -43,6 +43,11 @@ READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-it', 'gemma-4-31b-it')
 PACE = {'read': 6.0, 'sort': 3.0}   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
 MAX_CHARS = 300_000                 # about 75K tokens, under Flash-Lite's 250K a minute
+def log(*parts):
+    """Progress on the run log, at once (a step that stalls must show where)."""
+    print(time.strftime('%H:%M:%S'), *parts, flush=True)
+
+
 UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
@@ -113,6 +118,7 @@ class Gemini:
         while True:
             r = self.s.get(f'{API}/models', params={'pageSize': 1000, **({'pageToken': token} if token else {})},
                            timeout=60)
+            log('models list: HTTP', r.status_code)
             r.raise_for_status()
             j = r.json()
             out += j.get('models', [])
@@ -126,15 +132,18 @@ class Gemini:
             self.sleep(wait)
         body = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
                 'generationConfig': {'temperature': 0, **({'responseMimeType': 'application/json'} if json_mode else {})}}
-        for attempt in range(4):
+        for attempt in range(3):
             self.last[kind] = time.monotonic()
-            r = self.s.post(f'{API}/models/{model}:generateContent', json=body, timeout=300)
+            r = self.s.post(f'{API}/models/{model}:generateContent', json=body, timeout=120)
+            log(f'{kind} {model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:300])
             if r.status_code == 400 and json_mode and 'mime' in r.text.lower():
                 body['generationConfig'].pop('responseMimeType', None)   # a model without JSON mode
                 json_mode = False
                 continue
             if r.status_code in (429, 500, 503):
-                self.sleep(30 * (attempt + 1))
+                if attempt == 2:
+                    break
+                self.sleep(20 * (attempt + 1))
                 continue
             if r.status_code != 200:
                 raise RuntimeError(f'{model}: HTTP {r.status_code}: {r.text[:300]}')
@@ -180,7 +189,9 @@ def pdf_text(data: bytes) -> str:
 def document(url: str, session=None) -> tuple[str, list[str]]:
     """(text, notes). A ZIP's PDFs are read in name order, each under a header line."""
     s = session or requests
-    r = s.get(url, headers={'User-Agent': UA, 'Referer': 'https://www.nseindia.com/'}, timeout=300)
+    log('download', url.rsplit('/', 1)[-1])
+    r = s.get(url, headers={'User-Agent': UA, 'Referer': 'https://www.nseindia.com/'}, timeout=(15, 120))
+    log('download: HTTP', r.status_code, f'{len(r.content):,} bytes')
     r.raise_for_status()
     data, notes = r.content, [f'{len(r.content) / 1024 ** 2:.1f} MB']
     if data[:2] == b'PK':
@@ -328,12 +339,14 @@ def main(argv=None):
     models = {'read': pick(available, READERS), 'sort': pick(available, SORTERS)}
     names = sorted(m['name'].split('/', 1)[-1] for m in available
                    if 'generateContent' in m.get('supportedGenerationMethods', []))
-    print('models with generateContent:', ', '.join(names))
+    log('models with generateContent:', ', '.join(names))
+    log('reader', models['read'], 'sorter', models['sort'])
     if not models['read']:
         emit(f'None of {READERS} is in this key\'s model list: {", ".join(names)}\n')
         sys.exit(1)
     results = []
     for row in rows:
+        log('---', row['symbol'], row['subject'])
         res = {'symbol': row['symbol'], 'subject': row['subject']}
         try:
             sort_out = None
@@ -351,7 +364,7 @@ def main(argv=None):
         except Exception as exc:  # noqa: BLE001 -- one filing failing must not stop the sample
             res['error'] = f'{type(exc).__name__}: {exc}'[:300]
         results.append(res)
-        print(row['symbol'], res.get('score'), res.get('error', ''))
+        log(row['symbol'], res.get('score'), res.get('error', ''))
     Path('announcement_sample_results.json').write_text(
         json.dumps({'prompt_version': PROMPT_VERSION, 'models': models, 'results': results}, indent=1,
                    ensure_ascii=False, default=str))
