@@ -129,3 +129,19 @@ def test_one_job_per_reader_and_only_gemini_sorts():
     assert jobs == [{'slug': 'gemini', 'reader': 'gemini', 'flags': ''},
                     {'slug': 'nvidia-z-ai-glm-5.3', 'reader': 'nvidia:z-ai/glm-5.3', 'flags': '--no-sort'}]
     assert len(a.matrix('# all')) == len(a.DEFAULT_READERS.split(','))
+    assert a.matrix('readers: zai:glm-4.7-flash, zai:glm-4.7-flash+thinking') == [
+        {'slug': 'zai-glm-4.7-flash-zai-glm-4.7-flash-thinking', 'reader': 'zai:glm-4.7-flash, zai:glm-4.7-flash+thinking',
+         'flags': '--no-sort'}]
+
+
+def test_zai_thinking_is_switched_by_the_readers_line():
+    body = {'choices': [{'message': {'content': '{"category": "rights"}'}}], 'usage': {}}
+    s = _Session([_Resp(200, body), _Resp(200, body)])
+    sent = []
+    post = s.post
+    s.post = lambda url, **kw: (sent.append(kw['json']), post(url, **kw))[1]
+    c = a.OpenAICompat('zai', 'https://x/v4', 'k', session=s, sleep=lambda _: None)
+    c.generate(['glm-4.7-flash+thinking'], 'p', 'read', True)
+    c.generate(['glm-4.7-flash'], 'p', 'read', True)
+    assert [(b['model'], b['thinking']['type']) for b in sent] == [
+        ('glm-4.7-flash', 'enabled'), ('glm-4.7-flash', 'disabled')]

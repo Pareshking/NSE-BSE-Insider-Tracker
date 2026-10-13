@@ -42,7 +42,7 @@ PROMPT_VERSION = 'sample-1'
 # Preferred model ids, first found in the account's model list wins.
 READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-a4b-it', 'gemma-4-31b-it')   # ids as listed by the API on 13 Oct 2026
-PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 10.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
+PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 10.0, 'zai:read': 3.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
 PER_FILING_SECONDS = 600           # one filing never holds up the rest
 CALL_SECONDS = 180                 # Flash-Lite took 55-110 s a filing on 13 Oct
 RUN_SECONDS = int(os.environ.get('SAMPLE_MINUTES', '24')) * 60   # stop taking new filings before the job's limit
@@ -190,11 +190,14 @@ class OpenAICompat:
         self.last = {}
         self.call_seconds = CALL_SECONDS_OF.get(name, CALL_SECONDS)
 
-    def models(self) -> list[dict]:
+    def models(self) -> list[dict] | None:
+        """The live model list; None when the provider has no list (models are then tried, not checked)."""
         r = self.s.get(f'{self.base}/models', timeout=60)
-        log(f'{self.name} models list: HTTP', r.status_code)
+        log(f'{self.name} models list ({self.base}): HTTP', r.status_code)
         if r.status_code == 401:
             raise RuntimeError(f'{self.name}: key refused (HTTP 401) - expired or wrong; renew the GitHub secret')
+        if r.status_code == 404:
+            return None
         r.raise_for_status()
         log(f'{self.name} models:', ', '.join(sorted(m['id'] for m in r.json().get('data', []))))
         return [{'name': m['id'], 'supportedGenerationMethods': ['generateContent']} for m in r.json().get('data', [])]
@@ -208,9 +211,12 @@ class OpenAICompat:
                 wait = PACE.get(f'{self.name}:{kind}', PACE[kind]) - (time.monotonic() - self.last.get(kind, -1e9))
                 if wait > 0:
                     self.sleep(wait)
-                body = {'model': model, 'temperature': 0, 'max_tokens': MAX_TOKENS.get(self.name, 4096),
+                model_id, thinking = model.removesuffix('+thinking'), model.endswith('+thinking')
+                body = {'model': model_id, 'temperature': 0, 'max_tokens': MAX_TOKENS.get(self.name, 4096),
                         'messages': [{'role': 'user', 'content': prompt}],
-                        **({'response_format': {'type': 'json_object'}} if json_mode else {})}
+                        **({'response_format': {'type': 'json_object'}} if json_mode else {}),
+                        # Z.ai's switch for its reasoning step; "model+thinking" in the readers line turns it on
+                        **({'thinking': {'type': 'enabled' if thinking else 'disabled'}} if self.name == 'zai' else {})}
                 self.last[kind] = time.monotonic()
                 try:
                     r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
@@ -235,13 +241,16 @@ class OpenAICompat:
         raise RuntimeError(f'all {self.name} {kind} models busy or refused ({last})')
 
 
-MAX_TOKENS = {'groq': 2048, 'nvidia': 16384}   # Groq counts the reply in its 8K a minute; reasoning models need room
-CALL_SECONDS_OF = {'nvidia': 300}              # large free models queue
+MAX_TOKENS = {'groq': 2048, 'nvidia': 16384, 'zai': 16384}   # Groq counts the reply in its 8K a minute; reasoning models need room
+CALL_SECONDS_OF = {'nvidia': 300, 'zai': 300}              # large free models queue
 
 PROVIDERS = {   # name: (base url, key secret, extra input limit in characters or None)
     'groq': ('https://api.groq.com/openai/v1', 'GROQ_API_KEY', 20_000),   # 8K tokens a minute on the free plan
     'nvidia': ('https://integrate.api.nvidia.com/v1', 'NVIDIA_API_KEY', None),
+    'zai': ('https://api.z.ai/api/paas/v4', 'ZAI_API_KEY', None),   # free Flash models: one request at a time
 }
+SERIAL = {'zai'}   # free tier: one request at a time, so one job
+OTHER_BASES = {'zai': ('https://open.bigmodel.cn/api/paas/v4',)}   # a key from bigmodel.cn works only there
 
 
 def parse_readers(text: str) -> list[str]:
@@ -262,8 +271,11 @@ def matrix(text: str) -> list[dict]:
     """One workflow job per reader (the run file's readers: line, else DEFAULT_READERS); only gemini sorts."""
     line = text if any(ln.strip().lower().startswith('readers:') for ln in text.splitlines()) \
         else 'readers: ' + DEFAULT_READERS
-    return [{'slug': re.sub(r'[^a-z0-9.]+', '-', r.lower()).strip('-'), 'reader': r,
-             'flags': '' if r == 'gemini' else '--no-sort'} for r in parse_readers(line)]
+    jobs: dict[str, list[str]] = {}
+    for r in parse_readers(line):   # a provider allowing one request at a time gets one job for all its readers
+        jobs.setdefault(r.split(':')[0] if r.split(':')[0] in SERIAL else r, []).append(r)
+    return [{'slug': re.sub(r'[^a-z0-9.]+', '-', '-'.join(rs).lower()).strip('-'), 'reader': ', '.join(rs),
+             'flags': '' if 'gemini' in rs else '--no-sort'} for rs in jobs.values()]
 
 
 def available_of(models: list[dict], wanted: tuple[str, ...]) -> list[str]:
@@ -547,13 +559,23 @@ def main(argv=None):
             continue
         try:
             if prov not in clients:
-                clients[prov] = (OpenAICompat(prov, base, pkey), None)
-                clients[prov] = (clients[prov][0], {m['name'] for m in clients[prov][0].models()})
+                for b in (base, *OTHER_BASES.get(prov, ())):
+                    client = OpenAICompat(prov, b, pkey)
+                    try:
+                        listed = client.models()
+                        break
+                    except Exception as exc:  # noqa: BLE001 -- the next base, if any
+                        err = exc
+                else:
+                    raise err
+                clients[prov] = (client, None if listed is None else {m['name'] for m in listed})
+                if listed is None:
+                    log(f'{prov}: no model list; models are tried as named')
         except Exception as exc:  # noqa: BLE001
             emit(f'{prov}: {exc}\n')
             continue
         client, ids = clients[prov]
-        if model not in ids:
+        if ids is not None and model.removesuffix('+thinking') not in ids:
             emit(f'{entry}: not in {prov}\'s model list ({", ".join(sorted(ids))[:600]}).\n')
             continue
         lanes.append((entry, client, [model], limit))
