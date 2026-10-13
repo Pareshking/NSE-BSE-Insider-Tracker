@@ -1,2 +1,2 @@
 # Filings for the next sample run (symbols, comma-separated); empty = all. A push that changes this file starts a run.
-GTECJAINX, BLS, ADANIENT
+PASUPTAC, CHANDAN, HYUNDAI, KANORICHEM
