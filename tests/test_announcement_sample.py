@@ -66,6 +66,8 @@ def test_a_unit_must_not_multiply_a_number_written_in_full():
     assert a.unit_backed('299,99,99,852.45', 'crore', q, 'exact') is False   # crore only in the words
     assert a.unit_backed('95,00,00,000', 'crore', 'Size of Issue: INR 95,00,00,000', 'table') is False
     assert a.unit_backed('299,99,99,852.45', 'rupees', q, 'exact') is None
+    assert a.unit_backed('15.5', None, 'an investment of USD 15.5 billion by 2030', 'exact') is False   # unit left out
+    assert a.unit_backed('162', None, 'at a price of Rs. 162 per share', 'exact') is None
     assert a.unit_backed('28,200.00', 'lakh', 'not exceeding ₹ 28,200.00 Lakhs (Rupees', 'exact') is True
     assert a.unit_backed('102', 'Cr', 'worth Rs. 102 Cr. out of which', 'exact') is True
     assert a.unit_backed('200.00', 'crore', 'Total 200.00', 'table') is True   # unit in the column heading

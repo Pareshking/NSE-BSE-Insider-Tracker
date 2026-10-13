@@ -399,9 +399,17 @@ def unit_backed(value, unit, quote, found) -> bool | None:
     Not backed when the number is already written in full (7 or more digits before the point: '95,00,00,000'
     crore would be 9.5e16), or, in an exact quote, when the unit's word does not follow the number: a
     filing's amount in words ('Rupees Two Hundred Ninety-Nine Crore ...') does not make 299,99,99,852.45
-    a number of crores. A table quote keeps its unit in the column heading, so only the first test applies."""
+    a number of crores. A table quote keeps its unit in the column heading, so only the first test applies.
+    The other way round: a reply with no unit (or rupees) is not backed when the quote puts a unit's word right
+    after the number ('USD 15.5 billion' read as 15.5, 13 Oct)."""
     mult = UNIT.get(str(unit or 'rupees').strip().lower().rstrip('.'), 1)
     if mult == 1:
+        v = _num(value)
+        any_unit = '|'.join(UNIT_WORDS.values())
+        for m in re.finditer(NUMBER, str(quote or '')):
+            if v is not None and abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)) and re.match(
+                    r'\s*(?:' + any_unit + r')(?![a-z])', quote[m.end():], re.IGNORECASE):
+                return False
         return None
     v = _num(value)
     if v is None:
