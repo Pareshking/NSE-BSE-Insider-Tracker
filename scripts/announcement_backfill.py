@@ -114,33 +114,63 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
 
 
 def collect_historical_day(r2, day: date) -> None:
-    """Collect and certify exactly one historical NSE day; BSE remains live-only for now."""
+    """Collect and certify exactly one historical date from both NSE and BSE."""
     from clean_writer import get, put
 
     date_text = day.isoformat()
     env = os.environ.copy()
     subprocess.run([sys.executable, '-m', 'collectors.nse_events.announcements',
                     '--from', date_text, '--to', date_text], check=True, env=env)
+    subprocess.run([sys.executable, '-m', 'collectors.bse.announcements',
+                    '--from', date_text, '--to', date_text], check=True, env=env)
 
-    # The NSE collector writes one report per execution date. Verify that report
-    # before writing a date checkpoint; a successful process exit alone is not proof.
+    # Both collectors write dated reports. A zero exit code alone is not evidence
+    # that both feeds covered the requested day.
     report_date = datetime.now(IST).date().isoformat()
-    raw = get(r2, f'clean/reports/announcements/{report_date}.json')
-    if not raw:
+    nse_raw = get(r2, f'clean/reports/announcements/{report_date}.json')
+    bse_raw = get(r2, f'clean/reports/announcements_bse/{report_date}.json')
+    if not nse_raw:
         raise RuntimeError(f'Missing NSE collection report for historical date {date_text}')
+    if not bse_raw:
+        raise RuntimeError(f'Missing BSE collection report for historical date {date_text}')
     try:
-        report = json.loads(raw)
+        nse_report = json.loads(nse_raw)
     except (TypeError, ValueError) as exc:
         raise RuntimeError(f'Invalid NSE collection report for historical date {date_text}') from exc
-    if report.get('window') != [date_text, date_text]:
-        raise RuntimeError(f'Wrong NSE report window for {date_text}: {report.get("window")}')
-    if report.get('notes'):
-        raise RuntimeError(f'NSE collection report has unresolved notes for {date_text}: {report["notes"]}')
-    calls = report.get('calls', [])
+    try:
+        bse_report = json.loads(bse_raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f'Invalid BSE collection report for historical date {date_text}') from exc
+
+    if nse_report.get('window') != [date_text, date_text]:
+        raise RuntimeError(f'Wrong NSE report window for {date_text}: {nse_report.get("window")}')
+    if nse_report.get('notes'):
+        raise RuntimeError(f'NSE collection report has unresolved notes for {date_text}: {nse_report["notes"]}')
+    nse_calls = nse_report.get('calls', [])
     for market in ('equities', 'sme'):
         if not any(call.get('market') == market and call.get('from') == date_text
-                   and call.get('to') == date_text for call in calls):
+                   and call.get('to') == date_text for call in nse_calls):
             raise RuntimeError(f'NSE {market} feed did not certify {date_text}')
+
+    if bse_report.get('window') != [date_text, date_text]:
+        raise RuntimeError(f'Wrong BSE report window for {date_text}: {bse_report.get("window")}')
+    if bse_report.get('notes'):
+        raise RuntimeError(f'BSE collection report has unresolved notes for {date_text}: {bse_report["notes"]}')
+    bse_days = [item for item in bse_report.get('days', []) if item.get('day') == date_text]
+    if len(bse_days) != 1:
+        raise RuntimeError(f'BSE report did not certify exactly one day for {date_text}')
+    stats = bse_days[0]
+    if stats.get('bse_count') is None:
+        raise RuntimeError(f'BSE report has no reported count for {date_text}')
+    try:
+        bse_count, bse_unique = int(stats['bse_count']), int(stats['unique'])
+    except (TypeError, ValueError, KeyError) as exc:
+        raise RuntimeError(f'BSE report has invalid counts for {date_text}: {stats}') from exc
+    if bse_count < 0 or stats.get('short') or bse_unique < bse_count:
+        raise RuntimeError(
+            f'BSE coverage incomplete for {date_text}: reported={bse_count}, '
+            f'fetched_unique={bse_unique}, short={stats.get("short")}'
+        )
 
     marker = {
         'date': date_text,
@@ -149,41 +179,59 @@ def collect_historical_day(r2, day: date) -> None:
         'completed_at': datetime.now(timezone.utc).isoformat(),
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
         'status': 'collection_verified',
-        'scope': ['NSE'],
+        'scope': ['NSE', 'BSE'],
         'verification': {
             'nse_report_date': report_date,
-            'nse_report_window': report['window'],
-            'nse_feed_calls': len(calls),
-            'exchanges_verified': ['NSE'],
-            'bse_skipped': True,
+            'nse_report_window': nse_report['window'],
+            'nse_feed_calls': len(nse_calls),
+            'bse_report_date': report_date,
+            'bse_report_window': bse_report['window'],
+            'bse_count': bse_count,
+            'bse_unique': bse_unique,
+            'bse_pages': int(stats.get('pages') or 0),
+            'bse_short': bool(stats.get('short')),
+            'exchanges_verified': ['NSE', 'BSE'],
             'reports_checked': True,
         },
     }
-    put(r2, f'{COLLECTION_DAY_PREFIX}{date_text}.json',
-        json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
-    print(f'Collected and verified NSE history for {date_text}; BSE intentionally skipped.', flush=True)
-
+    key = f'{COLLECTION_DAY_PREFIX}{date_text}.json'
+    put(r2, key, json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
+    if not historical_day_collected(r2, day):
+        raise RuntimeError(f'R2 collection checkpoint failed read-back verification for {date_text}')
+    print(
+        f'R2 collection checkpoint verified for {date_text}: scope=NSE,BSE; '
+        f'NSE feeds={len(nse_calls)}; BSE reported={bse_count}, fetched_unique={bse_unique}.',
+        flush=True,
+    )
 
 def historical_day_collected(r2, day: date) -> bool:
-    """Only a verified NSE-only date checkpoint can skip collection on a retry."""
+    """Only a read-back-verified checkpoint covering both exchanges can skip collection."""
     from clean_writer import get
-    raw = get(r2, f'{COLLECTION_DAY_PREFIX}{day.isoformat()}.json')
+    date_text = day.isoformat()
+    raw = get(r2, f'{COLLECTION_DAY_PREFIX}{date_text}.json')
     if not raw:
         return False
     try:
         marker = json.loads(raw)
+        verification = marker.get('verification') or {}
+        bse_count = int(verification.get('bse_count'))
+        bse_unique = int(verification.get('bse_unique'))
     except (TypeError, ValueError):
         return False
-    date_text = day.isoformat()
     return (
         marker.get('status') == 'collection_verified'
         and marker.get('date') == date_text
         and marker.get('from') == date_text
         and marker.get('to') == date_text
-        and marker.get('scope') == ['NSE']
-        and (marker.get('verification') or {}).get('bse_skipped') is True
+        and marker.get('scope') == ['NSE', 'BSE']
+        and verification.get('exchanges_verified') == ['NSE', 'BSE']
+        and verification.get('reports_checked') is True
+        and verification.get('nse_report_window') == [date_text, date_text]
+        and verification.get('bse_report_window') == [date_text, date_text]
+        and verification.get('bse_short') is False
+        and bse_count >= 0
+        and bse_unique >= bse_count
     )
-
 
 def historical_day_ai_complete(r2, day: date) -> bool:
     """Only a terminal AI checkpoint tied to verified collection can advance the date cursor."""
@@ -204,7 +252,7 @@ def historical_day_ai_complete(r2, day: date) -> bool:
         and checkpoint.get('from') == date_text
         and checkpoint.get('to') == date_text
         and checkpoint.get('remaining') == 0
-        and checkpoint.get('scope') == ['NSE']
+        and checkpoint.get('scope') == ['NSE', 'BSE']
     )
 
 
@@ -236,7 +284,7 @@ def mark_historical_day_ai_complete(r2, day: date, state: dict) -> None:
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
         'status': 'complete',
         'remaining': 0,
-        'scope': ['NSE'],
+        'scope': ['NSE', 'BSE'],
         'collection_checkpoint': f'{COLLECTION_DAY_PREFIX}{date_text}.json',
         'completed_batches': int(state.get('completed_batches', 0)),
         'last_batch_counts': state.get('last_batch_counts', {}),
@@ -497,6 +545,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         reads = reads[read_dates >= start].copy()
 
     total_new = 0
+    memories_written_this_run = 0
     for batch in range(max_batches):
         to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=start, date_to=end)
         if to_read.empty:
@@ -539,6 +588,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         else:
             rows.extend(statuses)
         total_new += len(rows)
+        memories = 0
         if not dry_run:
             reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
             touched = set(to_read.get('isin', pd.Series(dtype=str)).dropna().astype(str))
@@ -547,6 +597,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
             else:
                 memories = persist_company_memories(r2, reads, touched)
             state['company_memories_written'] = int(state.get('company_memories_written', 0)) + memories
+            memories_written_this_run += memories
         counts_now = pd.Series([r.get('status') for r in rows]).value_counts().to_dict() if rows else {}
         # Recount the eligible queue from the persisted read archive. Do not infer
         # completion from batch return counts: retries, status rows, and partial
@@ -580,7 +631,8 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         })
         save_state(r2, state)
         print(f'Backfill batch {state["completed_batches"]}: candidates={len(batch_ids)}, outcomes={counts_now}, '
-              f'memory companies updated={state.get("company_memories_written", 0)}', flush=True)
+              f'memory companies updated this batch={memories}, '
+              f'cumulative={state.get("company_memories_written", 0)}', flush=True)
         if dry_run:
             break
         # Refresh candidate and read archives for a safe, idempotent next pass.
@@ -605,7 +657,10 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         'from': start.isoformat(), 'to': end.isoformat(), 'source_filings': len(candidates),
         'reads_archive_rows': len(reads), 'batches_this_run': min(max_batches, int(state.get('completed_batches', 0))),
         'status': state.get('status'), 'remaining': state.get('remaining'),
-        'company_memories_written': state.get('company_memories_written_final', 0),
+        'company_memories_written': (state.get('company_memories_written', 0) if month_only else
+                                     state.get('company_memories_written_final', state.get('company_memories_written', 0))),
+        'company_memories_written_this_run': memories_written_this_run,
+        'company_memories_written_cumulative': state.get('company_memories_written', 0),
         'checkpoint': STATE_KEY, 'notes': setup,
     }
     summary = '### Historical announcement AI backfill\n\n' + '\n'.join(f'- **{k}:** {v}' for k, v in report.items())
@@ -641,7 +696,10 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         next_day = cutoff + timedelta(days=1)
         state.update(status='complete', remaining=0, next_history_date=next_day.isoformat())
         save_state(r2, state)
-        print(f'Historical worker: every date through {cutoff} is complete.', flush=True)
+        persisted = read_state(r2)
+        if persisted.get('status') != 'complete' or persisted.get('remaining') != 0:
+            raise RuntimeError('R2 overall backfill checkpoint failed read-back verification')
+        print(f'R2 overall backfill checkpoint verified: status=complete remaining=0 through={cutoff}.', flush=True)
         return 0
 
     day_text = day.isoformat()
@@ -653,7 +711,7 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
 
     before_batches = int(state.get('completed_batches', 0))
     run_backfill(day, day, batch_size, batch_minutes, max_batches=max_batches,
-                 dry_run=False, month_only=True, nse_only=True)
+                 dry_run=False, month_only=True, nse_only=False)
     state = read_state(r2)
     after_batches = int(state.get('completed_batches', 0))
 
@@ -661,6 +719,10 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
     # after the per-day AI completion conditions are explicitly satisfied.
     if state.get('status') == 'complete' and state.get('remaining') == 0:
         mark_historical_day_ai_complete(r2, day, state)
+        if not historical_day_ai_complete(r2, day):
+            raise RuntimeError(f'R2 AI completion checkpoint failed read-back verification for {day_text}')
+        print(f'R2 AI day checkpoint verified for {day_text}: status=complete remaining=0 scope=NSE,BSE.',
+              flush=True)
     elif after_batches > before_batches or state.get('pause_reason') == 'live_queue_pending':
         # Preserve the active date and durable cursor; the next workflow resumes it.
         state['active_history_date'] = day_text
@@ -702,7 +764,7 @@ def main(argv=None):
     parser.add_argument('--batch-minutes', type=float, default=8)
     parser.add_argument('--max-batches', type=int, default=3)
     parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('--continuous', action='store_true', help='live-first: process one batch from completed months only')
+    parser.add_argument('--continuous', action='store_true', help='live-first: collect and read one date at a time from both exchanges')
     args = parser.parse_args(argv)
     if args.end < args.start:
         parser.error('--to must be on or after --from')
