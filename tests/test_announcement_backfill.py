@@ -34,7 +34,7 @@ def test_continuous_worker_uses_only_checkpointed_completed_months():
         'archive/announcement_backfill/collection/not-a-month.json': b'{}',
     })
     months = backfill.completed_collection_months(r2, date(2026, 1, 1), today)
-    assert months == ['2026-01', '2026-02']
+    assert months == [m for m in ('2026-01', '2026-02') if m != current_month]
 
 
 def test_choose_accepts_explicit_inclusive_history_range_and_excludes_outside_dates():
