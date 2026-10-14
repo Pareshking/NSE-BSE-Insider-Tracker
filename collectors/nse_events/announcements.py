@@ -209,16 +209,19 @@ def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
 
 
 def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
-        backfill_from: date | None = None, write_report: bool = True) -> dict:
+        backfill_from: date | None = None, write_report: bool = True, backfill_to: date | None = None) -> dict:
     """The window's filings into raw and the archive; the count report unless `write_report` is False
     (the announcement reader's daytime top-ups, which must not replace the nightly report)."""
     from clean_writer import put
     run_date = today.isoformat()
     start = backfill_from or today - timedelta(days=days - 1)
-    report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'calls': [], 'notes': []}
+    end = backfill_to or today
+    if end < start:
+        raise ValueError('backfill_to must be on or after backfill_from')
+    report = {'run_date': run_date, 'window': [start.isoformat(), end.isoformat()], 'calls': [], 'notes': []}
     frames = []
     blocked = False
-    for a, b in (month_chunks(start, today) if backfill_from else [(start, today)]):
+    for a, b in (month_chunks(start, end) if backfill_from else [(start, end)]):
         for market in FEEDS:
             if raw is not None:
                 def hook(url, resp, a=a, b=b, market=market):   # exact bytes before parsing; a failed write stops the run
@@ -274,14 +277,17 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--days', type=int, default=NIGHTLY_DAYS)
     ap.add_argument('--from', dest='backfill_from', type=date.fromisoformat, default=None,
-                    help='history: fetch one calendar month per call from this date (YYYY-MM-DD)')
+                    help='history: first date to fetch (YYYY-MM-DD)')
+    ap.add_argument('--to', dest='backfill_to', type=date.fromisoformat, default=None,
+                    help='history: last date to fetch (YYYY-MM-DD); pair with --from')
     args = ap.parse_args(argv)
     from r2_writer import BUCKET, r2_client
 
     from insiders_clean.raw_store import RawStore
     r2 = r2_client()
     report = run(r2, NSEClient(), datetime.now(IST).date(), args.days,
-                 raw=RawStore(r2, bucket=BUCKET, collector='nse_announcements'), backfill_from=args.backfill_from)
+                 raw=RawStore(r2, bucket=BUCKET, collector='nse_announcements'), backfill_from=args.backfill_from,
+                 backfill_to=args.backfill_to)
     text = summary_markdown(report)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
