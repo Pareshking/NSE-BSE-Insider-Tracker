@@ -130,6 +130,7 @@ class Lane:
     def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None):
         self.name, self.entries, self.clients = name, list(entries), clients
         self.strikes, self.dropped = {}, []
+        self.rate_limited = set()  # models with a confirmed daily quota exhaustion; skip for this run
         self.used_today = used_today or {}   # calls by provider:model in today's earlier runs
 
     def calls_today(self, key: str) -> int:
@@ -145,7 +146,8 @@ class Lane:
         return any(self.calls_today(k) >= DAILY_SHARE * DAILY_CALLS[k] for k in keys)
 
     def models(self) -> list[tuple[str, str]]:
-        return [tuple(e.split(':', 1)) for e in self.entries if e not in self.dropped and not self.at_daily_limit(e)]
+        return [tuple(e.split(':', 1)) for e in self.entries
+                if e not in self.dropped and e not in self.rate_limited and not self.at_daily_limit(e)]
 
     def providers(self) -> set[str]:
         return {e.split(':', 1)[0] for e in self.entries}
@@ -167,7 +169,16 @@ class Lane:
                 return text, f'{prov}:{used}', round(time.monotonic() - t0, 1)
             except RuntimeError as exc:
                 entry = f'{prov}:{model}'
-                errors.append(f'{entry}: {exc}'[:200])
+                error_text = str(exc)
+                errors.append(f'{entry}: {error_text}'[:200])
+                lowered = error_text.lower()
+                daily_quota_429 = ('429' in lowered and any(token in lowered for token in
+                    ('tokens per day', 'tpd', 'daily quota', 'daily limit', 'quota exceeded')))
+                if daily_quota_429:
+                    if entry not in self.rate_limited:
+                        self.rate_limited.add(entry)
+                        log(f'{self.name}: {entry} exhausted its daily quota; skipping it for the rest of this run')
+                    continue
                 if 'Timeout' in str(exc):
                     self.strikes[entry] = self.strikes.get(entry, 0) + 1
                     if self.strikes[entry] >= SLOW_STRIKES and entry not in self.dropped:
