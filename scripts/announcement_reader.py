@@ -312,12 +312,12 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
 # --- the card's words: a headline and a few points, every number in them found in their quote --------------
 
 CARD_ASK = (
-    'Also return "headline": {"text": one line of at most 90 characters saying what the company did, with its '
+    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, not the exchange's filing label. '
     'key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
     'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
     'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
-    'the price; for a legal or regulatory matter, who acted, against whom, and the amount. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
+    'the price; for a legal or regulatory matter, who acted, against whom, and the amount. Never use boilerplate such as "Submission of", "Outcome of Board Meeting", "Outcome of Meeting", "Intimation of", or "Pursuant to", and never copy the exchange subject as the headline. Lead with the approved or announced action and its key terms; if the board approved multiple actions, distinguish them in the points. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
     'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
