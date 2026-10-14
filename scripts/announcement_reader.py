@@ -367,7 +367,10 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
     if selected not in ('baseline', 'v2'):
         raise ValueError('variant must be baseline or v2')
     ask = CARD_ASK_V2 if selected == 'v2' else CARD_ASK
-    return p.replace('=== DOCUMENT ===', ask + '=== DOCUMENT ===', 1)
+    memory = str(row.get('_company_memory') or '').strip()
+    context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
+               'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
+    return p.replace('=== DOCUMENT ===', ask + context + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
     """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
@@ -529,13 +532,19 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     return df
 
 
-def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """(to read, status rows written without a model call, counts). Today first, then yesterday, newest first."""
+def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
+           date_from: date | None = None, date_to: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Choose recent filings, or an explicit inclusive historical date range; no model calls here."""
     counts = {}
     if cands is None or cands.empty:
         return pd.DataFrame(), pd.DataFrame(), {'candidates': 0}
-    days = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
-    c = cands[cands['broadcast_date'].isin(days)].copy()
+    if date_from is not None or date_to is not None:
+        first, last = date_from or date.min, date_to or today
+        dates = pd.to_datetime(cands['broadcast_date'], errors='coerce').dt.date
+        c = cands[(dates >= first) & (dates <= last)].copy()
+    else:
+        days = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
+        c = cands[cands['broadcast_date'].isin(days)].copy()
     counts['candidates'] = len(c)
     finished = set()
     tries = {}
@@ -818,6 +827,36 @@ def load_archive(r2, prefix: str, today: date) -> pd.DataFrame | None:
     return pd.concat(frames, ignore_index=True) if frames else None
 
 
+def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
+    """Attach concise, source-linked prior company events to prompts when a memory exists in R2."""
+    from clean_writer import get
+    if candidates is None or candidates.empty:
+        return candidates
+    out = candidates.copy()
+    cache, contexts = {}, []
+    for row in out.to_dict('records'):
+        isin = str(row.get('isin') or '').strip()
+        memory = {}
+        if isin and isin.lower() != 'nan' and re.fullmatch(r'[A-Za-z0-9._-]{2,32}', isin):
+            if isin not in cache:
+                raw = get(r2, f'archive/company_memory/{isin}.json')
+                try:
+                    cache[isin] = json.loads(raw) if raw else {}
+                except (TypeError, ValueError):
+                    cache[isin] = {}
+            memory = cache[isin]
+        current_date = str(row.get('broadcast_date') or '')
+        lines = []
+        for event in [e for e in memory.get('events', []) if e.get('date') and e.get('date') < current_date][-8:]:
+            headline = event.get('headline') if isinstance(event.get('headline'), dict) else {}
+            summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
+            if summary:
+                lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
+        contexts.append('\\n'.join(lines))
+    out['_company_memory'] = contexts
+    return out
+
+
 def write(r2, rows: list[dict], run_date: str, today: date) -> int:
     """Rows merged into the reads archive by event_id (a filing read again replaces its row), then the clean
     table rebuilt from it. Returns the number of filings new to the archive."""
@@ -1028,6 +1067,8 @@ def main(argv=None):
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
     to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
+    if r2 is not None:
+        to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
     rows, notes_run = run(to_read, lanes, done, args.minutes * 60, max_filings=args.max,
                           on_row=saver.add if saver else None)
