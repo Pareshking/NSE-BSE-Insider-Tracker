@@ -2,14 +2,14 @@
 
 This document records the live reader and the historical AI backfill. Older dated notes below are an
 engineering log, not the current rollout status. The agreed historical AI backfill starts **01 Jan 2026**.
-The live reader prioritizes today/yesterday. After each successful live cycle, the same serialized workflow checks the eligible live queue; only when it is empty does it read at most one historical AI batch. Historical reading progresses month by month as soon as each month has a successful collection checkpoint; it does not wait for all requested months.
+The live reader prioritizes today/yesterday. After each successful live cycle, the same serialized workflow checks the eligible live queue; only when it is empty does it read at most one historical AI batch. Historical reading progresses month by month as soon as each month has a successful collection checkpoint; it does not wait for all requested months. For the current month, dates older than the live/nightly collection window are collected one day at a time during idle cycles, then read in bounded batches.
 
 Current implementation paths:
 - Collectors (no model): `collectors/nse_events/announcements.py` and `collectors/bse/announcements.py`;
   both support bounded `--from YYYY-MM-DD --to YYYY-MM-DD` historical windows.
 - Live reader: `scripts/announcement_reader.py`; prompt receives earlier, source-linked company memory.
 - Historical AI backfill: `scripts/announcement_backfill.py`; live-first continuous worker, one bounded batch per live cycle, oldest completed month first, and R2 checkpoints.
-- Historical collection workflow: `.github/workflows/announcement-history-backfill.yml`; writes `archive/announcement_backfill/collection/YYYY-MM.json` only after both exchange collectors exit successfully. The live reader workflow consumes completed-month markers and reads one monthly partition per cycle.
+- Historical collection workflow: `.github/workflows/announcement-history-backfill.yml`; writes `archive/announcement_backfill/collection/YYYY-MM.json` only after both exchange collectors exit successfully. The live reader workflow consumes completed-month markers and reads one monthly partition per cycle. Current-month older dates use per-day collection markers under `archive/announcement_backfill/collection-days/`.
 - Persistent company memory: `archive/company_memory/{ISIN}.json`, built only from quote-validated claims with
   event ID, date, exchange and source URL. Backfill state: `archive/announcement_backfill/state.json`.
 - Site: Brief card "Filings read" from `clean/current/announcement_reads.parquet`.
