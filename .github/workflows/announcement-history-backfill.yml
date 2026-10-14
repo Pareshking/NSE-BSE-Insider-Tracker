@@ -4,6 +4,12 @@ name: Announcement history backfill
 # Older months never overlap the live reader's current-month announcement partition. The current
 # month and the AI read pass share the live reader's concurrency group to prevent lost R2 merges.
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/announcement-history-backfill.yml'
+  schedule:
+    - cron: '30 20 * * *'  # 02:00 IST: resume historical reading without recollecting
   workflow_dispatch:
     inputs:
       phase:
@@ -27,7 +33,7 @@ on:
       max_batches:
         description: 'Batches this run; checkpoint makes later runs resume safely'
         required: true
-        default: '3'
+        default: '2'
 
 permissions:
   contents: read
@@ -35,7 +41,7 @@ permissions:
 
 jobs:
   collect-older-history:
-    if: inputs.phase != 'read'
+    if: github.event_name != 'schedule' && inputs.phase != 'read'
     runs-on: ubuntu-latest
     timeout-minutes: 350
     concurrency:
@@ -54,7 +60,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          HISTORY_FROM: ${{ inputs.from }}
+          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
           HISTORY_TO: ${{ inputs.to }}
         run: |
           set -euo pipefail
@@ -99,7 +105,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          HISTORY_FROM: ${{ inputs.from }}
+          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
           HISTORY_TO: ${{ inputs.to }}
         run: |
           set -euo pipefail
@@ -118,7 +124,7 @@ jobs:
 
   read-history:
     if: >-
-      ${{ always() && inputs.phase != 'collect'
+      ${{ always() && (github.event_name == 'schedule' || inputs.phase != 'collect')
           && (needs.collect-older-history.result == 'success' || needs.collect-older-history.result == 'skipped')
           && (needs.collect-current-month.result == 'success' || needs.collect-current-month.result == 'skipped') }}
     needs: [collect-older-history, collect-current-month]
@@ -149,10 +155,10 @@ jobs:
         env:
           HISTORY_FROM: ${{ inputs.from }}
           HISTORY_TO: ${{ inputs.to }}
-          BATCH_SIZE: ${{ inputs.batch_size }}
-          MAX_BATCHES: ${{ inputs.max_batches }}
+          BATCH_SIZE: ${{ inputs.batch_size || '20' }}
+          MAX_BATCHES: ${{ inputs.max_batches || '2' }}
         run: |
           set -euo pipefail
           end="${HISTORY_TO:-$(date -u +%F)}"
           python -u scripts/announcement_backfill.py --from "$HISTORY_FROM" --to "$end" \
-            --batch-size "$BATCH_SIZE" --max-batches "$MAX_BATCHES" --batch-minutes 8
+            --batch-size "$BATCH_SIZE" --max-batches "$MAX_BATCHES" --batch-minutes 6
