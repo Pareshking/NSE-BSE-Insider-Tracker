@@ -115,6 +115,7 @@ jobs:
             exit 0
           fi
           echo "Collecting $start through $month_end"
+          export COLLECTION_FROM="$start" COLLECTION_TO="$month_end"
           python -m collectors.nse_events.announcements --from "$start" --to "$month_end"
           python -u -m collectors.bse.announcements --from "$start" --to "$month_end"
           python - <<'PY'
@@ -125,7 +126,8 @@ jobs:
           month = os.environ['MONTH']
           marker = {
               'month': month,
-              'from': os.environ['HISTORY_FROM'],
+              'from': os.environ['COLLECTION_FROM'],
+              'to': os.environ['COLLECTION_TO'],
               'completed_at': datetime.now(timezone.utc).isoformat(),
               'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
               'status': 'collection_commands_succeeded',
