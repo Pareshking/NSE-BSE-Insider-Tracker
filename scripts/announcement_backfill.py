@@ -499,7 +499,43 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         })
         save_state(r2, state)
         print(f'Backfill batch {state["completed_batches"]}: candidates={len(batch_ids)}, outcomes={counts_now}, '
-              f'memory companies updated={state.get("company_memordef run_continuous(start: date, end: date, batch_size: int, batch_minutes: float,
+              f'memory companies updated={state.get("company_memories_written", 0)}', flush=True)
+        if dry_run:
+            break
+        # Refresh candidate and read archives for a safe, idempotent next pass.
+        reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
+        if not reads.empty:
+            dates = pd.to_datetime(reads['broadcast_date'], errors='coerce').dt.date
+            reads = reads[dates >= start].copy()
+        if 'event_id' in candidates:
+            # Failed rows under MAX_TRIES are retried; completed and exhausted rows are filtered by choose().
+            pass
+    else:
+        state['status'] = 'paused' if state.get('remaining', 0) else 'complete'
+        save_state(r2, state)
+    # Rebuild the memories of all companies seen in this backfill, not just the final batch.
+    if not dry_run and not candidates.empty and not month_only:
+        reads = all_parquet(r2, ar.READS_PREFIX)
+        isins = set(candidates.get('isin', pd.Series(dtype=str)).dropna().astype(str))
+        state['company_memories_written_final'] = persist_company_memories(r2, reads, isins)
+        state['status'] = 'paused' if state.get('remaining', 0) else state.get('status', 'complete')
+        save_state(r2, state)
+    report = {
+        'from': start.isoformat(), 'to': end.isoformat(), 'source_filings': len(candidates),
+        'reads_archive_rows': len(reads), 'batches_this_run': min(max_batches, int(state.get('completed_batches', 0))),
+        'status': state.get('status'), 'remaining': state.get('remaining'),
+        'company_memories_written': state.get('company_memories_written_final', 0),
+        'checkpoint': STATE_KEY, 'notes': setup,
+    }
+    summary = '### Historical announcement AI backfill\n\n' + '\n'.join(f'- **{k}:** {v}' for k, v in report.items())
+    print(summary)
+    if os.environ.get('GITHUB_STEP_SUMMARY'):
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+            f.write(summary + '\n')
+    return 0
+
+
+def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float,
                     max_batches: int) -> int:
     """Live-first daily loop: collect one date, read only that date, then advance."""
     from r2_writer import r2_client
@@ -572,45 +608,6 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     )
     save_state(r2, state)
     print(f'Historical date {day_text} is complete; the next cycle will start the next date.', flush=True)
-    return 0
-mpleted = set(state.get('completed_collection_months', []))
-    for month in months:
-        if month in completed:
-            continue
-        first = date.fromisoformat(month + '-01')
-        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
-        last = min(next_month - timedelta(days=1), end)
-        before_batches = int(state.get('completed_batches', 0))
-        print(f'Historical worker selected completed month {month}; processing at most '
-              f'{batch_size} filings for this run.', flush=True)
-        run_backfill(first, last, batch_size, batch_minutes, max_batches=1,
-                     dry_run=False, month_only=True)
-        state = read_state(r2)
-        after_batches = int(state.get('completed_batches', 0))
-        if after_batches > before_batches:
-            # One batch per live cycle; never let history starve the live reader.
-            state['active_month'] = month
-            state['status'] = 'running'
-            state['completed_collection_months'] = sorted(completed)
-            save_state(r2, state)
-            print(f'Historical worker paused after one batch in {month}; next live cycle will resume it.',
-                  flush=True)
-            return 0
-        completed.add(month)
-        state['completed_collection_months'] = sorted(completed)
-        state['last_completed_month'] = month
-        state['status'] = 'running'
-        state['remaining'] = None
-        save_state(r2, state)
-        print(f'No eligible filings remain in {month}; moving forward.', flush=True)
-
-    all_complete = set(months).issubset(completed)
-    state['status'] = 'complete' if all_complete else 'running'
-    state['remaining'] = 0 if all_complete else None
-    state['completed_collection_months'] = sorted(completed)
-    save_state(r2, state)
-    print('Historical worker: all completed collection months exhausted.' if all_complete
-          else 'Historical worker: waiting for the next completed collection month.', flush=True)
     return 0
 
 
