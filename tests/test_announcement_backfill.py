@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
+import pytest
+
 import pandas as pd
 
 import announcement_backfill as backfill
@@ -107,3 +109,67 @@ def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenan
     prompt = ar.card_prompt(frame.iloc[0].to_dict(), 'The board approved a project.')
     assert 'Earlier verified company history' in prompt
     assert 'https://example.test/past.pdf' in prompt
+
+
+
+def test_daywise_worker_selects_oldest_uncompleted_day_and_never_skips_a_gap():
+    completed = {'2026-01-01', '2026-01-02', '2026-01-04'}
+    assert backfill.next_history_day(
+        date(2026, 1, 1), date(2026, 1, 10), date(2026, 1, 8), completed
+    ) == date(2026, 1, 3)
+    assert backfill.next_history_day(
+        date(2026, 1, 1), date(2026, 1, 2), date(2026, 1, 8), completed
+    ) is None
+    assert backfill.next_history_day(
+        date(2026, 1, 1), date(2026, 1, 10), date(2025, 12, 31), completed
+    ) is None
+
+
+def test_nse_day_checkpoint_requires_exact_window_and_both_nse_feeds():
+    report = {
+        'window': ['2026-01-03', '2026-01-03'],
+        'notes': [],
+        'calls': [
+            {'market': 'equities', 'from': '2026-01-03', 'to': '2026-01-03', 'rows': 4},
+            {'market': 'sme', 'from': '2026-01-03', 'to': '2026-01-03', 'rows': 0},
+        ],
+    }
+    result = backfill.validate_nse_report(report, date(2026, 1, 3), date(2026, 1, 3))
+    assert result['exchanges_verified'] == ['NSE']
+    assert result['bse_skipped'] is True
+
+    with pytest.raises(RuntimeError, match='sme feed omitted dates'):
+        backfill.validate_nse_report(
+            {**report, 'calls': report['calls'][:1]},
+            date(2026, 1, 3), date(2026, 1, 3)
+        )
+    with pytest.raises(RuntimeError, match='unresolved notes'):
+        backfill.validate_nse_report(
+            {**report, 'notes': ['temporary feed failure']},
+            date(2026, 1, 3), date(2026, 1, 3)
+        )
+    with pytest.raises(RuntimeError, match='report window'):
+        backfill.validate_nse_report(
+            {**report, 'window': ['2026-01-02', '2026-01-03']},
+            date(2026, 1, 3), date(2026, 1, 3)
+        )
+
+
+def test_day_collection_marker_must_be_verified_nse_only():
+    import clean_writer
+
+    r2 = FakeR2()
+    day = date(2026, 1, 3)
+    key = f'archive/announcement_backfill/collection-days/{day.isoformat()}.json'
+    clean_writer.put(r2, key, json.dumps({
+        'date': day.isoformat(), 'from': day.isoformat(), 'to': day.isoformat(),
+        'status': 'collection_commands_succeeded', 'scope': ['NSE'],
+    }).encode(), 'application/json')
+    assert not backfill.historical_day_collected(r2, day)
+
+    clean_writer.put(r2, key, json.dumps({
+        'date': day.isoformat(), 'from': day.isoformat(), 'to': day.isoformat(),
+        'status': 'collection_verified', 'scope': ['NSE'],
+        'verification': {'exchanges_verified': ['NSE']},
+    }).encode(), 'application/json')
+    assert backfill.historical_day_collected(r2, day)
