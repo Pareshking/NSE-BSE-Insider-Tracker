@@ -109,3 +109,35 @@ def test_incremental_run_stops_paging_at_known_filings():
     bse = FakeBSE(ROWS)
     rep = ann.run(r2, bse, date(2026, 10, 12), days=1, incremental=True)
     assert bse.calls == 1 and rep['days'][0]['caught_up'] and not rep['days'][0]['short'] and rep['added'] == 0
+
+def test_history_collection_logs_day_progress(capsys):
+    report = ann.run(FakeR2(), FakeBSE([]), date(2026, 10, 14),
+                     start=date(2026, 1, 1), end=date(2026, 1, 1))
+    output = capsys.readouterr().out
+    assert 'BSE collection: starting 2026-01-01' in output
+    assert 'BSE collection: finished 2026-01-01 pages=1' in output
+    assert report['days'][0]['day'] == '2026-01-01'
+
+
+def test_bse_http_request_has_bounded_timeout():
+    from collectors.bse.client import BSEClient
+
+    class Response:
+        status_code = 200
+        headers = {'Content-Type': 'application/json'}
+        content = b'{}'
+
+    class Session:
+        def __init__(self):
+            self.headers = {}
+            self.timeout = None
+
+        def get(self, url, params, timeout):
+            self.timeout = timeout
+            return Response()
+
+    session = Session()
+    client = BSEClient(session=session, sleep=lambda _: None, pace=(0, 0), allow_in_page=False)
+    status, _, _ = client._fetch('https://example.test/api', {})
+    assert status == 200
+    assert session.timeout == 45

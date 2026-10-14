@@ -215,13 +215,16 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
     frames, dropped = [], 0
     day = first
     while day <= last:
+        print(f'BSE collection: starting {day.isoformat()}', flush=True)
         try:
             rows, stats = fetch_day(bse, day, known_ids(r2, day) if incremental and r2 is not None else None)
         except Blocked as exc:
             report['notes'].append(f'BSE refused ({exc}); stopped, what was fetched is kept')
+            print(f'BSE collection: blocked on {day.isoformat()}; stopping this window.', flush=True)
             break
         except Failed as exc:
             report['notes'].append(f'{day}: fetch failed ({exc})')
+            print(f'BSE collection: failed {day.isoformat()} ({exc}); continuing but month cannot be certified.', flush=True)
             day += timedelta(days=1)
             continue
         df = parse(rows)
@@ -230,6 +233,9 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
         stats['not_archived_concall'] = int(skip.sum())
         report['days'].append(stats)
         frames.append(df[~skip])
+        print(f"BSE collection: finished {day.isoformat()} pages={stats['pages']} "
+              f"reported={stats['bse_count']} fetched_unique={stats['unique']} short={stats['short']}",
+              flush=True)
         day += timedelta(days=1)
     if dropped:
         report['notes'].append(f'{dropped} rows without NEWSID not archived')
