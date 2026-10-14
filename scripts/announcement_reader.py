@@ -312,8 +312,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
 # --- the card's words: a headline and a few points, every number in them found in their quote --------------
 
 CARD_ASK = (
-    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, not the exchange's filing label. '
-    'key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
+    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, not the exchange filing label, '
+    'with its key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
     'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
     'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
@@ -357,6 +357,22 @@ def numbers_backed(text, quotes) -> bool:
     return all(any(abs(v - h) <= 0.005 * max(1.0, abs(h)) for h in have for v in pair) for pair in numbers_in(text))
 
 
+def headline_quality_reason(text: str) -> str | None:
+    """Reject exchange-subject boilerplate as a headline even when its quote is real."""
+    value = re.sub(r'\s+', ' ', str(text or '')).strip()
+    if not value:
+        return 'headline is empty'
+    # Exchange descriptions often prefix the boilerplate with the company name and a colon.
+    lead = re.sub(r'^[^:\n]{1,90}:\s*', '', value, count=1)
+    boilerplate = re.compile(
+        r'^(?:submission\s+of\b|outcome\s+of\s+(?:(?:the\s+)?board\s+)?meeting\b|'
+        r'board\s+meeting\s+outcome\b|intimation\s+of\b|pursuant\s+to\b|'
+        r'proceedings\s+of\s+(?:the\s+)?board\s+meeting\b)', re.IGNORECASE)
+    if boilerplate.search(lead) or boilerplate.search(value):
+        return 'exchange filing-label boilerplate, not a corporate-action headline'
+    return None
+
+
 def check_words(item, doc: str, more_quotes=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing and every number in it is in that quote
     (it may also use the quotes of values already checked, and a headline those of the shown points)."""
@@ -376,7 +392,13 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[
     values = [f['quote'] for f in fields + metrics if f.get('shown')]   # quotes already checked in the filing
     points = [p for p in (check_words(x, doc, values) for x in (out.get('points') or [])[:4]) if p]
     backed = [p['quote'] for p in points if p['shown']] + values
-    return check_words(out.get('headline'), doc, backed), points
+    headline = check_words(out.get('headline'), doc, backed)
+    if headline:
+        quality_reason = headline_quality_reason(headline['text'])
+        if quality_reason:
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
+    return headline, points
 
 
 def with_previous(m: dict, raw: dict, doc: str) -> dict:
