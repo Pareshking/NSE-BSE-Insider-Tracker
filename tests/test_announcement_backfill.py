@@ -22,6 +22,18 @@ def _candidate(eid, day, isin='INE000A01001', status=None):
     }
 
 
+def test_continuous_worker_uses_only_checkpointed_completed_months():
+    r2 = FakeR2()
+    r2.objects.update({
+        'archive/announcement_backfill/collection/2026-01.json': b'{}',
+        'archive/announcement_backfill/collection/2026-02.json': b'{}',
+        'archive/announcement_backfill/collection/2026-10.json': b'{}',
+        'archive/announcement_backfill/collection/not-a-month.json': b'{}',
+    })
+    months = backfill.completed_collection_months(r2, date(2026, 1, 1), date(2026, 10, 14))
+    assert months == ['2026-01', '2026-02']
+
+
 def test_choose_accepts_explicit_inclusive_history_range_and_excludes_outside_dates():
     candidates = pd.DataFrame([
         _candidate('old', '2025-12-31'),
