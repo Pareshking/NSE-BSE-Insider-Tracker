@@ -351,3 +351,31 @@ def test_the_live_reader_asks_for_the_split_categories_and_still_knows_the_old_o
     assert 'deal_or_dispute' not in p and p.index('- legal_regulatory') < p.index('- routine')
     assert ar.validate({'category': 'acquisition'}, 'DOC')[0] == 'acquisition'
     assert ar.validate({'category': 'deal_or_dispute'}, 'DOC')[0] == 'deal_or_dispute'   # older reads
+
+
+def test_live_collect_surfaces_bse_report_warnings(monkeypatch):
+    import collectors.bse.announcements as bann
+    import collectors.bse.client as bse_client
+    import collectors.nse_events.announcements as nann
+    import collectors.nse_events.client as nse_client
+    import insiders_clean.raw_store as raw_store
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+        def close(self):
+            pass
+
+    monkeypatch.setattr(nann, 'run', lambda *args, **kwargs: {})
+    monkeypatch.setattr(bann, 'run', lambda *args, **kwargs: {
+        'days': [{'day': '2026-10-14'}],
+        'notes': ['BSE refused (HTTP 403); stopped, what was fetched is kept'],
+    })
+    monkeypatch.setattr(bse_client, 'BSEClient', Client)
+    monkeypatch.setattr(nse_client, 'NSEClient', Client)
+    monkeypatch.setattr(raw_store, 'RawStore', lambda *args, **kwargs: object())
+    monkeypatch.setattr(ar, 'load_archive', lambda *args, **kwargs: pd.DataFrame())
+
+    notes = []
+    ar.collect(object(), date(2026, 10, 14), False, notes)
+    assert any('BSE collect: BSE refused' in note for note in notes)
