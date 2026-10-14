@@ -27,10 +27,14 @@ def test_continuous_worker_uses_only_checkpointed_completed_months():
     today = datetime.now(backfill.IST).date()
     current_month = today.strftime('%Y-%m')
     r2.objects.update({
-        'archive/announcement_backfill/collection/2026-01.json': json.dumps({'from': '2026-01-01', 'to': '2026-01-31'}).encode(),
-        'archive/announcement_backfill/collection/2026-02.json': json.dumps({'from': '2026-02-01', 'to': '2026-02-28'}).encode(),
+        'archive/announcement_backfill/collection/2026-01.json': json.dumps(
+            {'from': '2026-01-01', 'to': '2026-01-31', 'status': 'collection_verified'}).encode(),
+        'archive/announcement_backfill/collection/2026-02.json': json.dumps(
+            {'from': '2026-02-01', 'to': '2026-02-28', 'status': 'collection_verified'}).encode(),
+        'archive/announcement_backfill/collection/2026-03.json': json.dumps(
+            {'from': '2026-03-01', 'to': '2026-03-31', 'status': 'collection_commands_succeeded'}).encode(),
         f'archive/announcement_backfill/collection/{current_month}.json': json.dumps(
-            {'from': f'{current_month}-01', 'to': today.isoformat()}).encode(),
+            {'from': f'{current_month}-01', 'to': today.isoformat(), 'status': 'collection_verified'}).encode(),
         'archive/announcement_backfill/collection/not-a-month.json': b'{}',
     })
     months = backfill.completed_collection_months(r2, date(2026, 1, 1), today)
