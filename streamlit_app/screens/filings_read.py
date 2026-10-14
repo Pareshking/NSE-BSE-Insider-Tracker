@@ -159,13 +159,26 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     sym = r.get('symbol')
     category = CATEGORY.get(r.get('category'), str(r.get('category') or ''))
 
-    # Without a checked headline (reads before live-2): the exchange's own one-line description of the filing,
-    # else the company and category with its size.
-    detail = str(r.get('detail') or '').strip()
+    # Defend the display too: old reads or a future model regression must not put exchange boilerplate
+    # back into the headline. A fallback uses only the checked category and checked key terms.
+    def _is_boilerplate_title(text: str) -> bool:
+        value = re.sub(r'\s+', ' ', str(text or '')).strip()
+        lead = re.sub(r'^[^:\n]{1,90}:\s*', '', value, count=1)
+        return bool(re.match(
+            r'^(?:submission\s+of\b|outcome\s+of\s+(?:(?:the\s+)?board\s+)?meeting\b|'
+            r'board\s+meeting\s+outcome\b|intimation\s+of\b|pursuant\s+to\b|'
+            r'proceedings\s+of\s+(?:the\s+)?board\s+meeting\b)', lead, re.IGNORECASE))
+    if headline and _is_boilerplate_title(headline.get('text')):
+        headline = None
+    fallback_terms = []
+    for key in ('amount', 'price_per_share', 'shares'):
+        item = next((f for f in fields if f['name'] == key), None)
+        if item:
+            label = {'amount': 'size', 'price_per_share': 'a share', 'shares': 'shares'}[key]
+            fallback_terms.append(f'{value_text(item)} {label}')
     title = headline['text'] if headline else (
-        f'{r.get("company") or sym}: {detail[:160]}' if len(detail) > 12 and detail.lower() != str(r.get('subject') or '').lower()
-        else f'{r.get("company") or sym}: {category.lower()}'
-        + (f', {value_text(next(f for f in fields if f["name"] == "amount"))}' if any(f['name'] == 'amount' for f in fields) else ''))
+        f'{r.get("company") or sym}: {category.lower()}'
+        + (f' · {" · ".join(fallback_terms[:2])}' if fallback_terms else ''))
     body = ''.join(f'<li>{_bold_figures(p["text"])}</li>' for p in points)
     body = f'<ul class="rc-pts">{body}</ul>' if body else ''
 
