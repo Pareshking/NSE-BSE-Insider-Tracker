@@ -1,7 +1,23 @@
-# Announcement reader: state and plan (14 Oct 2026, 00:15 IST)
+# Announcement reader: state and plan (updated 14 Oct 2026)
 
-Where the announcement reader stands, so any session can pick it up. TODO item 29 points here. All on
-PR #56, branch `ccr-5fbf9503-x2spo0`, not merged (owner merges). Times are IST.
+This document records the live reader and the historical AI backfill. Older dated notes below are an
+engineering log, not the current rollout status. The agreed historical AI backfill starts **01 Jan 2026**.
+The live reader prioritizes today/yesterday; it does not itself walk backward through the archive.
+
+Current implementation paths:
+- Collectors (no model): `collectors/nse_events/announcements.py` and `collectors/bse/announcements.py`;
+  both support bounded `--from YYYY-MM-DD --to YYYY-MM-DD` historical windows.
+- Live reader: `scripts/announcement_reader.py`; prompt receives earlier, source-linked company memory.
+- Historical AI backfill: `scripts/announcement_backfill.py`; oldest-first, bounded batches and R2 checkpoint.
+- Historical workflow: `.github/workflows/announcement-history-backfill.yml`.
+- Persistent company memory: `archive/company_memory/{ISIN}.json`, built only from quote-validated claims with
+  event ID, date, exchange and source URL. Backfill state: `archive/announcement_backfill/state.json`.
+- Site: Brief card "Filings read" from `clean/current/announcement_reads.parquet`.
+- Model test: `scripts/announcement_sample.py` and `scripts/announcement_sample_expected.json`.
+
+Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code
+and bounded batch succeeded; the backfill is complete only when the persisted state says `complete` and
+`remaining: 0`. A `paused` state is resumable and is not completion.
 
 Code:
 - Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
