@@ -201,17 +201,20 @@ def counts(df: pd.DataFrame, listed: pd.Series | None = None) -> dict:
 
 
 def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date | None = None,
-        master=None, write_report: bool = True, incremental: bool = False) -> dict:
+        master=None, write_report: bool = True, incremental: bool = False, end: date | None = None) -> dict:
     """The nightly window, or every day from `start` (history). `r2` None = dry run. `write_report` False:
     the announcement reader's daytime top-ups, which must not replace the nightly report."""
     from clean_writer import put
     run_date = today.isoformat()
     first = start or today - timedelta(days=days - 1)
-    report = {'run_date': run_date, 'window': [first.isoformat(), run_date], 'days': [], 'notes': [],
+    last = end or today
+    if last < first:
+        raise ValueError('end must be on or after start')
+    report = {'run_date': run_date, 'window': [first.isoformat(), last.isoformat()], 'days': [], 'notes': [],
               'dry_run': r2 is None}
     frames, dropped = [], 0
     day = first
-    while day <= today:
+    while day <= last:
         try:
             rows, stats = fetch_day(bse, day, known_ids(r2, day) if incremental and r2 is not None else None)
         except Blocked as exc:
@@ -267,7 +270,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--days', type=int, default=NIGHTLY_DAYS)
     ap.add_argument('--from', dest='start', type=date.fromisoformat, default=None,
-                    help='history: every day from this date (YYYY-MM-DD)')
+                    help='history: first date to fetch (YYYY-MM-DD)')
+    ap.add_argument('--to', dest='end', type=date.fromisoformat, default=None,
+                    help='history: last date to fetch (YYYY-MM-DD); pair with --from')
     ap.add_argument('--dry-run', action='store_true', help='fetch and count; write nothing')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
@@ -286,7 +291,7 @@ def main(argv=None):
             print(f'  note: no security master ({type(exc).__name__}: {exc})')
     bse = BSEClient(raw=raw)
     try:
-        report = run(r2, bse, today, args.days, args.start, master)
+        report = run(r2, bse, today, args.days, args.start, master, end=args.end)
     finally:
         bse.close()
     text = summary_markdown(report)
