@@ -256,6 +256,28 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     return report
 
 
+def history_collection_errors(report: dict) -> list[str]:
+    """Return every coverage gap that must block a historical completion marker."""
+    try:
+        start, end = (date.fromisoformat(x) for x in report['window'])
+    except (KeyError, TypeError, ValueError):
+        return ['invalid collection window']
+    expected = {
+        (a.isoformat(), b.isoformat(), market)
+        for a, b in month_chunks(start, end)
+        for market in FEEDS
+    }
+    actual = {
+        (str(call.get('from')), str(call.get('to')), str(call.get('market')))
+        for call in report.get('calls', [])
+    }
+    errors = list(report.get('notes') or [])
+    missing = sorted(expected - actual)
+    if missing:
+        errors.append('missing NSE feed windows: ' + ', '.join('/'.join(x) for x in missing))
+    return errors
+
+
 def summary_markdown(report: dict) -> str:
     """The run's counts as a short table for the GitHub run page."""
     c = report.get('window_counts', {})
@@ -280,7 +302,11 @@ def main(argv=None):
                     help='history: first date to fetch (YYYY-MM-DD)')
     ap.add_argument('--to', dest='backfill_to', type=date.fromisoformat, default=None,
                     help='history: last date to fetch (YYYY-MM-DD); pair with --from')
+    ap.add_argument('--strict-history', action='store_true',
+                    help='fail unless every NSE feed window was fetched without notes')
     args = ap.parse_args(argv)
+    if args.strict_history and (args.backfill_from is None or args.backfill_to is None):
+        ap.error('--strict-history requires both --from and --to')
     from r2_writer import BUCKET, r2_client
 
     from insiders_clean.raw_store import RawStore
@@ -293,6 +319,10 @@ def main(argv=None):
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
             f.write(text)
+    if args.strict_history:
+        errors = history_collection_errors(report)
+        if errors:
+            sys.exit('incomplete NSE history collection: ' + '; '.join(errors))
     if not report['calls']:
         sys.exit('no announcement list was fetched')
 
