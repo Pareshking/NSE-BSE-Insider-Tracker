@@ -123,6 +123,33 @@ def test_lane_falls_back_and_leaves_out_a_model_that_keeps_timing_out():
     assert use['left_out_as_slow'] == {'main': ['nvidia:moonshotai/kimi-k3']}
 
 
+def test_rate_limited_model_is_circuit_broken_and_fallback_continues():
+    limited = RuntimeError('provider returned HTTP 429: rate limit reached for tokens per day')
+    groq = FakeClient([limited])
+    nvidia = FakeClient([QIP])
+    lane = ar.Lane('main', ['groq:qwen/qwen3.8-27b', 'nvidia:moonshotai/kimi-k3'],
+                   {'groq': groq, 'nvidia': nvidia})
+    assert lane.read('p')[1] == 'nvidia:moonshotai/kimi-k3'
+    assert lane.dropped == ['groq:qwen/qwen3.8-27b']
+    assert lane.rate_limited == ['groq:qwen/qwen3.8-27b']
+    assert ('groq', 'qwen/qwen3.8-27b') not in lane.models()
+
+
+def test_rate_limit_circuit_breaker_persists_for_day(monkeypatch):
+    import clean_writer
+    store = {}
+    monkeypatch.setattr(clean_writer, 'get', lambda r2, key: store.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda r2, key, body, content_type=None: store.__setitem__(
+        key, body.decode() if isinstance(body, bytes) else body))
+    lane = ar.Lane('groq', ['groq:qwen/qwen3.8-27b'], {'groq': FakeClient([])})
+    ar.configure_rate_limit_circuit_breaker({'groq': lane}, object(), '2026-10-14')
+    lane.on_rate_limit('groq:qwen/qwen3.8-27b', 'HTTP 429 tokens per day')
+    assert 'groq:qwen/qwen3.8-27b' in ar.load_rate_limited_models(object(), '2026-10-14')
+    other = ar.Lane('groq', ['groq:qwen/qwen3.8-27b'], {'groq': FakeClient([])})
+    ar.configure_rate_limit_circuit_breaker({'groq': other}, object(), '2026-10-14')
+    assert other.models() == []
+    assert other.rate_limited == ['groq:qwen/qwen3.8-27b']
+
 def test_lanes_file_and_free_only_rule():
     spec = ar.lanes_of(ar.LANES_FILE.read_text(encoding='utf-8'))
     assert list(spec) == ['nvidia', 'zai', 'groq', 'gemini'] and all(spec.values())

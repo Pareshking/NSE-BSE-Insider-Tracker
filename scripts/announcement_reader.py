@@ -130,6 +130,7 @@ class Lane:
     def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None):
         self.name, self.entries, self.clients = name, list(entries), clients
         self.strikes, self.dropped = {}, []
+        self.rate_limited, self.on_rate_limit = [], None
         self.used_today = used_today or {}   # calls by provider:model in today's earlier runs
 
     def calls_today(self, key: str) -> int:
@@ -168,6 +169,14 @@ class Lane:
             except RuntimeError as exc:
                 entry = f'{prov}:{model}'
                 errors.append(f'{entry}: {exc}'[:200])
+                if is_rate_limit_error(str(exc)):
+                    if entry not in self.dropped:
+                        self.dropped.append(entry)
+                    if entry not in self.rate_limited:
+                        self.rate_limited.append(entry)
+                        log(f'{self.name}: {entry} rate-limited; circuit open for the rest of today')
+                        if self.on_rate_limit:
+                            self.on_rate_limit(entry, str(exc)[:500])
                 if 'Timeout' in str(exc):
                     self.strikes[entry] = self.strikes.get(entry, 0) + 1
                     if self.strikes[entry] >= SLOW_STRIKES and entry not in self.dropped:
@@ -175,6 +184,66 @@ class Lane:
                         log(f'{self.name}: {entry} timed out {SLOW_STRIKES} times running; left out this run')
         raise RuntimeError('; '.join(errors) or f'{self.name}: no model available (slow, or at its daily limit)')
 
+
+RATE_LIMIT_PREFIX = 'clean/reports/announcement_reader/rate-limits/'
+
+def is_rate_limit_error(message: str) -> bool:
+    """Recognize hard quota responses so a provider is not hammered after it says stop."""
+    return bool(re.search(r'HTTP\s*429|rate.?limit|too many requests|tokens per day|quota exceeded|resource exhausted',
+                          str(message or ''), re.IGNORECASE))
+
+def load_rate_limited_models(r2, run_date: str) -> dict[str, str]:
+    """Models blocked for the rest of a local calendar day, shared by live and history workers."""
+    from clean_writer import get
+    try:
+        raw = get(r2, f'{RATE_LIMIT_PREFIX}{run_date}.json')
+    except Exception as exc:  # noqa: BLE001 -- a circuit-breaker lookup must not stop the live reader
+        log(f'Could not load provider circuit-breaker marker: {type(exc).__name__}: {exc}')
+        return {}
+    if not raw:
+        return {}
+    try:
+        body = json.loads(raw)
+    except (TypeError, ValueError):
+        log(f'Ignoring invalid provider circuit-breaker marker for {run_date}')
+        return {}
+    if not isinstance(body, dict) or body.get('date') != run_date:
+        return {}
+    models = body.get('models', {})
+    return models if isinstance(models, dict) else {}
+
+def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: str) -> None:
+    """Restore today's provider blocks and persist new 429/quota blocks for live and historical runs."""
+    from clean_writer import get, put
+    lock = threading.Lock()
+    blocked = load_rate_limited_models(r2, run_date)
+    for lane in lanes.values():
+        for entry in blocked:
+            if entry in lane.entries and entry not in lane.dropped:
+                lane.dropped.append(entry)
+                lane.rate_limited.append(entry)
+                log(f'{lane.name}: {entry} already rate-limited today; skipping it')
+        def record(entry: str, reason: str) -> None:
+            with lock:
+                key = f'{RATE_LIMIT_PREFIX}{run_date}.json'
+                try:
+                    raw = get(r2, key)
+                except Exception as exc:  # noqa: BLE001 -- do not let marker storage interrupt provider failover
+                    log(f'Could not read provider circuit-breaker marker before update: {type(exc).__name__}: {exc}')
+                    return
+                try:
+                    body = json.loads(raw) if raw else {'date': run_date, 'models': {}}
+                except (TypeError, ValueError):
+                    body = {'date': run_date, 'models': {}}
+                if not isinstance(body, dict) or body.get('date') != run_date or not isinstance(body.get('models'), dict):
+                    body = {'date': run_date, 'models': {}}
+                body['models'][entry] = {'blocked_at': datetime.now(timezone.utc).isoformat(),
+                                         'reason': reason[:300]}
+                try:
+                    put(r2, key, json.dumps(body, separators=(',', ':')).encode(), 'application/json')
+                except Exception as exc:  # noqa: BLE001 -- this run still skips the limited model in memory
+                    log(f'Could not persist provider circuit-breaker marker: {type(exc).__name__}: {exc}')
+        lane.on_rate_limit = record
 
 def clients_for(entries, env=os.environ) -> tuple[dict, list[str]]:
     """A client per provider named in the lanes (keys from the environment); notes for what is missing."""
@@ -939,7 +1008,10 @@ def usage(clients: dict, lanes: dict[str, Lane]) -> dict:
     for e in out.values():
         secs = sorted(e.pop('seconds'))
         e['median_seconds_ok'] = secs[len(secs) // 2] if secs else None
-    return {'models': out, 'left_out_as_slow': {n: lane.dropped for n, lane in lanes.items() if lane.dropped}}
+    return {'models': out,
+            'left_out_as_slow': {n: [e for e in lane.dropped if e not in lane.rate_limited]
+                                 for n, lane in lanes.items() if any(e not in lane.rate_limited for e in lane.dropped)},
+            'left_out_as_rate_limited': {n: lane.rate_limited for n, lane in lanes.items() if lane.rate_limited}}
 
 
 def used_today(r2, run_date: str) -> dict:
@@ -1070,6 +1142,7 @@ def main(argv=None):
         used = used_today(r2, today.isoformat())
         for lane in lanes.values():
             lane.used_today = used
+        configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
     to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
