@@ -73,7 +73,7 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
     from r2_writer import BUCKET
     months, token = [], None
     while True:
-        args = {'Bucket': BUCKET, 'Prefix': COLLECTION_PREFIX, 'MaxKeys': 1000}
+        args = {'Bucket': BUCKET, 'Prefix': COLLECTION_PREFIX}
         if token:
             args['ContinuationToken'] = token
         page = r2.list_objects_v2(**args)
