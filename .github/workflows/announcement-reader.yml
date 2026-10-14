@@ -9,8 +9,7 @@ name: Announcement reader
 # Continuous on main: each run starts the next when it ends (job "next", workflow_dispatch, which GitHub
 # lets a workflow start with its own token), at least 10 minutes after the last one started, 30 after a
 # failure. The schedule below only restarts the chain if it stops (GitHub's schedules start late and
-# sometimes not at all). Off switch: set the repository variable READER_LOOP to "off" (Settings, Secrets
-# and variables, Actions, Variables), or cancel a run; on again: delete it or set "on", then run by hand.
+# sometimes not at all). To pause the live chain, cancel the running workflow and stop the next run.
 on:
   workflow_dispatch:
     inputs:
@@ -19,15 +18,15 @@ on:
         required: false
         default: ''
       prompt_variant:
-        description: 'Headline prompt to evaluate; v2 is dry-run only'
+        description: 'Headline prompt for the run'
         required: true
         type: choice
         options:
           - baseline
           - v2
-        default: baseline
+        default: v2
       dry_run:
-        description: 'Do not write to R2; required when evaluating v2'
+        description: 'Do not write to R2'
         required: true
         type: boolean
         default: false
@@ -50,8 +49,6 @@ concurrency:
 
 jobs:
   read:
-    # READER_LOOP=off pauses scheduled scans while preserving manual dispatch and PR validation.
-    if: ${{ github.event_name != 'schedule' || vars.READER_LOOP != 'off' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -81,9 +78,9 @@ jobs:
       - if: steps.changed.outputs.go == '1'
         run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
       - name: Guard experimental prompt
-        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
         run: |
-          echo "Prompt v2 is experimental and must run with dry_run=true; refusing to write to R2." >&2
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
           exit 1
       - name: Read
         if: steps.changed.outputs.go == '1'
@@ -98,7 +95,7 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAX: ${{ github.event_name == 'pull_request' && '3' || inputs.max || '' }}
-          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'baseline' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'v2' }}
           CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
         run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
@@ -110,11 +107,11 @@ jobs:
           if-no-files-found: ignore
 
   next:
-    # The next run of the chain; not on a PR, not after a run was cancelled, not when switched off.
+    # Keep the production chain running on main; PR and experimental branch runs never start the chain.
     needs: read
     if: >-
       ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-          && needs.read.result != 'cancelled' && vars.READER_LOOP != 'off' }}
+          && needs.read.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -130,5 +127,5 @@ jobs:
           if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main
-          echo "next run requested" >> "$GITHUB_STEP_SUMMARY"
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false
+          echo "next live v2 run requested" >> "$GITHUB_STEP_SUMMARY"
