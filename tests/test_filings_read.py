@@ -118,7 +118,7 @@ def test_an_older_read_without_a_headline_uses_checked_category_and_terms():
     html = fr.card_html(row())
     assert '<h4 class="rc-h">Hyundai Motor India Ltd: capacity / investment' in html
     assert 'USD 15.50 bn size' in html and '₹165.65 a share' in html
-    assert 'Press Release' not in html
+    assert '<h4 class="rc-h">Press Release</h4>' not in html  # category badge may still say Press Release
 
 
 def test_different_files_on_one_deal_are_one_card_and_other_deals_stay_apart():
