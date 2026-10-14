@@ -48,7 +48,7 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-4'   # live-2: headline, points, year-ago values; live-3: the full list of categories
+PROMPT_VERSION = 'live-4'   # live-4: action-only headlines, boilerplate rejection; older reads are re-read
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
