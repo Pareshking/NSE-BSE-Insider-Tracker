@@ -57,7 +57,7 @@ jobs:
           set -euo pipefail
           today=$(date -u +%F)
           end="${HISTORY_TO:-$today}"
-          current_month_start=$(date -u -d "$(date -u +%Y-%m-01) +1 month" +%F)
+          current_month_start=$(date -u +%Y-%m-01)
           older_end=$(date -u -d "$current_month_start -1 day" +%F)
           if [[ "$end" < "$older_end" ]]; then older_end="$end"; fi
           if [[ "$HISTORY_FROM" > "$older_end" ]]; then
