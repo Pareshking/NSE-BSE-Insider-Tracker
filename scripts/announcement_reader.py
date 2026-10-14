@@ -207,7 +207,7 @@ def load_rate_limited_models(r2, run_date: str) -> dict[str, str]:
     except (TypeError, ValueError):
         log(f'Ignoring invalid provider circuit-breaker marker for {run_date}')
         return {}
-    if body.get('date') != run_date:
+    if not isinstance(body, dict) or body.get('date') != run_date:
         return {}
     models = body.get('models', {})
     return models if isinstance(models, dict) else {}
@@ -235,7 +235,7 @@ def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: s
                     body = json.loads(raw) if raw else {'date': run_date, 'models': {}}
                 except (TypeError, ValueError):
                     body = {'date': run_date, 'models': {}}
-                if body.get('date') != run_date or not isinstance(body.get('models'), dict):
+                if not isinstance(body, dict) or body.get('date') != run_date or not isinstance(body.get('models'), dict):
                     body = {'date': run_date, 'models': {}}
                 body['models'][entry] = {'blocked_at': datetime.now(timezone.utc).isoformat(),
                                          'reason': reason[:300]}
