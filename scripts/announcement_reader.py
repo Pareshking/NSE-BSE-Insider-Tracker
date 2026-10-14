@@ -124,8 +124,21 @@ def lanes_of(text: str) -> dict[str, list[str]]:
     return out
 
 
+def is_rate_limit_error(message: str) -> bool:
+    """Recognize quota/rate-limit responses so a model is not retried repeatedly in one run."""
+    text = str(message).lower()
+    return (
+        'http 429' in text
+        or 'rate limit' in text
+        or 'rate_limit' in text
+        or 'tokens per day' in text
+        or 'quota exceeded' in text
+        or 'resource exhausted' in text
+    )
+
+
 class Lane:
-    """One lane's models, each provider's in turn; slow models are left out after SLOW_STRIKES timeouts."""
+    """One lane's models in turn; timed-out and rate-limited models are left out for this run."""
 
     def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None):
         self.name, self.entries, self.clients = name, list(entries), clients
@@ -167,8 +180,15 @@ class Lane:
                 return text, f'{prov}:{used}', round(time.monotonic() - t0, 1)
             except RuntimeError as exc:
                 entry = f'{prov}:{model}'
-                errors.append(f'{entry}: {exc}'[:200])
-                if 'Timeout' in str(exc):
+                message = str(exc)
+                errors.append(f'{entry}: {message}'[:200])
+                if is_rate_limit_error(message):
+                    # Quotas do not recover within this short workflow run. Fail over immediately
+                    # instead of repeatedly burning time on the same 429 response.
+                    if entry not in self.dropped:
+                        self.dropped.append(entry)
+                        log(f'{self.name}: {entry} rate-limited/quota-exhausted; left out this run')
+                elif 'Timeout' in message:
                     self.strikes[entry] = self.strikes.get(entry, 0) + 1
                     if self.strikes[entry] >= SLOW_STRIKES and entry not in self.dropped:
                         self.dropped.append(entry)

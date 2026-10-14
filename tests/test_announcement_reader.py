@@ -379,3 +379,31 @@ def test_live_collect_surfaces_bse_report_warnings(monkeypatch):
     notes = []
     ar.collect(object(), date(2026, 10, 14), False, notes)
     assert any('BSE collect: BSE refused' in note for note in notes)
+
+
+
+def test_lane_immediately_drops_a_rate_limited_model_and_fails_over():
+    limited = RuntimeError('HTTP 429: Rate limit reached; tokens per day quota exhausted')
+    client = FakeClient([limited, QIP, QIP])
+    lane = ar.Lane('groq', ['groq:limited-model', 'groq:fallback-model'], {'groq': client})
+
+    assert lane.read('p')[1] == 'groq:fallback-model'
+    assert lane.dropped == ['groq:limited-model']
+    assert lane.read('p')[1] == 'groq:fallback-model'
+    assert client.asked == ['limited-model', 'fallback-model', 'fallback-model']
+    assert ar.is_rate_limit_error('HTTP 429 too many requests')
+    assert ar.is_rate_limit_error('tokens per day limit reached')
+    assert not ar.is_rate_limit_error('ReadTimeout')
+
+
+def test_a_rate_limited_only_model_is_not_retried_on_later_filings():
+    client = FakeClient([RuntimeError('HTTP 429 rate limit exceeded')])
+    lane = ar.Lane('groq', ['groq:limited-model'], {'groq': client})
+
+    with pytest.raises(RuntimeError, match='HTTP 429'):
+        lane.read('first filing')
+    with pytest.raises(RuntimeError, match='no model available'):
+        lane.read('second filing')
+
+    assert client.asked == ['limited-model']
+    assert lane.dropped == ['groq:limited-model']
