@@ -195,7 +195,11 @@ def is_rate_limit_error(message: str) -> bool:
 def load_rate_limited_models(r2, run_date: str) -> dict[str, str]:
     """Models blocked for the rest of a local calendar day, shared by live and history workers."""
     from clean_writer import get
-    raw = get(r2, f'{RATE_LIMIT_PREFIX}{run_date}.json')
+    try:
+        raw = get(r2, f'{RATE_LIMIT_PREFIX}{run_date}.json')
+    except Exception as exc:  # noqa: BLE001 -- a circuit-breaker lookup must not stop the live reader
+        log(f'Could not load provider circuit-breaker marker: {type(exc).__name__}: {exc}')
+        return {}
     if not raw:
         return {}
     try:
@@ -231,7 +235,10 @@ def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: s
                     body = {'date': run_date, 'models': {}}
                 body['models'][entry] = {'blocked_at': datetime.now(timezone.utc).isoformat(),
                                          'reason': reason[:300]}
-                put(r2, key, json.dumps(body, separators=(',', ':')).encode(), 'application/json')
+                try:
+                    put(r2, key, json.dumps(body, separators=(',', ':')).encode(), 'application/json')
+                except Exception as exc:  # noqa: BLE001 -- this run still skips the limited model in memory
+                    log(f'Could not persist provider circuit-breaker marker: {type(exc).__name__}: {exc}')
         lane.on_rate_limit = record
 
 def clients_for(entries, env=os.environ) -> tuple[dict, list[str]]:
