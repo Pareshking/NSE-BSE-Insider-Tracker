@@ -1,15 +1,11 @@
 name: Announcement history backfill
 
 # Historical collection is partitioned by calendar month. Each month is its own job so BSE paging
-# cannot exceed a single job's timeout. The current month and AI reads serialize with the live reader.
+# cannot exceed a single job's timeout. The live reader owns the day-by-day historical loop; this is a manual maintenance workflow.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/announcement-history-backfill.yml'
-      - 'collectors/bse/client.py'
-      - 'collectors/bse/announcements.py'
-      - 'scripts/announcement_backfill.py'
+  # Continuous historical collection and AI reading is driven one date at a time
+  # by announcement-reader.yml after its live queue is empty. Keep this workflow
+  # manual-only for explicit maintenance runs; pushes must not launch month matrices.
   workflow_dispatch:
     inputs:
       phase:
