@@ -305,5 +305,4 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .rc .rc-foot a { color: var(--accent-ink); }
 .rc-mv { display: inline-flex; gap: 10px; }
 .rc-mv b { font-weight: 600; }
-.rc-by { margin-left: auto; }
 @media (max-width: 640px) { .rds { grid-template-columns: 1fr; } }
