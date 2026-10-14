@@ -74,7 +74,7 @@ def test_upsert_company_memory_is_idempotent_and_keeps_source_linked_events():
 
 def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenance(monkeypatch):
     r2 = FakeR2()
-    from scripts import clean_writer
+    import clean_writer
     clean_writer.put(r2, 'archive/company_memory/INE000A01001.json', json.dumps({
         'schema_version': 1, 'isin': 'INE000A01001', 'events': [
             {'date': '2026-01-05', 'event_id': 'nse:past', 'headline': {'text': 'Acme approved a plant'},
