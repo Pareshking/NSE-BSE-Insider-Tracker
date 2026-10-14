@@ -80,7 +80,7 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
         for item in page.get('Contents', []):
             key = item.get('Key', '')
             name = key[len(COLLECTION_PREFIX):]
-            if not re.fullmatch(r'\\d{4}-\\d{2}\\.json', name):
+            if not re.fullmatch(r'\d{4}-\d{2}\.json', name):
                 continue
             month = name[:-5]
             first = date.fromisoformat(month + '-01')
@@ -351,7 +351,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
                                       'read_at': datetime.now(timezone.utc).isoformat()})
                            for row in status_rows.to_dict('records')]
                 ar.write(r2, skipped, today.isoformat(), today)
-                reads = all_parquet(r2, ar.READS_PREFIX)
+                reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
             state.update(status='complete', remaining=0, candidates=len(candidates),
                          read=int((reads.get('status', pd.Series(dtype=str)) == 'read').sum()),
                          failed=int((reads.get('status', pd.Series(dtype=str)) == 'failed').sum()),
