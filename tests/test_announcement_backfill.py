@@ -182,3 +182,53 @@ def test_historical_collection_refuses_missing_sme_coverage(monkeypatch):
     with pytest.raises(RuntimeError, match='sme feed did not certify'):
         backfill.collect_historical_day(r2, day)
     assert f'{backfill.COLLECTION_DAY_PREFIX}{day.isoformat()}.json' not in r2.objects
+
+
+def test_ai_day_checkpoint_requires_verified_collection_and_terminal_status():
+    r2 = FakeR2()
+    day = date(2026, 1, 2)
+    day_text = day.isoformat()
+    import clean_writer
+
+    clean_writer.put(r2, f'{backfill.COLLECTION_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'collection_verified', 'scope': ['NSE'],
+        'verification': {'bse_skipped': True},
+    }).encode(), 'application/json')
+    clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'running', 'remaining': 0, 'scope': ['NSE'],
+    }).encode(), 'application/json')
+    assert not backfill.historical_day_ai_complete(r2, day)
+
+    clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'complete', 'remaining': 0, 'scope': ['NSE'],
+    }).encode(), 'application/json')
+    assert backfill.historical_day_ai_complete(r2, day)
+
+
+def test_next_unfinished_history_day_ignores_legacy_state_list_without_ai_checkpoint():
+    r2 = FakeR2()
+    start, cutoff = date(2026, 1, 1), date(2026, 1, 3)
+    state = {'completed_history_dates': ['2026-01-01', '2026-01-02']}
+    assert backfill.next_unfinished_history_day(r2, start, cutoff, state) == start
+
+
+def test_next_unfinished_history_day_resumes_cursor_and_skips_only_verified_complete_days():
+    r2 = FakeR2()
+    import clean_writer
+    for day in (date(2026, 1, 1), date(2026, 1, 2)):
+        text_day = day.isoformat()
+        clean_writer.put(r2, f'{backfill.COLLECTION_DAY_PREFIX}{text_day}.json', json.dumps({
+            'date': text_day, 'from': text_day, 'to': text_day,
+            'status': 'collection_verified', 'scope': ['NSE'],
+            'verification': {'bse_skipped': True},
+        }).encode(), 'application/json')
+        clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{text_day}.json', json.dumps({
+            'date': text_day, 'from': text_day, 'to': text_day,
+            'status': 'complete', 'remaining': 0, 'scope': ['NSE'],
+        }).encode(), 'application/json')
+    assert backfill.next_unfinished_history_day(
+        r2, date(2026, 1, 1), date(2026, 1, 3), {'next_history_date': '2026-01-01'}
+    ) == date(2026, 1, 3)
