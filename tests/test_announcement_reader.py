@@ -230,6 +230,26 @@ def test_the_last_save_of_a_run_raises():
         saver.flush(final=True)
 
 
+def test_headline_prompt_v2_is_opt_in_and_preserves_baseline():
+    row = _cand('nse:prompt', 'NSE', 'INEPROMPT', '2026-10-13T10:00:00+05:30', 'Outcome of Board Meeting')
+    baseline = ar.card_prompt(row, DOC, variant='baseline')
+    experimental = ar.card_prompt(row, DOC, variant='v2')
+    assert 'Lead with the approved or announced action' in baseline
+    assert 'distinguish explicitly whether an action was approved, recommended, deferred, rejected' not in baseline
+    assert 'distinguish explicitly whether an action was approved, recommended, deferred, rejected' in experimental
+    assert 'never upgrade a proposal or recommendation to approval' in experimental
+    assert 'return an empty headline rather than' in experimental
+    assert 'Return the existing JSON schema only' in experimental
+    assert '=== DOCUMENT ===' in baseline and '=== DOCUMENT ===' in experimental
+
+
+def test_headline_prompt_v2_does_not_change_numeric_validation():
+    text = 'Board recommends a dividend of Rs 5 per share'
+    quote = 'The Board recommended a dividend of Rs 5 per share'
+    assert ar.numbers_backed(text, [quote])
+    assert not ar.numbers_backed('Board approves a dividend of Rs 50 per share', [quote])
+
+
 @pytest.mark.parametrize('text', [
     'Madhav Infra Projects Ltd: Submission of Board Meeting Outcome for Board Meeting held today',
     'Outcome of Board Meeting for fund raising',

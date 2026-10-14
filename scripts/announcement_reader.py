@@ -48,7 +48,12 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-4'   # live-4: action-only headlines, boilerplate rejection; older reads are re-read
+PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower()
+if PROMPT_VARIANT not in ('baseline', 'v2'):
+    raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
+PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
+PROMPT_VERSION = ('live-5' if PROMPT_VARIANT == 'v2' else
+                  'live-4-ab' if PROMPT_COMPARE else 'live-4')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -322,21 +327,47 @@ CARD_ASK = (
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself.\n\n')
+# Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
+CARD_ASK_V2 = (
+    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, '
+    'not the exchange filing label, "quote": the exact words of the document that establish it}, and "points": '
+    '2 to 4 of {"text": one concise sentence stating a material fact a shareholder needs, "quote": the exact words '
+    'that support it}. First establish the event from the filing text; do not infer it from the exchange subject. '
+    'For board outcomes, distinguish explicitly whether an action was approved, recommended, deferred, rejected, '
+    'considered, or merely noted. Use only the status the document states; never upgrade a proposal or recommendation '
+    'to approval, or approval to completion. For acquisitions, divestments and mergers, identify buyer/seller, target, '
+    'stake and transaction value when disclosed. For fund-raising, identify instrument, size, price and whether it is '
+    'proposed, approved, opened or allotted, as stated. For financial or operating updates, name the reporting period '
+    'and principal reported measure. For legal, regulatory or credit events, identify the acting authority or '
+    'counterparty, the action and disclosed amount or consequence. Lead with the substantive action or outcome, '
+    'not the meeting or filing process. Never copy the exchange subject, use exchange-label boilerplate, or replace '
+    'the event with a generic phrase such as "company announces update". If multiple decisions appear, put the '
+    'most material supported decision in the headline and keep distinct decisions in separate points. In a metric '
+    'of a monthly, quarterly or half-year update, also give "previous": the same measure for the year-earlier period '
+    'as written, "previous_period" and "previous_quote". Every factual claim must be supported by its quote; every '
+    'number must occur in that quote or be an allowed exact unit conversion (12,000 lakh = 120 crore). No opinion, '
+    'forecast, impact claim, independently calculated growth rate, inferred consequence or unsupported completion '
+    'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
+    'invent one; preserve independently supported points. Return the existing JSON schema only.\n\n')
+
 _NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
 _MULT = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'crores': 1e7, 'cr': 1e7, 'crs': 1e7,
          'million': 1e6, 'mn': 1e6, 'm': 1e6, 'billion': 1e9, 'bn': 1e9, 'thousand': 1e3, 'k': 1e3}
 
 
-def card_prompt(row: dict, doc: str) -> str:
+def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
     p = s.read_prompt({'exchange': row['exchange'], 'symbol': row.get('symbol') or row.get('company'),
                        'subject': row.get('subject')}, doc)
     head, rest = p.split('Categories:\n', 1)
     rest = rest.split('\n\nFields:', 1)[1]
     cats = '\n'.join(f'- {k}: {v}' for k, v in CATEGORIES.items())
     p = f'{head}Categories:\n{cats}\n\nFields:{rest}'
-    return p.replace('=== DOCUMENT ===', CARD_ASK + '=== DOCUMENT ===', 1)
-
+    selected = (variant or PROMPT_VARIANT).strip().lower()
+    if selected not in ('baseline', 'v2'):
+        raise ValueError('variant must be baseline or v2')
+    ask = CARD_ASK_V2 if selected == 'v2' else CARD_ASK
+    return p.replace('=== DOCUMENT ===', ask + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
     """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
