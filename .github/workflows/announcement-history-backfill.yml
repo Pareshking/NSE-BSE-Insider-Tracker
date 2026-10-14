@@ -38,6 +38,9 @@ jobs:
     if: inputs.phase != 'read'
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    concurrency:
+      group: nse-announcements
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
