@@ -131,6 +131,36 @@ def persist_company_memories(r2, reads: pd.DataFrame, isins: set[str]) -> int:
     return written
 
 
+def upsert_company_memories(r2, rows: list[dict]) -> int:
+    """Incrementally append newly verified reads to durable company memory; safe to retry by event_id."""
+    from clean_writer import get, put
+    updates = {}
+    for row in rows or []:
+        isin = str(row.get('isin') or '').strip()
+        if not isin or isin.lower() == 'nan' or not re.fullmatch(r'[A-Za-z0-9._-]{2,32}', isin):
+            continue
+        event = verified_event(row)
+        if event:
+            updates.setdefault(isin, {})[event['event_id']] = event
+    written = 0
+    for isin, incoming in updates.items():
+        raw = get(r2, f'{MEMORY_PREFIX}{isin}.json')
+        try:
+            previous = json.loads(raw) if raw else {}
+        except (TypeError, ValueError):
+            previous = {}
+        events = {e.get('event_id'): e for e in previous.get('events', []) if e.get('event_id')}
+        events.update(incoming)
+        ordered = sorted(events.values(), key=lambda e: (e.get('date') or '', e.get('event_id') or ''))[-100:]
+        body = {'schema_version': 1, 'isin': isin, 'generated_at': datetime.now(timezone.utc).isoformat(),
+                'event_count': len(ordered), 'events': ordered}
+        put(r2, f'{MEMORY_PREFIX}{isin}.json',
+            json.dumps(body, ensure_ascii=False, separators=(',', ':'), default=str).encode(),
+            'application/json')
+        written += 1
+    return written
+
+
 def add_memory_context(r2, candidates: pd.DataFrame) -> pd.DataFrame:
     """Attach source-linked earlier company events to each new prompt."""
     from clean_writer import get
