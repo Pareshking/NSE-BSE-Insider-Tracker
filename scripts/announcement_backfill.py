@@ -522,7 +522,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
         if not reads.empty:
             dates = pd.to_datetime(reads['broadcast_date'], errors='coerce').dt.date
-            reads = reads[dates >= start].copy()
+            reads = reads[(dates >= start) & (dates <= end)].copy()
         if 'event_id' in candidates:
             # Failed rows under MAX_TRIES are retried; completed and exhausted rows are filtered by choose().
             pass
@@ -610,7 +610,7 @@ def main(argv=None):
     parser.add_argument('--batch-minutes', type=float, default=8)
     parser.add_argument('--max-batches', type=int, default=3)
     parser.add_argument('--dry-run', action='store_true')
-    parser.add_argument('--continuous', action='store_true', help='live-first: process one batch from completed months only')
+    parser.add_argument('--continuous', action='store_true', help='live-first: collect and process one verified historical day at a time')
     args = parser.parse_args(argv)
     if args.end < args.start:
         parser.error('--to must be on or after --from')
