@@ -126,8 +126,10 @@ def fetch_day(bse: BSEClient, day: date, known: set | None = None) -> tuple[list
         got, count = bse.announcements(day, page)
         total = count if count is not None else total
         rows += got
-        if known is not None and got and all(str(r.get('NEWSID') or '').lower() in known for r in got
-                                             if r.get('NEWSID') and r.get('SUBCATNAME') not in NOT_COLLECTED):
+        # Do not treat an all-concall / missing-ID page as a catch-up page: `all([])` is True,
+        # which would silently stop before older pages containing readable announcements.
+        eligible = [r for r in got if r.get('NEWSID') and r.get('SUBCATNAME') not in NOT_COLLECTED]
+        if known is not None and got and eligible and all(str(r['NEWSID']).lower() in known for r in eligible):
             caught_up = True
             break
         if not got or (total is not None and len(rows) >= total):
