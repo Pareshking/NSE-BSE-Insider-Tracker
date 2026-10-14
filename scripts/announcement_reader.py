@@ -1018,7 +1018,13 @@ def collect(r2, today: date, dry_run: bool, notes: list):
         notes.append(f'NSE collect: {type(exc).__name__}: {exc}'[:200])
     bse = BSEClient(raw=RawStore(r2, collector='bse_announcements'))
     try:
-        bann.run(r2, bse, today, days=COLLECT_DAYS, write_report=False, incremental=True)   # stops at known pages
+        bse_report = bann.run(r2, bse, today, days=COLLECT_DAYS, write_report=False, incremental=True)   # stops at known pages
+        # run() records per-day Blocked/Failed/short-page problems in its report rather than raising;
+        # surface those warnings in the live run summary instead of silently using a partial archive.
+        for warning in bse_report.get('notes', []):
+            notes.append(f'BSE collect: {warning}'[:200])
+        if not bse_report.get('days') and not bse_report.get('notes'):
+            notes.append('BSE collect: no day was successfully collected')
     except Exception as exc:  # noqa: BLE001
         notes.append(f'BSE collect: {type(exc).__name__}: {exc}'[:200])
     finally:
