@@ -36,6 +36,11 @@ on:
         required: true
         default: '2'
 
+# Do not allow separate history workflow runs to enqueue conflicting month jobs and replace one another.
+concurrency:
+  group: announcement-history-backfill
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -89,8 +94,8 @@ jobs:
       matrix:
         month: ${{ fromJSON(needs.prepare.outputs.months) }}
     concurrency:
-      # During rollout, let the first month checkpoint while a legacy run may be collecting a later month.
-      # Later months retain the legacy global lock, preventing overlapping writes to the same partition.
+      # The first historical month uses a bootstrap lock; later months serialize against one another.
+      # Workflow-level concurrency above prevents duplicate history runs from replacing queued month jobs.
       group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || (github.event_name == 'push' && matrix.month == needs.prepare.outputs.first_month && format('nse-announcements-bootstrap-{0}', matrix.month) || 'nse-announcements') }}
       cancel-in-progress: false
     steps:
