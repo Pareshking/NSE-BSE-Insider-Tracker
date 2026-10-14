@@ -100,7 +100,7 @@ jobs:
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
         run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
       - uses: actions/upload-artifact@v4
-        if: always() && github.event_name == 'pull_request' && steps.changed.outputs.go == '1'
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
         with:
           name: announcement-reader-dry-run
           path: announcement_reader_dry_run.json
