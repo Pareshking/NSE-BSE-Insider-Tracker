@@ -99,12 +99,19 @@ def verified_event(row: dict) -> dict | None:
 
 
 def memory_for_company(reads: pd.DataFrame, isin: str) -> dict:
-    rows = reads[reads.get('isin', pd.Series(index=reads.index, dtype=object)).fillna('').astype(str) == isin]
+    if reads is None or reads.empty or 'isin' not in reads.columns:
+        rows = pd.DataFrame()
+    else:
+        rows = reads[reads['isin'].fillna('').astype(str) == isin]
     events = []
-    for row in rows.sort_values(['broadcast_date', 'broadcast_at'], na_position='last').to_dict('records'):
-        event = verified_event(row)
-        if event:
-            events.append(event)
+    if not rows.empty:
+        sort_cols = [c for c in ('broadcast_date', 'broadcast_at') if c in rows.columns]
+        if sort_cols:
+            rows = rows.sort_values(sort_cols, na_position='last')
+        for row in rows.to_dict('records'):
+            event = verified_event(row)
+            if event:
+                events.append(event)
     return {
         'schema_version': 1,
         'isin': isin,
