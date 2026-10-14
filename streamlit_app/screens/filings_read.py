@@ -227,7 +227,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(str(r.get("file_url") or "#"))}" target="_blank" rel="noopener">The filing ↗</a>'
-            f'<span class="rc-by">read by {esc(str(r.get("reader") or ""))}</span></div></article>')
+            '</div></article>')
 
 
 def recent(reads: pd.DataFrame, since: pd.Timestamp) -> pd.DataFrame:
