@@ -33,11 +33,9 @@ MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
 
 
-def all_parquet(r2, prefix: str) -> pd.DataFrame:
-    """Read every Parquet partition under a prefix, paginating R2 listing."""
-    from clean_writer import read_parquet
+def parquet_keys(r2, prefix: str) -> list[str]:
+    """List Parquet partitions under a prefix, handling R2 pagination."""
     from r2_writer import BUCKET
-
     keys, token = [], None
     while True:
         args = {'Bucket': BUCKET, 'Prefix': prefix, 'MaxKeys': 1000}
@@ -51,8 +49,30 @@ def all_parquet(r2, prefix: str) -> pd.DataFrame:
         token = page.get('NextContinuationToken')
         if not token:
             raise RuntimeError(f'R2 listing truncated without a continuation token: {prefix}')
-    frames = [df for key in sorted(keys) if (df := read_parquet(r2, key)) is not None and not df.empty]
+    return sorted(keys)
+
+
+def all_parquet(r2, prefix: str) -> pd.DataFrame:
+    """Read every Parquet partition under a prefix, paginating R2 listing."""
+    from clean_writer import read_parquet
+    keys = parquet_keys(r2, prefix)
+    frames = [df for key in keys if (df := read_parquet(r2, key)) is not None and not df.empty]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def missing_source_months(r2, start: date, end: date) -> list[str]:
+    """A zero-row source archive must never be mistaken for a completed historical backfill."""
+    required, cursor = [], start.replace(day=1)
+    while cursor <= end:
+        required.append(f'year={cursor.year}/month={cursor.month:02d}.parquet')
+        cursor = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+    missing = []
+    for exchange in ('nse', 'bse'):
+        keys = set(parquet_keys(r2, f'archive/announcements/{exchange}/'))
+        for partition in required:
+            if f'archive/announcements/{exchange}/{partition}' not in keys:
+                missing.append(f'{exchange}:{partition[:-8]}')
+    return missing
 
 
 def json_cell(value):
@@ -248,6 +268,13 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     for lane in lanes.values():
         lane.used_today = used
 
+    # Require every month in the requested range from both exchanges; never call an empty archive "complete".
+    missing = missing_source_months(r2, start, end)
+    if missing:
+        state.update(status='blocked', missing_source_months=missing,
+                     last_error='Historical source collection incomplete; run phase=collect/both first')
+        save_state(r2, state)
+        raise RuntimeError(state['last_error'] + ': ' + ', '.join(missing))
     # Source archives are immutable-by-event-id and are read independently from read history.
     nse = all_parquet(r2, 'archive/announcements/nse/')
     bse = all_parquet(r2, 'archive/announcements/bse/')
