@@ -141,3 +141,17 @@ def test_bse_http_request_has_bounded_timeout():
     status, _, _ = client._fetch('https://example.test/api', {})
     assert status == 200
     assert session.timeout == 45
+
+
+def test_incremental_fetch_does_not_stop_on_concall_only_page():
+    day = date(2026, 10, 12)
+    rows = [
+        dict(ROWS[0], NEWSID='call-1', NEWS_DT=day.isoformat() + 'T10:00:00', SUBCATNAME=ann.NOT_COLLECTED[0]),
+        dict(ROWS[1], NEWSID='call-2', NEWS_DT=day.isoformat() + 'T10:01:00', SUBCATNAME=ann.NOT_COLLECTED[1]),
+        dict(ROWS[2], NEWSID='known-3', NEWS_DT=day.isoformat() + 'T10:02:00', SUBCATNAME='Preferential Issue'),
+    ]
+    bse = FakeBSE(rows, size=2)
+    fetched, stats = ann.fetch_day(bse, day, known={'known-3'})
+    assert bse.asked == [(day, 1), (day, 2)]
+    assert len(fetched) == 3
+    assert stats['caught_up'] and not stats['short']
