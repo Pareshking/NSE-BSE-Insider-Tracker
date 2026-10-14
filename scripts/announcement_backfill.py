@@ -31,6 +31,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 START_DEFAULT = date(2026, 1, 1)
 MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
+COLLECTION_PREFIX = 'archive/announcement_backfill/collection/'
 
 
 def parquet_keys(r2, prefix: str) -> list[str]:
@@ -58,6 +59,53 @@ def all_parquet(r2, prefix: str) -> pd.DataFrame:
     keys = parquet_keys(r2, prefix)
     frames = [df for key in keys if (df := read_parquet(r2, key)) is not None and not df.empty]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+def month_parquet(r2, prefix: str, month: str) -> pd.DataFrame:
+    """Read only one calendar-month partition, keeping continuous backfill bounded."""
+    from clean_writer import read_parquet
+    year, number = month.split('-', 1)
+    frame = read_parquet(r2, f'{prefix}year={year}/month={number}.parquet')
+    return frame if frame is not None else pd.DataFrame()
+
+
+def completed_collection_months(r2, start: date, end: date) -> list[str]:
+    """Months whose two-exchange collection jobs wrote an explicit completion marker."""
+    from r2_writer import BUCKET
+    months, token = [], None
+    while True:
+        args = {'Bucket': BUCKET, 'Prefix': COLLECTION_PREFIX, 'MaxKeys': 1000}
+        if token:
+            args['ContinuationToken'] = token
+        page = r2.list_objects_v2(**args)
+        for item in page.get('Contents', []):
+            key = item.get('Key', '')
+            name = key[len(COLLECTION_PREFIX):]
+            if not re.fullmatch(r'\\d{4}-\\d{2}\\.json', name):
+                continue
+            month = name[:-5]
+            first = date.fromisoformat(month + '-01')
+            if start <= first <= end and first < datetime.now(IST).date().replace(day=1):
+                months.append(month)
+        if not page.get('IsTruncated'):
+            break
+        token = page.get('NextContinuationToken')
+        if not token:
+            raise RuntimeError(f'R2 listing truncated without a continuation token: {COLLECTION_PREFIX}')
+    return sorted(set(months))
+
+
+def live_queue_pending(r2, today: date, setup: list[str]) -> bool:
+    """Fail closed: historical work starts only when the normal live queue can be checked."""
+    from collectors.nse_events.run_daily import security_master
+    nse = ar.load_archive(r2, 'archive/announcements/nse/', today)
+    bse = ar.load_archive(r2, 'archive/announcements/bse/', today)
+    reads = ar.load_archive(r2, ar.READS_PREFIX, today)
+    master = security_master(r2, today.isoformat(), setup)
+    selected, _, counts = ar.choose(ar.candidates(nse, bse, master), reads, today)
+    print(f'Live queue gate: eligible={counts.get("to_read", 0)}; historical work '
+          f'{"deferred" if not selected.empty else "allowed"}.', flush=True)
+    return not selected.empty
+
 
 
 def missing_source_months(r2, start: date, end: date) -> list[str]:
@@ -242,7 +290,7 @@ def read_state(r2) -> dict:
 
 
 def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
-                 max_batches: int, dry_run: bool = False) -> int:
+                 max_batches: int, dry_run: bool = False, month_only: bool = False) -> int:
     from r2_writer import r2_client
     today = datetime.now(IST).date()
     r2 = r2_client()
@@ -269,15 +317,16 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         lane.used_today = used
 
     # Require every month in the requested range from both exchanges; never call an empty archive "complete".
-    missing = missing_source_months(r2, start, end)
+    missing = [] if month_only else missing_source_months(r2, start, end)
     if missing:
         state.update(status='blocked', missing_source_months=missing,
                      last_error='Historical source collection incomplete; run phase=collect/both first')
         save_state(r2, state)
         raise RuntimeError(state['last_error'] + ': ' + ', '.join(missing))
     # Source archives are immutable-by-event-id and are read independently from read history.
-    nse = all_parquet(r2, 'archive/announcements/nse/')
-    bse = all_parquet(r2, 'archive/announcements/bse/')
+    one_month = start.strftime('%Y-%m') == end.strftime('%Y-%m')
+    nse = month_parquet(r2, 'archive/announcements/nse/', start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, 'archive/announcements/nse/')
+    bse = month_parquet(r2, 'archive/announcements/bse/', start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, 'archive/announcements/bse/')
     master = None
     try:
         from collectors.nse_events.run_daily import security_master
@@ -288,7 +337,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     if not candidates.empty:
         dates = pd.to_datetime(candidates['broadcast_date'], errors='coerce').dt.date
         candidates = candidates[(dates >= start) & (dates <= end)].copy()
-    reads = all_parquet(r2, ar.READS_PREFIX)
+    reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
     if not reads.empty:
         read_dates = pd.to_datetime(reads['broadcast_date'], errors='coerce').dt.date
         reads = reads[read_dates >= start].copy()
@@ -327,9 +376,12 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
             rows.extend(statuses)
         total_new += len(rows)
         if not dry_run:
-            reads = all_parquet(r2, ar.READS_PREFIX)
+            reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
             touched = set(to_read.get('isin', pd.Series(dtype=str)).dropna().astype(str))
-            memories = persist_company_memories(r2, reads, touched)
+            if month_only:
+                memories = upsert_company_memories(r2, rows)
+            else:
+                memories = persist_company_memories(r2, reads, touched)
             state['company_memories_written'] = int(state.get('company_memories_written', 0)) + memories
         counts_now = pd.Series([r.get('status') for r in rows]).value_counts().to_dict() if rows else {}
         state.update({
@@ -349,7 +401,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         if dry_run:
             break
         # Refresh candidate and read archives for a safe, idempotent next pass.
-        reads = all_parquet(r2, ar.READS_PREFIX)
+        reads = month_parquet(r2, ar.READS_PREFIX, start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, ar.READS_PREFIX)
         if not reads.empty:
             dates = pd.to_datetime(reads['broadcast_date'], errors='coerce').dt.date
             reads = reads[dates >= start].copy()
@@ -360,7 +412,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         state['status'] = 'paused' if state.get('remaining', 0) else 'complete'
         save_state(r2, state)
     # Rebuild the memories of all companies seen in this backfill, not just the final batch.
-    if not dry_run and not candidates.empty:
+    if not dry_run and not candidates.empty and not month_only:
         reads = all_parquet(r2, ar.READS_PREFIX)
         isins = set(candidates.get('isin', pd.Series(dtype=str)).dropna().astype(str))
         state['company_memories_written_final'] = persist_company_memories(r2, reads, isins)
@@ -381,6 +433,64 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     return 0
 
 
+def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float,
+                    max_batches: int) -> int:
+    """After live-first gating, process one bounded batch from the oldest completed month."""
+    from r2_writer import r2_client
+    r2 = r2_client()
+    today = datetime.now(IST).date()
+    setup = []
+    if live_queue_pending(r2, today, setup):
+        print('Historical AI deferred: eligible live filings remain.', flush=True)
+        return 0
+
+    months = completed_collection_months(r2, start, end)
+    if not months:
+        print('Historical AI waiting: no completed historical collection month is checkpointed yet.', flush=True)
+        return 0
+
+    state = read_state(r2)
+    completed = set(state.get('completed_collection_months', []))
+    for month in months:
+        if month in completed:
+            continue
+        first = date.fromisoformat(month + '-01')
+        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        last = min(next_month - timedelta(days=1), end)
+        before_batches = int(state.get('completed_batches', 0))
+        print(f'Historical worker selected completed month {month}; processing at most '
+              f'{batch_size} filings for this run.', flush=True)
+        run_backfill(first, last, batch_size, batch_minutes, max_batches=1,
+                     dry_run=False, month_only=True)
+        state = read_state(r2)
+        after_batches = int(state.get('completed_batches', 0))
+        if after_batches > before_batches:
+            # One batch per live cycle; never let history starve the live reader.
+            state['active_month'] = month
+            state['status'] = 'running'
+            state['completed_collection_months'] = sorted(completed)
+            save_state(r2, state)
+            print(f'Historical worker paused after one batch in {month}; next live cycle will resume it.',
+                  flush=True)
+            return 0
+        completed.add(month)
+        state['completed_collection_months'] = sorted(completed)
+        state['last_completed_month'] = month
+        state['status'] = 'running'
+        state['remaining'] = None
+        save_state(r2, state)
+        print(f'No eligible filings remain in {month}; moving forward.', flush=True)
+
+    all_complete = set(months).issubset(completed)
+    state['status'] = 'complete' if all_complete else 'running'
+    state['remaining'] = 0 if all_complete else None
+    state['completed_collection_months'] = sorted(completed)
+    save_state(r2, state)
+    print('Historical worker: all completed collection months exhausted.' if all_complete
+          else 'Historical worker: waiting for the next completed collection month.', flush=True)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--from', dest='start', type=date.fromisoformat, default=START_DEFAULT)
@@ -389,11 +499,16 @@ def main(argv=None):
     parser.add_argument('--batch-minutes', type=float, default=8)
     parser.add_argument('--max-batches', type=int, default=3)
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--continuous', action='store_true', help='live-first: process one batch from completed months only')
     args = parser.parse_args(argv)
     if args.end < args.start:
         parser.error('--to must be on or after --from')
     if args.batch_size < 1 or args.batch_minutes <= 0 or args.max_batches < 1:
         parser.error('batch-size, batch-minutes and max-batches must be positive')
+    if args.continuous:
+        if args.dry_run:
+            parser.error('--continuous cannot be combined with --dry-run')
+        return run_continuous(args.start, args.end, args.batch_size, args.batch_minutes, args.max_batches)
     return run_backfill(args.start, args.end, args.batch_size, args.batch_minutes, args.max_batches, args.dry_run)
 
 
