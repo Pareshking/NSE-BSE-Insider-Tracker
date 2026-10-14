@@ -50,7 +50,7 @@ concurrency:
 
 jobs:
   read:
-    # READER_LOOP=off pauses cron scans but preserves manual dispatches and PR dry runs.
+    # READER_LOOP=off pauses scheduled scans while preserving manual dispatch and PR validation.
     if: ${{ github.event_name != 'schedule' || vars.READER_LOOP != 'off' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
