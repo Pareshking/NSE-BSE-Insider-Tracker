@@ -587,7 +587,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         'from': start.isoformat(), 'to': end.isoformat(), 'source_filings': len(candidates),
         'reads_archive_rows': len(reads), 'batches_this_run': min(max_batches, int(state.get('completed_batches', 0))),
         'status': state.get('status'), 'remaining': state.get('remaining'),
-        'company_memories_written': state.get('company_memories_written_final', 0),
+        'company_memories_written': state.get('company_memories_written_final', state.get('company_memories_written', 0)),
         'checkpoint': STATE_KEY, 'notes': setup,
     }
     summary = '### Historical announcement AI backfill\n\n' + '\n'.join(f'- **{k}:** {v}' for k, v in report.items())
