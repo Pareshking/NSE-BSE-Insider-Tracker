@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+import subprocess
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -32,6 +33,7 @@ START_DEFAULT = date(2026, 1, 1)
 MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
 COLLECTION_PREFIX = 'archive/announcement_backfill/collection/'
+COLLECTION_DAY_PREFIX = 'archive/announcement_backfill/collection-days/'
 
 
 def parquet_keys(r2, prefix: str) -> list[str]:
@@ -105,6 +107,30 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
         if not token:
             raise RuntimeError(f'R2 listing truncated without a continuation token: {COLLECTION_PREFIX}')
     return sorted(set(months))
+
+
+def collect_historical_day(r2, day: date) -> None:
+    """Collect one older current-month day only after the live queue is clear."""
+    from clean_writer import put
+    from r2_writer import BUCKET
+    date_text = day.isoformat()
+    env = os.environ.copy()
+    subprocess.run([sys.executable, '-m', 'collectors.nse_events.announcements',
+                    '--from', date_text, '--to', date_text], check=True, env=env)
+    subprocess.run([sys.executable, '-u', '-m', 'collectors.bse.announcements',
+                    '--from', date_text, '--to', date_text], check=True, env=env)
+    marker = {'date': date_text, 'from': date_text, 'to': date_text,
+              'completed_at': datetime.now(timezone.utc).isoformat(),
+              'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'status': 'collection_commands_succeeded'}
+    put(r2, f'{COLLECTION_DAY_PREFIX}{date_text}.json',
+        json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
+    print(f'Completed bounded current-month collection for {date_text}.', flush=True)
+
+
+def historical_day_collected(r2, day: date) -> bool:
+    from clean_writer import get
+    return bool(get(r2, f'{COLLECTION_DAY_PREFIX}{day.isoformat()}.json'))
 
 
 def live_queue_pending(r2, today: date, setup: list[str]) -> bool:
@@ -474,6 +500,40 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         return 0
 
     state = read_state(r2)
+    # The live collector owns today/yesterday and the nightly collector owns the last three days.
+    # Backfill older dates in the current month one day at a time, without locking out the live reader.
+    first_day = today.replace(day=1)
+    day_cutoff = today - timedelta(days=3)
+    completed_days = set(state.get('completed_history_dates', []))
+    if day_cutoff >= first_day:
+        day = first_day
+        while day <= day_cutoff:
+            day_text = day.isoformat()
+            if day_text not in completed_days:
+                if not historical_day_collected(r2, day):
+                    print(f'Collecting current-month history for {day_text} before AI reading.', flush=True)
+                    collect_historical_day(r2, day)
+                before_batches = int(state.get('completed_batches', 0))
+                run_backfill(day, day, batch_size, batch_minutes, max_batches=1,
+                             dry_run=False, month_only=True)
+                state = read_state(r2)
+                after_batches = int(state.get('completed_batches', 0))
+                if after_batches > before_batches:
+                    state['active_history_date'] = day_text
+                    state['status'] = 'running'
+                    save_state(r2, state)
+                    print(f'Historical worker paused after one batch for {day_text}.', flush=True)
+                    return 0
+                completed_days.add(day_text)
+                state['completed_history_dates'] = sorted(completed_days)
+                state['last_completed_history_date'] = day_text
+                state['status'] = 'running'
+                state['remaining'] = None
+                save_state(r2, state)
+                print(f'No eligible filings remain for {day_text}; advancing on the next cycle.', flush=True)
+                return 0
+            day += timedelta(days=1)
+
     completed = set(state.get('completed_collection_months', []))
     for month in months:
         if month in completed:
