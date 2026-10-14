@@ -34,6 +34,7 @@ MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
 COLLECTION_PREFIX = 'archive/announcement_backfill/collection/'
 COLLECTION_DAY_PREFIX = 'archive/announcement_backfill/collection-days/'
+AI_DAY_PREFIX = 'archive/announcement_backfill/ai-days/'
 
 
 def parquet_keys(r2, prefix: str) -> list[str]:
@@ -182,6 +183,67 @@ def historical_day_collected(r2, day: date) -> bool:
         and marker.get('scope') == ['NSE']
         and (marker.get('verification') or {}).get('bse_skipped') is True
     )
+
+
+def historical_day_ai_complete(r2, day: date) -> bool:
+    """Only a terminal AI checkpoint tied to verified collection can advance the date cursor."""
+    from clean_writer import get
+    date_text = day.isoformat()
+    if not historical_day_collected(r2, day):
+        return False
+    raw = get(r2, f'{AI_DAY_PREFIX}{date_text}.json')
+    if not raw:
+        return False
+    try:
+        checkpoint = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    return (
+        checkpoint.get('status') == 'complete'
+        and checkpoint.get('date') == date_text
+        and checkpoint.get('from') == date_text
+        and checkpoint.get('to') == date_text
+        and checkpoint.get('remaining') == 0
+        and checkpoint.get('scope') == ['NSE']
+    )
+
+
+def next_unfinished_history_day(r2, start: date, cutoff: date, state: dict) -> date | None:
+    """Resume from the durable cursor, validating date checkpoints before advancing."""
+    pointer = start
+    raw_pointer = state.get('next_history_date')
+    if raw_pointer:
+        try:
+            proposed = date.fromisoformat(raw_pointer)
+            if start <= proposed <= cutoff + timedelta(days=1):
+                pointer = proposed
+        except (TypeError, ValueError):
+            pass
+    while pointer <= cutoff and historical_day_ai_complete(r2, pointer):
+        pointer += timedelta(days=1)
+    return pointer if pointer <= cutoff else None
+
+
+def mark_historical_day_ai_complete(r2, day: date, state: dict) -> None:
+    """Persist the date-level AI completion before moving the resumable cursor."""
+    from clean_writer import put
+    date_text = day.isoformat()
+    marker = {
+        'date': date_text,
+        'from': date_text,
+        'to': date_text,
+        'completed_at': datetime.now(timezone.utc).isoformat(),
+        'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+        'status': 'complete',
+        'remaining': 0,
+        'scope': ['NSE'],
+        'collection_checkpoint': f'{COLLECTION_DAY_PREFIX}{date_text}.json',
+        'completed_batches': int(state.get('completed_batches', 0)),
+        'last_batch_counts': state.get('last_batch_counts', {}),
+        'company_memories_written': int(state.get('company_memories_written', 0)),
+    }
+    put(r2, f'{AI_DAY_PREFIX}{date_text}.json',
+        json.dumps(marker, separators=(',', ':'), default=str).encode(), 'application/json')
 
 
 def live_queue_pending(r2, today: date, setup: list[str]) -> bool:
@@ -555,14 +617,10 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         return 0
 
     state = read_state(r2)
-    completed_days = set(state.get('completed_history_dates', []))
-    day = start
-    while day <= cutoff and day.isoformat() in completed_days:
-        day += timedelta(days=1)
-    if day > cutoff:
-        state.update(status='complete', remaining=0,
-                     completed_history_dates=sorted(completed_days),
-                     last_completed_history_date=cutoff.isoformat())
+    day = next_unfinished_history_day(r2, start, cutoff, state)
+    if day is None:
+        next_day = cutoff + timedelta(days=1)
+        state.update(status='complete', remaining=0, next_history_date=next_day.isoformat())
         save_state(r2, state)
         print(f'Historical worker: every date through {cutoff} is complete.', flush=True)
         return 0
@@ -582,8 +640,8 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
     if after_batches > before_batches:
         # A batch ran; keep this exact date active and resume it next cycle.
         state['active_history_date'] = day_text
+        state['next_history_date'] = day_text
         state['status'] = 'running'
-        state['completed_history_dates'] = sorted(completed_days)
         save_state(r2, state)
         print(f'Historical worker paused after one AI batch for {day_text}; next cycle resumes the same date.',
               flush=True)
@@ -593,11 +651,14 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
     # explicitly reached the terminal state with remaining=0.
     if state.get('status') != 'complete' or state.get('remaining') != 0:
         state['active_history_date'] = day_text
+        state['next_history_date'] = day_text
         state['status'] = 'running'
         save_state(r2, state)
         print(f'Historical worker did not certify completion for {day_text}; will retry this date.', flush=True)
         return 0
 
+    mark_historical_day_ai_complete(r2, day, state)
+    completed_days = set(state.get('completed_history_dates', []))
     completed_days.add(day_text)
     state.update(
         status='running',
@@ -605,6 +666,7 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         completed_history_dates=sorted(completed_days),
         last_completed_history_date=day_text,
         active_history_date=None,
+        next_history_date=(day + timedelta(days=1)).isoformat(),
     )
     save_state(r2, state)
     print(f'Historical date {day_text} is complete; the next cycle will start the next date.', flush=True)
