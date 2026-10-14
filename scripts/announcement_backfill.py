@@ -42,6 +42,8 @@ def parquet_keys(r2, prefix: str) -> list[str]:
     keys, token = [], None
     while True:
         args = {'Bucket': BUCKET, 'Prefix': prefix, 'MaxKeys': 1000}
+        if token:
+            args['ContinuationToken'] = token
         page = r2.list_objects_v2(**args)
         keys.extend(x['Key'] for x in page.get('Contents', [])
                     if x['Key'].endswith('.parquet') and not x['Key'].endswith('_state.parquet'))
