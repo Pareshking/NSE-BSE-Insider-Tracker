@@ -91,7 +91,7 @@ def test_upsert_company_memory_is_idempotent_and_keeps_source_linked_events():
     assert stored['events'][0]['source_url'] == row['file_url']
 
 
-def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenance(monkeypatch):
+def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenance(monkeypatch, capsys):
     r2 = FakeR2()
     import clean_writer
     clean_writer.put(r2, 'archive/company_memory/INE000A01001.json', json.dumps({
@@ -107,6 +107,10 @@ def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenan
     prompt = ar.card_prompt(frame.iloc[0].to_dict(), 'The board approved a project.')
     assert 'Earlier verified company history' in prompt
     assert 'https://example.test/past.pdf' in prompt
+    output = capsys.readouterr().out
+    assert 'companies_with_prior_events=1' in output
+    assert 'prior_events_attached=1' in output
+    assert 'prompt includes company memory' in output
 
 
 
@@ -241,7 +245,7 @@ def test_next_unfinished_history_day_resumes_cursor_and_skips_only_verified_comp
         }).encode(), 'application/json')
         clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{text_day}.json', json.dumps({
             'date': text_day, 'from': text_day, 'to': text_day,
-            'status': 'complete', 'remaining': 0, 'scope': ['NSE'],
+            'status': 'complete', 'remaining': 0, 'scope': ['NSE', 'BSE'],
         }).encode(), 'application/json')
     assert backfill.next_unfinished_history_day(
         r2, date(2026, 1, 1), date(2026, 1, 3), {'next_history_date': '2026-01-01'}

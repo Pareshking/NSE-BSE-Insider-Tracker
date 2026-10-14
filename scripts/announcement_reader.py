@@ -924,7 +924,7 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
             summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
             if summary:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
-        contexts.append('\\n'.join(lines))
+        contexts.append('\n'.join(lines))
     out['_company_memory'] = contexts
     companies_with_memory = {
         str(row.get('isin') or '').strip()
