@@ -44,11 +44,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: announcement-reader-${{ github.event_name == 'pull_request' && 'pr' || 'live' }}
+  # Keep production serialized, but isolate non-main manual experiments from the live chain.
+  group: announcement-reader-${{ github.event_name == 'pull_request' && 'pr' || (github.ref == 'refs/heads/main' && 'live' || github.ref_name) }}
   cancel-in-progress: false   # a run in progress finishes; a newer pending run replaces the older one
 
 jobs:
   read:
+    # READER_LOOP=off pauses cron scans but preserves manual dispatches and PR dry runs.
+    if: ${{ github.event_name != 'schedule' || vars.READER_LOOP != 'off' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
