@@ -112,7 +112,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CARD_PROMPT_VARIANT: v2
           CARD_PROMPT_COMPARE: '0'
-        run: python -u scripts/announcement_backfill.py --continuous --batch-size 20 --batch-minutes 5 --max-batches 1
+        run: python -u scripts/announcement_backfill.py --continuous --batch-size 5 --batch-minutes 3 --max-batches 1
 
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
