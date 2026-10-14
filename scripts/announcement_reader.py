@@ -439,6 +439,9 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
     memory = str(row.get('_company_memory') or '').strip()
     context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
                'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
+    if memory:
+        log(row.get('symbol') or row.get('company') or row.get('event_id'),
+            'prompt includes company memory', f'{len(memory.splitlines())} prior events')
     return p.replace('=== DOCUMENT ===', ask + context + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
@@ -921,8 +924,17 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
             summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
             if summary:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
-        contexts.append('\\n'.join(lines))
+        contexts.append('\n'.join(lines))
     out['_company_memory'] = contexts
+    companies_with_memory = {
+        str(row.get('isin') or '').strip()
+        for row, context in zip(out.to_dict('records'), contexts)
+        if context.strip() and str(row.get('isin') or '').strip()
+        and str(row.get('isin') or '').strip().lower() != 'nan'
+    }
+    prior_events = sum(len(context.splitlines()) for context in contexts)
+    log(f'Company memory context attached: candidates={len(out)}, '
+        f'companies_with_prior_events={len(companies_with_memory)}, prior_events_attached={prior_events}.')
     return out
 
 
