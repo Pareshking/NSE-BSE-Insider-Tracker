@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -20,6 +20,21 @@ def _candidate(eid, day, isin='INE000A01001', status=None):
         'broadcast_at': f'{day}T10:00:00+05:30', 'broadcast_date': day,
         'market_cap': 50_000_000_000, 'status': status, 'tries': 0,
     }
+
+
+def test_continuous_worker_uses_only_checkpointed_completed_months():
+    r2 = FakeR2()
+    today = datetime.now(backfill.IST).date()
+    current_month = today.strftime('%Y-%m')
+    r2.objects.update({
+        'archive/announcement_backfill/collection/2026-01.json': json.dumps({'from': '2026-01-01', 'to': '2026-01-31'}).encode(),
+        'archive/announcement_backfill/collection/2026-02.json': json.dumps({'from': '2026-02-01', 'to': '2026-02-28'}).encode(),
+        f'archive/announcement_backfill/collection/{current_month}.json': json.dumps(
+            {'from': f'{current_month}-01', 'to': today.isoformat()}).encode(),
+        'archive/announcement_backfill/collection/not-a-month.json': b'{}',
+    })
+    months = backfill.completed_collection_months(r2, date(2026, 1, 1), today)
+    assert months == [m for m in ('2026-01', '2026-02') if m != current_month]
 
 
 def test_choose_accepts_explicit_inclusive_history_range_and_excludes_outside_dates():

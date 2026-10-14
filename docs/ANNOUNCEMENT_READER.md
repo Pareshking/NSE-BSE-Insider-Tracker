@@ -2,22 +2,20 @@
 
 This document records the live reader and the historical AI backfill. Older dated notes below are an
 engineering log, not the current rollout status. The agreed historical AI backfill starts **01 Jan 2026**.
-The live reader prioritizes today/yesterday; it does not itself walk backward through the archive.
+The live reader prioritizes today/yesterday. After each successful live cycle, the same serialized workflow checks the eligible live queue; only when it is empty does it read at most one historical AI batch. Historical reading progresses month by month as soon as each month has a successful collection checkpoint; it does not wait for all requested months. For the current month, dates older than the live/nightly collection window are collected one day at a time during idle cycles, then read in bounded batches.
 
 Current implementation paths:
 - Collectors (no model): `collectors/nse_events/announcements.py` and `collectors/bse/announcements.py`;
   both support bounded `--from YYYY-MM-DD --to YYYY-MM-DD` historical windows.
 - Live reader: `scripts/announcement_reader.py`; prompt receives earlier, source-linked company memory.
-- Historical AI backfill: `scripts/announcement_backfill.py`; oldest-first, bounded batches and R2 checkpoint.
-- Historical workflow: `.github/workflows/announcement-history-backfill.yml`.
+- Historical AI backfill: `scripts/announcement_backfill.py`; live-first continuous worker, one bounded batch per live cycle, oldest completed month first, and R2 checkpoints.
+- Historical collection workflow: `.github/workflows/announcement-history-backfill.yml`; writes `archive/announcement_backfill/collection/YYYY-MM.json` only after both exchange collectors exit successfully. The live reader workflow consumes completed-month markers and reads one monthly partition per cycle. Current-month older dates use per-day collection markers under `archive/announcement_backfill/collection-days/`.
 - Persistent company memory: `archive/company_memory/{ISIN}.json`, built only from quote-validated claims with
   event ID, date, exchange and source URL. Backfill state: `archive/announcement_backfill/state.json`.
 - Site: Brief card "Filings read" from `clean/current/announcement_reads.parquet`.
 - Model test: `scripts/announcement_sample.py` and `scripts/announcement_sample_expected.json`.
 
-Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code
-and bounded batch succeeded; the backfill is complete only when the persisted state says `complete` and
-`remaining: 0`. A `paused` state is resumable and is not completion.
+Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
 Code:
 - Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),

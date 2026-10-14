@@ -7,8 +7,6 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/announcement-history-backfill.yml'
-  schedule:
-    - cron: '30 20 * * *'  # 02:00 IST: resume historical reading without recollecting
   workflow_dispatch:
     inputs:
       phase:
@@ -44,6 +42,7 @@ jobs:
     outputs:
       months: ${{ steps.range.outputs.months }}
       current_month: ${{ steps.range.outputs.current_month }}
+      first_month: ${{ steps.range.outputs.first_month }}
     steps:
       - id: range
         env:
@@ -66,10 +65,12 @@ jobs:
           if end < start:
               raise SystemExit('--to must be on or after --from')
           months, cur = [], start.replace(day=1)
-          while cur <= end:
+          current_month = today.replace(day=1)
+          while cur <= end and cur < current_month:
               months.append(cur.strftime('%Y-%m'))
               cur = date(cur.year + (cur.month == 12), 1 if cur.month == 12 else cur.month + 1, 1)
           print('months=' + json.dumps(months))
+          print('first_month=' + (months[0] if months else ''))
           print('current_month=' + today.strftime('%Y-%m'))
           PY
 
@@ -84,7 +85,9 @@ jobs:
       matrix:
         month: ${{ fromJSON(needs.prepare.outputs.months) }}
     concurrency:
-      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || 'nse-announcements' }}
+      # During rollout, let the first month checkpoint while a legacy run may be collecting a later month.
+      # Later months retain the legacy global lock, preventing overlapping writes to the same partition.
+      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || (github.event_name == 'push' && matrix.month == needs.prepare.outputs.first_month && format('nse-announcements-bootstrap-{0}', matrix.month) || 'nse-announcements') }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -116,12 +119,31 @@ jobs:
             exit 0
           fi
           echo "Collecting $start through $month_end"
+          export COLLECTION_FROM="$start" COLLECTION_TO="$month_end"
           python -m collectors.nse_events.announcements --from "$start" --to "$month_end"
           python -u -m collectors.bse.announcements --from "$start" --to "$month_end"
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from clean_writer import put
+          from r2_writer import r2_client
+          month = os.environ['MONTH']
+          marker = {
+              'month': month,
+              'from': os.environ['COLLECTION_FROM'],
+              'to': os.environ['COLLECTION_TO'],
+              'completed_at': datetime.now(timezone.utc).isoformat(),
+              'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'status': 'collection_commands_succeeded',
+          }
+          put(r2_client(), f'archive/announcement_backfill/collection/{month}.json',
+              json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
+          print(f"Recorded completed collection month {month}")
+          PY
 
   read-history:
     if: >-
-      ${{ always() && (github.event_name == 'schedule' || inputs.phase != 'collect')
+      ${{ always() && github.event_name == 'workflow_dispatch' && inputs.phase != 'collect'
           && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
           && (needs.collect-months.result == 'success' || needs.collect-months.result == 'skipped') }}
     needs: [prepare, collect-months]
@@ -156,6 +178,10 @@ jobs:
           MAX_BATCHES: ${{ inputs.max_batches || '2' }}
         run: |
           set -euo pipefail
-          end="${HISTORY_TO:-$(date -u +%F)}"
+          if [[ -n "$HISTORY_TO" ]]; then
+            end="$HISTORY_TO"
+          else
+            end=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%F)
+          fi
           python -u scripts/announcement_backfill.py --from "$HISTORY_FROM" --to "$end" \
             --batch-size "$BATCH_SIZE" --max-batches "$MAX_BATCHES" --batch-minutes 6
