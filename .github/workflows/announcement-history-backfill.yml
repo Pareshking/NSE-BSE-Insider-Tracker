@@ -1,13 +1,161 @@
-name: Announcement history backfill (implementation pending PR review)
+name: Announcement history backfill
 
+# Historical collection is partitioned by calendar month. Each month is its own job so BSE paging
+# cannot exceed a single job's timeout. The current month and AI reads serialize with the live reader.
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/announcement-history-backfill.yml'
+  schedule:
+    - cron: '30 20 * * *'  # 02:00 IST: resume historical reading without recollecting
   workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Collect archived announcements, read historical filings, or both'
+        required: true
+        type: choice
+        options: [both, collect, read]
+        default: both
+      from:
+        description: 'First announcement date (YYYY-MM-DD)'
+        required: true
+        default: '2026-01-01'
+      to:
+        description: 'Last announcement date (YYYY-MM-DD; blank means today)'
+        required: false
+        default: ''
+      batch_size:
+        description: 'Maximum filings per AI batch'
+        required: true
+        default: '20'
+      max_batches:
+        description: 'Batches this run; checkpoint makes later runs resume safely'
+        required: true
+        default: '2'
 
 permissions:
   contents: read
 
 jobs:
-  disabled:
+  prepare:
+    if: github.event_name != 'schedule' && inputs.phase != 'read'
     runs-on: ubuntu-latest
+    outputs:
+      months: ${{ steps.range.outputs.months }}
+      current_month: ${{ steps.range.outputs.current_month }}
     steps:
-      - run: echo "Historical backfill is not enabled on main yet. Use the reviewed implementation in PR #64 after merge."
+      - id: range
+        env:
+          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
+          HISTORY_TO: ${{ inputs.to }}
+        run: |
+          set -euo pipefail
+          today=$(date -u +%F)
+          end="${HISTORY_TO:-$today}"
+          if [[ "$end" > "$today" ]]; then end="$today"; fi
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import calendar, json, os
+          from datetime import date
+          start = date.fromisoformat(os.environ['HISTORY_FROM'])
+          end = date.fromisoformat(os.environ.get('HISTORY_TO') or date.today().isoformat())
+          # UTC today caps the requested end; GitHub runners are UTC.
+          from datetime import datetime, timezone
+          today = datetime.now(timezone.utc).date()
+          end = min(end, today)
+          if end < start:
+              raise SystemExit('--to must be on or after --from')
+          months, cur = [], start.replace(day=1)
+          while cur <= end:
+              months.append(cur.strftime('%Y-%m'))
+              cur = date(cur.year + (cur.month == 12), 1 if cur.month == 12 else cur.month + 1, 1)
+          print('months=' + json.dumps(months))
+          print('current_month=' + today.strftime('%Y-%m'))
+          PY
+
+  collect-months:
+    if: github.event_name != 'schedule' && inputs.phase != 'read'
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        month: ${{ fromJSON(needs.prepare.outputs.months) }}
+    concurrency:
+      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || 'nse-announcements' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Collect this month from both exchanges
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
+          HISTORY_TO: ${{ inputs.to }}
+          MONTH: ${{ matrix.month }}
+        run: |
+          set -euo pipefail
+          today=$(date -u +%F)
+          end="${HISTORY_TO:-$today}"
+          if [[ "$end" > "$today" ]]; then end="$today"; fi
+          start="$MONTH-01"
+          month_end=$(date -u -d "$start +1 month -1 day" +%F)
+          if [[ "$start" < "$HISTORY_FROM" ]]; then start="$HISTORY_FROM"; fi
+          if [[ "$month_end" > "$end" ]]; then month_end="$end"; fi
+          if [[ "$start" > "$month_end" ]]; then
+            echo "No dates in $MONTH overlap the requested range."
+            exit 0
+          fi
+          echo "Collecting $start through $month_end"
+          python -m collectors.nse_events.announcements --from "$start" --to "$month_end"
+          python -u -m collectors.bse.announcements --from "$start" --to "$month_end"
+
+  read-history:
+    if: >-
+      ${{ always() && (github.event_name == 'schedule' || inputs.phase != 'collect')
+          && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
+          && (needs.collect-months.result == 'success' || needs.collect-months.result == 'skipped') }}
+    needs: [prepare, collect-months]
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    concurrency:
+      group: announcement-reader-live
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      CARD_PROMPT_VARIANT: v2
+      CARD_PROMPT_COMPARE: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Read history oldest first and checkpoint each batch
+        env:
+          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
+          HISTORY_TO: ${{ inputs.to }}
+          BATCH_SIZE: ${{ inputs.batch_size || '20' }}
+          MAX_BATCHES: ${{ inputs.max_batches || '2' }}
+        run: |
+          set -euo pipefail
+          end="${HISTORY_TO:-$(date -u +%F)}"
+          python -u scripts/announcement_backfill.py --from "$HISTORY_FROM" --to "$end" \
+            --batch-size "$BATCH_SIZE" --max-batches "$MAX_BATCHES" --batch-minutes 6
