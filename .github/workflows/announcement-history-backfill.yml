@@ -3,13 +3,14 @@ name: Announcement history backfill
 # Historical collection is partitioned by calendar month. Each month is its own job so BSE paging
 # cannot exceed a single job's timeout. The current month and AI reads serialize with the live reader.
 on:
+  # Auto-collect only when the NSE source collector changes. BSE is temporarily excluded from
+  # historical collection, and edits to the AI backfill worker should not launch a full recollection:
+  # the live reader invokes that worker continuously, and manual collection remains available below.
   push:
     branches: [main]
     paths:
-      - '.github/workflows/announcement-history-backfill.yml'
-      - 'collectors/bse/client.py'
-      - 'collectors/bse/announcements.py'
-      - 'scripts/announcement_backfill.py'
+      - 'collectors/nse_events/client.py'
+      - 'collectors/nse_events/announcements.py'
   workflow_dispatch:
     inputs:
       phase:
