@@ -64,7 +64,8 @@ jobs:
           if end < start:
               raise SystemExit('--to must be on or after --from')
           months, cur = [], start.replace(day=1)
-          while cur <= end:
+          current_month = today.replace(day=1)
+          while cur <= end and cur < current_month:
               months.append(cur.strftime('%Y-%m'))
               cur = date(cur.year + (cur.month == 12), 1 if cur.month == 12 else cur.month + 1, 1)
           print('months=' + json.dumps(months))
@@ -136,7 +137,7 @@ jobs:
 
   read-history:
     if: >-
-      ${{ always() && (github.event_name == 'schedule' || inputs.phase != 'collect')
+      ${{ always() && github.event_name == 'workflow_dispatch' && inputs.phase != 'collect'
           && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
           && (needs.collect-months.result == 'success' || needs.collect-months.result == 'skipped') }}
     needs: [prepare, collect-months]
