@@ -9,6 +9,7 @@ on:
       - '.github/workflows/announcement-history-backfill.yml'
       - 'collectors/bse/client.py'
       - 'collectors/bse/announcements.py'
+      - 'scripts/announcement_backfill.py'
   workflow_dispatch:
     inputs:
       phase:
