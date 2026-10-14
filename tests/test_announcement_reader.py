@@ -123,6 +123,21 @@ def test_lane_falls_back_and_leaves_out_a_model_that_keeps_timing_out():
     assert use['left_out_as_slow'] == {'main': ['nvidia:moonshotai/kimi-k3']}
 
 
+
+def test_lane_skips_model_after_confirmed_daily_quota_429():
+    exhausted = RuntimeError(
+        'HTTP 429 rate limit reached: tokens per day (TPD) quota exceeded'
+    )
+    c = FakeClient([exhausted, QIP, QIP])
+    lane = ar.Lane('main', ['groq:qwen-daily', 'groq:fallback-model'], {'groq': c})
+
+    assert lane.read('p')[1] == 'groq:fallback-model'
+    assert lane.read('p')[1] == 'groq:fallback-model'
+    assert c.asked == ['qwen-daily', 'fallback-model', 'fallback-model']
+    assert lane.rate_limited == {'groq:qwen-daily'}
+    assert lane.dropped == []  # quota exhaustion is not mislabeled as a timeout
+
+
 def test_lanes_file_and_free_only_rule():
     spec = ar.lanes_of(ar.LANES_FILE.read_text(encoding='utf-8'))
     assert list(spec) == ['nvidia', 'zai', 'groq', 'gemini'] and all(spec.values())
