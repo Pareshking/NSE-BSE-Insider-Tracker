@@ -397,6 +397,17 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
                 memories = persist_company_memories(r2, reads, touched)
             state['company_memories_written'] = int(state.get('company_memories_written', 0)) + memories
         counts_now = pd.Series([r.get('status') for r in rows]).value_counts().to_dict() if rows else {}
+        if month_only and not dry_run:
+            # Count historical calls in the same daily quota ledger used by the live reader.
+            ar.append_usage(r2, today.isoformat(), {
+                'at': datetime.now(timezone.utc).isoformat(),
+                'source': 'historical_backfill',
+                'counts': counts,
+                'outcomes': counts_now,
+                'added': saver.added if saver else 0,
+                'usage': ar.usage(clients, lanes),
+                'notes': setup,
+            })
         state.update({
             'status': 'running',
             'completed_batches': int(state.get('completed_batches', 0)) + 1,
