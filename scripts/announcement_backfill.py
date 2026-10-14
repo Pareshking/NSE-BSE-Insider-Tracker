@@ -548,6 +548,14 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
                 memories = persist_company_memories(r2, reads, touched)
             state['company_memories_written'] = int(state.get('company_memories_written', 0)) + memories
         counts_now = pd.Series([r.get('status') for r in rows]).value_counts().to_dict() if rows else {}
+        # Recount the eligible queue from the persisted read archive. Do not infer
+        # completion from batch return counts: retries, status rows, and partial
+        # batches can make that estimate inaccurate.
+        if not dry_run:
+            remaining_rows, _, _ = ar.choose(candidates, reads, today, date_from=start, date_to=end)
+            remaining_now = len(remaining_rows)
+        else:
+            remaining_now = max(0, len(to_read) - len(rows))
         if month_only and not dry_run:
             # Count historical calls in the same daily quota ledger used by the live reader.
             ar.append_usage(r2, today.isoformat(), {
@@ -567,7 +575,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
             'last_batch_candidate_count': len(batch_ids),
             'read': int((reads.get('status', pd.Series(dtype=str)) == 'read').sum()) if not reads.empty else 0,
             'failed': int((reads.get('status', pd.Series(dtype=str)) == 'failed').sum()) if not reads.empty else 0,
-            'remaining': max(0, len(to_read) - len(rows)),
+            'remaining': remaining_now,
             'setup_notes': setup[-10:],
         })
         save_state(r2, state)
