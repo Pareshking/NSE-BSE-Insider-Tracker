@@ -460,6 +460,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     lanes = {name: ar.Lane(name, [e for e in ar.usable(models) if e.split(':', 1)[0] in clients], clients)
              for name, models in lane_spec.items()}
     lanes = {name: lane for name, lane in lanes.items() if lane.entries}
+    ar.configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
     if not lanes:
         state.update(status='blocked', last_error='No model lane has a usable key/model')
         save_state(r2, state)
