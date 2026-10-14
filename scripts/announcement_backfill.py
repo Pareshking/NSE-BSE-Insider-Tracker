@@ -263,6 +263,12 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     for batch in range(max_batches):
         to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=start, date_to=end)
         if to_read.empty:
+            if not dry_run and status_rows is not None and not status_rows.empty:
+                skipped = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
+                                      'read_at': datetime.now(timezone.utc).isoformat()})
+                           for row in status_rows.to_dict('records')]
+                ar.write(r2, skipped, today.isoformat(), today)
+                reads = all_parquet(r2, ar.READS_PREFIX)
             state.update(status='complete', remaining=0, candidates=len(candidates),
                          read=int((reads.get('status', pd.Series(dtype=str)) == 'read').sum()),
                          failed=int((reads.get('status', pd.Series(dtype=str)) == 'failed').sum()),
