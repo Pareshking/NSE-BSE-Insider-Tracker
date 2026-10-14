@@ -70,6 +70,7 @@ def month_parquet(r2, prefix: str, month: str) -> pd.DataFrame:
 
 def completed_collection_months(r2, start: date, end: date) -> list[str]:
     """Months whose two-exchange collection jobs wrote an explicit completion marker."""
+    from clean_writer import get
     from r2_writer import BUCKET
     months, token = [], None
     while True:
@@ -84,7 +85,19 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
                 continue
             month = name[:-5]
             first = date.fromisoformat(month + '-01')
-            if start <= first <= end and first < datetime.now(IST).date().replace(day=1):
+            if not (start <= first <= end and first < datetime.now(IST).date().replace(day=1)):
+                continue
+            next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+            required_start = max(first, start)
+            required_end = min(next_month - timedelta(days=1), end)
+            raw = get(r2, key)
+            try:
+                marker = json.loads(raw) if raw else {}
+                collected_from = date.fromisoformat(marker.get('from', ''))
+                collected_to = date.fromisoformat(marker.get('to', ''))
+            except (TypeError, ValueError):
+                continue
+            if collected_from <= required_start and collected_to >= required_end:
                 months.append(month)
         if not page.get('IsTruncated'):
             break
