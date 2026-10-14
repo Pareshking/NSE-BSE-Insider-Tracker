@@ -230,6 +230,20 @@ def test_the_last_save_of_a_run_raises():
         saver.flush(final=True)
 
 
+@pytest.mark.parametrize('text', [
+    'Madhav Infra Projects Ltd: Submission of Board Meeting Outcome for Board Meeting held today',
+    'Outcome of Board Meeting for fund raising',
+    'Company: Intimation of allotment',
+    'Pursuant to Regulation 30 of SEBI LODR',
+])
+def test_exchange_filing_boilerplate_is_not_a_usable_headline(text):
+    assert ar.headline_quality_reason(text)
+
+
+def test_corporate_action_headlines_are_not_rejected_as_boilerplate():
+    assert ar.headline_quality_reason('Madhav Infra approves preferential issue at Rs 8.15 a share') is None
+
+
 @pytest.mark.parametrize('text,quote,ok', [
     ('Shivam Autotech sets ₹120 Cr rights issue at ₹12 per share', 'up to ₹ 12,000 Lakhs# ₹ 12 per Equity Share', True),
     ('Evonile Pharma approves rights issue of up to ₹900 Cr', 'for an aggregate amount not exceeding ₹9,000 million', True),
@@ -255,6 +269,11 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
     metrics = [ar.with_previous(m, r, doc) for m, r in zip(metrics, out['metrics'])]
     headline, points = ar.card_words(out, doc, fields, metrics)
     assert headline['shown'] and [p['shown'] for p in points] == [True, False, False]
+    boilerplate, _ = ar.card_words({**out, 'headline': {
+        'text': 'Madhav Infra Projects Ltd: Submission of Board Meeting Outcome for Board Meeting held today',
+        'quote': 'Issue Size up to ₹ 12,000 Lakhs'}}, doc, fields, metrics)
+    assert boilerplate is not None and not boilerplate['shown']
+    assert 'filing-label boilerplate' in boilerplate['reason']
     assert points[1]['reason'] == 'a number not in its quote' and points[2]['reason'] == 'quote not found in the filing'
     assert metrics[0]['previous_number'] == 812 and metrics[0]['change_pct'] == 31.9   # our sum, not the model's
     assert 'headline' in ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, doc).split('=== DOCUMENT ===')[0]

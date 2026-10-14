@@ -48,7 +48,7 @@ sys.path.insert(0, str(HERE))
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 
 IST = timezone(timedelta(hours=5, minutes=30))
-PROMPT_VERSION = 'live-3'   # live-2: headline, points, year-ago values; live-3: the full list of categories
+PROMPT_VERSION = 'live-4'   # live-4: action-only headlines, boilerplate rejection; older reads are re-read
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -312,12 +312,12 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
 # --- the card's words: a headline and a few points, every number in them found in their quote --------------
 
 CARD_ASK = (
-    'Also return "headline": {"text": one line of at most 90 characters saying what the company did, with its '
-    'key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
+    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, not the exchange filing label, '
+    'with its key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
     'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
     'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
-    'the price; for a legal or regulatory matter, who acted, against whom, and the amount. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
+    'the price; for a legal or regulatory matter, who acted, against whom, and the amount. Never use boilerplate such as "Submission of", "Outcome of Board Meeting", "Outcome of Meeting", "Intimation of", or "Pursuant to", and never copy the exchange subject as the headline. Lead with the approved or announced action and its key terms; if the board approved multiple actions, distinguish them in the points. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
     'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
@@ -357,6 +357,22 @@ def numbers_backed(text, quotes) -> bool:
     return all(any(abs(v - h) <= 0.005 * max(1.0, abs(h)) for h in have for v in pair) for pair in numbers_in(text))
 
 
+def headline_quality_reason(text: str) -> str | None:
+    """Reject exchange-subject boilerplate as a headline even when its quote is real."""
+    value = re.sub(r'\s+', ' ', str(text or '')).strip()
+    if not value:
+        return 'headline is empty'
+    # Exchange descriptions often prefix the boilerplate with the company name and a colon.
+    lead = re.sub(r'^[^:\n]{1,90}:\s*', '', value, count=1)
+    boilerplate = re.compile(
+        r'^(?:submission\s+of\b|outcome\s+of\s+(?:(?:the\s+)?board\s+)?meeting\b|'
+        r'board\s+meeting\s+outcome\b|intimation\s+of\b|pursuant\s+to\b|'
+        r'proceedings\s+of\s+(?:the\s+)?board\s+meeting\b)', re.IGNORECASE)
+    if boilerplate.search(lead) or boilerplate.search(value):
+        return 'exchange filing-label boilerplate, not a corporate-action headline'
+    return None
+
+
 def check_words(item, doc: str, more_quotes=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing and every number in it is in that quote
     (it may also use the quotes of values already checked, and a headline those of the shown points)."""
@@ -376,7 +392,13 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[
     values = [f['quote'] for f in fields + metrics if f.get('shown')]   # quotes already checked in the filing
     points = [p for p in (check_words(x, doc, values) for x in (out.get('points') or [])[:4]) if p]
     backed = [p['quote'] for p in points if p['shown']] + values
-    return check_words(out.get('headline'), doc, backed), points
+    headline = check_words(out.get('headline'), doc, backed)
+    if headline:
+        quality_reason = headline_quality_reason(headline['text'])
+        if quality_reason:
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
+    return headline, points
 
 
 def with_previous(m: dict, raw: dict, doc: str) -> dict:
