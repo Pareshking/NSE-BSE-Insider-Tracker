@@ -112,7 +112,6 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
 def collect_historical_day(r2, day: date) -> None:
     """Collect one older current-month day only after the live queue is clear."""
     from clean_writer import put
-    from r2_writer import BUCKET
     date_text = day.isoformat()
     env = os.environ.copy()
     subprocess.run([sys.executable, '-m', 'collectors.nse_events.announcements',
