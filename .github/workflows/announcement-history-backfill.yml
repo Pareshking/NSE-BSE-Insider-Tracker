@@ -1,206 +1,30 @@
 name: Announcement history backfill
 
-# Historical collection is partitioned by calendar month. Each month is its own job so BSE paging
-# cannot exceed a single job's timeout. The current month and AI reads serialize with the live reader.
+# Manual entry point for the same resumable one-day worker used by the live reader.
+# Collection is NSE-only; AI finishes one day before the next date can be selected.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/announcement-history-backfill.yml'
-      - 'collectors/bse/client.py'
-      - 'collectors/bse/announcements.py'
-      - 'scripts/announcement_backfill.py'
   workflow_dispatch:
     inputs:
-      phase:
-        description: 'Collect archived announcements, read historical filings, or both'
-        required: true
-        type: choice
-        options: [both, collect, read]
-        default: both
       from:
-        description: 'First announcement date (YYYY-MM-DD)'
+        description: 'First historical date (YYYY-MM-DD)'
         required: true
         default: '2026-01-01'
       to:
-        description: 'Last announcement date (YYYY-MM-DD; blank means today)'
+        description: 'Last date to process (YYYY-MM-DD; blank means today)'
         required: false
         default: ''
       batch_size:
-        description: 'Maximum filings per AI batch'
+        description: 'Maximum filings per AI batch (keep small to conserve free-tier tokens)'
         required: true
-        default: '20'
-      max_batches:
-        description: 'Batches this run; checkpoint makes later runs resume safely'
-        required: true
-        default: '2'
+        default: '5'
 
 permissions:
   contents: read
 
 jobs:
-  prepare:
-    if: github.event_name != 'schedule' && inputs.phase != 'read'
+  one-day:
     runs-on: ubuntu-latest
-    outputs:
-      months: ${{ steps.range.outputs.months }}
-      current_month: ${{ steps.range.outputs.current_month }}
-      first_month: ${{ steps.range.outputs.first_month }}
-    steps:
-      - id: range
-        env:
-          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
-          HISTORY_TO: ${{ inputs.to }}
-        run: |
-          set -euo pipefail
-          today=$(date -u +%F)
-          end="${HISTORY_TO:-$today}"
-          if [[ "$end" > "$today" ]]; then end="$today"; fi
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import calendar, json, os
-          from datetime import date
-          start = date.fromisoformat(os.environ['HISTORY_FROM'])
-          end = date.fromisoformat(os.environ.get('HISTORY_TO') or date.today().isoformat())
-          # UTC today caps the requested end; GitHub runners are UTC.
-          from datetime import datetime, timezone
-          today = datetime.now(timezone.utc).date()
-          end = min(end, today)
-          if end < start:
-              raise SystemExit('--to must be on or after --from')
-          months, cur = [], start.replace(day=1)
-          current_month = today.replace(day=1)
-          while cur <= end and cur < current_month:
-              months.append(cur.strftime('%Y-%m'))
-              cur = date(cur.year + (cur.month == 12), 1 if cur.month == 12 else cur.month + 1, 1)
-          print('months=' + json.dumps(months))
-          print('first_month=' + (months[0] if months else ''))
-          print('current_month=' + today.strftime('%Y-%m'))
-          PY
-
-  collect-months:
-    if: github.event_name != 'schedule' && inputs.phase != 'read'
-    needs: prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        month: ${{ fromJSON(needs.prepare.outputs.months) }}
-    concurrency:
-      # During rollout, let the first month checkpoint while a legacy run may be collecting a later month.
-      # Later months retain the legacy global lock, preventing overlapping writes to the same partition.
-      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || (github.event_name == 'push' && matrix.month == needs.prepare.outputs.first_month && format('nse-announcements-bootstrap-{0}', matrix.month) || 'nse-announcements') }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - run: pip install -r requirements.txt
-      - name: Collect this month from both exchanges
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
-          HISTORY_TO: ${{ inputs.to }}
-          MONTH: ${{ matrix.month }}
-        run: |
-          set -euo pipefail
-          today=$(date -u +%F)
-          end="${HISTORY_TO:-$today}"
-          if [[ "$end" > "$today" ]]; then end="$today"; fi
-          start="$MONTH-01"
-          month_end=$(date -u -d "$start +1 month -1 day" +%F)
-          if [[ "$start" < "$HISTORY_FROM" ]]; then start="$HISTORY_FROM"; fi
-          if [[ "$month_end" > "$end" ]]; then month_end="$end"; fi
-          if [[ "$start" > "$month_end" ]]; then
-            echo "No dates in $MONTH overlap the requested range."
-            exit 0
-          fi
-          echo "Collecting $start through $month_end"
-          export COLLECTION_FROM="$start" COLLECTION_TO="$month_end"
-          # Temporary operating mode: historical backfill is NSE-only. BSE remains
-          # available to its own collector/live workflows, but cannot block NSE history.
-          python -m collectors.nse_events.announcements --from "$start" --to "$month_end"
-          python - <<'PY'
-          import json, os, sys
-          from datetime import date, datetime, timedelta, timezone
-          from pathlib import Path
-          # This is `python -` (not a module under scripts/), so add the repository's
-          # scripts directory before importing the R2 helpers used by the collectors.
-          sys.path.insert(0, str(Path.cwd() / 'scripts'))
-          from clean_writer import get, put
-          from r2_writer import r2_client
-          month = os.environ['MONTH']
-          start_text, end_text = os.environ['COLLECTION_FROM'], os.environ['COLLECTION_TO']
-          r2 = r2_client()
-          run_date = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
-          raw = get(r2, f'clean/reports/announcements/{run_date}.json')
-          if not raw:
-              raise SystemExit(f"Refusing collection checkpoint: missing NSE report for {run_date}")
-          try:
-              report = json.loads(raw)
-          except (TypeError, ValueError) as exc:
-              raise SystemExit("Refusing collection checkpoint: invalid NSE report JSON") from exc
-          if report.get('window') != [start_text, end_text]:
-              raise SystemExit(f"Refusing collection checkpoint: NSE report window "
-                               f"{report.get('window')} != {[start_text, end_text]}")
-          if report.get('notes'):
-              raise SystemExit("Refusing collection checkpoint: NSE report has unresolved notes: "
-                               + '; '.join(map(str, report['notes'])))
-          expected_days = set()
-          cursor, end = date.fromisoformat(start_text), date.fromisoformat(end_text)
-          while cursor <= end:
-              expected_days.add(cursor.isoformat())
-              cursor += timedelta(days=1)
-          nse_calls = report.get('calls', [])
-          if not nse_calls:
-              raise SystemExit("Refusing collection checkpoint: NSE report contains no successful feed calls")
-          for market in ('equities', 'sme'):
-              ranges = [(date.fromisoformat(str(call['from'])), date.fromisoformat(str(call['to'])))
-                        for call in nse_calls if call.get('market') == market and call.get('from') and call.get('to')]
-              covered = set()
-              for left, right in ranges:
-                  day = left
-                  while day <= right:
-                      covered.add(day.isoformat())
-                      day += timedelta(days=1)
-              if not expected_days.issubset(covered):
-                  raise SystemExit(f"Refusing collection checkpoint: NSE {market} feed omitted dates: "
-                                   + ', '.join(sorted(expected_days - covered)))
-          marker = {
-              'month': month,
-              'from': start_text,
-              'to': end_text,
-              'completed_at': datetime.now(timezone.utc).isoformat(),
-              'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
-              'status': 'collection_verified',
-              'scope': ['NSE'],
-              'verification': {
-                  'nse_report_window': report['window'],
-                  'nse_feed_calls': len(nse_calls),
-                  'exchanges_verified': ['NSE'],
-                  'bse_skipped': True,
-                  'reports_checked': True,
-              },
-          }
-          put(r2, f'archive/announcement_backfill/collection/{month}.json',
-              json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
-          print(f"Recorded verified NSE-only collection month {month}; BSE intentionally skipped")
-          PY
-
-  read-history:
-    if: >-
-      ${{ always() && github.event_name == 'workflow_dispatch' && inputs.phase != 'collect'
-          && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')
-          && (needs.collect-months.result == 'success' || needs.collect-months.result == 'skipped') }}
-    needs: [prepare, collect-months]
-    runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 20
     concurrency:
       group: announcement-reader-live
       cancel-in-progress: false
@@ -222,18 +46,13 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
-      - name: Read history oldest first and checkpoint each batch
+      - name: Process one historical date, one small AI batch
         env:
           HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
           HISTORY_TO: ${{ inputs.to }}
-          BATCH_SIZE: ${{ inputs.batch_size || '20' }}
-          MAX_BATCHES: ${{ inputs.max_batches || '2' }}
+          BATCH_SIZE: ${{ inputs.batch_size || '5' }}
         run: |
           set -euo pipefail
-          if [[ -n "$HISTORY_TO" ]]; then
-            end="$HISTORY_TO"
-          else
-            end=$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%F)
-          fi
-          python -u scripts/announcement_backfill.py --from "$HISTORY_FROM" --to "$end" \
-            --batch-size "$BATCH_SIZE" --max-batches "$MAX_BATCHES" --batch-minutes 6
+          args=(--continuous --from "$HISTORY_FROM" --batch-size "$BATCH_SIZE" --batch-minutes 3 --max-batches 1)
+          if [[ -n "$HISTORY_TO" ]]; then args+=(--to "$HISTORY_TO"); fi
+          python -u scripts/announcement_backfill.py "${args[@]}"
