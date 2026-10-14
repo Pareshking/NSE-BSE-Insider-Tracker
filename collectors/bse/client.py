@@ -133,7 +133,7 @@ class BSEClient:
     def _fetch(self, url: str, params: dict) -> tuple[int, str, bytes]:
         if self.via == 'in_page_xhr':
             return self.in_page.get(f'{url}?{urlencode(params)}')
-        r = self.session.get(url, params=params, timeout=90)
+        r = self.session.get(url, params=params, timeout=45)
         return r.status_code, r.headers.get('Content-Type', ''), r.content
 
     def get(self, path: str, params: dict, dataset: str, covers: dict | None = None) -> bytes:
