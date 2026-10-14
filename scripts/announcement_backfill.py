@@ -34,6 +34,7 @@ MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
 COLLECTION_PREFIX = 'archive/announcement_backfill/collection/'
 COLLECTION_DAY_PREFIX = 'archive/announcement_backfill/collection-days/'
+AI_DAY_PREFIX = 'archive/announcement_backfill/ai-days/'
 
 
 def parquet_keys(r2, prefix: str) -> list[str]:
@@ -113,26 +114,136 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
 
 
 def collect_historical_day(r2, day: date) -> None:
-    """Collect one older current-month day only after the live queue is clear."""
-    from clean_writer import put
+    """Collect and certify exactly one historical NSE day; BSE remains live-only for now."""
+    from clean_writer import get, put
+
     date_text = day.isoformat()
     env = os.environ.copy()
     subprocess.run([sys.executable, '-m', 'collectors.nse_events.announcements',
                     '--from', date_text, '--to', date_text], check=True, env=env)
-    subprocess.run([sys.executable, '-u', '-m', 'collectors.bse.announcements',
-                    '--from', date_text, '--to', date_text], check=True, env=env)
-    marker = {'date': date_text, 'from': date_text, 'to': date_text,
-              'completed_at': datetime.now(timezone.utc).isoformat(),
-              'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
-              'status': 'collection_commands_succeeded'}
+
+    # The NSE collector writes one report per execution date. Verify that report
+    # before writing a date checkpoint; a successful process exit alone is not proof.
+    report_date = datetime.now(IST).date().isoformat()
+    raw = get(r2, f'clean/reports/announcements/{report_date}.json')
+    if not raw:
+        raise RuntimeError(f'Missing NSE collection report for historical date {date_text}')
+    try:
+        report = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f'Invalid NSE collection report for historical date {date_text}') from exc
+    if report.get('window') != [date_text, date_text]:
+        raise RuntimeError(f'Wrong NSE report window for {date_text}: {report.get("window")}')
+    if report.get('notes'):
+        raise RuntimeError(f'NSE collection report has unresolved notes for {date_text}: {report["notes"]}')
+    calls = report.get('calls', [])
+    for market in ('equities', 'sme'):
+        if not any(call.get('market') == market and call.get('from') == date_text
+                   and call.get('to') == date_text for call in calls):
+            raise RuntimeError(f'NSE {market} feed did not certify {date_text}')
+
+    marker = {
+        'date': date_text,
+        'from': date_text,
+        'to': date_text,
+        'completed_at': datetime.now(timezone.utc).isoformat(),
+        'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+        'status': 'collection_verified',
+        'scope': ['NSE'],
+        'verification': {
+            'nse_report_date': report_date,
+            'nse_report_window': report['window'],
+            'nse_feed_calls': len(calls),
+            'exchanges_verified': ['NSE'],
+            'bse_skipped': True,
+            'reports_checked': True,
+        },
+    }
     put(r2, f'{COLLECTION_DAY_PREFIX}{date_text}.json',
         json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
-    print(f'Completed bounded current-month collection for {date_text}.', flush=True)
+    print(f'Collected and verified NSE history for {date_text}; BSE intentionally skipped.', flush=True)
 
 
 def historical_day_collected(r2, day: date) -> bool:
+    """Only a verified NSE-only date checkpoint can skip collection on a retry."""
     from clean_writer import get
-    return bool(get(r2, f'{COLLECTION_DAY_PREFIX}{day.isoformat()}.json'))
+    raw = get(r2, f'{COLLECTION_DAY_PREFIX}{day.isoformat()}.json')
+    if not raw:
+        return False
+    try:
+        marker = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    date_text = day.isoformat()
+    return (
+        marker.get('status') == 'collection_verified'
+        and marker.get('date') == date_text
+        and marker.get('from') == date_text
+        and marker.get('to') == date_text
+        and marker.get('scope') == ['NSE']
+        and (marker.get('verification') or {}).get('bse_skipped') is True
+    )
+
+
+def historical_day_ai_complete(r2, day: date) -> bool:
+    """Only a terminal AI checkpoint tied to verified collection can advance the date cursor."""
+    from clean_writer import get
+    date_text = day.isoformat()
+    if not historical_day_collected(r2, day):
+        return False
+    raw = get(r2, f'{AI_DAY_PREFIX}{date_text}.json')
+    if not raw:
+        return False
+    try:
+        checkpoint = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    return (
+        checkpoint.get('status') == 'complete'
+        and checkpoint.get('date') == date_text
+        and checkpoint.get('from') == date_text
+        and checkpoint.get('to') == date_text
+        and checkpoint.get('remaining') == 0
+        and checkpoint.get('scope') == ['NSE']
+    )
+
+
+def next_unfinished_history_day(r2, start: date, cutoff: date, state: dict) -> date | None:
+    """Resume from the durable cursor, validating date checkpoints before advancing."""
+    pointer = start
+    raw_pointer = state.get('next_history_date')
+    if raw_pointer:
+        try:
+            proposed = date.fromisoformat(raw_pointer)
+            if start <= proposed <= cutoff + timedelta(days=1):
+                pointer = proposed
+        except (TypeError, ValueError):
+            pass
+    while pointer <= cutoff and historical_day_ai_complete(r2, pointer):
+        pointer += timedelta(days=1)
+    return pointer if pointer <= cutoff else None
+
+
+def mark_historical_day_ai_complete(r2, day: date, state: dict) -> None:
+    """Persist the date-level AI completion before moving the resumable cursor."""
+    from clean_writer import put
+    date_text = day.isoformat()
+    marker = {
+        'date': date_text,
+        'from': date_text,
+        'to': date_text,
+        'completed_at': datetime.now(timezone.utc).isoformat(),
+        'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
+        'status': 'complete',
+        'remaining': 0,
+        'scope': ['NSE'],
+        'collection_checkpoint': f'{COLLECTION_DAY_PREFIX}{date_text}.json',
+        'completed_batches': int(state.get('completed_batches', 0)),
+        'last_batch_counts': state.get('last_batch_counts', {}),
+        'company_memories_written': int(state.get('company_memories_written', 0)),
+    }
+    put(r2, f'{AI_DAY_PREFIX}{date_text}.json',
+        json.dumps(marker, separators=(',', ':'), default=str).encode(), 'application/json')
 
 
 def live_queue_pending(r2, today: date, setup: list[str]) -> bool:
@@ -331,7 +442,8 @@ def read_state(r2) -> dict:
 
 
 def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
-                 max_batches: int, dry_run: bool = False, month_only: bool = False) -> int:
+                 max_batches: int, dry_run: bool = False, month_only: bool = False,
+                 nse_only: bool = False) -> int:
     from r2_writer import r2_client
     today = datetime.now(IST).date()
     r2 = r2_client()
@@ -367,7 +479,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
     # Source archives are immutable-by-event-id and are read independently from read history.
     one_month = start.strftime('%Y-%m') == end.strftime('%Y-%m')
     nse = month_parquet(r2, 'archive/announcements/nse/', start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, 'archive/announcements/nse/')
-    bse = month_parquet(r2, 'archive/announcements/bse/', start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, 'archive/announcements/bse/')
+    bse = pd.DataFrame() if nse_only else (month_parquet(r2, 'archive/announcements/bse/', start.strftime('%Y-%m')) if month_only and one_month else all_parquet(r2, 'archive/announcements/bse/'))
     master = None
     try:
         from collectors.nse_events.run_daily import security_master
@@ -487,8 +599,9 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
 
 def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float,
                     max_batches: int) -> int:
-    """After live-first gating, process one bounded batch from the oldest completed month."""
+    """Live-first daily loop: collect one date, read only that date, then advance."""
     from r2_writer import r2_client
+
     r2 = r2_client()
     today = datetime.now(IST).date()
     setup = []
@@ -496,84 +609,67 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         print('Historical AI deferred: eligible live filings remain.', flush=True)
         return 0
 
-    months = completed_collection_months(r2, start, end)
-    if not months:
-        print('Historical AI waiting: no completed historical collection month is checkpointed yet.', flush=True)
+    # The live collector owns today/yesterday and the nightly collector owns the
+    # last three days. Never compete with that live window.
+    cutoff = min(end, today - timedelta(days=3))
+    if cutoff < start:
+        print(f'Historical worker waiting: no historical dates in {start}..{cutoff}.', flush=True)
         return 0
 
     state = read_state(r2)
-    # The live collector owns today/yesterday and the nightly collector owns the last three days.
-    # Backfill older dates in the current month one day at a time, without locking out the live reader.
-    first_day = today.replace(day=1)
-    day_cutoff = today - timedelta(days=3)
-    completed_days = set(state.get('completed_history_dates', []))
-    if day_cutoff >= first_day:
-        day = first_day
-        while day <= day_cutoff:
-            day_text = day.isoformat()
-            if day_text not in completed_days:
-                if not historical_day_collected(r2, day):
-                    print(f'Collecting current-month history for {day_text} before AI reading.', flush=True)
-                    collect_historical_day(r2, day)
-                before_batches = int(state.get('completed_batches', 0))
-                run_backfill(day, day, batch_size, batch_minutes, max_batches=1,
-                             dry_run=False, month_only=True)
-                state = read_state(r2)
-                after_batches = int(state.get('completed_batches', 0))
-                if after_batches > before_batches:
-                    state['active_history_date'] = day_text
-                    state['status'] = 'running'
-                    save_state(r2, state)
-                    print(f'Historical worker paused after one batch for {day_text}.', flush=True)
-                    return 0
-                completed_days.add(day_text)
-                state['completed_history_dates'] = sorted(completed_days)
-                state['last_completed_history_date'] = day_text
-                state['status'] = 'running'
-                state['remaining'] = None
-                save_state(r2, state)
-                print(f'No eligible filings remain for {day_text}; advancing on the next cycle.', flush=True)
-                return 0
-            day += timedelta(days=1)
-
-    completed = set(state.get('completed_collection_months', []))
-    for month in months:
-        if month in completed:
-            continue
-        first = date.fromisoformat(month + '-01')
-        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
-        last = min(next_month - timedelta(days=1), end)
-        before_batches = int(state.get('completed_batches', 0))
-        print(f'Historical worker selected completed month {month}; processing at most '
-              f'{batch_size} filings for this run.', flush=True)
-        run_backfill(first, last, batch_size, batch_minutes, max_batches=1,
-                     dry_run=False, month_only=True)
-        state = read_state(r2)
-        after_batches = int(state.get('completed_batches', 0))
-        if after_batches > before_batches:
-            # One batch per live cycle; never let history starve the live reader.
-            state['active_month'] = month
-            state['status'] = 'running'
-            state['completed_collection_months'] = sorted(completed)
-            save_state(r2, state)
-            print(f'Historical worker paused after one batch in {month}; next live cycle will resume it.',
-                  flush=True)
-            return 0
-        completed.add(month)
-        state['completed_collection_months'] = sorted(completed)
-        state['last_completed_month'] = month
-        state['status'] = 'running'
-        state['remaining'] = None
+    day = next_unfinished_history_day(r2, start, cutoff, state)
+    if day is None:
+        next_day = cutoff + timedelta(days=1)
+        state.update(status='complete', remaining=0, next_history_date=next_day.isoformat())
         save_state(r2, state)
-        print(f'No eligible filings remain in {month}; moving forward.', flush=True)
+        print(f'Historical worker: every date through {cutoff} is complete.', flush=True)
+        return 0
 
-    all_complete = set(months).issubset(completed)
-    state['status'] = 'complete' if all_complete else 'running'
-    state['remaining'] = 0 if all_complete else None
-    state['completed_collection_months'] = sorted(completed)
+    day_text = day.isoformat()
+    if not historical_day_collected(r2, day):
+        print(f'Historical worker selected {day_text}: collecting this date only.', flush=True)
+        collect_historical_day(r2, day)
+    else:
+        print(f'Historical worker selected {day_text}: verified collection checkpoint exists.', flush=True)
+
+    before_batches = int(state.get('completed_batches', 0))
+    run_backfill(day, day, batch_size, batch_minutes, max_batches=1,
+                 dry_run=False, month_only=True, nse_only=True)
+    state = read_state(r2)
+    after_batches = int(state.get('completed_batches', 0))
+    if after_batches > before_batches:
+        # A batch ran; keep this exact date active and resume it next cycle.
+        state['active_history_date'] = day_text
+        state['next_history_date'] = day_text
+        state['status'] = 'running'
+        save_state(r2, state)
+        print(f'Historical worker paused after one AI batch for {day_text}; next cycle resumes the same date.',
+              flush=True)
+        return 0
+
+    # No eligible work remains for this date. Do not advance unless run_backfill
+    # explicitly reached the terminal state with remaining=0.
+    if state.get('status') != 'complete' or state.get('remaining') != 0:
+        state['active_history_date'] = day_text
+        state['next_history_date'] = day_text
+        state['status'] = 'running'
+        save_state(r2, state)
+        print(f'Historical worker did not certify completion for {day_text}; will retry this date.', flush=True)
+        return 0
+
+    mark_historical_day_ai_complete(r2, day, state)
+    completed_days = set(state.get('completed_history_dates', []))
+    completed_days.add(day_text)
+    state.update(
+        status='running',
+        remaining=None,
+        completed_history_dates=sorted(completed_days),
+        last_completed_history_date=day_text,
+        active_history_date=None,
+        next_history_date=(day + timedelta(days=1)).isoformat(),
+    )
     save_state(r2, state)
-    print('Historical worker: all completed collection months exhausted.' if all_complete
-          else 'Historical worker: waiting for the next completed collection month.', flush=True)
+    print(f'Historical date {day_text} is complete; the next cycle will start the next date.', flush=True)
     return 0
 
 

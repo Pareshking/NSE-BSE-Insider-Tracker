@@ -107,3 +107,128 @@ def test_memory_context_only_includes_earlier_events_and_prompt_carries_provenan
     prompt = ar.card_prompt(frame.iloc[0].to_dict(), 'The board approved a project.')
     assert 'Earlier verified company history' in prompt
     assert 'https://example.test/past.pdf' in prompt
+
+
+
+def test_historical_day_checkpoint_requires_verified_nse_scope():
+    r2 = FakeR2()
+    day = date(2026, 1, 2)
+    key = f'{backfill.COLLECTION_DAY_PREFIX}{day.isoformat()}.json'
+    r2.objects[key] = json.dumps({
+        'date': day.isoformat(), 'from': day.isoformat(), 'to': day.isoformat(),
+        'status': 'collection_commands_succeeded',
+    }).encode()
+    assert not backfill.historical_day_collected(r2, day)
+
+    r2.objects[key] = json.dumps({
+        'date': day.isoformat(), 'from': day.isoformat(), 'to': day.isoformat(),
+        'status': 'collection_verified', 'scope': ['NSE'],
+        'verification': {'bse_skipped': True},
+    }).encode()
+    assert backfill.historical_day_collected(r2, day)
+
+
+def test_historical_collection_downloads_only_nse_and_writes_verified_daily_checkpoint(monkeypatch):
+    r2 = FakeR2()
+    day = date(2026, 1, 2)
+    today = datetime.now(backfill.IST).date().isoformat()
+    import clean_writer
+
+    commands = []
+
+    def fake_run(command, check, env):
+        commands.append(command)
+        assert check is True
+        assert command[command.index('--from') + 1] == day.isoformat()
+        assert command[command.index('--to') + 1] == day.isoformat()
+        clean_writer.put(r2, f'clean/reports/announcements/{today}.json', json.dumps({
+            'window': [day.isoformat(), day.isoformat()],
+            'calls': [
+                {'market': 'equities', 'from': day.isoformat(), 'to': day.isoformat(), 'rows': 3},
+                {'market': 'sme', 'from': day.isoformat(), 'to': day.isoformat(), 'rows': 1},
+            ],
+            'notes': [],
+        }).encode(), 'application/json')
+        return None
+
+    monkeypatch.setattr(backfill.subprocess, 'run', fake_run)
+    backfill.collect_historical_day(r2, day)
+
+    assert len(commands) == 1
+    assert 'collectors.nse_events.announcements' in commands[0]
+    assert 'collectors.bse.announcements' not in commands[0]
+    assert backfill.historical_day_collected(r2, day)
+    marker = json.loads(r2.objects[f'{backfill.COLLECTION_DAY_PREFIX}{day.isoformat()}.json'])
+    assert marker['status'] == 'collection_verified'
+    assert marker['scope'] == ['NSE']
+    assert marker['verification']['bse_skipped'] is True
+
+
+def test_historical_collection_refuses_missing_sme_coverage(monkeypatch):
+    r2 = FakeR2()
+    day = date(2026, 1, 2)
+    today = datetime.now(backfill.IST).date().isoformat()
+    import clean_writer
+
+    def fake_run(command, check, env):
+        clean_writer.put(r2, f'clean/reports/announcements/{today}.json', json.dumps({
+            'window': [day.isoformat(), day.isoformat()],
+            'calls': [{'market': 'equities', 'from': day.isoformat(), 'to': day.isoformat(), 'rows': 3}],
+            'notes': [],
+        }).encode(), 'application/json')
+
+    monkeypatch.setattr(backfill.subprocess, 'run', fake_run)
+    import pytest
+    with pytest.raises(RuntimeError, match='sme feed did not certify'):
+        backfill.collect_historical_day(r2, day)
+    assert f'{backfill.COLLECTION_DAY_PREFIX}{day.isoformat()}.json' not in r2.objects
+
+
+def test_ai_day_checkpoint_requires_verified_collection_and_terminal_status():
+    r2 = FakeR2()
+    day = date(2026, 1, 2)
+    day_text = day.isoformat()
+    import clean_writer
+
+    clean_writer.put(r2, f'{backfill.COLLECTION_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'collection_verified', 'scope': ['NSE'],
+        'verification': {'bse_skipped': True},
+    }).encode(), 'application/json')
+    clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'running', 'remaining': 0, 'scope': ['NSE'],
+    }).encode(), 'application/json')
+    assert not backfill.historical_day_ai_complete(r2, day)
+
+    clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{day_text}.json', json.dumps({
+        'date': day_text, 'from': day_text, 'to': day_text,
+        'status': 'complete', 'remaining': 0, 'scope': ['NSE'],
+    }).encode(), 'application/json')
+    assert backfill.historical_day_ai_complete(r2, day)
+
+
+def test_next_unfinished_history_day_ignores_legacy_state_list_without_ai_checkpoint():
+    r2 = FakeR2()
+    start, cutoff = date(2026, 1, 1), date(2026, 1, 3)
+    state = {'completed_history_dates': ['2026-01-01', '2026-01-02']}
+    assert backfill.next_unfinished_history_day(r2, start, cutoff, state) == start
+
+
+def test_next_unfinished_history_day_resumes_cursor_and_skips_only_verified_complete_days():
+    r2 = FakeR2()
+    import clean_writer
+    for day in (date(2026, 1, 1), date(2026, 1, 2)):
+        text_day = day.isoformat()
+        clean_writer.put(r2, f'{backfill.COLLECTION_DAY_PREFIX}{text_day}.json', json.dumps({
+            'date': text_day, 'from': text_day, 'to': text_day,
+            'status': 'collection_verified', 'scope': ['NSE'],
+            'verification': {'bse_skipped': True},
+        }).encode(), 'application/json')
+        clean_writer.put(r2, f'{backfill.AI_DAY_PREFIX}{text_day}.json', json.dumps({
+            'date': text_day, 'from': text_day, 'to': text_day,
+            'status': 'complete', 'remaining': 0, 'scope': ['NSE'],
+        }).encode(), 'application/json')
+    assert backfill.next_unfinished_history_day(
+        r2, date(2026, 1, 1), date(2026, 1, 3), {'next_history_date': '2026-01-01'}
+    ) == date(2026, 1, 3)
