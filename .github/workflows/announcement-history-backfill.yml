@@ -127,8 +127,12 @@ jobs:
           # available to its own collector/live workflows, but cannot block NSE history.
           python -m collectors.nse_events.announcements --from "$start" --to "$month_end"
           python - <<'PY'
-          import json, os
+          import json, os, sys
           from datetime import date, datetime, timedelta, timezone
+          from pathlib import Path
+          # This is `python -` (not a module under scripts/), so add the repository's
+          # scripts directory before importing the R2 helpers used by the collectors.
+          sys.path.insert(0, str(Path.cwd() / 'scripts'))
           from clean_writer import get, put
           from r2_writer import r2_client
           month = os.environ['MONTH']
