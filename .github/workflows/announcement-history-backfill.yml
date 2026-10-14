@@ -124,21 +124,79 @@ jobs:
           python -u -m collectors.bse.announcements --from "$start" --to "$month_end"
           python - <<'PY'
           import json, os
-          from datetime import datetime, timezone
-          from clean_writer import put
+          from datetime import date, datetime, timedelta, timezone
+          from clean_writer import get, put
           from r2_writer import r2_client
           month = os.environ['MONTH']
+          start_text, end_text = os.environ['COLLECTION_FROM'], os.environ['COLLECTION_TO']
+          r2 = r2_client()
+          run_date = datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
+          reports = {
+              'nse': get(r2, f'clean/reports/announcements/{run_date}.json'),
+              'bse': get(r2, f'clean/reports/announcements_bse/{run_date}.json'),
+          }
+          parsed = {}
+          for exchange, raw in reports.items():
+              if not raw:
+                  raise SystemExit(f"Refusing collection checkpoint: missing {exchange.upper()} report for {run_date}")
+              try:
+                  report = json.loads(raw)
+              except (TypeError, ValueError) as exc:
+                  raise SystemExit(f"Refusing collection checkpoint: invalid {exchange.upper()} report JSON") from exc
+              if report.get('window') != [start_text, end_text]:
+                  raise SystemExit(f"Refusing collection checkpoint: {exchange.upper()} report window "
+                                   f"{report.get('window')} != {[start_text, end_text]}")
+              if report.get('notes'):
+                  raise SystemExit(f"Refusing collection checkpoint: {exchange.upper()} report has unresolved notes: "
+                                   + '; '.join(map(str, report['notes'])))
+              parsed[exchange] = report
+          expected_days = set()
+          cursor, end = date.fromisoformat(start_text), date.fromisoformat(end_text)
+          while cursor <= end:
+              expected_days.add(cursor.isoformat())
+              cursor += timedelta(days=1)
+          bse_days = {str(row.get('day')) for row in parsed['bse'].get('days', [])}
+          short_days = [row.get('day') for row in parsed['bse'].get('days', []) if row.get('short')]
+          if expected_days - bse_days:
+              raise SystemExit("Refusing collection checkpoint: BSE report omitted dates: "
+                               + ', '.join(sorted(expected_days - bse_days)))
+          if short_days:
+              raise SystemExit("Refusing collection checkpoint: BSE reported short collection dates: "
+                               + ', '.join(map(str, short_days)))
+          nse_calls = parsed['nse'].get('calls', [])
+          if not nse_calls:
+              raise SystemExit("Refusing collection checkpoint: NSE report contains no successful feed calls")
+          for market in ('equities', 'sme'):
+              ranges = [(date.fromisoformat(str(call['from'])), date.fromisoformat(str(call['to'])))
+                        for call in nse_calls if call.get('market') == market and call.get('from') and call.get('to')]
+              covered = set()
+              for left, right in ranges:
+                  day = left
+                  while day <= right:
+                      covered.add(day.isoformat())
+                      day += timedelta(days=1)
+              if not expected_days.issubset(covered):
+                  raise SystemExit(f"Refusing collection checkpoint: NSE {market} feed omitted dates: "
+                                   + ', '.join(sorted(expected_days - covered)))
           marker = {
               'month': month,
-              'from': os.environ['COLLECTION_FROM'],
-              'to': os.environ['COLLECTION_TO'],
+              'from': start_text,
+              'to': end_text,
               'completed_at': datetime.now(timezone.utc).isoformat(),
               'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
-              'status': 'collection_commands_succeeded',
+              'status': 'collection_verified',
+              'verification': {
+                  'nse_report_window': parsed['nse']['window'],
+                  'nse_feed_calls': len(nse_calls),
+                  'bse_report_window': parsed['bse']['window'],
+                  'bse_days_reported': len(bse_days),
+                  'bse_short_days': [],
+                  'reports_checked': True,
+              },
           }
-          put(r2_client(), f'archive/announcement_backfill/collection/{month}.json',
+          put(r2, f'archive/announcement_backfill/collection/{month}.json',
               json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
-          print(f"Recorded completed collection month {month}")
+          print(f"Recorded verified collection month {month}: NSE feeds and BSE dates validated")
           PY
 
   read-history:
