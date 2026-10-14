@@ -1,22 +1,22 @@
 name: Announcement history backfill
 
-# One manual kick of the same live-first, one-date historical worker used by the
-# continuous announcement reader. This workflow must never launch a month matrix.
+# Manual entry point for the same resumable day-by-day worker used by the live reader.
+# Do not run a monthly collection matrix: collect one NSE date, process it, then advance.
 on:
   workflow_dispatch:
     inputs:
       from:
-        description: 'Oldest historical date to process (YYYY-MM-DD)'
+        description: 'First historical date (YYYY-MM-DD)'
         required: true
         default: '2026-01-01'
       to:
-        description: 'Latest date eligible for historical work (YYYY-MM-DD; blank means today)'
+        description: 'Last date to process (YYYY-MM-DD; blank means today)'
         required: false
         default: ''
       batch_size:
-        description: 'Maximum filings in the one AI batch'
+        description: 'Maximum filings in one AI batch (small to conserve free-tier tokens)'
         required: true
-        default: '20'
+        default: '5'
 
 permissions:
   contents: read
@@ -46,14 +46,13 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
-      - name: Collect and process at most one historical date
+      - name: Collect one day and process one small AI batch
         env:
           HISTORY_FROM: ${{ inputs.from || '2026-01-01' }}
           HISTORY_TO: ${{ inputs.to }}
-          BATCH_SIZE: ${{ inputs.batch_size || '20' }}
+          BATCH_SIZE: ${{ inputs.batch_size || '5' }}
         run: |
           set -euo pipefail
-          end="${HISTORY_TO:-$(date -u +%F)}"
-          python -u scripts/announcement_backfill.py --continuous \
-            --from "$HISTORY_FROM" --to "$end" \
-            --batch-size "$BATCH_SIZE" --batch-minutes 5 --max-batches 1
+          args=(--continuous --from "$HISTORY_FROM" --batch-size "$BATCH_SIZE" --batch-minutes 3 --max-batches 1)
+          if [[ -n "$HISTORY_TO" ]]; then args+=(--to "$HISTORY_TO"); fi
+          python -u scripts/announcement_backfill.py "${args[@]}"
