@@ -51,7 +51,9 @@ IST = timezone(timedelta(hours=5, minutes=30))
 PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower()
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
-PROMPT_VERSION = 'live-5' if PROMPT_VARIANT == 'v2' else 'live-4'  # v2 is opt-in until the A/B is accepted
+PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
+PROMPT_VERSION = ('live-5' if PROMPT_VARIANT == 'v2' else
+                  'live-4-ab' if PROMPT_COMPARE else 'live-4')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
