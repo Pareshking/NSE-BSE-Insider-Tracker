@@ -226,7 +226,11 @@ def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: s
         def record(entry: str, reason: str) -> None:
             with lock:
                 key = f'{RATE_LIMIT_PREFIX}{run_date}.json'
-                raw = get(r2, key)
+                try:
+                    raw = get(r2, key)
+                except Exception as exc:  # noqa: BLE001 -- do not let marker storage interrupt provider failover
+                    log(f'Could not read provider circuit-breaker marker before update: {type(exc).__name__}: {exc}')
+                    return
                 try:
                     body = json.loads(raw) if raw else {'date': run_date, 'models': {}}
                 except (TypeError, ValueError):
