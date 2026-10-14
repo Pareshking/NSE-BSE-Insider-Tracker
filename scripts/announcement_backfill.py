@@ -95,6 +95,9 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
             raw = get(r2, key)
             try:
                 marker = json.loads(raw) if raw else {}
+                # Only checkpoints written after two-exchange report validation may unlock AI work.
+                if marker.get('status') != 'collection_verified':
+                    continue
                 collected_from = date.fromisoformat(marker.get('from', ''))
                 collected_to = date.fromisoformat(marker.get('to', ''))
             except (TypeError, ValueError):
