@@ -1087,6 +1087,10 @@ def main(argv=None):
         return 0
     saver.pending += status
     saver.flush(final=True)
+    # Update durable per-company memory from this run's source-verified reads. No model-generated summary.
+    from announcement_backfill import upsert_company_memories
+    memories_written = upsert_company_memories(r2, rows + status)
+    log(f'updated persistent company memory for {memories_written} companies')
     added = saver.added
     append_usage(r2, today.isoformat(), {'at': datetime.now(timezone.utc).isoformat(), 'counts': counts,
                                          'outcomes': pd.Series([r['status'] for r in rows]).value_counts().to_dict()
