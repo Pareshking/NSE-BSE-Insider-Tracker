@@ -37,6 +37,7 @@ on:
       - 'scripts/announcement_reader.py'
       - 'scripts/announcement_sample.py'   # its prompts, model clients and checks
       - 'scripts/announcement_readers.txt'
+      - 'scripts/announcement_backfill.py'  # daywise historical collector/AI worker
       - '.github/workflows/announcement-reader.yml'
 
 permissions:
@@ -65,7 +66,86 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           before="${{ github.event.before }}"
           if [ -z "$before" ] || ! git cat-file -e "$before" 2>/dev/null; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|sample)\.py|scripts/announcement_readers\.txt|\.github/workflows/announcement-reader\.yml)$'; then
+          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|sample)\.py|scripts/announcement_backfill\.py|scripts/announcement_readers\.txt|\.github/workflows/announcement-reader\.yml)
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The reader's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.changed.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.changed.outputs.go == '1'
+        run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Guard experimental prompt
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
+        run: |
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
+          exit 1
+      - name: Read
+        if: steps.changed.outputs.go == '1'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: '11'   # stop taking new filings after 11 minutes, so a run ends before the next starts
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || inputs.max || '' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'v2' }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.dry_run == true && '1' || '0') }}
+          DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
+      - name: Read historical announcements when the live queue is idle
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CARD_PROMPT_VARIANT: v2
+          CARD_PROMPT_COMPARE: '0'
+        run: python -u scripts/announcement_backfill.py --continuous --batch-size 5 --batch-minutes 3 --max-batches 1
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
+        with:
+          name: announcement-reader-dry-run
+          path: announcement_reader_dry_run.json
+          if-no-files-found: ignore
+
+  next:
+    # Keep the production chain running on main; PR and experimental branch runs never start the chain.
+    needs: read
+    if: >-
+      ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+          && needs.read.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false
+          echo "next live v2 run requested" >> "$GITHUB_STEP_SUMMARY"
+; then
             echo "go=1" >> "$GITHUB_OUTPUT"
           else
             echo "go=0" >> "$GITHUB_OUTPUT"; echo "The reader's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
