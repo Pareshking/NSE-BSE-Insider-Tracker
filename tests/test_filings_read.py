@@ -16,7 +16,7 @@ from screens import filings_read as fr  # noqa: E402
 
 FIELDS = [
     {'name': 'price_per_share', 'value': '165.65', 'number': 165.65, 'quote': 'at the issue price of Rs. 165.65',
-     'evidence': 'exact', 'shown': True},
+     'evidence': 'exact', 'shown': True, 'currency': 'INR'},
     {'name': 'amount', 'value': '15.5', 'number': 15.5e9, 'unit': 'billion', 'quote': 'USD 15.5 billion',
      'evidence': 'table', 'shown': True, 'currency': 'USD'},
     {'name': 'currency', 'value': 'USD', 'quote': 'USD 15.5 billion', 'evidence': 'exact', 'shown': True},
@@ -117,7 +117,7 @@ def test_card_leads_with_its_checked_headline_and_points_and_shows_our_own_chang
 def test_an_older_read_without_a_headline_uses_checked_category_and_terms():
     html = fr.card_html(row())
     assert '<h4 class="rc-h">Hyundai Motor India Ltd: capacity / investment' in html
-    assert 'USD 15.50 bn size' in html and '₹165.65 a share' in html, html
+    assert 'USD 15.50 bn size' in html and '₹165.65 a share' in html
     assert 'Press Release' not in html
 
 
