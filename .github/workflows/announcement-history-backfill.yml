@@ -83,7 +83,7 @@ jobs:
       matrix:
         month: ${{ fromJSON(needs.prepare.outputs.months) }}
     concurrency:
-      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || 'nse-announcements' }}
+      group: ${{ matrix.month == needs.prepare.outputs.current_month && 'announcement-reader-live' || format('nse-announcements-{0}', matrix.month) }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
