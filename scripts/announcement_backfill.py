@@ -513,6 +513,16 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
             save_state(r2, state)
             print(f'Historical backfill complete: no eligible filings remain in {start}..{end}.')
             break
+        # Historical work must yield to the live queue between batches, not merely
+        # once at workflow startup. Fail closed if the live queue cannot be checked.
+        if month_only and not dry_run and live_queue_pending(r2, today, setup):
+            state.update(status='paused', remaining=len(to_read),
+                         pause_reason='live_queue_pending',
+                         last_batch_at=datetime.now(timezone.utc).isoformat())
+            save_state(r2, state)
+            print(f'Historical batch deferred: {len(to_read)} historical filings remain; live queue has priority.',
+                  flush=True)
+            break
         # Oldest first; after every batch, update persistent memory before continuing.
         to_read = to_read.sort_values(['broadcast_date', 'broadcast_at'], ascending=True)
         to_read = add_memory_context(r2, to_read)
@@ -634,23 +644,26 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         print(f'Historical worker selected {day_text}: verified collection checkpoint exists.', flush=True)
 
     before_batches = int(state.get('completed_batches', 0))
-    run_backfill(day, day, batch_size, batch_minutes, max_batches=1,
+    run_backfill(day, day, batch_size, batch_minutes, max_batches=max_batches,
                  dry_run=False, month_only=True, nse_only=True)
     state = read_state(r2)
     after_batches = int(state.get('completed_batches', 0))
-    if after_batches > before_batches:
-        # A batch ran; keep this exact date active and resume it next cycle.
+
+    # A multi-batch run may finish the date in the same workflow. Only advance
+    # after the per-day AI completion conditions are explicitly satisfied.
+    if state.get('status') == 'complete' and state.get('remaining') == 0:
+        mark_historical_day_ai_complete(r2, day, state)
+    elif after_batches > before_batches or state.get('pause_reason') == 'live_queue_pending':
+        # Preserve the active date and durable cursor; the next workflow resumes it.
         state['active_history_date'] = day_text
         state['next_history_date'] = day_text
-        state['status'] = 'running'
+        state['status'] = 'paused'
         save_state(r2, state)
-        print(f'Historical worker paused after one AI batch for {day_text}; next cycle resumes the same date.',
-              flush=True)
+        print(f'Historical worker paused on {day_text} after {after_batches - before_batches} batch(es); '
+              'next cycle resumes this date.', flush=True)
         return 0
-
-    # No eligible work remains for this date. Do not advance unless run_backfill
-    # explicitly reached the terminal state with remaining=0.
-    if state.get('status') != 'complete' or state.get('remaining') != 0:
+    else:
+        # No eligible work was processed and completion was not certified.
         state['active_history_date'] = day_text
         state['next_history_date'] = day_text
         state['status'] = 'running'
@@ -658,7 +671,6 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         print(f'Historical worker did not certify completion for {day_text}; will retry this date.', flush=True)
         return 0
 
-    mark_historical_day_ai_complete(r2, day, state)
     completed_days = set(state.get('completed_history_dates', []))
     completed_days.add(day_text)
     state.update(
