@@ -25,9 +25,9 @@ def _candidate(eid, day, isin='INE000A01001', status=None):
 def test_continuous_worker_uses_only_checkpointed_completed_months():
     r2 = FakeR2()
     r2.objects.update({
-        'archive/announcement_backfill/collection/2026-01.json': b'{}',
-        'archive/announcement_backfill/collection/2026-02.json': b'{}',
-        'archive/announcement_backfill/collection/2026-10.json': b'{}',
+        'archive/announcement_backfill/collection/2026-01.json': json.dumps({'from': '2026-01-01', 'to': '2026-01-31'}).encode(),
+        'archive/announcement_backfill/collection/2026-02.json': json.dumps({'from': '2026-02-01', 'to': '2026-02-28'}).encode(),
+        'archive/announcement_backfill/collection/2026-10.json': json.dumps({'from': '2026-10-01', 'to': '2026-10-14'}).encode(),
         'archive/announcement_backfill/collection/not-a-month.json': b'{}',
     })
     months = backfill.completed_collection_months(r2, date(2026, 1, 1), date(2026, 10, 14))
