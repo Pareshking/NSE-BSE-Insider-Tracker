@@ -24,9 +24,10 @@ on:
         required: true
         type: boolean
         default: false
-  # TEMPORARILY PAUSED through the 2026-10-15 15:00 IST quota audit.
-  # schedule:
-  #   - cron: '7,22,37,52 * * * *'
+  # Serialized live-first worker: scheduled every 15 minutes; the self-dispatch job keeps
+  # bounded historical work moving only after the eligible live queue has been drained.
+  schedule:
+    - cron: '7,22,37,52 * * * *'
   push:
     branches: [main]
     paths:
@@ -61,8 +62,6 @@ concurrency:
 
 jobs:
   read:
-    # TEMPORARY SAFETY GATE: do not run AI while the quota audit is pending.
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -140,9 +139,9 @@ jobs:
           if-no-files-found: ignore
 
   next:
-    # TEMPORARY SAFETY GATE: prevent the automatic self-dispatch chain during the audit.
     needs: read
-    if: false
+    # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
