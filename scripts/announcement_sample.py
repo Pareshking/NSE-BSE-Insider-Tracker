@@ -352,6 +352,14 @@ def download(url: str, session=None) -> bytes:
     log('download', url.rsplit('/', 1)[-1])
     r = s.get(url, headers={'User-Agent': UA, 'Referer': referer}, timeout=(15, 120))
     log('download: HTTP', r.status_code, f'{len(r.content):,} bytes')
+    if r.status_code == 404 and 'bseindia.com' in url and '/AttachLive/' in url:
+        # BSE moves a filing's PDF to AttachHis after a while (15 Oct probe: filings from January to April and some
+        # of 1 Oct answer 404 under AttachLive and the PDF under AttachHis; filings of the last 2 days only AttachLive).
+        later = s.get(url.replace('/AttachLive/', '/AttachHis/'), headers={'User-Agent': UA, 'Referer': referer},
+                      timeout=(15, 120))
+        log('download: BSE AttachHis HTTP', later.status_code, f'{len(later.content):,} bytes')
+        if later.ok:
+            r = later
     r.raise_for_status()
     return r.content
 
