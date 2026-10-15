@@ -32,24 +32,37 @@ from collectors.nse_events import announcements as nann  # noqa: E402
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def saved_answers(r2, source: str):
-    """(fetch record, parsed JSON body) for every successful saved answer of the announcement list, once per body."""
+def saved_answers(r2, source: str, workers: int = 16):
+    """(fetch record, parsed JSON body) for every successful saved answer of the announcement list, once per body.
+    The records and the bodies are read in parallel (thousands of small objects: one at a time took over an hour)."""
+    from concurrent.futures import ThreadPoolExecutor
+
     from clean_writer import get, list_keys
-    seen = set()
-    for key in sorted(k for k in list_keys(r2, f'raw_v2/{source}/announcements/fetches/') if k.endswith('.json')):
-        raw = get(r2, key)
+    keys = sorted(k for k in list_keys(r2, f'raw_v2/{source}/announcements/fetches/') if k.endswith('.json'))
+
+    def record(key):
         try:
-            rec = json.loads(raw)
+            return json.loads(get(r2, key))
         except (TypeError, ValueError):
-            continue
-        if rec.get('http_status') != 200 or int(rec.get('bytes') or 0) <= 2 or rec.get('blob_key') in seen:
-            continue
-        seen.add(rec['blob_key'])
-        body = get(r2, rec['blob_key'])
+            return None
+
+    def body(rec):
         try:
-            yield rec, json.loads(body)
+            return rec, json.loads(get(r2, rec['blob_key']))
         except (TypeError, ValueError):
-            continue
+            return rec, None
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        records = [r for r in pool.map(record, keys)
+                   if r and r.get('http_status') == 200 and int(r.get('bytes') or 0) > 2 and r.get('blob_key')]
+        seen, unique = set(), []
+        for r in records:
+            if r['blob_key'] not in seen:
+                seen.add(r['blob_key'])
+                unique.append(r)
+        for rec, data in pool.map(body, unique):
+            if data is not None:
+                yield rec, data
 
 
 def concall_rows(r2, source: str) -> tuple[pd.DataFrame, dict]:
