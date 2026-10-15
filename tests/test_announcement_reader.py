@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import zipfile
 from datetime import date
 
 import announcement_reader as ar
@@ -57,6 +58,21 @@ def _cand(eid, exchange, isin, at, subject, detail='', group='fund_raise', mcap=
             'broadcast_at': at, 'broadcast_date': at[:10], 'market_cap': mcap, **kw}
 
 
+def test_choose_excludes_unverified_market_cap_and_keeps_exactly_100_cr():
+    today = date(2026, 10, 13)
+    c = pd.DataFrame([
+        _cand('below', 'NSE', 'INELOW', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=999_999_999),
+        _cand('boundary', 'NSE', 'INE100', '2026-10-13T10:01:00+05:30', 'Buyback', mcap=1_000_000_000),
+        _cand('unknown', 'NSE', 'INEUNK', '2026-10-13T10:02:00+05:30', 'Buyback', mcap=None),
+    ])
+    to_read, status, counts = ar.choose(c, None, today)
+    assert list(to_read['event_id']) == ['boundary']
+    statuses = status.set_index('event_id')['status'].to_dict()
+    assert statuses == {'below': 'below_100_cr', 'unknown': 'market_cap_unverified'}
+    assert counts['below_100_cr'] == 1
+    assert counts['market_cap_unverified'] == 1
+
+
 def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     today = date(2026, 10, 13)
     c = pd.DataFrame([
@@ -78,7 +94,7 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert st.loc['bse:a', 'status'] == 'same_filing_other_exchange' and st.loc['bse:a', 'same_as'] == 'nse:1'
     assert st.loc['nse:3', 'status'] == 'below_100_cr'
     assert counts == {'candidates': 7, 'routine_or_no_file': 1, 'already_done': 1, 'below_100_cr': 1,
-                      'same_filing_other_exchange': 1, 'to_read': 3}
+                      'market_cap_unverified': 0, 'same_filing_other_exchange': 1, 'to_read': 3}
     gave_up = done.assign(tries=ar.MAX_TRIES)
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
 
@@ -107,6 +123,44 @@ def test_different_subjects_or_hours_apart_are_not_the_same_filing():
     assert not ar.same_filing(a, _cand('bse:2', 'BSE', 'INE1', '2026-10-13T10:05:00+05:30', 'Credit Rating', 'rating reaffirmed'))
     assert not ar.same_filing(a, _cand('bse:3', 'BSE', 'INE1', '2026-10-13T19:00:00+05:30', 'Outcome of Board Meeting', 'approved fund raising by QIP'))
     assert not ar.same_filing(a, {**a, 'event_id': 'nse:9'})   # same exchange: two filings
+
+
+def test_text_of_prefers_valid_xbrl_inside_zip_over_pdf(monkeypatch):
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in="urn:example">
+      <xbrli:context id="FY">
+        <xbrli:entity><xbrli:identifier scheme="urn:test">ACME</xbrli:identifier></xbrli:entity>
+        <xbrli:period><xbrli:startDate>2026-04-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit>
+      <in:Revenue contextRef="FY" unitRef="INR" decimals="0">1250000000</in:Revenue>
+    </xbrli:xbrl>'''
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w') as z:
+        z.writestr('instance.xml', xml)
+        z.writestr('filing.pdf', b'not actually a PDF')
+    monkeypatch.setattr(ar.s, 'pdf_text', lambda _data: (_ for _ in ()).throw(AssertionError('PDF fallback used')))
+    text, notes = ar.s.text_of(archive.getvalue())
+    assert 'XBRL FACTS' in text and 'Revenue = 1250000000' in text
+    assert '2026-04-01' in text and '2026-09-30' in text
+    assert any(note.startswith('xbrl: instance.xml') for note in notes)
+
+
+def test_security_master_uses_latest_market_cap_snapshot_not_after_requested_date(monkeypatch):
+    import collectors.nse_events.run_daily as run_daily
+    requests = []
+    payload = [{'symbol': '500325', 'isin': 'INE002A01018', 'company_name': 'ACME',
+                'market_cap': 1_000_000_000, 'source': 'bse_list_securities'}]
+    def get_snapshot(_r2, key):
+        requests.append(key)
+        return json.dumps(payload).encode() if key.endswith('/2026-10-14/data.json') else None
+    monkeypatch.setattr(run_daily, 'get', get_snapshot)
+    monkeypatch.setattr(run_daily, 'nse_lists', lambda *_: (pd.DataFrame(), pd.DataFrame()))
+    master = run_daily.security_master(object(), '2026-10-15', [])
+    assert master.market_cap_as_of == '2026-10-14'
+    assert master.record('INE002A01018')['market_cap'] == 1_000_000_000
+    assert requests[:2] == ['reference/market_cap/2026-10-15/data.json',
+                            'reference/market_cap/2026-10-14/data.json']
 
 
 class FakeClient:
