@@ -654,8 +654,12 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     records = df.to_dict('records')
     xbrl_rows = []
     for idx, row in enumerate(records):
-        if (row.get('exchange') == 'NSE' and str(row.get('file_type') or '').lower() in ('xml', 'xbrl', 'zip')
-                and re.search(r'\bxbrl\b', str(row.get('subject') or ''), re.IGNORECASE)
+        # NSE's hasXbrl flag is attached to the PDF row, but companion filenames and
+        # subjects are not consistently labelled "XBRL". Use the actual attachment
+        # format as the primary signal; issuer/date and ambiguity gates below prevent
+        # an unrelated same-day attachment from being selected.
+        if (row.get('exchange') == 'NSE'
+                and str(row.get('file_type') or '').strip().lower() in ('xml', 'xbrl', 'zip')
                 and row.get('file_url')):
             xbrl_rows.append((idx, row))
     used_xbrl = set()
@@ -718,8 +722,10 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
         lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
     subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
         r'\bxbrl\b', case=False, regex=True)
-    attachment = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
-        ('xml', 'xbrl', 'zip')) & subject_xbrl
+    attachment_format = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
+        ('xml', 'xbrl', 'zip'))
+    # Do not require "XBRL" in the subject: exchange attachment metadata may omit it.
+    attachment = attachment_format
     direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
@@ -730,6 +736,7 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
         return cands.loc[mask, fields].head(50).to_dict('records')
     return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
             'direct_xbrl_urls': int(direct.sum()), 'xbrl_attachments': int(attachment.sum()),
+            'xbrl_subject_labels': int((attachment & subject_xbrl).sum()),
             'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
             'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
             'linked_samples': sample(linked)}
