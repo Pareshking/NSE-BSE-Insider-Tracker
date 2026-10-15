@@ -59,8 +59,10 @@ reader can't get by scrolling the exchange pages:
 - **Sources: NSE and BSE only.** Screener.in is not scraped: its
   robots.txt disallows the paginated URLs and its terms forbid copying or
   mirroring; it mostly re-presents exchange filings anyway. (07 Oct 2026)
-- **Concall announcements are not collected**: they say nothing about
-  buying or selling. (08 Oct 2026)
+- ~~Concall announcements are not collected~~ **Everything is captured from now on** (owner, 15 Oct 2026):
+  quarterly results, conference calls and other filings, structured data (XBRL) first where the exchange
+  files it. Results come from NSE's integrated-filing XBRL, read without a model (`docs/DATA_DICTIONARY.md`,
+  results). Replaces the 08 Oct decision that concall announcements say nothing about buying or selling.
 - **Evidence decides what gets ranked.** A signal is shown as a fact until
   the signal lab has measured it on our own history. (07 Oct 2026)
 - **No star or conviction score.** Factor badges only (Spotlight, Float

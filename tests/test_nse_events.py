@@ -141,6 +141,9 @@ class FakeNSE:
         self.calls += 1
         if self.block_xbrl and self.calls > 6:
             raise Blocked('HTTP 403')
+        if 'INTEGRATED_FILING' in url:   # a results XBRL
+            from test_results import XBRL
+            return XBRL
         if '_ISSUE_' in url or '/QIP_' in url:   # a further-issue XBRL
             self.issue_xbrl.append(url)
             if url not in ISSUE_XML:
@@ -154,8 +157,14 @@ class FakeNSE:
     def further_issues_url(self, kind, stage, s, e):
         return f'further:{kind}:{stage}'
 
+    def integrated_results_url(self, s, e, page=1, size=100):   # financial results (tests/test_results.py shapes)
+        return f'results:{page}'
+
     def get(self, url, as_json=True):
         self.calls += 1
+        if url.startswith('results:'):
+            from test_results import ROW
+            return json.dumps({'data': [ROW] if url == 'results:1' else [], 'totalCount': 1})
         _, kind, stage = url.split(':')
         return (CAP / ISSUE_LISTS[(kind, stage)]).read_text(encoding='utf-8')
 
@@ -191,6 +200,8 @@ def test_nightly_run_writes_archive_clean_and_report(events):
     sh = frame(r2, 'clean/current/shareholding.parquet')
     assert set(sh['xbrl_status']) == {'ok'} and round(float(sh['promoter_pledge_pct'].iloc[0]), 2) == 5.38
     assert rep['xbrl_fetched'] == 5
+    res = frame(r2, 'clean/current/results.parquet')
+    assert res['quarter_revenue'].tolist() == [67883400000.0] and res['isin'].tolist() == ['INE239A01024']
     assert json.loads(r2.objects['clean/reports/nse_events/2026-10-07.json'])['window'] == ['2026-09-27', '2026-10-07']
 
 

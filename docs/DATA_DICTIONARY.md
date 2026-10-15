@@ -294,6 +294,28 @@ have no row.
 
 `app_id`, `isin`, `symbol`, `company`, `posted_on`, `allotment_date`, `allottee`, `allottee_id`, `category` (as filed: `Foreign Portfolio Investor`, `Mutual Fund`, `Systemically important NBFC` ...), `shares`, `pct_of_issue` (filed as a fraction, shown as %).
 
+### results — financial results from NSE's integrated filing, read from their XBRL (from 15 Oct 2026)
+
+`collectors/nse_events/run_daily.py` stream `results`, parser `insiders_clean/results.py`. NSE's
+`/api/integrated-filing-results` (type `Integrated Filing- Financials`, confirmed 15 Oct 2026) lists each filing; its
+XBRL is fetched once (raw in `raw_v2/nse/results_xbrl/`, the lists in `raw_v2/nse/results_list/`) and every fact
+kept in the archive (`archive/nse_events/results/year=YYYY.parquet`, `xbrl_json`). No model reads results.
+`clean/current/results.parquet` is one row per filing (standalone and consolidated are separate filings; a
+revision is its own row, with `revision` `Revision`). Amounts are rupees as filed; the XBRL has no prior-year
+quarter, so year-on-year comparisons need our own history.
+
+| Column | Meaning |
+|---|---|
+| `event_id`, `seq_id` | `nse:result:{seq_Id}`, NSE's id of the filing |
+| `symbol`, `company`, `isin`, `company_display`, `unmatched_security` | As listed; ISIN from the XBRL, else the security master |
+| `period_end`, `audited`, `consolidated`, `revision`, `revised_at`, `revision_remark` | As NSE lists them |
+| `broadcast_at`, `broadcast_date` | NSE's broadcast time (IST), else the filing's creation time |
+| `kind` | XBRL layout from its file name: `INDAS`, `NBFC_INDAS`, `BANKING`, `GI`, `LI` |
+| `xbrl_url`, `ixbrl_url`, `pdf_url` | Links; `pdf_url` blank when NSE shows `.../corporate/null` |
+| `xbrl_status` | `ok`, `pending` (refused or over the night's cap of 500; retried), `no_xbrl`, `failed: <error>` |
+| `bse_code`, `xbrl_symbol`, `rounding`, `reporting_quarter`, `period_type`, `period_start`, `period_end_xbrl`, `board_meeting`, `audit_opinion`, `segments` | From the XBRL |
+| `quarter_*`, `ytd_*` (`revenue`, `other_income`, `total_income`, `total_expenses`, `finance_costs`, `depreciation`, `profit_before_exceptional_and_tax`, `exceptional_items`, `profit_before_tax`, `tax`, `profit`, `profit_owners`, `eps_basic`, `eps_diluted`), `ytd_start` | The quarter and the year to date under the INDAS names; blank where the layout (banks, NBFCs, insurers) files them under other names (all facts are in the archive) |
+
 ## Archive and raw layer columns (not clean tables)
 
 | Column | Where | Meaning |
@@ -352,10 +374,9 @@ deadline checks; rows from the nightly page capture still don't.
 
 Board meetings and shareholding patterns from BSE (NSE's cover dual-listed companies; BSE-only companies have none).
 BSE-only companies have no Company page (it is keyed by NSE symbol).
-The time results were filed (NSE's `corporates-financial-results` API answers
-only for filings in its old format: 59 for Oct-Dec 2025; quarterly results
-now go through integrated filing, whose API is not confirmed), so the
-trading window is dated from the meeting day.
+Results filed before 15 Oct 2026's first run in the integrated format beyond the nightly window (NSE's
+`corporates-financial-results` answers only for the old format; integrated filing is collected from 15 Oct 2026,
+`results` above, and can be backfilled by date range). The trading window is still dated from the meeting day.
 A buyback's maximum price on the open-market route, and tender buybacks run
 only on BSE: neither is in NSE's structured lists.
 

@@ -14,7 +14,7 @@ on:
         required: false
         default: '10'
       dataset:
-        description: 'all | sast | actions | meetings | shareholding | tenders | daily_buybacks | issues'
+        description: 'all | sast | actions | meetings | shareholding | tenders | daily_buybacks | issues | results'
         required: false
         default: 'all'
       from:
