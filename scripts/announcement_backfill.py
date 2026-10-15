@@ -114,7 +114,7 @@ def completed_collection_months(r2, start: date, end: date) -> list[str]:
 
 
 def collect_historical_day(r2, day: date) -> None:
-    """Collect and certify exactly one historical NSE day; BSE remains live-only for now."""
+    """Collect exactly one historical date from both exchanges and certify both reports."""
     from clean_writer import get, put
 
     date_text = day.isoformat()
@@ -122,25 +122,50 @@ def collect_historical_day(r2, day: date) -> None:
     subprocess.run([sys.executable, '-m', 'collectors.nse_events.announcements',
                     '--from', date_text, '--to', date_text], check=True, env=env)
 
-    # The NSE collector writes one report per execution date. Verify that report
-    # before writing a date checkpoint; a successful process exit alone is not proof.
+    # A successful process exit is not proof of coverage: validate the exact
+    # execution-date report and both NSE feeds before allowing BSE collection.
     report_date = datetime.now(IST).date().isoformat()
     raw = get(r2, f'clean/reports/announcements/{report_date}.json')
     if not raw:
         raise RuntimeError(f'Missing NSE collection report for historical date {date_text}')
     try:
-        report = json.loads(raw)
+        nse_report = json.loads(raw)
     except (TypeError, ValueError) as exc:
         raise RuntimeError(f'Invalid NSE collection report for historical date {date_text}') from exc
-    if report.get('window') != [date_text, date_text]:
-        raise RuntimeError(f'Wrong NSE report window for {date_text}: {report.get("window")}')
-    if report.get('notes'):
-        raise RuntimeError(f'NSE collection report has unresolved notes for {date_text}: {report["notes"]}')
-    calls = report.get('calls', [])
+    if nse_report.get('window') != [date_text, date_text]:
+        raise RuntimeError(f'Wrong NSE report window for {date_text}: {nse_report.get("window")}')
+    if nse_report.get('notes'):
+        raise RuntimeError(f'NSE collection report has unresolved notes for {date_text}: {nse_report["notes"]}')
+    nse_calls = nse_report.get('calls', [])
     for market in ('equities', 'sme'):
         if not any(call.get('market') == market and call.get('from') == date_text
-                   and call.get('to') == date_text for call in calls):
+                   and call.get('to') == date_text for call in nse_calls):
             raise RuntimeError(f'NSE {market} feed did not certify {date_text}')
+
+    subprocess.run([sys.executable, '-m', 'collectors.bse.announcements',
+                    '--from', date_text, '--to', date_text], check=True, env=env)
+    raw = get(r2, f'clean/reports/announcements_bse/{report_date}.json')
+    if not raw:
+        raise RuntimeError(f'Missing BSE collection report for historical date {date_text}')
+    try:
+        bse_report = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f'Invalid BSE collection report for historical date {date_text}') from exc
+    if bse_report.get('window') != [date_text, date_text]:
+        raise RuntimeError(f'Wrong BSE report window for {date_text}: {bse_report.get("window")}')
+    if bse_report.get('notes'):
+        raise RuntimeError(f'BSE collection report has unresolved notes for {date_text}: {bse_report["notes"]}')
+    bse_days = bse_report.get('days', [])
+    if len(bse_days) != 1 or bse_days[0].get('day') != date_text:
+        raise RuntimeError(f'BSE feed did not certify exactly {date_text}: {bse_days}')
+    bse_day = bse_days[0]
+    if bse_day.get('bse_count') is None:
+        raise RuntimeError(f'BSE count missing for historical date {date_text}')
+    if bse_day.get('short') or int(bse_day.get('unique') or 0) != int(bse_day['bse_count']):
+        raise RuntimeError(
+            f'BSE page coverage incomplete for {date_text}: '
+            f"reported={bse_day.get('bse_count')}, fetched_unique={bse_day.get('unique')}, "
+            f"short={bse_day.get('short')}")
 
     marker = {
         'date': date_text,
@@ -149,23 +174,28 @@ def collect_historical_day(r2, day: date) -> None:
         'completed_at': datetime.now(timezone.utc).isoformat(),
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
         'status': 'collection_verified',
-        'scope': ['NSE'],
+        'scope': ['NSE', 'BSE'],
         'verification': {
             'nse_report_date': report_date,
-            'nse_report_window': report['window'],
-            'nse_feed_calls': len(calls),
-            'exchanges_verified': ['NSE'],
-            'bse_skipped': True,
+            'nse_report_window': nse_report['window'],
+            'nse_feed_calls': len(nse_calls),
+            'bse_report_date': report_date,
+            'bse_report_window': bse_report['window'],
+            'bse_rows_reported': int(bse_day['bse_count']),
+            'bse_rows_fetched_unique': int(bse_day.get('unique') or 0),
+            'bse_pages': int(bse_day.get('pages') or 0),
+            'exchanges_verified': ['NSE', 'BSE'],
+            'bse_skipped': False,
             'reports_checked': True,
         },
     }
     put(r2, f'{COLLECTION_DAY_PREFIX}{date_text}.json',
         json.dumps(marker, separators=(',', ':')).encode(), 'application/json')
-    print(f'Collected and verified NSE history for {date_text}; BSE intentionally skipped.', flush=True)
+    print(f'Collected and verified NSE + BSE history for {date_text}.', flush=True)
 
 
 def historical_day_collected(r2, day: date) -> bool:
-    """Only a verified NSE-only date checkpoint can skip collection on a retry."""
+    """Only a fully verified two-exchange date checkpoint can skip collection on a retry."""
     from clean_writer import get
     raw = get(r2, f'{COLLECTION_DAY_PREFIX}{day.isoformat()}.json')
     if not raw:
@@ -180,8 +210,10 @@ def historical_day_collected(r2, day: date) -> bool:
         and marker.get('date') == date_text
         and marker.get('from') == date_text
         and marker.get('to') == date_text
-        and marker.get('scope') == ['NSE']
-        and (marker.get('verification') or {}).get('bse_skipped') is True
+        and marker.get('scope') == ['NSE', 'BSE']
+        and (marker.get('verification') or {}).get('exchanges_verified') == ['NSE', 'BSE']
+        and (marker.get('verification') or {}).get('reports_checked') is True
+        and (marker.get('verification') or {}).get('bse_skipped') is False
     )
 
 
@@ -204,14 +236,16 @@ def historical_day_ai_complete(r2, day: date) -> bool:
         and checkpoint.get('from') == date_text
         and checkpoint.get('to') == date_text
         and checkpoint.get('remaining') == 0
-        and checkpoint.get('scope') == ['NSE']
+        and checkpoint.get('scope') == ['NSE', 'BSE']
     )
 
 
 def next_unfinished_history_day(r2, start: date, cutoff: date, state: dict) -> date | None:
-    """Resume from the durable cursor, validating date checkpoints before advancing."""
+    """Resume the cursor only when it was written for the current two-exchange scope."""
     pointer = start
-    raw_pointer = state.get('next_history_date')
+    # Older state cursors were advanced while BSE was explicitly skipped. Do not
+    # trust them until the scope migration rewinds and records the full scope.
+    raw_pointer = state.get('next_history_date') if state.get('history_scope') == ['NSE', 'BSE'] else None
     if raw_pointer:
         try:
             proposed = date.fromisoformat(raw_pointer)
@@ -236,7 +270,7 @@ def mark_historical_day_ai_complete(r2, day: date, state: dict) -> None:
         'workflow_run_id': os.environ.get('GITHUB_RUN_ID'),
         'status': 'complete',
         'remaining': 0,
-        'scope': ['NSE'],
+        'scope': ['NSE', 'BSE'],
         'collection_checkpoint': f'{COLLECTION_DAY_PREFIX}{date_text}.json',
         'completed_batches': int(state.get('completed_batches', 0)),
         'last_batch_counts': state.get('last_batch_counts', {}),
@@ -636,6 +670,16 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
         return 0
 
     state = read_state(r2)
+    # The earlier backfill deliberately skipped BSE. On the first two-exchange
+    # run, rewind to the requested start and revalidate old dates; NSE reads are
+    # already deduplicated, while BSE-only filings now become eligible.
+    expected_scope = ['NSE', 'BSE']
+    if state.get('history_scope') != expected_scope:
+        state['history_scope'] = expected_scope
+        state['next_history_date'] = start.isoformat()
+        state['scope_migration_at'] = datetime.now(timezone.utc).isoformat()
+        save_state(r2, state)
+
     day = next_unfinished_history_day(r2, start, cutoff, state)
     if day is None:
         next_day = cutoff + timedelta(days=1)
@@ -653,7 +697,7 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
 
     before_batches = int(state.get('completed_batches', 0))
     run_backfill(day, day, batch_size, batch_minutes, max_batches=max_batches,
-                 dry_run=False, month_only=True, nse_only=True)
+                 dry_run=False, month_only=True, nse_only=False)
     state = read_state(r2)
     after_batches = int(state.get('completed_batches', 0))
 
