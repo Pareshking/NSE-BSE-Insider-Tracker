@@ -349,7 +349,12 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
             except Exception as exc:  # noqa: BLE001 -- XBRL is an optional fast path; PDF fallback remains
                 report['notes'].append(f'{market} XBRL {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
                 continue
-            xdf = parse_xbrl(xrows, market)
+            try:
+                xdf = parse_xbrl(xrows, market)
+            except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
+                report['notes'].append(
+                    f'{market} XBRL {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
+                continue
             report['xbrl_calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(),
                                          'rows': len(xdf)})
             if not xdf.empty:
