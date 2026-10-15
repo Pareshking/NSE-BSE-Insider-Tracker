@@ -22,7 +22,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 from r2_writer import BUCKET, r2_client  # noqa: E402
 
-from insiders_clean.text_clean import clean  # noqa: E402
+from insiders_clean.text_clean import clean_with_lines  # noqa: E402
 
 N = 400
 NUMBER = re.compile(r'\d[\d,]*\.?\d*')
@@ -48,19 +48,24 @@ def main() -> int:
         for k in keys(r2, pre)[-2:]:
             a = pd.read_parquet(io.BytesIO(r2.get_object(Bucket=BUCKET, Key=k)['Body'].read()), columns=['event_id', 'subject'])
             subject.update(dict(zip(a['event_id'], a['subject'])))
-    rows, by_rule, lost_all, lost_docs, examples = [], Counter(), Counter(), 0, {}
+    rows, by_rule, lost_all, lost_docs, examples, intended_docs = [], Counter(), Counter(), 0, {}, 0
     for r in sample.to_dict('records'):
         raw = r['text'] or ''
-        out, removed = clean(raw, subject.get(r['event_id']))
+        out, removed, lines = clean_with_lines(raw, subject.get(r['event_id']))
         by_rule.update(removed)
-        lost = Counter(NUMBER.findall(raw)) - Counter(NUMBER.findall(out))
-        if lost:
+        in_raw, in_clean = set(NUMBER.findall(raw)), set(NUMBER.findall(out))
+        gone = in_raw - in_clean                               # a number that appears nowhere in the cleaned text
+        intended = {n for ln in sum((lines.get(k, []) for k in ('exchange address', 'letterhead contacts', 'page number')), [])
+                    for n in NUMBER.findall(ln)}
+        unexplained = gone - intended
+        intended_docs += bool(gone & intended)
+        if unexplained:
             lost_docs += 1
-            lost_all.update(lost)
-            for num in lost:
+            lost_all.update(unexplained)
+            for num in unexplained:
                 if num not in examples:
-                    line = next((ln for ln in raw.splitlines() if num in ln), '')
-                    examples[num] = re.sub(r'\s+', ' ', line)[:110]
+                    cand = [ln for k in lines for ln in lines[k] if num in ln]
+                    examples[num] = re.sub(r'\s+', ' ', (cand or ['(not in a removed line)'])[0])[:110]
         rows.append({'raw': len(raw), 'clean': len(out)})
     d = pd.DataFrame(rows)
     saving = 1 - d['clean'].sum() / max(d['raw'].sum(), 1)
@@ -78,10 +83,12 @@ def main() -> int:
         out.append('')
         out.append(f'- {per_day:,} filings a day, 4 characters a token (estimate): raw {d["raw"].mean() * per_day / 4 / 1e6:.1f}M '
                    f'tokens, cleaned {d["clean"].mean() * per_day / 4 / 1e6:.1f}M tokens a day')
-    out += ['', f'### Numbers removed by the cleaning', '',
-            f'Documents that lost at least one number: {lost_docs} of {len(d)} ({lost_docs / max(len(d), 1):.0%}); '
-            f'numbers lost in all: {sum(lost_all.values()):,} against {sum(len(NUMBER.findall(t or "")) for t in sample["text"]):,} in the raw text.', '',
-            '| number | times lost | a line it was on |', '|---|---|---|']
+    out += ['', '### Numbers that appear nowhere in the cleaned text', '',
+            f'A number is lost when it is in the raw text and in no line of the cleaned text. Documents where numbers were '
+            f'lost only in the intended lines (exchange address, letterhead contacts, page numbers): {intended_docs} of {len(d)}. '
+            f'**Documents that lost a number outside those lines: {lost_docs} of {len(d)}** '
+            f'({sum(lost_all.values()):,} distinct numbers in all).', '',
+            '| number | documents | the removed line it was in |', '|---|---|---|']
     for num, n in lost_all.most_common(25):
         out.append(f'| `{num}` | {n} | {examples.get(num, "")} |')
     text = '\n'.join(out) + '\n'
