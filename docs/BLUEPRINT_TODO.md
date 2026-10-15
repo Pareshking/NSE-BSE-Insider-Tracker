@@ -27,15 +27,19 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 |---|---|---|
 | 1.1 Routine share measured | **Closed 15 Oct** (#100) | done |
 | 1.1a Archive gaps | **Open: cause found, fix coded** | the gaps report lists no weekday without filings for NSE and BSE from 1 Jan (holidays named), and the nightly collection has run two nights in a row |
-| 1.2 onwards | Open, not started | |
+| 1.2 Context blindness: does memory reach the prompt | **Closed 15 Oct** (measured; newline bug fixed; the rest is 1.2a) | done |
+| 1.2a Memory selection and content | **Open, owner to approve** | see its row |
+| 1.3 onwards | Open, not started | |
 
 ## 1. Vision
 
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
 | 1.1 | Separate routine filings (80–85%) from material ones | **Closed 15 Oct. Measured (#100)**: NSE median 410–690 filings/day (busiest 1,567); routine 50–68%, so 32–50% fall in a reading group, mostly `to_sort`. BSE routine 60–72%. **New finding:** the archive has no NSE rows for Mar 2026, and BSE holds only Jan, Feb and Oct 2026 | Done; the gaps become 1.1a | Done |
-| 1.1a | Fill the archive gaps and keep collecting | **Cause found 15 Oct** (`ANNOUNCEMENT_READER.md`, archive gaps): March NSE job cancelled; BSE Mar–Sep never fetched (history ran NSE-only but wrote markers); 2–12 Oct before the nightly existed; nothing collecting since the reader absorbed the collector. Fix: `announcement-collect.yml` (nightly, no AI, any range by hand) | Re-run Mar–12 Oct for both exchanges; the gaps report shows no weekday without filings | |
-| 1.2 | Context blindness: a filing read without the company's past | Partial: `archive/company_memory/{ISIN}.json` (last 100 checked reads); "Before this" from our own tables | Check memory reaches the prompt and what it holds (item 5.x) | |
+| 1.1a | **Closed by owner 15 Oct** (collection run for March to 15 Oct still going; verify at its end). Fill the archive gaps and keep collecting | **Cause found 15 Oct** (`ANNOUNCEMENT_READER.md`, archive gaps): March NSE job cancelled; BSE Mar–Sep never fetched (history ran NSE-only but wrote markers); 2–12 Oct before the nightly existed; nothing collecting since the reader absorbed the collector. Fix: `announcement-collect.yml` (nightly, no AI, any range by hand) | Re-run Mar–12 Oct for both exchanges; the gaps report shows no weekday without filings | |
+| 1.2 | Context blindness: a filing read without the company's past | **Measured 15 Oct** (`scripts/memory_report.py`): 754 companies, 1,078 events (850 from January, 228 from October; none between), median 1 event a company, max 7, 522 companies with just 1; 2 MB in all. Of 1,337 read filings 99% had an ISIN but only 21.7% had any earlier event in memory (an upper bound: memory now holds later events too). 20% of events are `routine`, and a prompt block can be a compliance-officer notice (Varroc). Only the headline line goes into the prompt, never the checked fields (40% of events) or numbers (36%); one block is about 1.2–1.5 KB for 6–7 events. Bug found and fixed: lines were joined with a literal `
+` | Closed; findings in 1.2a | Closed |
+| 1.2a | **New:** memory selection and content | Open: (1) skip routine and boilerplate events and keep the 8 slots for events that matter; (2) pass the checked numbers and fields, not only the headline; (3) put financials from the results XBRL (#99) into memory; (4) include same-day earlier filings (today a strict earlier-date rule); (5) memory is thin because only January and October were read: it fills only as every filing is read (items 3.12, 4.14) | Memory block for a sample of companies shows only events that matter, with numbers, tested | |
 | 1.3 | Vector search fails on financial state, so use structured memory | Same approach already: no vector DB | None (confirm only) | |
 | 1.4 | Informational facts update memory vs a few actionable signals a day | Partial: Brief and Actions pages; no "memory-only" tier | Decide after 8.1 | |
 

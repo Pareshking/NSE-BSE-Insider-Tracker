@@ -434,3 +434,17 @@ def test_unified_pipeline_keeps_company_queue_until_history_is_fully_collected(m
     backfill.unified_company_history_stage(r2, set(), today, None, {}, {}, [])
     state = backfill.read_pipeline_state(r2)
     assert state['target_isins'] == []
+
+
+def test_memory_context_puts_each_earlier_event_on_its_own_line():
+    r2 = FakeR2()
+    import clean_writer
+    events = [{'date': f'2026-01-0{i}', 'event_id': f'nse:{i}', 'headline': {'text': f'Event {i}'}, 'points': [],
+               'source_url': f'https://example.test/{i}.pdf'} for i in (1, 2, 3)]
+    clean_writer.put(r2, 'archive/company_memory/INE000A01001.json',
+                     json.dumps({'schema_version': 1, 'isin': 'INE000A01001', 'events': events}).encode(),
+                     'application/json')
+    frame = ar.with_company_memory(r2, pd.DataFrame([_candidate('nse:new', '2026-02-01')]))
+    lines = frame.iloc[0]['_company_memory'].split('\n')
+    assert len(lines) == 3 and all(line.startswith('- 2026-01-0') for line in lines)
+    assert '\\n' not in frame.iloc[0]['_company_memory']
