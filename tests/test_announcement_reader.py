@@ -688,3 +688,21 @@ def test_xbrl_audit_counts_structured_attachments_without_subject_label():
     assert audit['has_xbrl_flagged'] == 1
     assert audit['xbrl_attachments'] == 1
     assert audit['xbrl_subject_labels'] == 0
+
+
+def test_candidates_do_not_pair_unlabelled_unrelated_zip_without_exact_subject():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results announcement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'zip:unrelated', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Investor presentation', 'text': 'Presentation attachment',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_presentation.zip',
+         'file_type': 'zip', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:1', 'content_url'].endswith('X_results.pdf')
+    assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
