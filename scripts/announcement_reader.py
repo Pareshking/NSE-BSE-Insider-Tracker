@@ -711,15 +711,31 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             # More than one exact XBRL match or another same-subject PDF is ambiguous; do not guess.
             continue
         else:
-            # Subjects can differ between a PDF announcement and its XBRL companion.
-            # Without an exact subject match, require one explicitly XBRL-labelled
-            # companion and exactly one eligible PDF in the issuer/date window.
-            labelled_nearby = [item for item in nearby_structured
-                                if str(item[3].get('event_id') or '').startswith('nse:xbrl:')
-                                or re.search(r'\bxbrl\b', f"{item[3].get('subject') or ''} {item[3].get('file_url') or ''}", re.IGNORECASE)]
-            if len(labelled_nearby) != 1 or other_pdfs:
+            # Never pair solely because issuer/date match: a company can file unrelated disclosures
+            # on the same day, and the XBRL feed often uses a broad event category. If subjects differ,
+            # require the XBRL appId to appear as a whole numeric token in this PDF/ZIP URL, and require
+            # that exactly one eligible PDF for this issuer/date carries that appId.
+            def xbrl_app_id(item):
+                event_id = str(item[3].get('event_id') or '')
+                match = re.match(r'^nse:xbrl:[^:]+:([^:]+):', event_id)
+                return match.group(1) if match else ''
+
+            id_matches = []
+            for item in nearby_structured:
+                app_id = xbrl_app_id(item)
+                if app_id and re.search(rf'(?<![0-9]){re.escape(app_id)}(?![0-9])', str(row.get('file_url') or '')):
+                    id_matches.append(item)
+            if len(id_matches) != 1:
                 continue
-            _, _, xidx, xrow = labelled_nearby[0]
+            app_id = xbrl_app_id(id_matches[0])
+            id_pdfs = []
+            for pidx in [idx] + other_pdfs:
+                purl = str(records[pidx].get('file_url') or '')
+                if re.search(rf'(?<![0-9]){re.escape(app_id)}(?![0-9])', purl):
+                    id_pdfs.append(pidx)
+            if len(id_pdfs) != 1:
+                continue
+            _, _, xidx, xrow = id_matches[0]
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
