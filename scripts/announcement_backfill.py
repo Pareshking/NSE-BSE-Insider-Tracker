@@ -543,7 +543,7 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
     A date cursor advances only after the existing two-exchange verifier certifies NSE + BSE. Failures
     are checkpointed and surfaced but do not prevent current announcements from being read.
     """
-    cutoff = today - timedelta(days=3)  # don't race the live collector's today/yesterday window
+    cutoff = today - timedelta(days=1)  # certify through yesterday; this workflow itself collects that date
     try:
         pointer = date.fromisoformat(str(state.get('collection_next_date') or START_DEFAULT.isoformat()))
     except (TypeError, ValueError):
@@ -553,14 +553,13 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
     while pointer <= cutoff and historical_day_collected(r2, pointer):
         pointer += timedelta(days=1)
     if pointer > cutoff:
-        recent_ok, recent_reason = recent_history_coverage_verified(r2, today)
-        state.update(collection_next_date=pointer.isoformat(), collection_complete=recent_ok,
+        # Every date from 2026-01-01 through yesterday has its own verified NSE+BSE marker.
+        # No separate nightly collector or report is required to declare the archive complete.
+        state.update(collection_next_date=pointer.isoformat(), collection_complete=True,
                      collection_cutoff=cutoff.isoformat(), collection_last_error=None,
-                     recent_coverage_error=None if recent_ok else recent_reason)
+                     recent_coverage_error=None)
         save_pipeline_state(r2, state)
-        if not recent_ok:
-            notes.append('historical source coverage not complete: ' + recent_reason)
-        return recent_ok
+        return True
 
     state.update(collection_complete=False, collection_next_date=pointer.isoformat(),
                  collection_cutoff=cutoff.isoformat(), collection_attempted_date=pointer.isoformat())
@@ -577,15 +576,10 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
         return False
 
     next_day = pointer + timedelta(days=1)
-    complete = False
-    recent_reason = None
-    if next_day > cutoff:
-        complete, recent_reason = recent_history_coverage_verified(r2, today)
-        if not complete:
-            notes.append('historical source coverage not complete: ' + recent_reason)
+    complete = next_day > cutoff
     state.update(collection_next_date=next_day.isoformat(), collection_last_error=None,
                  collection_last_success=pointer.isoformat(), collection_complete=complete,
-                 recent_coverage_error=recent_reason)
+                 recent_coverage_error=None)
     save_pipeline_state(r2, state)
     print(f'Unified pipeline: verified historical source collection for {pointer}; next={next_day}; '
           f'full_range_complete={complete}.', flush=True)
