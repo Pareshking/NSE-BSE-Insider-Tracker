@@ -1168,11 +1168,14 @@ class Saver:
         self.pending = []
 
 
-def usage(clients: dict, lanes: dict[str, Lane]) -> dict:
-    """Every call this run: per model, answers by status and the median seconds of the answered ones."""
+def usage(clients: dict, lanes: dict[str, Lane], since: dict[str, int] | None = None) -> dict:
+    """Per-model calls since each client's attempt offset; default is the full process run."""
     out = {}
+    since = since or {}
     for prov, c in clients.items():
-        for model, status, secs in c.attempts:
+        # Historical batches share client instances. Persist only this batch's delta, not
+        # the cumulative process history, or the daily quota ledger counts old calls again.
+        for model, status, secs in c.attempts[since.get(prov, 0):]:
             e = out.setdefault(f'{prov}:{model}', {'calls': 0, 'by_status': {}, 'seconds': []})
             e['calls'] += 1
             e['by_status'][str(status)] = e['by_status'].get(str(status), 0) + 1
