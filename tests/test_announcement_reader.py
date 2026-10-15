@@ -746,6 +746,31 @@ def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl
 
 
 
+def test_dedicated_xbrl_feed_row_is_used_as_fast_path_without_duplicate_candidate():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:1', 'symbol': 'MARATHON', 'isin': 'INE182D01010',
+         'company': 'Marathon Nextgen Realty Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/MARATHON_outcome.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'xbrl_url': None,
+         'broadcast_at': '2026-10-15T10:00:00+05:30', 'broadcast_date': '2026-10-15',
+         'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-123:abc123', 'symbol': 'MARATHON', 'isin': None,
+         'company': 'Marathon Nextgen Realty Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Outcome of Board Meeting', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml',
+         'file_type': 'xml', 'has_xbrl': True,
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml',
+         'broadcast_at': '2026-10-15T10:00:00+05:30', 'broadcast_date': '2026-10-15',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:pdf:1']
+    xbrl = out.loc['nse:xbrl:equities:APP-123:abc123']
+    assert pdf['content_url'].endswith('MARATHON_123.xml')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'  # companion is not a second user-facing card
+    assert pd.isna(xbrl['xbrl_source_event_id'])  # do not count the companion as self-paired
+
+
 def test_candidates_pair_observed_xbrl_even_when_upstream_flag_is_false():
     rows = pd.DataFrame([
         {'event_id': 'pdf:false-flag', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
