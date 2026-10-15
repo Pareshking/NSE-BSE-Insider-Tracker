@@ -1283,6 +1283,13 @@ def collect(r2, today: date, dry_run: bool, notes: list):
                 frames.append(nann.parse(nse.announcements(yesterday, today, market), market))
             except Exception as exc:  # noqa: BLE001
                 notes.append(f'NSE {market}: {type(exc).__name__}: {exc}'[:200])
+        # Exercise the dedicated XBRL endpoint in dry-runs too. Failure is non-fatal: the
+        # normal PDF feed remains the complete fallback and the audit records the absence.
+        for market in nann.FEEDS:
+            try:
+                frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
         bse, bframes = BSEClient(), []
         try:
             for day in (today, yesterday):
