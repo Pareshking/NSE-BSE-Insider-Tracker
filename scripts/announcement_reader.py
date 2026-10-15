@@ -583,13 +583,15 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             isin = clean(resolved[0] if resolved else None)
         url = clean(r.get('file_url'))
         xbrl_url = clean(r.get('xbrl_url'))
+        xbrl_feed_row = str(r.get('event_id') or '').startswith('nse:xbrl:')
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
                      'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
-                     'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
-                     'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
-                     'xbrl_source_event_id': r['event_id'] if xbrl_url else None,
-                     'xbrl_source_url': xbrl_url, 'market_cap_match': None,
+                     # Dedicated XBRL rows are companion payloads, never standalone user-facing cards.
+                     'group': 'routine' if xbrl_feed_row else nann.group_of(clean(r.get('subject')), clean(r.get('text'))),
+                     'file_url': url, 'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
+                     'xbrl_source_event_id': r['event_id'] if xbrl_url and not xbrl_feed_row else None,
+                     'xbrl_source_url': xbrl_url if not xbrl_feed_row else None, 'market_cap_match': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
@@ -688,7 +690,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # Pair only when the issuer/date window has one eligible PDF and one eligible
         # XBRL payload. Repeated generic subjects are common for separate KMP filings;
         # choosing the first exact-subject match can cross-wire distinct disclosures.
-        other_pdfs = []
+        other_pdfs, other_same_subject_pdfs = [], []
         for pidx, prow in enumerate(records):
             if pidx == idx or prow.get('exchange') != 'NSE':
                 continue
@@ -698,20 +700,42 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             pday = day(prow.get('broadcast_date'))
             if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
                 other_pdfs.append(pidx)
-        if len(matches) == 1 and not other_pdfs:
+                # An unrelated disclosure by the same issuer/date is not ambiguity by itself.
+                # Another PDF with the same normalized subject is ambiguous, because generic
+                # exchange subjects are often reused for distinct KMP/director filings.
+                if subject_base(prow.get('subject')) == subject:
+                    other_same_subject_pdfs.append(pidx)
+        if len(matches) == 1 and not other_same_subject_pdfs:
             _, _, xidx, xrow = matches[0]
         elif matches:
-            # More than one exact match is ambiguous; do not guess.
+            # More than one exact XBRL match or another same-subject PDF is ambiguous; do not guess.
             continue
         else:
-            # Subjects can differ between a PDF announcement and its XBRL companion.
-            # Without an exact subject match, require one explicitly XBRL-labelled
-            # companion and exactly one eligible PDF in the issuer/date window.
-            labelled_nearby = [item for item in nearby_structured
-                                if re.search(r'\bxbrl\b', f"{item[3].get('subject') or ''} {item[3].get('file_url') or ''}", re.IGNORECASE)]
-            if len(labelled_nearby) != 1 or other_pdfs:
+            # Never pair solely because issuer/date match: a company can file unrelated disclosures
+            # on the same day, and the XBRL feed often uses a broad event category. If subjects differ,
+            # require the XBRL appId to appear as a whole numeric token in this PDF/ZIP URL, and require
+            # that exactly one eligible PDF for this issuer/date carries that appId.
+            def xbrl_app_id(item):
+                event_id = str(item[3].get('event_id') or '')
+                match = re.match(r'^nse:xbrl:[^:]+:([^:]+):', event_id)
+                return match.group(1) if match else ''
+
+            id_matches = []
+            for item in nearby_structured:
+                app_id = xbrl_app_id(item)
+                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', str(row.get('file_url') or '')):
+                    id_matches.append(item)
+            if len(id_matches) != 1:
                 continue
-            _, _, xidx, xrow = labelled_nearby[0]
+            app_id = xbrl_app_id(id_matches[0])
+            id_pdfs = []
+            for pidx in [idx] + other_pdfs:
+                purl = str(records[pidx].get('file_url') or '')
+                if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', purl):
+                    id_pdfs.append(pidx)
+            if len(id_pdfs) != 1:
+                continue
+            _, _, xidx, xrow = id_matches[0]
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
@@ -786,12 +810,16 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     finished = set()
     tries = {}
     if done is not None and not done.empty:
-        retryable = done['status'].isin(('failed', 'market_cap_unverified'))
+        # Quota-deferred filings are deliberately retryable without consuming the failure budget.
+        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred'))
         failed = done['status'] == 'failed'
         # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
             (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
-        finished = set(done.loc[(~retryable & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        exhausted_failures = failed & (pd.to_numeric(done['tries'], errors='coerce').fillna(0) >= MAX_TRIES)
+        # Only genuine repeated filing failures consume MAX_TRIES. Quota-deferred work and
+        # missing-cap rows remain retryable, even if a prior status carried a large tries count.
+        finished = set(done.loc[(~retryable & ~stale) | exhausted_failures, 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
@@ -1017,9 +1045,19 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     busy.discard(lane.name)
 
     def fail_job(job: dict):
-        rec = finish({**job['base'], 'status': 'failed', 'reason': '; '.join(job['errors'])[:500]})
+        reason = '; '.join(job['errors'])[:500]
+        # A quota response is not a filing failure. Keep it visible but retryable and do not
+        # spend MAX_TRIES: the next scheduled cycle may have another provider/model available.
+        quota_deferred = is_rate_limit_error(reason) or 'at its daily limit' in reason.lower() or 'no model available' in reason.lower()
+        base = dict(job['base'])
+        if quota_deferred:
+            base['tries'] = max(0, int(base.get('tries') or 1) - 1)
+        status = 'quota_deferred' if quota_deferred else 'failed'
+        rec = finish({**base, 'status': status, 'reason': reason})
         for twin in done_reading(job, None):
-            add_row(finish({**twin, 'status': 'failed', 'reason': f"its twin {job['row']['event_id']} failed"}))
+            add_row(finish({**twin, 'status': status,
+                            'tries': max(0, int(twin.get('tries') or 1) - 1) if quota_deferred else twin.get('tries'),
+                            'reason': f"its twin {job['row']['event_id']} {status.replace('_', ' ')}"}))
         add_row(rec)
 
     def read_job(lane: Lane, job: dict):
@@ -1257,16 +1295,33 @@ def collect(r2, today: date, dry_run: bool, notes: list):
     from collectors.bse import announcements as bann
     from collectors.bse.client import BSEClient
     from collectors.nse_events import announcements as nann
-    from collectors.nse_events.client import NSEClient
+    from collectors.nse_events.client import Blocked, NSEClient
     yesterday = today - timedelta(days=1)
     if dry_run:
         nse = NSEClient()
         frames = []
+        nse_blocked = False
         for market in nann.FEEDS:
             try:
                 frames.append(nann.parse(nse.announcements(yesterday, today, market), market))
+            except Blocked as exc:
+                notes.append(f'NSE {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                nse_blocked = True
+                break
             except Exception as exc:  # noqa: BLE001
                 notes.append(f'NSE {market}: {type(exc).__name__}: {exc}'[:200])
+        # Exercise the dedicated NSE XBRL-announcements feed in dry-runs as well as production.
+        # Its client timeout is bounded to 10 seconds/one attempt; failures never block PDF reads.
+        # Respect NSE's hard-stop rule on 401/403/429; never probe another endpoint after a block.
+        if not nse_blocked:
+            for market in nann.FEEDS:
+                try:
+                    frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
+                except Blocked as exc:
+                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
         bse, bframes = BSEClient(), []
         try:
             for day in (today, yesterday):
@@ -1316,8 +1371,11 @@ def main(argv=None):
              for n, es in lane_spec.items()}
     lanes = {n: lane for n, lane in lanes.items() if lane.entries}
     if not lanes:
-        print('No lane has a usable model and key; nothing read.\n' + '\n'.join(setup))
-        return 0
+        # Still collect and archive filings when keys are missing or every configured model is
+        # temporarily unavailable. No model calls will occur; eligible filings remain pending for
+        # the next cycle instead of making the collector exit before saving today's source data.
+        setup.append('No AI lane has a configured key/model; source collection continues and AI reads remain pending.')
+        log(setup[-1])
     r2 = None
     try:
         from r2_writer import r2_client
@@ -1346,38 +1404,8 @@ def main(argv=None):
     current_candidates = candidates(nse, bse, master)
     to_read, status_rows, counts = choose(current_candidates, done, today)
 
-    # One integrated pipeline: queue companies with eligible announcements, collect one verified
-    # historical source date, and AI-read only queued companies' historical filings before today's reads.
-    # Historical collection/AI errors are recorded but must not suppress current-day cards.
-    if r2 is not None and not args.dry_run:
-        from announcement_backfill import unified_company_history_stage
-        current_isins = set()
-        if not current_candidates.empty and 'isin' in current_candidates:
-            broadcast_dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
-            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
-            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
-            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
-                                  errors='coerce').fillna(0)
-            eligible_today = current_candidates[
-                (broadcast_dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
-            ]
-            current_isins.update(eligible_today['isin'].dropna().astype(str))
-        if not to_read.empty and 'isin' in to_read:
-            current_isins.update(to_read['isin'].dropna().astype(str))
-        try:
-            history_result = unified_company_history_stage(
-                r2, current_isins, today, master, lanes, clients, setup,
-                batch_size=8, batch_minutes=2.0,
-            )
-            log('unified company-history stage', json.dumps(history_result, default=str))
-            # Historical rows were persisted through the same canonical event archive. Refresh today's done
-            # set and then attach the newly enriched, source-linked company memory to the live prompt.
-            done = load_archive(r2, READS_PREFIX, today)
-            to_read, status_rows, counts = choose(current_candidates, done, today)
-        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day processing
-            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
-            setup.append(message)
-            log(message)
+    # Live-first: read and persist eligible current filings before spending any model capacity
+    # on company-history enrichment. Historical work is gated again after the live results are saved.
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
@@ -1402,14 +1430,44 @@ def main(argv=None):
         return 0
     saver.pending += status
     saver.flush(final=True)
-    # Update durable per-company memory from this run's source-verified reads. No model-generated summary.
-    from announcement_backfill import upsert_company_memories
-    memories_written = upsert_company_memories(r2, rows + status)
+    # Update memory from live reads first. Only after the live results are durable may the
+    # same serialized workflow spend any remaining capacity on targeted historical company history.
+    from announcement_backfill import upsert_company_memories, unified_company_history_stage
+    memories_written = upsert_company_memories(r2, rows)
     log(f'updated persistent company memory for {memories_written} companies')
+
+    done_after_live = load_archive(r2, READS_PREFIX, today)
+    live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
+    if live_remaining.empty:
+        current_isins = set()
+        if not current_candidates.empty and 'isin' in current_candidates:
+            dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
+            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
+                                  errors='coerce').fillna(0)
+            eligible_today = current_candidates[
+                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+            ]
+            current_isins.update(eligible_today['isin'].dropna().astype(str))
+        try:
+            history_result = unified_company_history_stage(
+                r2, current_isins, today, master, lanes, clients, setup,
+                batch_size=8, batch_minutes=2.0,
+            )
+            log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
+        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards
+            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
+            setup.append(message)
+            log(message)
+    else:
+        log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
+            f'live queue counts={json.dumps(live_counts, default=str)}')
+
     added = saver.added
     append_usage(r2, today.isoformat(), {'at': datetime.now(timezone.utc).isoformat(), 'counts': counts,
                                          'outcomes': pd.Series([r['status'] for r in rows]).value_counts().to_dict()
-                                         if rows else {}, 'added': added, 'usage': use, 'notes': setup})
+                                         if rows else {}, 'added': added, 'usage': usage(clients, lanes), 'notes': setup})
     return 0
 
 

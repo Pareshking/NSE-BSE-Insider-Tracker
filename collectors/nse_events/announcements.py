@@ -173,6 +173,61 @@ def parse(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
     return df
 
 
+def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
+    """Normalize the dedicated /api/XBRL-announcements feed into companion rows.
+
+    Companion rows are archived by a stable app ID/content key and are never user-facing
+    filings by themselves; the reader pairs them to an ordinary PDF under strict issuer/date/
+    subject ambiguity gates. Only the exchange-supplied XML attachment is used, never a
+    synthesized URL or the separate iXBRL display link.
+    """
+    out = []
+    for row in rows or []:
+        url = _file(row.get('attachment'))
+        if not url:
+            continue
+        app_id = _text(str(row.get('appId') or row.get('id') or '')) or ''
+        stamp_text = _text(row.get('broadcastDateTime') or row.get('disseminationDateTime')) or ''
+        identity = json.dumps([market, app_id, stamp_text, url, row.get('revision')], sort_keys=True, default=str)
+        stable_id = app_id or hashlib.sha256(identity.encode()).hexdigest()[:20]
+        event_id = f'nse:xbrl:{market}:{stable_id}:{hashlib.sha256(identity.encode()).hexdigest()[:10]}'
+
+        def timestamp(value):
+            value = _text(value)
+            if not value:
+                return None
+            parsed = pd.to_datetime(value, errors='coerce', dayfirst=True)
+            if pd.isna(parsed):
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.tz_localize(IST)
+            else:
+                parsed = parsed.tz_convert(IST)
+            return parsed
+
+        at = timestamp(row.get('broadcastDateTime')) or timestamp(row.get('disseminationDateTime'))
+        sent = timestamp(row.get('disseminationDateTime'))
+        size = _text(row.get('xbrlFileSize') or row.get('fileSize'))
+        out.append({
+            'event_id': event_id, 'seq_id': str(stable_id), 'market': market,
+            'symbol': _text(row.get('symbol')), 'isin': _text(row.get('isin')),
+            'company': _text(row.get('companyName') or row.get('company')),
+            'industry': None, 'subject': _text(row.get('subject') or row.get('eventType') or row.get('typeOfAnn')),
+            'text': _text(row.get('details') or row.get('eventType')),
+            # The dedicated XBRL endpoint's attachment URL may have a .zip/.pdf-looking name;
+            # its contract identifies this as the XML payload URL (the reader validates its bytes).
+            'file_url': url, 'file_type': 'xbrl', 'file_size': size,
+            'file_bytes': size_bytes(size), 'has_xbrl': True, 'xbrl_url': url,
+            'broadcast_at': at.isoformat() if at is not None else None,
+            'disseminated_at': sent.isoformat() if sent is not None else None,
+            'broadcast_date': at.date().isoformat() if at is not None else None,
+        })
+    df = pd.DataFrame(out, columns=list(COLUMNS))
+    df['file_bytes'] = df['file_bytes'].astype('Int64')
+    df['has_xbrl'] = df['has_xbrl'].astype('boolean')
+    return df
+
+
 def partition(broadcast_date) -> str:
     d = pd.to_datetime(broadcast_date, errors='coerce')
     return 'month=unknown' if pd.isna(d) else f'year={d.year}/month={d.month:02d}'
@@ -249,8 +304,9 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     end = backfill_to or today
     if end < start:
         raise ValueError('backfill_to must be on or after backfill_from')
-    report = {'run_date': run_date, 'window': [start.isoformat(), end.isoformat()], 'calls': [], 'notes': []}
-    frames = []
+    report = {'run_date': run_date, 'window': [start.isoformat(), end.isoformat()],
+              'calls': [], 'xbrl_calls': [], 'notes': []}
+    frames, xbrl_frames = [], []
     blocked = False
     for a, b in (month_chunks(start, end) if backfill_from else [(start, end)]):
         for market in FEEDS:
@@ -276,10 +332,45 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
             frames.append(df[~skip])
         if blocked:
             break
+
+        # The dedicated XBRL endpoint is queried after the normal feed. A refusal only disables
+        # further XBRL lookups this cycle; ordinary PDF announcements already collected remain usable.
+        for market in FEEDS:
+            if raw is not None:
+                def xbrl_hook(url, resp, a=a, b=b, market=market):
+                    raw.put('nse', 'announcements_xbrl', resp.content, url=url, status=resp.status_code,
+                            content_type=resp.headers.get('Content-Type'),
+                            covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market})
+                nse.on_response = xbrl_hook
+            try:
+                xrows = nse.xbrl_announcements(a, b, market)
+            except Blocked as exc:
+                report['notes'].append(f'NSE XBRL feed refused ({exc}); PDF path remains available')
+                blocked = True
+                break
+            except Exception as exc:  # noqa: BLE001 -- XBRL is an optional fast path; PDF fallback remains
+                report['notes'].append(f'{market} XBRL {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
+                continue
+            try:
+                xdf = parse_xbrl(xrows, market)
+            except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
+                report['notes'].append(
+                    f'{market} XBRL {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
+                continue
+            report['xbrl_calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(),
+                                         'rows': len(xdf)})
+            if not xdf.empty:
+                xbrl_frames.append(xdf)
+        if blocked:
+            break
     nse.on_response = None
-    new = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last') if frames else None
+    standard = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last') if frames else None
+    xbrl = pd.concat(xbrl_frames, ignore_index=True).drop_duplicates('event_id', keep='last') if xbrl_frames else None
+    all_frames = [frame for frame in (standard, xbrl) if frame is not None and not frame.empty]
+    new = pd.concat(all_frames, ignore_index=True).drop_duplicates('event_id', keep='last') if all_frames else None
     report['added'], report['partitions_written'] = merge_into_archive(r2, new, run_date)
-    report['window_counts'] = counts(new)
+    report['window_counts'] = counts(standard)
+    report['xbrl_feed_rows'] = int(len(xbrl)) if xbrl is not None else 0
     report['nse_calls'] = nse.calls
     if write_report:
         put(r2, f'clean/reports/announcements/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),

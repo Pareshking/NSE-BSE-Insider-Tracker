@@ -103,6 +103,11 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
          'subject': 'Buyback-XBRL', 'text': 'Structured buyback filing', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X_buyback.xml',
          'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
          'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'pdf:other', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Director Resignation', 'text': 'A different filing by the same issuer on the same day',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_director.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:03:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
         {'event_id': 'pdf:2', 'symbol': 'Y', 'isin': 'INE000B01000', 'company': 'Y Ltd',
          'subject': 'General Updates', 'text': 'Financial filing', 'file_url': 'https://nsearchives.nseindia.com/corporate/Y_financials.pdf',
          'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T11:00:00+05:30',
@@ -118,8 +123,10 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
     assert out.loc['pdf:1', 'xbrl_source_event_id'] == 'xbrl:1'
     assert out.loc['pdf:1', 'xbrl_source_url'].endswith('X_buyback.xml')
     assert out.loc['xbrl:1', 'group'] == 'routine'  # one model read, using the structured source
-    assert out.loc['pdf:2', 'content_url'].endswith('Y_financials.xml')  # unique issuer/date fallback
-    assert out.loc['pdf:2', 'xbrl_source_event_id'] == 'xbrl:2'
+    assert out.loc['pdf:other', 'content_url'].endswith('X_director.pdf')  # unrelated filing stays separate
+    assert pd.isna(out.loc['pdf:other', 'xbrl_source_event_id'])
+    assert out.loc['pdf:2', 'content_url'].endswith('Y_financials.pdf')  # subject mismatch without filing-ID proof stays PDF
+    assert pd.isna(out.loc['pdf:2', 'xbrl_source_event_id'])
     assert out.loc['xbrl:2', 'group'] == 'routine'
 
 
@@ -442,6 +449,40 @@ def test_a_lane_at_its_daily_limit_stops_and_hands_its_work_on(monkeypatch):
     assert [r['reader_lane'] for r in rows] == ['zai'] * 3 and lanes['groq'].clients['groq'].asked == []
 
 
+def test_all_lanes_at_daily_quota_leave_live_filings_pending(monkeypatch):
+    monkeypatch.setattr(ar, 'DAILY_CALLS', {'groq:m': 100, 'zai:m': 100})
+    lanes = _lanes(groq=[QIP] * 3, zai=[QIP] * 3)
+    lanes['groq'].used_today = {'groq:m': 95}
+    lanes['zai'].used_today = {'zai:m': 95}
+    rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert rows == []  # no fake failures written just because today's free allowance is used
+    assert notes['not_reached'] == 3
+    assert lanes['groq'].clients['groq'].asked == []
+    assert lanes['zai'].clients['zai'].asked == []
+
+
+def test_quota_deferred_filing_does_not_spend_retry_budget_and_is_selected_again(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    limited = RuntimeError('provider returned HTTP 429: rate limit reached for tokens per day')
+    lane = ar.Lane('groq', ['groq:m'], {'groq': FakeClient([limited])})
+    rows, notes = ar.run(_qips(1), {'groq': lane}, None, 600,
+                         fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(rows) == 1
+    assert rows[0]['status'] == 'quota_deferred'
+    assert rows[0]['tries'] == 0
+    done = pd.DataFrame([rows[0]])
+    candidates = _qips(1)
+    selected, _, _ = ar.choose(candidates, done, date(2026, 10, 13))
+    assert selected['event_id'].tolist() == ['nse:1']
+
+
+def test_quota_deferred_status_is_never_retired_by_max_tries():
+    row = dict(_cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'QIP'),
+               status='quota_deferred', prompt_version=ar.PROMPT_VERSION, tries=ar.MAX_TRIES + 10)
+    selected, _, _ = ar.choose(_qips(1), pd.DataFrame([row]), date(2026, 10, 13))
+    assert selected['event_id'].tolist() == ['nse:1']
+
+
 def test_time_budget_leaves_the_rest_for_the_next_run(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, []))
     ticks = iter([0, 0, 1000])                            # start, first take, then time is up
@@ -710,6 +751,83 @@ def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl
     assert out.loc['attachment:unlabelled', 'group'] == 'routine'
 
 
+
+
+def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_filing_id_matches():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:litigation', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
+         'company': 'Bharat Coking Coal Limited',
+         'subject': 'Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company',
+         'text': 'Litigation disclosure',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T16:41:07+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100383:abc123', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
+         'company': 'Bharat Coking Coal Limited', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'text': 'XBRL companion metadata',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.zip',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.zip',
+         'broadcast_at': '2026-10-14T16:41:07+05:30', 'broadcast_date': '2026-10-14',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:pdf:litigation']
+    xbrl = out.loc['nse:xbrl:equities:100383:abc123']
+    assert pdf['content_url'].endswith('BCCL_ROID_100383_KMP_Doc.zip')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'
+
+
+def test_dedicated_xbrl_does_not_pair_mismatched_subject_by_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:litigation', 'symbol': 'X', 'isin': 'INE000A01000',
+         'company': 'X Ltd', 'subject': 'Pendency of Litigation(s)/dispute(s)',
+         'text': 'Litigation disclosure', 'file_url': 'https://nsearchives.nseindia.com/corporate/X_litigation.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100999:abc123', 'symbol': 'X', 'isin': 'INE000A01000',
+         'company': 'X Ltd', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'text': 'XBRL metadata', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_123.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_123.xml',
+         'broadcast_at': '2026-10-14T10:01:00+05:30', 'broadcast_date': '2026-10-14',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:pdf:litigation']
+    assert pdf['content_url'].endswith('X_litigation.pdf')
+    assert pd.isna(pdf['xbrl_source_event_id'])
+
+
+def test_dedicated_xbrl_feed_row_is_used_as_fast_path_without_duplicate_candidate():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:1', 'symbol': 'MARATHON', 'isin': 'INE182D01010',
+         'company': 'Marathon Nextgen Realty Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/MARATHON_outcome.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'xbrl_url': None,
+         'broadcast_at': '2026-10-15T10:00:00+05:30', 'broadcast_date': '2026-10-15',
+         'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-123:abc123', 'symbol': 'MARATHON', 'isin': None,
+         'company': 'Marathon Nextgen Realty Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Outcome of Board Meeting', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml',
+         'file_type': 'xml', 'has_xbrl': True,
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml',
+         'broadcast_at': '2026-10-15T10:00:00+05:30', 'broadcast_date': '2026-10-15',
+         'market': 'equities'},
+    ])
+    class Master:
+        market_cap_as_of = '2026-10-14'
+        def resolve(self, exchange, symbol):
+            return ('INE182D01010', 'exchange_symbol') if exchange == 'nse' and symbol == 'MARATHON' else None
+        def record(self, isin):
+            return {'market_cap': 2_000_000_000} if isin == 'INE182D01010' else None
+
+    out = ar.candidates(rows, pd.DataFrame(), Master()).set_index('event_id')
+    pdf = out.loc['nse:pdf:1']
+    xbrl = out.loc['nse:xbrl:equities:APP-123:abc123']
+    assert pdf['content_url'].endswith('MARATHON_123.xml')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'  # companion is not a second user-facing card
+    assert pd.isna(xbrl['xbrl_source_event_id'])  # do not count the companion as self-paired
 
 
 def test_candidates_pair_observed_xbrl_even_when_upstream_flag_is_false():

@@ -45,13 +45,14 @@ class NSEClient:
             pass  # the APIs answered without cookies in testing; warm-up is best effort
         self._warm = True
 
-    def get(self, url, as_json=True):
+    def get(self, url, as_json=True, *, timeout=60, retries=None):
         self.warm_up()
         last = None
-        for attempt in range(self.retries):
+        attempts = self.retries if retries is None else max(1, int(retries))
+        for attempt in range(attempts):
             self._wait()
             try:
-                r = self.s.get(url, timeout=60)
+                r = self.s.get(url, timeout=timeout)
             except requests.RequestException as exc:
                 last = exc
                 continue
@@ -71,7 +72,7 @@ class NSEClient:
             except ValueError as exc:
                 last = exc  # an HTML error page in place of JSON
                 continue
-        raise RuntimeError(f'{url}: gave up after {self.retries} tries ({last})')
+        raise RuntimeError(f'{url}: gave up after {attempts} tries ({last})')
 
     # --- endpoints (all confirmed 07 Oct 2026) -------------------------------
 
@@ -131,6 +132,37 @@ class NSEClient:
 
     def announcements(self, start: date, end: date, index: str = 'equities') -> list[dict]:
         j = self.get(self.announcements_url(start, end, index))
+        return j if isinstance(j, list) else j.get('data', [])
+
+    def xbrl_announcements(self, start: date, end: date, index: str = 'equities',
+                           symbol: str | None = None) -> list[dict]:
+        """Dedicated NSE Announcement XBRL feed; returns rows carrying attachment/ixbrl URLs.
+
+        This is separate from the normal announcements endpoint: its hasXbrl flag alone is
+        not a URL. The official XBRL page uses /api/XBRL-announcements with type=announcements.
+        """
+        query = (f'index={index}&from_date={self._d(start)}&to_date={self._d(end)}'
+                 '&type=announcements')
+        if symbol:
+            query += f'&symbol={symbol}'
+        self.warm_up()
+        old_referer = self.s.headers.get('Referer')
+        old_x_requested_with = self.s.headers.get('X-Requested-With')
+        self.s.headers['Referer'] = BASE + '/companies-listing/corporate-filings-announcements-xbrl'
+        self.s.headers['X-Requested-With'] = 'XMLHttpRequest'
+        try:
+            # XBRL is an optional speed path, so its endpoint must never hold up live PDF
+            # processing for the normal 60s x 3 network retry budget.
+            j = self.get(f'{BASE}/api/XBRL-announcements?{query}', timeout=10, retries=1)
+        finally:
+            if old_referer is None:
+                self.s.headers.pop('Referer', None)
+            else:
+                self.s.headers['Referer'] = old_referer
+            if old_x_requested_with is None:
+                self.s.headers.pop('X-Requested-With', None)
+            else:
+                self.s.headers['X-Requested-With'] = old_x_requested_with
         return j if isinstance(j, list) else j.get('data', [])
 
     # --- further issues (confirmed 12 Oct 2026) -----------------------------

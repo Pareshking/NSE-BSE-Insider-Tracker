@@ -93,6 +93,26 @@ def test_backfill_goes_month_by_month_and_refusal_stops():
     assert rep['calls'] == [] and rep['added'] == 0 and 'refused' in rep['notes'][0]
 
 
+def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
+    class XbrlFakeNSE(FakeNSE):
+        def xbrl_announcements(self, a, b, index='equities', symbol=None):
+            return [{'appId': 'bad-xbrl', 'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/bad.xml'}]
+
+    def broken_parse(*args, **kwargs):
+        raise ValueError('malformed XBRL metadata')
+
+    monkeypatch.setattr(ann, 'parse_xbrl', broken_parse)
+    r2 = FakeR2()
+    rep = ann.run(r2, XbrlFakeNSE(ROWS[:3]), date(2026, 10, 1))
+    assert rep['added'] == 3
+    assert rep['window_counts']['announcements'] == 3
+    assert any('XBRL' in note and 'parse failed' in note for note in rep['notes'])
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    assert len(archived) == 3
+    assert not set(archived['file_type']) & {'xml', 'xbrl'}  # failed optional XBRL parse added no synthetic rows
+
+
 def test_sme_feed_is_archived_with_its_market_and_old_rows_count_as_equities():
     r2 = FakeR2()
     sme = [dict(ROWS[0], seq_id='900000001', symbol='SMEX', desc='Preferential issue')]
