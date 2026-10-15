@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.parquet as pq
 import streamlit as st
 from lib import r2_data
 
@@ -43,6 +44,12 @@ def configured() -> bool:
     return _local() is not None or r2_data.r2_configured()
 
 
+# Kept in R2 for the clean layer and audits; no page reads them, and as Python strings they were a large
+# share of the site's memory (meetings' raw_json alone 22 MB of 35): scripts/site_memory_report.py.
+UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
+ONLY = {'promoter_group': ('symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
+                           'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
+
 FRESH = ('announcement_reads',)   # rewritten through the day as filings are read: kept for 3 minutes, not 10
 
 
@@ -52,7 +59,11 @@ def table(name: str) -> pd.DataFrame:
 
 def _parquet(name: str) -> pd.DataFrame:
     body = _read(f'clean/current/{name}.parquet')
-    return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+    if not body:
+        return pd.DataFrame()
+    names = [c for c in pq.read_schema(io.BytesIO(body)).names if not c.startswith('__index_level_')]
+    keep = [c for c in names if c not in UNUSED and (name not in ONLY or c in ONLY[name])]
+    return pd.read_parquet(io.BytesIO(body), columns=keep)
 
 
 @st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES))
@@ -81,8 +92,10 @@ def price_history() -> dict:
     if not body:
         return {}
     h = pd.read_parquet(io.BytesIO(body))
+    h['isin'] = h['isin'].astype('category')   # one string per stock, not per row: was 41 MB of the 49
     h['date'] = pd.to_datetime(h['date'])
-    return {i: (g['date'].to_numpy(), g['close'].to_numpy(dtype='float64')) for i, g in h.groupby('isin', sort=False)}
+    return {i: (g['date'].to_numpy(), g['close'].to_numpy(dtype='float64'))
+            for i, g in h.groupby('isin', sort=False, observed=True)}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

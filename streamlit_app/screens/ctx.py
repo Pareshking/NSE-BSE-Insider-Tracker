@@ -1,6 +1,8 @@
-"""Everything a page needs, loaded once per run: the clean tables, the
-eligible insider trades and the 'as of' date (the latest filing in the data,
-never the wall clock)."""
+"""Everything a page needs: the clean tables, the eligible insider trades and
+the 'as of' date (the latest filing in the data, never the wall clock). Built
+once per 10 minutes and shared by every visitor and page run, not copied per
+run (copies per run put the site over its memory limit): pages copy a frame
+before changing it."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,11 +31,7 @@ class Ctx:
     prices: pd.DataFrame        # per ISIN: latest_close, high_52w, pct_off_high, last_date
     ref: pd.Timestamp | None
     latest: dict
-
-
-@st.cache_data(ttl=600, show_spinner=False)
-def _eligible(trades: pd.DataFrame) -> pd.DataFrame:
-    return signals.eligible(trades) if not trades.empty else trades
+    marks: dict | None = None   # ISIN -> [(day made public, side)], for the sparklines
 
 
 def _display_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -49,8 +47,13 @@ def _display_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load() -> Ctx:
+    return _shared()
+
+
+@st.cache_resource(ttl=600, show_spinner=False, max_entries=1)
+def _shared() -> Ctx:
     trades = _display_columns(store.table('insider_trades'))
-    elig = _eligible(trades)
+    elig = signals.eligible(trades) if not trades.empty else trades
     deals = _display_columns(store.table('deals'))
     if not deals.empty:
         deals['date'] = pd.to_datetime(deals['date'], errors='coerce')
@@ -58,7 +61,8 @@ def load() -> Ctx:
                sast=with_bse(store.table('sast'), store.table('bse_sast')),
                actions=with_bse(store.table('actions'), store.table('bse_actions')), meetings=store.table('meetings'),
                shareholding=store.table('shareholding'), preferential=store.table('preferential'),
-               rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest())
+               rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest(),
+               marks=_marks(elig))
 
 
 def need_data(ctx: Ctx) -> bool:
@@ -130,7 +134,6 @@ def with_flags(df: pd.DataFrame) -> pd.DataFrame:
     return signals.with_tradability(df, store.table('tradability'))
 
 
-@st.cache_data(ttl=600, show_spinner=False)
 def _marks(eligible: pd.DataFrame) -> dict:
     """ISIN -> [(day made public, side)] for open-market insider trades."""
     if eligible.empty:
@@ -145,7 +148,7 @@ def with_sparks(df: pd.DataFrame, ctx: Ctx) -> pd.DataFrame:
     from ui import kit
     if df.empty or 'isin' not in df:
         return df
-    hist, marks = store.price_history(), _marks(ctx.eligible)
+    hist, marks = store.price_history(), ctx.marks if ctx.marks is not None else _marks(ctx.eligible)
     drawn = [kit.spark(*hist[i], marks.get(i, ())) if isinstance(i, str) and i in hist else (None, None)
              for i in df['isin']]
     return df.assign(_spark=[s for s, _ in drawn], _chg_1y=[c for _, c in drawn])
