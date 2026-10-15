@@ -61,11 +61,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for workflow in announcements.yml announcement-history-backfill.yml; do
+          for workflow in announcement-reader.yml announcements.yml announcement-history-backfill.yml; do
             for status in queued in_progress; do
               ids=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --status "$status" --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
               for id in $ids; do
-                echo "Cancelling obsolete announcement workflow $workflow run $id"
+                # Never cancel the run performing this cleanup; cancel older queued/live copies.
+                [ "$id" = "$GITHUB_RUN_ID" ] && continue
+                echo "Cancelling competing announcement workflow $workflow run $id"
                 gh run cancel "$id" --repo "$GITHUB_REPOSITORY" || true
               done
             done
