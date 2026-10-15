@@ -57,7 +57,7 @@ def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
         "eventType": "Outcome of Board Meeting",
         "broadcastDateTime": "15-Oct-2026 10:00:00",
         "disseminationDateTime": "15-Oct-2026 10:00:03",
-        "attachment": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml",
+        "attachment": "https://nsearchives.nseindia.com/corporate/MARATHON_ROID_123_KMP_Doc.zip",
         "ixbrl": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.html",
         "xbrlFileSize": "3.2 KB",
     }]
@@ -69,8 +69,8 @@ def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
     assert row["event_id"] == second.iloc[0]["event_id"]
     assert row["symbol"] == "MARATHON"
     assert row["subject"] == "Outcome of Board Meeting"
-    assert row["file_type"] == "xml"
-    assert row["file_url"].endswith("MARATHON_123.xml")
+    assert row["file_type"] == "xbrl"
+    assert row["file_url"].endswith("MARATHON_ROID_123_KMP_Doc.zip")
     assert row["xbrl_url"] == row["file_url"]
     assert bool(row["has_xbrl"]) is True
     assert row["broadcast_date"] == "2026-10-15"
