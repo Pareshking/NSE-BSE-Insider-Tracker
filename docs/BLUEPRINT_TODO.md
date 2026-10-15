@@ -27,7 +27,7 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 |---|---|---|
 | 1.1 Routine share measured | **Closed 15 Oct** (#100) | done |
 | 1.1a Archive gaps | **Open: cause found, fix coded** | the gaps report lists no weekday without filings for NSE and BSE from 1 Jan (holidays named), and the nightly collection has run two nights in a row |
-| 1.1c Day completeness (found 15 Oct) | **Open: owner approved; built; whole-year BSE check and NSE two-halves run to do** | every archived BSE day equals BSE's count or is named as short; NSE checked by a second fetch |
+| 1.1c Day completeness (found 15 Oct) | **Open: owner approved; built; BSE whole-year check done (15 Oct: 289 days, all ok against BSE's own count, concall rows included); NSE two-halves run finished green, its notes still to read** | every archived BSE day equals BSE's count or is named as short; NSE checked by a second fetch |
 | 1.2 Context blindness: does memory reach the prompt | **Closed 15 Oct** (measured; newline bug fixed; the rest is 1.2a) | done |
 | 1.2a Memory selection and content | **Open, owner to approve** | see its row |
 | 1.3 Structured memory, no vector database | **Closed 15 Oct** | done |
