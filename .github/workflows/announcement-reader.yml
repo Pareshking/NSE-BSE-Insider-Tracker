@@ -147,7 +147,7 @@ jobs:
   next:
     needs: read
     # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
-    if: (success() || failure()) && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
