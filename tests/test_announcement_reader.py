@@ -442,6 +442,39 @@ def test_a_lane_at_its_daily_limit_stops_and_hands_its_work_on(monkeypatch):
     assert [r['reader_lane'] for r in rows] == ['zai'] * 3 and lanes['groq'].clients['groq'].asked == []
 
 
+def test_all_lanes_at_daily_quota_leave_live_filings_pending(monkeypatch):
+    monkeypatch.setattr(ar, 'DAILY_CALLS', {'groq:m': 100, 'zai:m': 100})
+    lanes = _lanes(groq=[QIP] * 3, zai=[QIP] * 3)
+    lanes['groq'].used_today = {'groq:m': 95}
+    lanes['zai'].used_today = {'zai:m': 95}
+    rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert rows == []  # no fake failures written just because today's free allowance is used
+    assert notes['not_reached'] == 3
+    assert lanes['groq'].clients['groq'].asked == []
+    assert lanes['zai'].clients['zai'].asked == []
+
+
+def test_quota_deferred_filing_does_not_spend_retry_budget_and_is_selected_again():
+    limited = RuntimeError('provider returned HTTP 429: rate limit reached for tokens per day')
+    lane = ar.Lane('groq', ['groq:m'], {'groq': FakeClient([limited])})
+    rows, notes = ar.run(_qips(1), {'groq': lane}, None, 600,
+                         fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(rows) == 1
+    assert rows[0]['status'] == 'quota_deferred'
+    assert rows[0]['tries'] == 0
+    done = pd.DataFrame([rows[0]])
+    candidates = _qips(1)
+    selected, _, _ = ar.choose(candidates, done, date(2026, 10, 13))
+    assert selected['event_id'].tolist() == ['nse:1']
+
+
+def test_quota_deferred_status_is_never_retired_by_max_tries():
+    row = dict(_cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'QIP'),
+               status='quota_deferred', prompt_version=ar.PROMPT_VERSION, tries=ar.MAX_TRIES + 10)
+    selected, _, _ = ar.choose(_qips(1), pd.DataFrame([row]), date(2026, 10, 13))
+    assert selected['event_id'].tolist() == ['nse:1']
+
+
 def test_time_budget_leaves_the_rest_for_the_next_run(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, []))
     ticks = iter([0, 0, 1000])                            # start, first take, then time is up
