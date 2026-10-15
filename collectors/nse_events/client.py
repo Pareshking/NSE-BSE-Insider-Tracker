@@ -96,6 +96,12 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-share-holdings-master?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
+    def integrated_results_url(self, start: date, end: date, page: int = 1, size: int = 100) -> str:
+        """Financial results filed as NSE's integrated filing, newest first, `size` a page
+        (confirmed 15 Oct 2026: {'data', 'size', 'page', 'totalCount'}; page=2 is the second page)."""
+        return (f'{BASE}/api/integrated-filing-results?index=equities&from_date={self._d(start)}'
+                f'&to_date={self._d(end)}&type=Integrated%20Filing-%20Financials&page={page}&size={size}')
+
     def xbrl(self, url: str) -> str:
         return self.get(url, as_json=False)
 

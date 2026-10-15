@@ -1,0 +1,27 @@
+name: Results XBRL probe (read-only)
+
+# Which NSE endpoint lists quarterly results with their XBRL, and what the XBRL holds
+# (scripts/results_xbrl_probe.py). A handful of NSE requests; no R2, no model.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-0caa4ce9-bh3n2s]
+    paths:
+      - 'scripts/results_xbrl_probe.py'
+      - '.github/workflows/results-xbrl-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -u scripts/results_xbrl_probe.py

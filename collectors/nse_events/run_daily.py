@@ -73,7 +73,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks, issues, promoter_group, raw_store
+from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -88,6 +88,11 @@ ISSUES = 'issues'   # further issues: preferential, rights, QIP
 STREAMS = STREAMS + (ISSUES,)
 DATE_COLUMN[ISSUES] = 'posted_on'
 MAX_ISSUE_XBRL_PER_RUN = 300   # further-issue XBRLs (4-100 KB each) a night
+RESULTS = 'results'   # financial results (integrated filing) with their XBRL: insiders_clean/results.py
+STREAMS = STREAMS + (RESULTS,)
+DATE_COLUMN[RESULTS] = 'broadcast_date'
+MAX_RESULTS_XBRL_PER_RUN = 500   # results XBRLs (20-60 KB each) a night; the rest wait for the next night
+RESULTS_PAGE = 100
 
 
 def prefix(stream):
@@ -441,6 +446,72 @@ def fetch_issue_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame, k
     return rows
 
 
+def results_filings(nse: NSEClient, raw: RawStore | None, start: date, today: date, report: dict) -> pd.DataFrame:
+    """Every financial-results filing NSE lists for [start, today], page by page until its totalCount (or a
+    page with nothing new). A refusal goes up (Blocked)."""
+    seen, frames, total = set(), [], None
+    for page in range(1, 101):
+        url = nse.integrated_results_url(start, today, page, RESULTS_PAGE)
+        text = nse.get(url, as_json=False)
+        store_raw(raw, 'results_list', text, url, report, 'application/json',
+                  {'from': start.isoformat(), 'to': today.isoformat(), 'page': page})
+        j = json.loads(text)
+        total = j.get('totalCount') if isinstance(j, dict) else None
+        df = results.filing_rows(j.get('data', []) if isinstance(j, dict) else j)
+        df = df[~df['seq_id'].isin(seen)]
+        if df.empty:
+            break
+        seen.update(df['seq_id'])
+        frames.append(df)
+        if total is not None and len(seen) >= int(total):
+            break
+    report['results_listed'], report['results_total'] = len(seen), total
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=results.FILING_COLUMNS)
+
+
+def fetch_results_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame, known: pd.DataFrame | None,
+                       report: dict, max_xbrl: int = MAX_RESULTS_XBRL_PER_RUN) -> pd.DataFrame:
+    """Each listed filing's XBRL read once (raw kept in raw_v2): facts already read are carried over, filings
+    'pending' in the archive (refused or over the cap on an earlier night) are retried even when the window no
+    longer lists them, newest first."""
+    rows = rows.copy()
+    prev = known.set_index('event_id') if known is not None and not known.empty else None
+    if prev is not None:
+        pending = known[known['xbrl_status'].astype('string').eq('pending').fillna(False)
+                        & ~known['event_id'].isin(rows['event_id'])]
+        rows = pd.concat([rows, pending[[c for c in results.FILING_COLUMNS if c in pending.columns]]], ignore_index=True)
+    rows['xbrl_status'] = rows['xbrl_status'].astype(object)
+    rows['xbrl_json'] = rows['xbrl_json'].astype(object)
+    fetched, blocked = 0, False
+    for i, row in rows.sort_values('broadcast_at', ascending=False, kind='stable', na_position='last').iterrows():
+        eid = row['event_id']
+        if prev is not None and eid in prev.index and str(prev.at[eid, 'xbrl_status']) == 'ok':
+            rows.at[i, 'xbrl_status'], rows.at[i, 'xbrl_json'] = 'ok', prev.at[eid, 'xbrl_json']
+            continue
+        url = row['xbrl_url']
+        if not isinstance(url, str) or not url.startswith('http'):
+            rows.at[i, 'xbrl_status'] = 'no_xbrl'
+            continue
+        if blocked or fetched >= max_xbrl:
+            rows.at[i, 'xbrl_status'] = 'pending'
+            continue
+        fetched += 1
+        try:
+            text = nse.xbrl(url)
+            store_raw(raw, 'results_xbrl', text, url, report, 'application/xml')
+            rows.at[i, 'xbrl_json'] = json.dumps(results.parse_xbrl(text), ensure_ascii=False)
+            rows.at[i, 'xbrl_status'] = 'ok'
+        except Blocked:
+            rows.at[i, 'xbrl_status'] = 'pending'
+            blocked = True
+            report['results_xbrl_blocked'] = True
+            report['notes'].append('NSE refused a results XBRL; the rest wait for the next run')
+        except Exception as exc:  # noqa: BLE001 -- one bad file must not stop the rest
+            rows.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
+    report['results_xbrl_fetched'] = fetched
+    return rows
+
+
 def issue_coverage(arch: pd.DataFrame | None) -> dict:
     """Filings per kind and stage, and XBRL status counts. Counts only."""
     if arch is None or arch.empty:
@@ -484,7 +555,7 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
         raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN,
-        now: datetime | None = None) -> dict:
+        now: datetime | None = None, max_results_xbrl: int = MAX_RESULTS_XBRL_PER_RUN) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -511,6 +582,12 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                     new = fetch_issue_xbrl(nse, iraw, issue_filings(nse, iraw, start, today, report), known, report,
                                            max_issue_xbrl)
                     blocked = bool(report.get('issue_xbrl_blocked'))
+                elif stream == RESULTS:
+                    known = merge_into_archive(r2, stream, None, run_date)[0]
+                    rraw = raw if raw is not None else RawStore(r2, BUCKET, collector='collectors.nse_events.run_daily')
+                    new = fetch_results_xbrl(nse, rraw, results_filings(nse, rraw, start, today, report), known, report,
+                                             max_results_xbrl)
+                    blocked = bool(report.get('results_xbrl_blocked'))
                 elif stream == 'meetings':
                     new, entry['dropped_routine'] = fetch_meetings(nse, start, today, raw, backfill_from)
                 elif stream == 'tenders':
@@ -534,6 +611,13 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             continue
         if stream == ISSUES:   # cleaned by scripts/clean_writer.py, which reads this archive
             entry['coverage'] = issue_coverage(arch)
+            continue
+        if stream == RESULTS:   # one row per filing with its summary; the full facts stay in the archive
+            entry['xbrl'] = arch['xbrl_status'].astype(str).value_counts().to_dict()
+            clean = add_identity(results.clean(arch), master)
+            entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
+            entry['clean_rows'] = len(clean)
+            put_parquet(r2, f'clean/current/{stream}.parquet', clean)
             continue
         clean = add_identity(arch, master)
         if stream == 'shareholding':
@@ -572,6 +656,8 @@ def main(argv=None):
                     help='board meetings only: backfill month by month from this date (YYYY-MM-DD)')
     ap.add_argument('--max-issue-xbrl', type=int, default=MAX_ISSUE_XBRL_PER_RUN,
                     help='further-issue XBRL files to fetch this run')
+    ap.add_argument('--max-results-xbrl', type=int, default=MAX_RESULTS_XBRL_PER_RUN,
+                    help='financial-results XBRL files to fetch this run')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
@@ -580,7 +666,7 @@ def main(argv=None):
     r2 = r2_client()
     report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
                  raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from,
-                 max_issue_xbrl=args.max_issue_xbrl)
+                 max_issue_xbrl=args.max_issue_xbrl, max_results_xbrl=args.max_results_xbrl)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')
