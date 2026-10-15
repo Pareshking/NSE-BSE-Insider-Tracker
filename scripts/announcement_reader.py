@@ -1273,23 +1273,33 @@ def collect(r2, today: date, dry_run: bool, notes: list):
     from collectors.bse import announcements as bann
     from collectors.bse.client import BSEClient
     from collectors.nse_events import announcements as nann
-    from collectors.nse_events.client import NSEClient
+    from collectors.nse_events.client import Blocked, NSEClient
     yesterday = today - timedelta(days=1)
     if dry_run:
         nse = NSEClient()
         frames = []
+        nse_blocked = False
         for market in nann.FEEDS:
             try:
                 frames.append(nann.parse(nse.announcements(yesterday, today, market), market))
+            except Blocked as exc:
+                notes.append(f'NSE {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                nse_blocked = True
+                break
             except Exception as exc:  # noqa: BLE001
                 notes.append(f'NSE {market}: {type(exc).__name__}: {exc}'[:200])
         # Exercise the dedicated XBRL endpoint in dry-runs too. Failure is non-fatal: the
         # normal PDF feed remains the complete fallback and the audit records the absence.
-        for market in nann.FEEDS:
-            try:
-                frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
-            except Exception as exc:  # noqa: BLE001
-                notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
+        # Respect NSE's hard-stop rule on 401/403/429; never probe another endpoint after a block.
+        if not nse_blocked:
+            for market in nann.FEEDS:
+                try:
+                    frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
+                except Blocked as exc:
+                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
         bse, bframes = BSEClient(), []
         try:
             for day in (today, yesterday):
