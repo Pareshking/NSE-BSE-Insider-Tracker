@@ -215,7 +215,9 @@ def test_data_page_shows_the_checks(real_nse_rows, master, calendar, report, tmp
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(tmp_path))
     import streamlit as st
     st.cache_data.clear()   # the site's readers cache by table name; never leak this folder to other tests
+    st.cache_resource.clear()   # nor the page context built from them (screens/ctx.py)
     request.addfinalizer(st.cache_data.clear)
+    request.addfinalizer(st.cache_resource.clear)
     at = AppTest.from_string(APP_PATHS + """
 from ui import theme
 theme.inject()

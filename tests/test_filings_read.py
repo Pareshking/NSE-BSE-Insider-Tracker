@@ -183,6 +183,7 @@ def test_filings_page_filters_by_heading_size_search_and_agreement(tmp_path, mon
     reads.to_parquet(cur / 'announcement_reads.parquet')
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(tmp_path))
     st.cache_data.clear()   # the site caches tables by name: other tests' data must not leak in, nor this one's out
+    st.cache_resource.clear()   # and the page context built from them (screens/ctx.py)
     at_ = AppTest.from_string(APP_PATHS + '''
 import streamlit as st
 st.query_params['h'] = 'Fund raising'
@@ -193,6 +194,7 @@ filings.render()
 ''', default_timeout=60).run()
     assert not at_.exception, at_.exception[0].value
     st.cache_data.clear()
+    st.cache_resource.clear()
     html = ' '.join(h.proto.body for h in at_.get('html'))
     assert html.count('<article class="rc">') == 1 and 'HYUNDAI' in html
 
