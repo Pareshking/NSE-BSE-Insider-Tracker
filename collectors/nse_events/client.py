@@ -147,7 +147,9 @@ class NSEClient:
             query += f'&symbol={symbol}'
         self.warm_up()
         old_referer = self.s.headers.get('Referer')
-        self.s.headers['Referer'] = BASE + '/companies-listing/corporate-filings-announcements-xbrl-trading-window-disclosure'
+        old_x_requested_with = self.s.headers.get('X-Requested-With')
+        self.s.headers['Referer'] = BASE + '/companies-listing/corporate-filings-announcements-xbrl'
+        self.s.headers['X-Requested-With'] = 'XMLHttpRequest'
         try:
             # XBRL is an optional speed path, so its endpoint must never hold up live PDF
             # processing for the normal 60s x 3 network retry budget.
@@ -157,6 +159,10 @@ class NSEClient:
                 self.s.headers.pop('Referer', None)
             else:
                 self.s.headers['Referer'] = old_referer
+            if old_x_requested_with is None:
+                self.s.headers.pop('X-Requested-With', None)
+            else:
+                self.s.headers['X-Requested-With'] = old_x_requested_with
         return j if isinstance(j, list) else j.get('data', [])
 
     # --- further issues (confirmed 12 Oct 2026) -----------------------------
