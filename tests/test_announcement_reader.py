@@ -742,14 +742,24 @@ def test_xbrl_audit_counts_structured_attachments_without_subject_label():
          'has_xbrl': False, 'file_url': 'https://nsearchives.nseindia.com/corporate/X.xml',
          'xbrl_url': None, 'content_url': 'https://nsearchives.nseindia.com/corporate/X.xml',
          'xbrl_source_event_id': None, 'xbrl_source_url': None},
+        {'event_id': 'zip:generic', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
+         'subject': 'Investor Presentation', 'broadcast_date': '2026-10-14', 'file_type': 'zip',
+         'has_xbrl': False, 'file_url': 'https://nsearchives.nseindia.com/corporate/X_presentation.zip',
+         'xbrl_url': None, 'content_url': 'https://nsearchives.nseindia.com/corporate/X_presentation.zip',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
     ])
     audit = ar.xbrl_audit(cands)
+    assert audit['candidates'] == 3
     assert audit['has_xbrl_flagged'] == 1
     assert audit['has_xbrl_flagged_pdf_rows'] == 1
     assert audit['flagged_without_direct_xbrl_url'] == 1
     assert audit['structured_attachments'] == 1
+    assert audit['zip_attachments'] == 1  # generic ZIP is an archive, not proof of XBRL
+    assert audit['xbrl_labelled_zip_attachments'] == 0
     assert audit['xbrl_attachments'] == 1  # XML format is a positive signal without a subject label
     assert audit['xbrl_subject_labels'] == 0
+    assert len(audit['zip_samples']) == 1
+    assert audit['zip_samples'][0]['event_id'] == 'zip:generic'
 
 
 def test_candidates_do_not_pair_unlabelled_unrelated_zip_without_exact_subject():
