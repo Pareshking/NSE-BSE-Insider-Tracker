@@ -786,7 +786,8 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     finished = set()
     tries = {}
     if done is not None and not done.empty:
-        retryable = done['status'].isin(('failed', 'market_cap_unverified'))
+        # Quota-deferred filings are deliberately retryable without consuming the failure budget.
+        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred'))
         failed = done['status'] == 'failed'
         # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
@@ -1017,9 +1018,19 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     busy.discard(lane.name)
 
     def fail_job(job: dict):
-        rec = finish({**job['base'], 'status': 'failed', 'reason': '; '.join(job['errors'])[:500]})
+        reason = '; '.join(job['errors'])[:500]
+        # A quota response is not a filing failure. Keep it visible but retryable and do not
+        # spend MAX_TRIES: the next scheduled cycle may have another provider/model available.
+        quota_deferred = is_rate_limit_error(reason) or 'at its daily limit' in reason.lower() or 'no model available' in reason.lower()
+        base = dict(job['base'])
+        if quota_deferred:
+            base['tries'] = max(0, int(base.get('tries') or 1) - 1)
+        status = 'quota_deferred' if quota_deferred else 'failed'
+        rec = finish({**base, 'status': status, 'reason': reason})
         for twin in done_reading(job, None):
-            add_row(finish({**twin, 'status': 'failed', 'reason': f"its twin {job['row']['event_id']} failed"}))
+            add_row(finish({**twin, 'status': status,
+                            'tries': max(0, int(twin.get('tries') or 1) - 1) if quota_deferred else twin.get('tries'),
+                            'reason': f"its twin {job['row']['event_id']} {status.replace('_', ' ')}"}))
         add_row(rec)
 
     def read_job(lane: Lane, job: dict):
@@ -1316,8 +1327,11 @@ def main(argv=None):
              for n, es in lane_spec.items()}
     lanes = {n: lane for n, lane in lanes.items() if lane.entries}
     if not lanes:
-        print('No lane has a usable model and key; nothing read.\n' + '\n'.join(setup))
-        return 0
+        # Still collect and archive filings when keys are missing or every configured model is
+        # temporarily unavailable. No model calls will occur; eligible filings remain pending for
+        # the next cycle instead of making the collector exit before saving today's source data.
+        setup.append('No AI lane has a configured key/model; source collection continues and AI reads remain pending.')
+        log(setup[-1])
     r2 = None
     try:
         from r2_writer import r2_client
@@ -1346,38 +1360,8 @@ def main(argv=None):
     current_candidates = candidates(nse, bse, master)
     to_read, status_rows, counts = choose(current_candidates, done, today)
 
-    # One integrated pipeline: queue companies with eligible announcements, collect one verified
-    # historical source date, and AI-read only queued companies' historical filings before today's reads.
-    # Historical collection/AI errors are recorded but must not suppress current-day cards.
-    if r2 is not None and not args.dry_run:
-        from announcement_backfill import unified_company_history_stage
-        current_isins = set()
-        if not current_candidates.empty and 'isin' in current_candidates:
-            broadcast_dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
-            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
-            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
-            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
-                                  errors='coerce').fillna(0)
-            eligible_today = current_candidates[
-                (broadcast_dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
-            ]
-            current_isins.update(eligible_today['isin'].dropna().astype(str))
-        if not to_read.empty and 'isin' in to_read:
-            current_isins.update(to_read['isin'].dropna().astype(str))
-        try:
-            history_result = unified_company_history_stage(
-                r2, current_isins, today, master, lanes, clients, setup,
-                batch_size=8, batch_minutes=2.0,
-            )
-            log('unified company-history stage', json.dumps(history_result, default=str))
-            # Historical rows were persisted through the same canonical event archive. Refresh today's done
-            # set and then attach the newly enriched, source-linked company memory to the live prompt.
-            done = load_archive(r2, READS_PREFIX, today)
-            to_read, status_rows, counts = choose(current_candidates, done, today)
-        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day processing
-            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
-            setup.append(message)
-            log(message)
+    # Live-first: read and persist eligible current filings before spending any model capacity
+    # on company-history enrichment. Historical work is gated again after the live results are saved.
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
@@ -1402,14 +1386,44 @@ def main(argv=None):
         return 0
     saver.pending += status
     saver.flush(final=True)
-    # Update durable per-company memory from this run's source-verified reads. No model-generated summary.
-    from announcement_backfill import upsert_company_memories
-    memories_written = upsert_company_memories(r2, rows + status)
+    # Update memory from live reads first. Only after the live results are durable may the
+    # same serialized workflow spend any remaining capacity on targeted historical company history.
+    from announcement_backfill import upsert_company_memories, unified_company_history_stage
+    memories_written = upsert_company_memories(r2, rows)
     log(f'updated persistent company memory for {memories_written} companies')
+
+    done_after_live = load_archive(r2, READS_PREFIX, today)
+    live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
+    if live_remaining.empty:
+        current_isins = set()
+        if not current_candidates.empty and 'isin' in current_candidates:
+            dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
+            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
+                                  errors='coerce').fillna(0)
+            eligible_today = current_candidates[
+                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+            ]
+            current_isins.update(eligible_today['isin'].dropna().astype(str))
+        try:
+            history_result = unified_company_history_stage(
+                r2, current_isins, today, master, lanes, clients, setup,
+                batch_size=8, batch_minutes=2.0,
+            )
+            log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
+        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards
+            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
+            setup.append(message)
+            log(message)
+    else:
+        log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
+            f'live queue counts={json.dumps(live_counts, default=str)}')
+
     added = saver.added
     append_usage(r2, today.isoformat(), {'at': datetime.now(timezone.utc).isoformat(), 'counts': counts,
                                          'outcomes': pd.Series([r['status'] for r in rows]).value_counts().to_dict()
-                                         if rows else {}, 'added': added, 'usage': use, 'notes': setup})
+                                         if rows else {}, 'added': added, 'usage': usage(clients, lanes), 'notes': setup})
     return 0
 
 
