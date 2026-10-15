@@ -589,3 +589,19 @@ def test_live_collect_surfaces_bse_report_warnings(monkeypatch):
     notes = []
     ar.collect(object(), date(2026, 10, 14), False, notes)
     assert any('BSE collect: BSE refused' in note for note in notes)
+
+
+
+def test_usage_can_record_only_attempts_since_a_batch_offset():
+    class Client:
+        attempts = [
+            ('gemini-3.1-flash-lite', 200, 3.0),
+            ('gemini-3.1-flash-lite', 'error', 1.0),
+            ('gemini-3.1-flash-lite', 200, 5.0),
+        ]
+
+    report = ar.usage({'gemini': Client()}, {}, {'gemini': 1})
+    model = report['models']['gemini:gemini-3.1-flash-lite']
+    assert model['calls'] == 2
+    assert model['by_status'] == {'error': 1, '200': 1}
+    assert model['median_seconds_ok'] == 5.0
