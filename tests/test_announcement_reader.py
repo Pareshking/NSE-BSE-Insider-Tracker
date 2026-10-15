@@ -103,6 +103,14 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
          'subject': 'Buyback-XBRL', 'text': 'Structured buyback filing', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X_buyback.xml',
          'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
          'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'pdf:2', 'symbol': 'Y', 'isin': 'INE000B01000', 'company': 'Y Ltd',
+         'subject': 'General Updates', 'text': 'Financial filing', 'file_url': 'https://nsearchives.nseindia.com/corporate/Y_financials.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T11:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'xbrl:2', 'symbol': 'Y', 'isin': 'INE000B01000', 'company': 'Y Ltd',
+         'subject': 'Financial Results-XBRL', 'text': 'Structured financial filing', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/Y_financials.xml',
+         'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T11:02:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
     ])
     out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
     assert out.loc['pdf:1', 'file_url'].endswith('X_buyback.pdf')  # preserve original announcement link
@@ -110,6 +118,9 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
     assert out.loc['pdf:1', 'xbrl_source_event_id'] == 'xbrl:1'
     assert out.loc['pdf:1', 'xbrl_source_url'].endswith('X_buyback.xml')
     assert out.loc['xbrl:1', 'group'] == 'routine'  # one model read, using the structured source
+    assert out.loc['pdf:2', 'content_url'].endswith('Y_financials.xml')  # unique issuer/date fallback
+    assert out.loc['pdf:2', 'xbrl_source_event_id'] == 'xbrl:2'
+    assert out.loc['xbrl:2', 'group'] == 'routine'
 
 def test_choose_excludes_unverified_market_cap_and_keeps_exactly_100_cr():
     today = date(2026, 10, 13)
