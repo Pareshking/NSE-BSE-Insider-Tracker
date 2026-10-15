@@ -62,11 +62,11 @@ def extract_one(row: dict, exchange: str, tries: int, download, text_of) -> dict
 
 
 def run(r2, first: date, last: date, minutes: float = 300, workers: int = 4, pause: float = 0.3,
-        download=sample.download, text_of=sample.text_of, clock=time.monotonic) -> dict:
+        download=sample.download, text_of=sample.text_of, clock=time.monotonic, newest_first: bool = False) -> dict:
     deadline = clock() + minutes * 60
     report = {'window': [first.isoformat(), last.isoformat()], 'days': [], 'stopped_early': False}
-    day = first
-    while day <= last:
+    span = [first + timedelta(days=i) for i in range((last - first).days + 1)]
+    for day in (reversed(span) if newest_first else span):
         for exchange in ('nse', 'bse'):
             rows = archive_rows(r2, exchange, day)
             cached = ft.load_day(r2, exchange, day)
@@ -98,7 +98,6 @@ def run(r2, first: date, last: date, minutes: float = 300, workers: int = 4, pau
                 cached = ft.merge(cached, pd.DataFrame(new))
                 ft.save_day(r2, exchange, day, cached)
             report['days'].append(stat)
-        day += timedelta(days=1)
     return report
 
 
@@ -119,12 +118,13 @@ def main(argv=None) -> int:
     ap.add_argument('--to', dest='last', type=date.fromisoformat, default=None)
     ap.add_argument('--minutes', type=float, default=300)
     ap.add_argument('--workers', type=int, default=4)
+    ap.add_argument('--newest-first', action='store_true', help='start with the last day (a long fill: recent days first)')
     args = ap.parse_args(argv)
     from r2_writer import r2_client
     today = datetime.now(IST).date()
     last = args.last or today
     first = args.first or last - timedelta(days=2)
-    report = run(r2_client(), first, last, args.minutes, args.workers)
+    report = run(r2_client(), first, last, args.minutes, args.workers, newest_first=args.newest_first)
     text = markdown(report)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):

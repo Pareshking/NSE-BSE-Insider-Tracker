@@ -41,6 +41,23 @@ NOT_HELD = 'entity labels not shown yet'   # by design for now, so not counted a
 NO_PERIOD = ('', 'n/a', 'na', '-', 'none', 'not stated')
 
 
+BSE_HISTORY_AFTER_DAYS = 2   # BSE moves a filing's PDF from AttachLive to AttachHis on day 3 (probe, 15 Oct 2026)
+
+
+def filing_link(url, broadcast_at, now=None) -> str:
+    """The filing's link as BSE serves it today: a BSE file older than 2 days lives under AttachHis, the link we
+    archived (at collection, AttachLive) is dead for it (13 of 13 sampled January to April files answered 404)."""
+    url = str(url or '')
+    if 'bseindia.com' not in url or '/AttachLive/' not in url:
+        return url
+    at = pd.to_datetime(broadcast_at, errors='coerce', utc=True)
+    if pd.isna(at):
+        return url
+    today = (now if now is not None else pd.Timestamp.now(tz='UTC')).tz_convert('Asia/Kolkata').date()
+    age = (today - at.tz_convert('Asia/Kolkata').date()).days
+    return url.replace('/AttachLive/', '/AttachHis/') if age > BSE_HISTORY_AFTER_DAYS else url
+
+
 def _json(v, empty):
     try:
         return json.loads(v) if isinstance(v, str) and v else empty
@@ -212,7 +229,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
         t = esc(f'{a["exchange"]} {pd.Timestamp(a["broadcast_at"]).tz_convert("Asia/Kolkata").strftime("%d %b, %H:%M")}')
         sub = a.get('subject')
         t += f' ({esc(str(sub))})' if sub and sub != r.get('subject') else ''
-        url = a.get('file_url')
+        url = filing_link(a.get('file_url'), a.get('broadcast_at'))
         return f'<a href="{esc(str(url))}" target="_blank" rel="noopener">{t}</a>' if url else t
     also_html = ' · '.join(_also(a) for a in also)
     moves = ''.join(f'<span>{lbl} <b class="{"up" if v > 0 else "down" if v < 0 else ""}">{esc(kit.pct(v, 1, signed=True))}</b></span>'
@@ -226,7 +243,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<h4 class="rc-h">{esc(title)}</h4>{body}{figs}{_before_html(before)}{terms}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
-            f'<a href="{esc(str(r.get("file_url") or "#"))}" target="_blank" rel="noopener">The filing ↗</a>'
+            f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'
             '</div></article>')
 
 

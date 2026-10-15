@@ -35,7 +35,7 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | 2.1 to 2.5 | **Closed or deferred 15 Oct** (2.1 deferred, 2.2 and 2.4 not applicable, 2.3 have, 2.5 evidence) | see rows |
 | 2.6 External scheduler | **Closed 15 Oct** (owner approved: no external scheduler) | done |
 | 2.7 Never store raw PDFs | **Closed 15 Oct** (evidence in the row) | done |
-| 2.7a BSE filing links by age | **Open: fallback in the reader coded; the site's links and the age boundary are open** | the Filings page opens the document for BSE filings of any age; boundary measured on days 2 to 14 after the October gap fill |
+| 2.7a BSE filing links by age | **Built 15 Oct: reader fallback and the site's link rule (a BSE file older than 2 days links to AttachHis); to confirm on the live Filings page** | the Filings page opens the document for BSE filings of any age; boundary measured on days 2 to 14 after the October gap fill |
 | 2.8 Filing text cache | **Open: built and tested; to be verified on real days; reader to use it (2.8b)** | a real run fills 14–15 Oct with at least 95% ok or explained, sizes match the estimate, and the reader reads the cache before downloading (tested) |
 | 2.8c Concall filings and long documents | **Open: owner approved; built, rebuild and counts to verify; long documents in 4.9** | filters removed, past months rebuilt, concall text in the cache, long-document reading decided in 4.9 |
 | 2.9 onwards | Open, not started | |
