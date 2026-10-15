@@ -24,8 +24,9 @@ on:
         required: true
         type: boolean
         default: false
-  schedule:
-    - cron: '7,22,37,52 * * * *'
+  # TEMPORARILY PAUSED through the 2026-10-15 15:00 IST quota audit.
+  # schedule:
+  #   - cron: '7,22,37,52 * * * *'
   push:
     branches: [main]
     paths:
@@ -60,6 +61,8 @@ concurrency:
 
 jobs:
   read:
+    # TEMPORARY SAFETY GATE: do not run AI while the quota audit is pending.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -137,9 +140,11 @@ jobs:
           if-no-files-found: ignore
 
   next:
-    # Keep the unified pipeline running on main; PR and experimental branch runs never start the chain.
+    # TEMPORARY SAFETY GATE: prevent the automatic self-dispatch chain during the audit.
     needs: read
-    if: >-
+    if: false
+    # Keep the unified pipeline running on main after the audit gate is removed.
+    
       ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
           && !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)
           && needs.read.result != 'cancelled' }}
