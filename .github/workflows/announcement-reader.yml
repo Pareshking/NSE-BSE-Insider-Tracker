@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           hour="$(TZ=Asia/Kolkata date +%H)"
-          if (( 10#$hour < 20 && 10#$hour >= 8 )); then
+          if (( 10#$hour >= 10 && 10#$hour < 20 )); then
             echo "Backfill mode: daytime live-only (IST hour=$hour); historical backfill is disabled until 20:00 IST."
             exit 0
           fi
