@@ -95,3 +95,4 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
         {"timeout": 10, "retries": 1},
     )]
     assert client.s.headers['Referer'] == "https://www.nseindia.com/"
+    assert 'X-Requested-With' not in client.s.headers
