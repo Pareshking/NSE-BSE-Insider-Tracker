@@ -104,6 +104,7 @@ def render():
     size_of = (ctx.prices.drop_duplicates('isin').set_index('isin')['mcap_bucket'].to_dict()
                if not ctx.prices.empty and 'mcap_bucket' in ctx.prices else {})
     shown = pick(r, chosen, exchanges, sizes, query, agreed_only, size_of)
+    st.html(fr.coverage_html(fr.coverage(reads, since)))
     with kit.card(f'{kit.plural(len(shown), "filing")}', 'fl_cards',
                   f'{PERIODS[days].lower()}, newest first' + (f'; the first {LIMIT}' if len(shown) > LIMIT else '')):
         if shown.empty:

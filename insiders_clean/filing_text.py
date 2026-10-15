@@ -73,3 +73,29 @@ def save_day(r2, exchange: str, day, df: pd.DataFrame) -> None:
 def permanent(error: str) -> bool:
     """A missing document will not come back: do not retry it."""
     return bool(re.search(r'HTTP\s*(?:404|410)\b', str(error), re.IGNORECASE))
+
+
+class Cache:
+    """What the reader asks before it downloads: `cache(row)` is the filing's finished record or None.
+
+    A record counts only when it is finished (`ok`, `no_text`) and was made from the same file link. Day files are
+    read once and kept for the run; safe to call from several threads."""
+
+    def __init__(self, r2):
+        import threading
+        self.r2, self._days, self._lock = r2, {}, threading.Lock()
+
+    def __call__(self, row) -> dict | None:
+        exchange = str(row.get('exchange') or '').lower()
+        day = str(row.get('broadcast_date') or '')[:10]
+        if exchange not in ('nse', 'bse') or len(day) != 10:
+            return None
+        with self._lock:
+            if (exchange, day) not in self._days:
+                try:
+                    df = load_day(self.r2, exchange, day)
+                except Exception:  # noqa: BLE001 -- a cache that cannot be read is a miss, never a stop
+                    df = pd.DataFrame(columns=COLUMNS)
+                self._days[(exchange, day)] = {r['event_id']: r for r in df.to_dict('records')}
+            rec = self._days[(exchange, day)].get(row.get('event_id'))
+        return rec if rec and rec.get('status') in DONE and rec.get('file_url') == row.get('file_url') else None

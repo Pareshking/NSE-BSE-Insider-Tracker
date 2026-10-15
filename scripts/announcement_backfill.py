@@ -37,6 +37,12 @@ COLLECTION_DAY_PREFIX = 'archive/announcement_backfill/collection-days/'
 AI_DAY_PREFIX = 'archive/announcement_backfill/ai-days/'
 
 
+def _text_cache(r2):
+    """The filing text cache for a reader batch (None without R2): a cached filing is read without a download."""
+    from insiders_clean.filing_text import Cache
+    return Cache(r2) if r2 is not None else None
+
+
 def parquet_keys(r2, prefix: str) -> list[str]:
     """List Parquet partitions under a prefix, handling R2 pagination."""
     from r2_writer import BUCKET
@@ -662,7 +668,7 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
         to_read = add_memory_context(r2, to_read)
     saver = ar.Saver(r2, today.isoformat(), today)
     rows, run_notes = ar.run(to_read, lanes, reads, batch_minutes * 60,
-                             max_filings=batch_size, on_row=saver.add)
+                             max_filings=batch_size, on_row=saver.add, text_cache=_text_cache(r2))
     statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
                            'read_at': datetime.now(timezone.utc).isoformat()})
                 for row in status_rows.to_dict('records')] if status_rows is not None else []
@@ -819,7 +825,7 @@ def backfill_batches(start: date, end: date, batch_size: int, batch_minutes: flo
         batch_ids = set(to_read['event_id'].astype(str))
         saver = None if dry_run else ar.Saver(r2, today.isoformat(), today)
         rows, notes = ar.run(to_read, lanes, reads, batch_minutes * 60,
-                             max_filings=batch_size, on_row=saver.add if saver else None)
+                             max_filings=batch_size, on_row=saver.add if saver else None, text_cache=_text_cache(r2))
         statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
                                'read_at': datetime.now(timezone.utc).isoformat()})
                     for row in status_rows.to_dict('records')]

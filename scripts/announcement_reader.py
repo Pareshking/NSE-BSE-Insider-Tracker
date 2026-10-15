@@ -911,14 +911,17 @@ def finish(rec: dict) -> dict:
 
 def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | None, budget_seconds: float,
         fetch=s.download, max_filings: int | None = None, now=time.monotonic, on_row=None,
-        idle_wait: float = 1.0) -> tuple[list[dict], dict]:
+        idle_wait: float = 1.0, text_cache=None) -> tuple[list[dict], dict]:
     """Read the chosen filings, newest first, until the time budget is used; (rows, notes).
 
     Each lane is a worker taking the next filing, so the providers read different filings at once and a slow
     one holds up only its own. A filing a lane cannot read (busy, refused, too slow, too long for it) goes to a
     lane that has not tried it; it fails only when every lane has. When nothing is left to read, an idle lane
     reads again a filing another provider read this run: values both give alike are marked "2 readers agree".
-    `on_row` gets each filing's row as soon as it is done, and again when a cross-check adds to it."""
+    `on_row` gets each filing's row as soon as it is done, and again when a cross-check adds to it.
+    `text_cache(row)` returns the filing's finished record from the text cache (insiders_clean/filing_text.py) or None:
+    a hit is read without a download. A document longer than the reader's limit is never read in part: it is
+    `not_read`, with the reason."""
     started, notes = now(), {'not_reached': 0, 'cross_checked': 0}
     lock = threading.Lock()
     rows, index = [], {}                    # rows in the order done; event_id -> position
@@ -987,8 +990,18 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         log('---', row['exchange'], row.get('symbol'), row.get('subject'))
         try:
             content_url = row.get('content_url') or row['file_url']
-            data = fetch(content_url)
-            doc, doc_notes = s.text_of(data)
+            cached = text_cache(row) if text_cache is not None and content_url == row['file_url'] else None
+            if cached is not None:   # downloaded and turned into text once already: no download
+                data, file_sha = None, cached.get('file_sha256')
+                doc = str(cached.get('text') or '')
+                doc_notes = [n for n in str(cached.get('notes') or '').split('; ') if n] + ['from the text cache']
+                if len(doc) > s.MAX_CHARS:   # the cache keeps the whole text; the reader's limit applies here
+                    doc_notes.append(f'cut to {s.MAX_CHARS:,} of {len(doc):,} characters')
+                    doc = doc[:s.MAX_CHARS]
+            else:
+                data = fetch(content_url)
+                doc, doc_notes = s.text_of(data)
+                file_sha = _sha(data)
             # If the linked structured attachment is invalid/incomplete, fall back to the original PDF.
             if content_url != row['file_url'] and not any(str(note).lower().startswith('xbrl:') for note in doc_notes):
                 xbrl_error = '; '.join(doc_notes)[:180]
@@ -997,6 +1010,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 if fallback_doc.strip():
                     data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
                     content_url = row['file_url']
+                    file_sha = _sha(data)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
@@ -1005,12 +1019,17 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 base['tries'] = MAX_TRIES
                 reason = f'{reason} (permanent missing document; no retry)'
             return finish({**base, 'status': 'failed', 'reason': reason})
+        is_zip = data[:2] == b'PK' if data is not None else any(str(n).startswith('zip:') for n in doc_notes)
         source_format = ('xbrl' if any(str(note).lower().startswith('xbrl:') for note in doc_notes)
-                         else 'zip' if data[:2] == b'PK' else 'pdf')
-        base.update(content_url=content_url, file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
+                         else 'zip' if is_zip else 'pdf')
+        base.update(content_url=content_url, file_sha256=file_sha, text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
                     text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
+        cut = next((n for n in doc_notes if str(n).startswith('cut to ')), None)
+        if cut:   # half a document must not become a card: it is held back, with the reason
+            return finish({**base, 'status': 'not_read',
+                           'reason': f'{cut}; a document longer than the reader limit is not read in part'})
         with lock:
             twin = by_file.get(base['file_sha256']) or by_text.get(base['text_sha256'])
             if twin is None:
@@ -1536,7 +1555,9 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
+    from insiders_clean.filing_text import Cache as TextCache
     rows, notes_run = run(to_read, lanes, done, args.minutes * 60, max_filings=args.max,
+                          text_cache=TextCache(r2) if r2 is not None else None,
                           on_row=saver.add if saver else None)
     status = [finish({**r, 'prompt_version': PROMPT_VERSION, 'read_at': datetime.now(timezone.utc).isoformat()})
               for r in status_rows.to_dict('records')]

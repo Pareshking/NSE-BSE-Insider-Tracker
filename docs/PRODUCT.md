@@ -63,6 +63,9 @@ reader can't get by scrolling the exchange pages:
   quarterly results, conference calls and other filings, structured data (XBRL) first where the exchange
   files it. Results come from NSE's integrated-filing XBRL, read without a model (`docs/DATA_DICTIONARY.md`,
   results). Replaces the 08 Oct decision that concall announcements say nothing about buying or selling.
+- **Never half a document** (owner, 15 Oct 2026: "half information is more poisonous for financial disaster"): a filing is read in
+  full or shown as not read, with the reason; nothing is summarised from a part, and the pages say how many filings of the
+  period were read in full and why the others were not.
 - **Evidence decides what gets ranked.** A signal is shown as a fact until
   the signal lab has measured it on our own history. (07 Oct 2026)
 - **No star or conviction score.** Factor badges only (Spotlight, Float

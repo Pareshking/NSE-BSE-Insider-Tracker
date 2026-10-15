@@ -257,3 +257,18 @@ def test_a_bse_file_older_than_two_days_links_to_the_history_path_and_the_rest_k
     assert link(already, '2026-01-01T10:00:00+05:30', now) == already
     # the boundary is in IST: a filing at 00:30 IST on 13 Oct is still 2 days old at 23:30 IST on 15 Oct
     assert link(live, '2026-10-13T00:30:00+05:30', now) == live
+
+
+def test_coverage_counts_what_was_read_in_full_and_names_why_the_rest_was_not():
+    reads = pd.DataFrame({
+        'broadcast_date': ['2026-10-14'] * 9 + ['2026-09-01'],
+        'status': ['read', 'same_file', 'same_filing_other_exchange', 'no_text', 'not_read', 'failed', 'failed',
+                   'below_100_cr', 'quota_deferred', 'read']})
+    c = fr.coverage(reads, pd.Timestamp('2026-10-10'))
+    assert c == {'looked_at': 9, 'in_full': 3, 'below_100_cr': 1,
+                 'not_read': {'no text layer': 1, 'longer than the reader limit': 1, 'could not be downloaded': 2,
+                              'waiting for model capacity': 1}}
+    html = fr.coverage_html(c)
+    assert 'Of 9 filings' in html and '<b>3</b> read in full' in html and '<b>5</b> not read' in html
+    assert '2 could not be downloaded' in html and 'never summarised from a part' in html
+    assert fr.coverage(pd.DataFrame(), pd.Timestamp('2026-10-10')) == {} and fr.coverage_html({}) == ''
