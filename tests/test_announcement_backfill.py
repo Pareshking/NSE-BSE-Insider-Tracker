@@ -336,6 +336,7 @@ def test_unified_pipeline_collection_cursor_advances_one_verified_day_per_run(mo
         collected.add(day.isoformat())
 
     monkeypatch.setattr(backfill, 'collect_historical_day', collect_one)
+    monkeypatch.setattr(backfill, 'recent_history_coverage_verified', lambda client, today: (True, ''))
     today = date(2026, 1, 5)  # cutoff is Jan 2: only one historical date per call
     state = backfill.read_pipeline_state(r2)
     assert backfill.advance_pipeline_history_collection(r2, today, state, []) is False
