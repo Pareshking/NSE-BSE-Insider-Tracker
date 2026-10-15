@@ -690,7 +690,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # Pair only when the issuer/date window has one eligible PDF and one eligible
         # XBRL payload. Repeated generic subjects are common for separate KMP filings;
         # choosing the first exact-subject match can cross-wire distinct disclosures.
-        other_pdfs = []
+        other_pdfs, other_same_subject_pdfs = [], []
         for pidx, prow in enumerate(records):
             if pidx == idx or prow.get('exchange') != 'NSE':
                 continue
@@ -700,10 +700,15 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             pday = day(prow.get('broadcast_date'))
             if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
                 other_pdfs.append(pidx)
-        if len(matches) == 1 and not other_pdfs:
+                # An unrelated disclosure by the same issuer/date is not ambiguity by itself.
+                # Another PDF with the same normalized subject is ambiguous, because generic
+                # exchange subjects are often reused for distinct KMP/director filings.
+                if subject_base(prow.get('subject')) == subject:
+                    other_same_subject_pdfs.append(pidx)
+        if len(matches) == 1 and not other_same_subject_pdfs:
             _, _, xidx, xrow = matches[0]
         elif matches:
-            # More than one exact match is ambiguous; do not guess.
+            # More than one exact XBRL match or another same-subject PDF is ambiguous; do not guess.
             continue
         else:
             # Subjects can differ between a PDF announcement and its XBRL companion.
