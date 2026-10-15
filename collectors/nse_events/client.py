@@ -45,13 +45,14 @@ class NSEClient:
             pass  # the APIs answered without cookies in testing; warm-up is best effort
         self._warm = True
 
-    def get(self, url, as_json=True):
+    def get(self, url, as_json=True, *, timeout=60, retries=None):
         self.warm_up()
         last = None
-        for attempt in range(self.retries):
+        attempts = self.retries if retries is None else max(1, int(retries))
+        for attempt in range(attempts):
             self._wait()
             try:
-                r = self.s.get(url, timeout=60)
+                r = self.s.get(url, timeout=timeout)
             except requests.RequestException as exc:
                 last = exc
                 continue
@@ -71,7 +72,7 @@ class NSEClient:
             except ValueError as exc:
                 last = exc  # an HTML error page in place of JSON
                 continue
-        raise RuntimeError(f'{url}: gave up after {self.retries} tries ({last})')
+        raise RuntimeError(f'{url}: gave up after {attempts} tries ({last})')
 
     # --- endpoints (all confirmed 07 Oct 2026) -------------------------------
 
@@ -148,7 +149,9 @@ class NSEClient:
         old_referer = self.s.headers.get('Referer')
         self.s.headers['Referer'] = BASE + '/companies-listing/corporate-filings-announcements-xbrl-trading-window-disclosure'
         try:
-            j = self.get(f'{BASE}/api/XBRL-announcements?{query}')
+            # XBRL is an optional speed path, so its endpoint must never hold up live PDF
+            # processing for the normal 60s x 3 network retry budget.
+            j = self.get(f'{BASE}/api/XBRL-announcements?{query}', timeout=10, retries=1)
         finally:
             if old_referer is None:
                 self.s.headers.pop('Referer', None)
