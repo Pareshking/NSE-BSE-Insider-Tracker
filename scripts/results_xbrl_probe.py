@@ -88,7 +88,9 @@ def describe_xbrl(nse: NSEClient, url: str):
     out.append(f'Root `{root.tag}`; {len(contexts)} contexts; {len(facts)} facts.')
     for c in contexts[:4]:
         out.append(f'- context `{c.get("id")}`: {short(" ".join(t.strip() for t in c.itertext() if t.strip()), 200)}')
-    for el in facts[:60]:
+    names = Counter(el.tag.split('}')[-1] for el in facts)
+    out.append(f'{len(names)} distinct fact names; contexts used: {dict(Counter(el.get("contextRef") for el in facts).most_common(8))}')
+    for el in facts[:90]:
         out.append(f'- `{el.tag.split("}")[-1]}` [{el.get("contextRef")}] {el.get("unitRef") or ""} '
                    f'{el.get("decimals") or ""}: {short((el.text or "").strip(), 80)}')
     out.append('')
@@ -99,20 +101,31 @@ def main() -> int:
     today = date.today()
     d = lambda x: x.strftime('%d-%m-%Y')  # noqa: E731
     a, b = d(today - timedelta(days=3)), d(today)
-    candidates = [
-        f'{BASE}/api/corporates-financial-results?index=equities&period=Quarterly',
-        f'{BASE}/api/corporates-financial-results?index=equities&from_date={a}&to_date={b}&period=Quarterly',
-        f'{BASE}/api/integrated-filing-results?index=equities&period=Quarterly',
-        f'{BASE}/api/integrated-filing-results?index=equities&from_date={a}&to_date={b}&type=Integrated%20Filing-%20Financials',
-    ]
-    out.extend(['## NSE quarterly results: endpoint and XBRL probe', ''])
+    integrated = (f'{BASE}/api/integrated-filing-results?index=equities&from_date={a}&to_date={b}'
+                  '&type=Integrated%20Filing-%20Financials')
+    candidates = [integrated, integrated + '&page=2', integrated + '&size=100']
+    out.extend(['## NSE integrated-filing results: paging and XBRL', ''])
     links = []
     for url in candidates:
-        for link in xbrl_links(probe(nse, url)):
+        rows = probe(nse, url)
+        try:
+            meta = nse.get(url, timeout=30, retries=1)
+            out.append(f'Paging: { {k: meta.get(k) for k in ("size", "page", "totalCount")} } ; first seq_Id '
+                       f'{rows[0].get("seq_Id") if rows else None}; last {rows[-1].get("seq_Id") if rows else None}')
+            out.append(f'type_Sub: {dict(Counter(r.get("type_Sub") for r in rows))}; consolidated: '
+                       f'{dict(Counter(r.get("consolidated") for r in rows))}; qe_Date: {dict(Counter(r.get("qe_Date") for r in rows))}')
+            out.append('')
+        except Exception as exc:  # noqa: BLE001
+            out.append(f'Paging not read: {type(exc).__name__}')
+        for link in xbrl_links(rows):
             if link not in links:
                 links.append(link)
-    out.append(f'XBRL-looking links found: {len(links)}')
-    for link in links[:2]:
+    kinds = {}
+    for link in links:   # one file of each kind: INDAS, NBFC_INDAS, BANKING ...
+        kind = re.sub(r'_\d+_\d+_WEB\.xml$', '', link.rsplit('/', 1)[-1])
+        kinds.setdefault(kind, link)
+    out.append(f'XBRL kinds: {list(kinds)}')
+    for link in list(kinds.values())[:3]:
         describe_xbrl(nse, link)
     text = '\n'.join(out) + '\n'
     print(text)
