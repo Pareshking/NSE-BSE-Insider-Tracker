@@ -605,3 +605,48 @@ def test_usage_can_record_only_attempts_since_a_batch_offset():
     assert model['calls'] == 2
     assert model['by_status'] == {'error': 1, '200': 1}
     assert model['median_seconds_ok'] == 5.0
+
+
+
+def test_gemini_rate_limit_is_logged_per_http_attempt_and_not_retried():
+    class Response:
+        status_code = 429
+        text = '{"error":{"message":"quota exceeded"}}'
+
+    class Session:
+        def __init__(self):
+            self.headers = {}
+            self.calls = 0
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            return Response()
+
+    session = Session()
+    client = ar.GeminiCalls('test-key', session=session, sleep=lambda _: None)
+    with pytest.raises(RuntimeError, match='HTTP 429'):
+        client.generate(['gemini-3.1-flash-lite'], 'prompt', 'read', True)
+    assert session.calls == 1
+    assert len(client.attempts) == 1
+    assert client.attempts[0][0:2] == ('gemini-3.1-flash-lite', 429)
+
+
+def test_openai_compatible_rate_limit_is_logged_and_not_retried():
+    class Response:
+        status_code = 429
+        text = '{"error":{"message":"rate limit"}}'
+
+    class Session:
+        def __init__(self):
+            self.headers = {}
+            self.calls = 0
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            return Response()
+
+    session = Session()
+    client = ar.s.OpenAICompat('groq', 'https://example.test', 'test-key',
+                               session=session, sleep=lambda _: None)
+    with pytest.raises(RuntimeError, match='HTTP 429'):
+        client.generate(['qwen/qwen3.8-27b'], 'prompt', 'read', True)
+    assert session.calls == 1
+    assert len(client.attempts) == 1 and client.attempts[0][1] == 429
