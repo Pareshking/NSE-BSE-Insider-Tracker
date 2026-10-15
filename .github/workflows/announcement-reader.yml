@@ -115,18 +115,15 @@ jobs:
         run: |
           set -euo pipefail
           hour="$(TZ=Asia/Kolkata date +%H)"
-          if (( 10#$hour >= 20 || 10#$hour < 8 )); then
-            batch_size=8
-            max_batches=4
-            mode="nighttime accelerated"
-          else
-            batch_size=5
-            max_batches=3
-            mode="daytime conservative"
+          if (( 10#$hour < 20 && 10#$hour >= 8 )); then
+            echo "Backfill mode: daytime live-only (IST hour=$hour); historical backfill is disabled until 20:00 IST."
+            exit 0
           fi
+          batch_size=8
+          max_batches=4
           batch_minutes=3
-          echo "Backfill mode: $mode (IST hour=$hour); batch_size=$batch_size, max_batches=$max_batches, batch_minutes=$batch_minutes"
-          echo "Nighttime boost is bounded; provider daily-call budgets and quota circuit breakers remain active."
+          echo "Backfill mode: nighttime accelerated (IST hour=$hour); batch_size=$batch_size, max_batches=$max_batches, batch_minutes=$batch_minutes"
+          echo "Live reading has already run first. Historical backfill is night-only; provider daily-call budgets and quota circuit breakers remain active."
           python -u scripts/announcement_backfill.py --continuous --batch-size "$batch_size" --batch-minutes "$batch_minutes" --max-batches "$max_batches"
 
       - uses: actions/upload-artifact@v4
