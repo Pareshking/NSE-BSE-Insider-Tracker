@@ -45,8 +45,8 @@ def report(name, df, groups, subject_col):
         out.append(f'| {month} | {len(per_day)} | {int(per_day.median())} | {int(per_day.max())} | '
                    + ' | '.join(f'{share.get(g, 0):.1%}' for g in names)
                    + f' | {read:.1%} | {m["file_url"].isna().mean():.1%} |')
-    recent = df[pd.to_datetime(df['broadcast_date'], errors='coerce') >= pd.to_datetime(df['broadcast_date']).max()
-                - pd.Timedelta(days=60)]
+    when = pd.to_datetime(df['broadcast_date'].astype(str), errors='coerce')
+    recent = df[when >= when.max() - pd.Timedelta(days=60)]
     top = recent.loc[recent['group'] == 'routine', subject_col].fillna('(none)').value_counts().head(30)
     out.extend(['', f'Commonest routine {subject_col} in the last 60 days ({len(recent):,} filings):', ''])
     out.append('| subject | filings | a day |')
@@ -66,8 +66,7 @@ def main() -> int:
     b = load(r2, bse.PREFIX)
     out.append(f'BSE archive columns: {list(b.columns)}')
     for col in ('subcategory', 'category'):
-        if col not in b:
-            b[col] = None
+        b[col] = b[col].astype(object).where(b[col].notna(), None) if col in b else None
     report('BSE', b, [bse.group_of(s, c) for s, c in zip(b['subcategory'], b['category'])], 'subcategory')
     text = '\n'.join(out) + '\n'
     print(text)
