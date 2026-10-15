@@ -770,7 +770,13 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             data = fetch(row['file_url'])
             doc, doc_notes = s.text_of(data)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
-            return finish({**base, 'status': 'failed', 'reason': f'download: {type(exc).__name__}: {exc}'[:300]})
+            reason = f'download: {type(exc).__name__}: {exc}'[:300]
+            # A missing document is not a transient model/network failure. Retire it now rather than
+            # spending three historical batches rediscovering the same dead BSE/NSE PDF URL.
+            if re.search(r'HTTP\s*(?:404|410)\b', str(exc), re.IGNORECASE):
+                base['tries'] = MAX_TRIES
+                reason = f'{reason} (permanent missing document; no retry)'
+            return finish({**base, 'status': 'failed', 'reason': reason})
         base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()), text_chars=len(doc))
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
