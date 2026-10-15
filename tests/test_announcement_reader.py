@@ -454,7 +454,8 @@ def test_all_lanes_at_daily_quota_leave_live_filings_pending(monkeypatch):
     assert lanes['zai'].clients['zai'].asked == []
 
 
-def test_quota_deferred_filing_does_not_spend_retry_budget_and_is_selected_again():
+def test_quota_deferred_filing_does_not_spend_retry_budget_and_is_selected_again(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
     limited = RuntimeError('provider returned HTTP 429: rate limit reached for tokens per day')
     lane = ar.Lane('groq', ['groq:m'], {'groq': FakeClient([limited])})
     rows, notes = ar.run(_qips(1), {'groq': lane}, None, 600,
