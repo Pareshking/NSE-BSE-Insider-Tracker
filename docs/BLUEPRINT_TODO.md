@@ -1,0 +1,229 @@
+# Blueprint review: tracker (opened 15 Oct 2026)
+
+Every point of the owner's "Master Blueprint" (a different project, shared to fine-tune ours) is listed here by its
+section number, nothing dropped. Per point: what we have, the first step, and the owner's call.
+
+## Rules (owner, 15 Oct)
+
+1. **One item at a time, in order** (1.1, 1.1a, 1.2 ... 1.9, then 2.1 ...). An item is closed only when its
+   *closes when* line is met and shown (a run, a table, a test). A new item is not opened until the one before is
+   closed; a finding that needs more work becomes a new numbered item, never a skipped one.
+2. The owner approves, rejects or defers (Approve / Reject / Later) each item before it starts.
+3. The blueprint's example companies and figures are not verified and are never used as test truth (rule 7 in
+   `CLAUDE.md`); its provider limits and model names are checked against each provider's own page before use.
+
+## Decisions taken while working through it
+
+- **Read every announcement** (owner, 15 Oct), with the cheapest and fastest model that passes our checks and the
+  largest limits. This replaces "routine subjects are never read" (reading groups) once item 3.12 shows the
+  capacity; until then the reader stays paused.
+- **Clean each PDF before it goes to a model** (owner, 15 Oct, *must*): strip logos, letterheads, company and
+  exchange addresses, page furniture and other boilerplate, send only what carries information (item 4.14).
+- **Collection never depends on reading** (found 15 Oct, item 1.1a): `announcement-collect.yml`.
+
+## Status
+
+| Item | Status | Closes when |
+|---|---|---|
+| 1.1 Routine share measured | **Closed 15 Oct** (#100) | done |
+| 1.1a Archive gaps | **Open: cause found, fix coded** | the gaps report lists no weekday without filings for NSE and BSE from 1 Jan (holidays named), and the nightly collection has run two nights in a row |
+| 1.2 onwards | Open, not started | |
+
+## 1. Vision
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 1.1 | Separate routine filings (80–85%) from material ones | **Closed 15 Oct. Measured (#100)**: NSE median 410–690 filings/day (busiest 1,567); routine 50–68%, so 32–50% fall in a reading group, mostly `to_sort`. BSE routine 60–72%. **New finding:** the archive has no NSE rows for Mar 2026, and BSE holds only Jan, Feb and Oct 2026 | Done; the gaps become 1.1a | Done |
+| 1.1a | Fill the archive gaps and keep collecting | **Cause found 15 Oct** (`ANNOUNCEMENT_READER.md`, archive gaps): March NSE job cancelled; BSE Mar–Sep never fetched (history ran NSE-only but wrote markers); 2–12 Oct before the nightly existed; nothing collecting since the reader absorbed the collector. Fix: `announcement-collect.yml` (nightly, no AI, any range by hand) | Re-run Mar–12 Oct for both exchanges; the gaps report shows no weekday without filings | |
+| 1.2 | Context blindness: a filing read without the company's past | Partial: `archive/company_memory/{ISIN}.json` (last 100 checked reads); "Before this" from our own tables | Check memory reaches the prompt and what it holds (item 5.x) | |
+| 1.3 | Vector search fails on financial state, so use structured memory | Same approach already: no vector DB | None (confirm only) | |
+| 1.4 | Informational facts update memory vs a few actionable signals a day | Partial: Brief and Actions pages; no "memory-only" tier | Decide after 8.1 | |
+
+## 2. Hosting
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 2.1 | React + Cloudflare Pages/Workers + D1 instead of Streamlit | **Conflict**: "Streamlit stays" (07 Oct). The 1 GB memory problem was fixed in #96 | Watch memory for a week; revisit only if it comes back | |
+| 2.2 | D1 (SQLite) for search and filters | Missing: Parquet in R2 read by the site | Only relevant if 2.1 is approved | |
+| 2.3 | One memory file per company in R2 | Have: `archive/company_memory/{ISIN}.json` (by ISIN, not BSE code; see 7.F3) | None | |
+| 2.4 | Daily feed file and a homepage snapshot | Partial: `clean/current/announcement_reads.parquet` (60 days) and slim precomputed artifacts | None unless 2.1 | |
+| 2.5 | BSE blocks foreign datacentre IPs, so run on an Indian connection or self-hosted runner | Unknown for the runner: BSE refuses this container; the GitHub runner's BSE results are not confirmed | Read the BSE collector's fetch records in `raw_v2/bse/` (HTTP status by day) | |
+| 2.6 | External cron (cron-job.org) instead of GitHub's late cron | Partial: the reader chains its own next run (`job next`); nightly jobs start 1–3 h late | Measure the actual start delays of the nightly workflows | |
+| 2.7 | Never store raw PDFs in R2 | Have: PDFs are not stored; text only, never as files | None | |
+| 2.8 | Local compressed text cache, so a re-read never downloads again | Partial: same file or text is copied (`same_file`/`same_text`), but extracted text is not kept | Decide on an R2 text cache (`.json.gz` per filing) and measure the size | |
+| 2.9 | Protect D1 read caps, cache the system page | Not applicable unless 2.1 | | |
+| 2.10 | Backfill locally, then one-command sync to cloud | Not applicable: backfills run in Actions against R2 | | |
+
+## 3. AI providers
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 3.1 | Five free providers, no credit card | Have four: NVIDIA, Z.ai, Groq, Gemini | | |
+| 3.2 | Add Mistral (free tier: small, large, pixtral vision) | Missing | Read Mistral's free-tier terms and limits; run our 24-filing test | |
+| 3.3 | Add Cloudflare Workers AI as last resort | Missing (we already use Cloudflare R2) | Check whether the same account has Workers AI, its free neurons, and its model list | |
+| 3.4 | Groq llama-3.1-8b-instant as a cheap gatekeeper | Missing (Groq runs Qwen 3.8 as a reader) | Check its limit; test on 4.4 | |
+| 3.5 | NVIDIA deepseek-r1 / llama-3.3-70b for deep reading | Partial: NVIDIA Gemma 4 | Check the catalog; 24-filing test | |
+| 3.6 | Z.ai glm-4.7-flash for long documents, glm-4.6v-flash vision | Partial: GLM-4.5-Flash; 4.7-Flash was in a sample run | Check the 4.7 result in the docs; check the vision model is free | |
+| 3.7 | Two accounts per provider, keys alternating | Missing | **Read each provider's terms first**: several forbid multiple free accounts. Your decision | |
+| 3.8 | 95% limit per (provider, key), with RPM, TPM and RPD tracked | Partial: daily calls at 95% with per-provider reset (#98); no RPM/TPM tracking | Measure 429s per minute in the usage files | |
+| 3.9 | On 429 or 404, rotate out and move to the next provider | Have: the next model in the lane, then another lane | | |
+| 3.10 | All providers busy: pause 60 s, resume from the queue, drop nothing | Partial: unread filings wait for the next run; `failed` after 3 tries | Check results-season volume against capacity (see 4.4) | |
+| 3.12 | **New (owner, 15 Oct): capacity to read everything.** Per provider: calls, tokens per minute and per day, against tokens per filing (after 4.14) and filings a day (about 1,000–1,700 before cross-exchange dedup; peak days 4,000+) | Unmeasured; the daily-call limits we hold are calls, not tokens | Measure tokens per cleaned filing on the 24-filing set; list each provider's published call and token limits; decide which model reads what and which is dropped | |
+| 3.11 | Peak months (May, Aug, Nov, Feb), 3,500+ filings a day | Unmeasured | Count Aug 2026 and May 2026 filings per day from the archive | |
+
+## 4. Pipeline
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 4.1 | Stage 0: results XBRL with no model | Have for NSE INDAS (#99, from tonight); banks, NBFCs and insurers next (agreed) | Probe the BANKING/NBFC_INDAS/GI/LI tag names | |
+| 4.2 | Stage 0: balance sheet and cash flow from XBRL | Missing: kept in `xbrl_json`, not as columns. Half-year and annual filings only | Check which tags the Sep/Mar filings carry | |
+| 4.3 | Stage 0: shareholding pattern from XBRL | Have: promoter, pledge, promoter group (12 Oct) | Check FII/DII/retail columns are kept (7.F1) | |
+| 4.4 | BSE results XBRL | Missing (NSE only); BSE-only companies have no results | Probe BSE's results/XBRL endpoint from the runner | |
+| 4.5 | Rule blacklist before any PDF download, counted by day | Have: routine subjects never read; counts in the daily report | Show the routine share on the Data page | |
+| 4.6 | Fast-track categories straight to the deep read | Partial: reading groups. Results, orders, monthly updates and concall transcripts are **not read**: NSE's own subjects for those are routine | Count those subjects per day; decide which to read (owner: everything captured from now on) | |
+| 4.7 | Gatekeeper on subject + page 1 for "general update" filings | Missing (was our next step 5, the `to_sort` sorter) | Build after 3.4's test | |
+| 4.8 | Pages under 80 characters treated as scanned and sent to a vision model | Missing: such filings end as `no_text` | Count `no_text` reads and why | |
+| 4.9 | Long documents (annual reports, presentations, transcripts): read only the useful sections | Missing; Groq skips files over ~20,000 characters | Measure transcript and presentation sizes | |
+| 4.10 | Same-day filings by one company stitched together | Partial: one card per deal (same company and category within 24 h, shared numbers); "Also filed" | Check the cross-category case (board outcome, then press release, then presentation) | |
+| 4.11 | Sector of the company in the prompt | Partial: sector and industry exist in `securities.py`, not in the prompt | Check coverage of sector by ISIN | |
+| 4.12 | Full event taxonomy | Have: 35 categories after LODR Schedule III (`live-3`) | Compare with the blueprint's list for gaps | |
+| 4.14 | **New (owner, 15 Oct, mandatory): clean the PDF text before any model sees it** (logos and letterheads, company and exchange addresses, page numbers, repeated headers and footers, disclaimers, signature blocks, blank space) | Missing: `pdftotext -layout` text goes in whole | Measure on the 24-filing set: characters before and after, and that no checked value is lost | |
+| 4.13 | Sector- and event-specific prompts | Missing: one prompt | After 7.E3 | |
+
+## 5. Memory and checks
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 5.1 | Identity and former-name registry | Partial: ISIN and both exchange codes; no former names or symbols | Find an exchange source of name/symbol changes (NSE symbol-change list) | |
+| 5.2 | Financial baseline: 12 quarters, 5 years | Missing; results start tonight; one year of history (decision 08 Oct) | Results backfill by date range (agreed item 2) | |
+| 5.3 | Segment and revenue mix | Missing; the results XBRL says whether a company reports segments | Check whether segment values are in the XBRL | |
+| 5.4 | Capex and projects ledger | Missing | Needs reads of capex filings to fill structured fields | |
+| 5.5 | Guidance and promises with status | Missing; needs concall/AGM reads | After 4.6 / 4.9 | |
+| 5.6 | Monthly volume ledger (12 months) | Partial: monthly figures with year-ago change on the card; not kept as a series | Check how many monthly updates we read per month | |
+| 5.7 | Corporate actions, M&A and order book with states | Partial: corporate actions, buybacks, rights, preferential tables; no states across filings | Design after 5.1 | |
+| 5.8 | Calibration notes per company | Missing | After 8.L1 | |
+| 5.9 | known_since vs period_end; nothing after the filing time used | Partial: our timing rule says the same for signals; memory has no such filter | Test that a backfilled read never sees later memory | |
+| 5.10 | Units scaled before stripping text (lakh, million, thousand) | Have for lakh, crore, million, billion | Add "thousand" if missing; check | |
+| 5.11 | Indian fiscal period normalising (Q2FY27 etc.) | Partial: results have `period_end`; reads keep the period as written | Check the read periods we hold | |
+| 5.12 | Consolidated preferred over standalone, never mixed | Partial: results keep both rows, marked | Choose one per company/quarter in the clean table | |
+| 5.13 | Every number grounded in its quote | Have: stricter (a quote per value, digits must match) | | |
+| 5.14 | Model-declared formulas with ASSUMPTION variables, evaluated by an AST checker | **Conflict**: our rule is that the model gives numbers as written and our code computes; assumptions are invented numbers (rule 7) | Your decision | |
+| 5.15 | Check memory before saying "not disclosed" | Partial: gaps flagged neutrally | Add a memory lookup when memory has the item | |
+| 5.16 | Delta merge: missing fields never overwrite; re-reads replace only their own entry | Have: upsert by event_id | | |
+| 5.17 | Dilution post-money; ratios "N/A" when net worth ≤ 0 | Partial: size vs market cap; no dilution % | Add post-money dilution where shares are read | |
+| 5.18 | Atomic writes, schema version | Have: R2 puts are whole objects; `schema_version: 1` | | |
+
+## 6. Card
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 6.1 | Header: symbol, BSE code, market cap, size tier, time, after-market tag | Partial: no BSE code, no "after market" tag | Small; add if wanted | |
+| 6.2 | Credibility score, liquidity (₹ Cr a day), impact label | **Conflict**: no "impact" labels and no scores (07 and 13 Oct). Liquidity is data, not a score | Liquidity yes/no? | |
+| 6.3 | "What happened" facts, quoted | Have | | |
+| 6.4 | "Why it matters" from memory | **Conflict in part**: held back until our history supports it (14 Oct); allowed only from our own data | After 5.x | |
+| 6.5 | "What to track next" | Missing | Only from filed dates (results date, record date) | |
+| 6.6 | Footer: revenue, debt, net worth, 1W/1M/1Y | Partial: 1W/1M/1Y yes; revenue from results soon; debt/net worth after 4.2 | | |
+| 6.7 | "N of M numbers verified" | Partial: held-back reasons counted | Show the count on the card | |
+| 6.8 | Copy as PNG, star/noise buttons | Missing | See 8.L3 | |
+
+## 7. The 41 checks
+
+Each needs data we may not have yet. "Needs" says what.
+
+| # | Check | Needs | Ours today | Your call |
+|---|---|---|---|---|
+| A1 | TPD to annual tonnes (330 days) | capacity read from filing | Missing; it is our own arithmetic, not invented, but the 330 days is an assumption | |
+| A2 | Asset turnover sanity (revenue / capex vs sector norms) | capex + sector norms | Missing; sector norms are not ours (rule 7) | |
+| A3 | Depreciation and interest after commissioning | balance sheet (4.2) | Missing | |
+| A4 | Captive vs merchant capacity | read field | Missing | |
+| A5 | Brownfield vs greenfield | read field | Missing | |
+| A6 | Customer qualification lag (3–6 months) | none (general knowledge) | Missing; assumption | |
+| B1 | EPC vs O&M split of an order | read fields | Missing | |
+| B2 | L1 vs firm LoA, no double count | read field + order memory | Missing | |
+| B3 | Working capital to fund an order | balance sheet | Missing | |
+| B4 | Fixed price vs price-variation clause | read field | Missing | |
+| B5 | Order cancellations deducted | order memory | Missing | |
+| C1 | Other income share of profit ("low-quality beat") | results XBRL: OtherIncome, ProfitBeforeTax | **Possible now** with #99 data | |
+| C2 | Gross margin vs operating leverage | results XBRL expense lines | Possible after a check of tags | |
+| C3 | Employee cost jump before a plant opens | results XBRL + capex memory | Partial data | |
+| C4 | Receivables + inventory growth > revenue growth | balance sheet (4.2) | Missing | |
+| C5 | Unbilled revenue / contract assets | balance sheet | Missing | |
+| C6 | Operating cash flow / EBITDA < 50% | cash flow (4.2) | Missing | |
+| C7 | Effective tax rate vs 25.17% | results XBRL: TaxExpense, PBT | **Possible now** | |
+| C8 | Capitalised R&D (intangibles under development) | balance sheet | Missing | |
+| C9 | Subsidy share of revenue | notes; rarely in XBRL | Missing | |
+| C10 | MSME payables, LC acceptances | balance sheet notes | Missing | |
+| C11 | High debt and high cash together | balance sheet + finance costs | Missing | |
+| C12 | Q4 margin vs Q1–Q3 run rate (>400 bps) | 4 quarters of results | After 5.2 | |
+| D1 | Full pay vs partly paid vs loan conversion | rights/preferential reads | Partial (rights table) | |
+| D2 | Warrant 18-month expiry clock | preferential data | Partial: preferential table; check warrant dates | |
+| D3 | Related-party acquisition, EV/sales | Annexure A reads | Missing | |
+| D4 | Subsidiary ownership (WOS vs JV) | read field | Missing | |
+| D5 | Rating: bank limit change, "Issuer Not Cooperating" | rating reads | Partial: ratings read; no limit field | |
+| D6 | Auditor opinion | results XBRL `audit_opinion` | **Partly possible now** | |
+| D7 | Penalty as % of profit | penalty read + results | After 5.2 | |
+| D8 | Promoter pay / royalty > 10% of profit | AGM notices | Missing | |
+| D9 | Dividend/buyback funded by cash flow or debt | cash flow | Missing | |
+| D10 | Debt settlement write-back | read fields | Partial (debt settlement category) | |
+| E1 | Concall evasion / goalpost shift | transcripts | Missing (4.6, 4.9) | |
+| E2 | Quarter preview from 3 monthly updates | monthly series (5.6) | Missing | |
+| E3 | Sector KPIs (NIM, GNPA, pre-sales, ARPOB, SSSG; USFDA ladder) | bank XBRL (agreed item 1), reads | Missing | |
+| E4 | Festive and monsoon seasonality | monthly series | Missing | |
+| F1 | Promoter / FII / DII vs retail headcount | shareholding pattern | Partial: promoter yes; check FII/DII/retail kept | |
+| F2 | Insider buying/selling within 15 days of an announcement | insider + announcements | Missing; **already on our list** (agreed item 4) | |
+| F3 | Name, symbol and split continuity | split factors (have), name history (5.1) | Partial; ISIN-change check is agreed item 4 | |
+| F4 | Liquidity, BSE group, ASM/GSM | tradability flags | Partial: ASM/GSM yes; turnover and BSE group to check | |
+
+## 8. Signals and learning
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 8.1 | Four gates (size, trend break, price not run up, no red flags) | **Conflict in part**: "a signal leads only if the measured record supports it" (12 Oct). The gates could be measured as signals in Track record first | Your decision | |
+| 8.2 | 0–100 actionability score | **Conflict**: no scores (07 Oct) | Your decision | |
+| 8.L1 | Price reaction after each filing (+1D/+3D/+5D, 15:30 cut-off) | Partial: Track record does this for insider signals; not for announcements | Extend the timing rules to read filings by category | |
+| 8.L1b | Lower the weight of categories with no reaction | Missing (needs 8.L1) | | |
+| 8.L1c | "Missed" filings (>8% move, 3× volume in 48 h) re-read | Missing | | |
+| 8.L2 | Forecast vs actual | Missing (needs guidance 5.5) | | |
+| 8.L3 | Star / noise feedback injected into prompts | Missing. The repo is public: feedback must live in R2, not the repo | Your decision | |
+
+## 9. Site
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 9.1 | Design: warm alabaster, dark mode, three fonts | **Conflict**: our design was decided 08 Oct (Geist, #F6F7F9, indigo) | | |
+| 9.2 | Top signals and pre-market brief, "since 15:30" filter | Partial: Brief and Actions pages | Add a "since last close" filter? | |
+| 9.3 | Live feed with search, dates, session, category, sector, cap filters | Partial: Filings read page (heading, period, exchange, size, search) | Sector and session filters missing | |
+| 9.4 | Company directory and "inflection radar" (3 triggers in 90 days) | Partial: Screener; no radar | After 5.x | |
+| 9.5 | Catalyst calendar (record dates, rights windows, AGMs, warrant expiry, overdue promises) | Partial: calendar of board meetings, lock-ins, corporate actions | Check what `calendar.py` covers | |
+| 9.6 | Pipeline monitor: counts, provider quota gauges, held-back queue | Partial: Data quality page; no quota gauges | Small: read the usage ledger | |
+| 9.7 | Company drawer: dossier, timeline with reactions, PDF side by side | Partial: Company page; no PDF viewer | | |
+
+## 10. Hardening
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 10.1 | D1 read limits | Not applicable unless 2.1 | | |
+| 10.2 | Keep subject and symbol in the ledger; sector filled before backfill | Have: subject and symbol kept | Check sector coverage (4.11) | |
+| 10.3 | Safari/iOS, error boundaries, keep loaded pages on errors | Partial: phone first; Streamlit handles the rest | Check the site on an iPhone | |
+| 10.4 | known_since, unit scaling, 100% grounded | See 5.9, 5.10, 5.13 | | |
+
+## 11. Execution
+
+| # | Point | Ours today | First step | Your call |
+|---|---|---|---|---|
+| 11.1 | 5-company smoke test before a wide backfill | Missing as a habit | Pick 5 of **our** companies with known filings; run the backfill on them only | |
+| 11.2 | Backfill only companies ≥ ₹100 Cr | Have (below ₹100 Cr is never read) | | |
+| 11.3 | 2025 baseline pass (facts only) then the 2026 pass (cards) | **Conflict**: history from 08 Oct 2025, AI backfill from 01 Jan 2026 | Your decision | |
+| 11.4 | Monthly checkpoints, resumable | Have (`state.json`, monthly markers) | | |
+| 11.5 | Daily deltas in 3–5 minutes | Partial: reader every ~15 min (paused) | | |
+| 11.6 | 08:45 brief and a Sunday review | Partial: Brief page | | |
+
+## Suggested order, if you approve
+
+1. Read-only checks with no build: 2.5, 2.6, 3.11, 4.6, 4.8, 4.11, 5.3, F1, F4.
+2. No-AI data: 4.1 (bank/NBFC/insurer XBRL), 5.2 (results backfill), 4.2, 5.12, then C1, C7 and D6 as facts.
+3. Agreed items: F2 (insider selling linked to news), F3 (ISIN changes at splits).
+4. Reader (still paused): 4.6, 4.7, 4.8, 4.9, 3.2–3.6 provider tests, 2.8 text cache.
+5. Memory: 5.1, 5.5, 5.6, 5.7, 5.9, 5.15.
+6. Learning: 8.L1 and its children.
+7. Your decisions on the conflicts: 2.1, 3.7, 5.14, 6.2, 6.4, 8.1, 8.2, 8.L3, 9.1, 11.3.
