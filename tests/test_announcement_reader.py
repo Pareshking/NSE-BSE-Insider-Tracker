@@ -83,6 +83,24 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
 
 
+def test_permanent_missing_document_is_retired_after_one_attempt():
+    today = date(2026, 10, 13)
+    candidate = pd.DataFrame([_cand('bse:missing', 'BSE', 'INE404',
+                                    '2026-01-01T10:00:00+05:30', 'Credit Rating')])
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': FakeClient([])})}
+
+    def missing(_url):
+        raise RuntimeError('HTTP 404 8,420 bytes')
+
+    rows, _ = ar.run(candidate, lanes, None, 10, fetch=missing, max_filings=1, idle_wait=0.001)
+    assert len(rows) == 1
+    assert rows[0]['status'] == 'failed'
+    assert rows[0]['tries'] == ar.MAX_TRIES
+    assert 'permanent missing document; no retry' in rows[0]['reason']
+    done = pd.DataFrame(rows)
+    assert ar.choose(candidate, done, today, date_from=date(2026, 1, 1), date_to=date(2026, 1, 1))[0].empty
+
+
 def test_different_subjects_or_hours_apart_are_not_the_same_filing():
     a = _cand('nse:1', 'NSE', 'INE1', '2026-10-13T10:00:00+05:30', 'Outcome of Board Meeting', 'approved fund raising by QIP')
     assert ar.same_filing(a, _cand('bse:1', 'BSE', 'INE1', '2026-10-13T10:05:00+05:30', 'Outcome of Board Meeting', 'QIP fund raising approved'))
