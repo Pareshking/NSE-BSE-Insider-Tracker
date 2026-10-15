@@ -400,3 +400,24 @@ def test_recent_history_coverage_requires_verified_nse_feeds_and_complete_bse_pa
     verified, reason = backfill.recent_history_coverage_verified(r2, today)
     assert verified is False
     assert 'BSE nightly page coverage incomplete' in reason
+
+
+def test_unified_pipeline_keeps_company_queue_until_history_is_fully_collected(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda client, key, body, content_type=None:
+                        client.objects.__setitem__(key, body if isinstance(body, bytes) else str(body).encode()))
+    monkeypatch.setattr(backfill, 'advance_pipeline_history_collection', lambda *args, **kwargs: False)
+    monkeypatch.setattr(backfill, 'run_targeted_company_backfill',
+                        lambda client, isins, *args, **kwargs:
+                        {'companies': len(isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0})
+    today = date(2026, 10, 14)
+    backfill.unified_company_history_stage(r2, {'INE-TARGET'}, today, None, {}, {}, [])
+    state = backfill.read_pipeline_state(r2)
+    assert state['target_isins'] == ['INE-TARGET']
+
+    monkeypatch.setattr(backfill, 'advance_pipeline_history_collection', lambda *args, **kwargs: True)
+    backfill.unified_company_history_stage(r2, set(), today, None, {}, {}, [])
+    state = backfill.read_pipeline_state(r2)
+    assert state['target_isins'] == []
