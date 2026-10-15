@@ -124,6 +124,44 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
 
 
 
+def test_candidates_do_not_pair_generic_zip_documents_as_xbrl():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Resignation of Director/KMP/SMP', 'text': 'Resignation notice',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_ROID_100473_KMP_Doc.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'zip:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Resignation of Director/KMP/SMP', 'text': 'KMP attachment',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_ROID_100473_KMP_Doc.zip',
+         'file_type': 'zip', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:01:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:1', 'content_url'].endswith('X_ROID_100473_KMP_Doc.pdf')
+    assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
+
+
+def test_candidates_reject_ambiguous_exact_subject_xbrl_matches():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results', 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'xml:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured results', 'file_url': 'https://nsearchives.nseindia.com/corporate/X1.xml',
+         'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:01:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'xml:2', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured results', 'file_url': 'https://nsearchives.nseindia.com/corporate/X2.xml',
+         'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:1', 'content_url'].endswith('X.pdf')
+    assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
+
+
 def test_nse_parser_preserves_exchange_supplied_xbrl_url():
     from collectors.nse_events import announcements as nann
     url = 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml'
@@ -156,7 +194,7 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
          'content_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
          'xbrl_source_event_id': 'xbrl:1', 'xbrl_source_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml'},
         {'event_id': 'xbrl:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
-         'subject': 'General Updates-XBRL', 'broadcast_date': '2026-10-14', 'file_type': 'xml',
+         'subject': 'General Updates', 'broadcast_date': '2026-10-14', 'file_type': 'xml',
          'has_xbrl': False, 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
          'content_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
          'xbrl_source_event_id': None, 'xbrl_source_url': None},
@@ -165,7 +203,8 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
     assert audit['candidates'] == 2
     assert audit['has_xbrl_flagged'] == 1
     assert audit['direct_xbrl_urls'] == 1
-    assert audit['xbrl_attachments'] == 1
+    assert audit['xbrl_attachments'] == 1  # XML format counts even without an XBRL subject label
+    assert audit['xbrl_subject_labels'] == 0
     assert audit['xbrl_linked'] == 1
     assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
 
@@ -687,7 +726,7 @@ def test_xbrl_audit_counts_structured_attachments_without_subject_label():
     audit = ar.xbrl_audit(cands)
     assert audit['has_xbrl_flagged'] == 1
     assert audit['structured_attachments'] == 1
-    assert audit['xbrl_attachments'] == 0
+    assert audit['xbrl_attachments'] == 1  # XML format is a positive signal without a subject label
     assert audit['xbrl_subject_labels'] == 0
 
 
