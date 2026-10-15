@@ -753,6 +753,31 @@ def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl
 
 
 
+def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_pdf_is_unique():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:litigation', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
+         'company': 'Bharat Coking Coal Limited',
+         'subject': 'Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company',
+         'text': 'Litigation disclosure',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_14102026164107_litigation_announcement_signed.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T16:41:07+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100383:abc123', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
+         'company': 'Bharat Coking Coal Limited', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'text': 'XBRL companion metadata',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.zip',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.zip',
+         'broadcast_at': '2026-10-14T16:41:07+05:30', 'broadcast_date': '2026-10-14',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:pdf:litigation']
+    xbrl = out.loc['nse:xbrl:equities:100383:abc123']
+    assert pdf['content_url'].endswith('BCCL_ROID_100383_KMP_Doc.zip')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'
+
+
 def test_dedicated_xbrl_feed_row_is_used_as_fast_path_without_duplicate_candidate():
     rows = pd.DataFrame([
         {'event_id': 'nse:pdf:1', 'symbol': 'MARATHON', 'isin': 'INE182D01010',
