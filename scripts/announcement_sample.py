@@ -30,6 +30,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 import time
 import zipfile
 from datetime import datetime
@@ -344,15 +345,78 @@ def document(url: str, session=None) -> tuple[str, list[str]]:
     return text_of(download(url, session))
 
 
+def xbrl_text(data: bytes) -> str:
+    """Turn an XBRL instance into source-backed facts; return empty for non-XBRL or invalid XML."""
+    try:
+        root = ET.fromstring(data)
+    except (ET.ParseError, ValueError, TypeError):
+        return ''
+
+    def local(tag):
+        return str(tag).rsplit('}', 1)[-1].split(':')[-1]
+
+    contexts, units = {}, {}
+    for node in root.iter():
+        kind = local(node.tag)
+        if kind == 'context':
+            ident = node.attrib.get('id')
+            if ident:
+                dates = [f'{local(child.tag)}={str(child.text or "").strip()}'
+                         for child in node.iter() if local(child.tag) in ('startDate', 'endDate', 'instant')]
+                if dates:
+                    contexts[ident] = ', '.join(dates)
+        elif kind == 'unit':
+            ident = node.attrib.get('id')
+            measures = [str(child.text or '').strip() for child in node.iter() if local(child.tag) == 'measure']
+            if ident and measures:
+                units[ident] = ' * '.join(measures)
+
+    facts = []
+    excluded = {'context', 'unit', 'schemaRef', 'roleRef', 'arcroleRef', 'footnote', 'period', 'entity'}
+    for node in root.iter():
+        context_ref = node.attrib.get('contextRef')
+        if not context_ref or local(node.tag) in excluded:
+            continue
+        value = ' '.join(''.join(node.itertext()).split())
+        if not value:
+            continue
+        context = contexts.get(context_ref, context_ref)
+        unit_ref = node.attrib.get('unitRef')
+        unit = units.get(unit_ref, unit_ref) if unit_ref else None
+        line = f'{local(node.tag)} = {value} [context: {context}'
+        if unit:
+            line += f'; unit: {unit}'
+        if node.attrib.get('decimals'):
+            line += f'; decimals: {node.attrib["decimals"]}'
+        facts.append(line + ']')
+    if not facts:
+        return ''
+    return 'XBRL FACTS (exchange-provided structured data; use exact values and contexts):\n' + '\n'.join(facts)
+
+
 def text_of(data: bytes) -> tuple[str, list[str]]:
+    """Prefer usable XBRL facts in XML or ZIP attachments; fall back to PDF text when absent or invalid."""
     notes = [f'{len(data) / 1024 ** 2:.1f} MB']
+    text = ''
     if data[:2] == b'PK':
         z = zipfile.ZipFile(io.BytesIO(data))
-        pdfs = sorted(n for n in z.namelist() if n.lower().endswith('.pdf'))
-        notes.append(f'zip: {len(pdfs)} PDFs of {len(z.namelist())} entries')
-        text = '\n'.join(f'=== file: {n} ===\n{pdf_text(z.read(n))}' for n in pdfs)
+        names = z.namelist()
+        for name in sorted(n for n in names if n.lower().endswith(('.xml', '.xbrl'))):
+            structured = xbrl_text(z.read(name))
+            if structured:
+                text = structured
+                notes.append(f'xbrl: {name}; {len(structured.splitlines()) - 1} structured facts; preferred over PDF')
+                break
+        if not text:
+            pdfs = sorted(n for n in names if n.lower().endswith('.pdf'))
+            notes.append(f'zip: {len(pdfs)} PDFs of {len(names)} entries')
+            text = '\n'.join(f'=== file: {n} ===\n{pdf_text(z.read(n))}' for n in pdfs)
     else:
-        text = pdf_text(data)
+        text = xbrl_text(data) if data.lstrip().startswith(b'<') else ''
+        if text:
+            notes.append(f'xbrl: standalone XML; {len(text.splitlines()) - 1} structured facts')
+        else:
+            text = pdf_text(data)
     if not text.strip():
         notes.append('no text layer (scanned?)')
     if len(text) > MAX_CHARS:

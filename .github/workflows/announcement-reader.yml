@@ -1,20 +1,14 @@
-name: Announcement reader
+name: Unified announcement pipeline
 
-# Today's useful NSE and BSE filings read by the lanes of scripts/announcement_readers.txt, every value
-# checked against its quote (scripts/announcement_reader.py, docs/ANNOUNCEMENT_READER.md). Writes
-# archive/announcement_reads/, clean/current/announcement_reads.parquet and the day's usage log in
-# clean/reports/announcement_reader/. Every 15 minutes through the day (filings come at all hours), each
-# filing saved as soon as it is read.
-# On a PR: three filings read, nothing written, and only when the reader's own files change in the push.
-# Continuous on main: each run starts the next when it ends (job "next", workflow_dispatch, which GitHub
-# lets a workflow start with its own token), at least 10 minutes after the last one started, 30 after a
-# failure. The schedule below only restarts the chain if it stops (GitHub's schedules start late and
-# sometimes not at all). To pause the live chain, cancel the running workflow and stop the next run.
+# One serialized workflow handles current NSE/BSE announcements and targeted company history.
+# Historical AI reads are triggered only by eligible companies with current announcements; source collection
+# advances by one verified date per run through yesterday. This replaces the separate announcement collector
+# and backfill workflows. Current cards are never held hostage by historical or model-quota failures.
 on:
   workflow_dispatch:
     inputs:
       max:
-        description: 'Read at most this many filings (empty = as many as the time allows)'
+        description: 'Read at most this many current filings (empty = as many as the time allows)'
         required: false
         default: ''
       prompt_variant:
@@ -32,20 +26,37 @@ on:
         default: false
   schedule:
     - cron: '7,22,37,52 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/announcement_reader.py'
+      - 'scripts/announcement_backfill.py'
+      - 'scripts/announcement_sample.py'
+      - 'scripts/announcement_readers.txt'
+      - 'collectors/nse_events/run_daily.py'
+      - 'tests/test_announcement_reader.py'
+      - 'tests/test_announcement_backfill.py'
+      - '.github/workflows/announcement-reader.yml'
   pull_request:
     paths:
       - 'scripts/announcement_reader.py'
-      - 'scripts/announcement_sample.py'   # its prompts, model clients and checks
+      - 'scripts/announcement_backfill.py'
+      - 'scripts/announcement_sample.py'
       - 'scripts/announcement_readers.txt'
+      - 'collectors/nse_events/run_daily.py'
+      - 'tests/test_announcement_reader.py'
+      - 'tests/test_announcement_backfill.py'
       - '.github/workflows/announcement-reader.yml'
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
-  # Keep production serialized, but isolate non-main manual experiments from the live chain.
-  group: announcement-reader-${{ github.event_name == 'pull_request' && 'pr' || (github.ref == 'refs/heads/main' && 'live' || github.ref_name) }}
-  cancel-in-progress: false   # a run in progress finishes; a newer pending run replaces the older one
+  # One production pipeline; experiments on PRs/branches remain isolated.
+  group: ${{ github.event_name == 'pull_request' && 'announcement-pipeline-pr' || (github.ref == 'refs/heads/main' && 'nse-announcements' || github.ref_name) }}
+  # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   read:
@@ -56,6 +67,22 @@ jobs:
     steps:
       - id: start
         run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Stop competing announcement workflows
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for workflow in announcement-reader.yml announcements.yml announcement-history-backfill.yml; do
+            for status in queued in_progress; do
+              ids=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --status "$status" --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
+              for id in $ids; do
+                # Never cancel the run performing this cleanup; cancel older queued/live copies.
+                [ "$id" = "$GITHUB_RUN_ID" ] && continue
+                echo "Cancelling competing announcement workflow $workflow run $id"
+                gh run cancel "$id" --repo "$GITHUB_REPOSITORY" || true
+              done
+            done
+          done
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -65,22 +92,10 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           before="${{ github.event.before }}"
           if [ -z "$before" ] || ! git cat-file -e "$before" 2>/dev/null; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|sample)\.py|scripts/announcement_readers\.txt|\.github/workflows/announcement-reader\.yml)$'; then
+          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|backfill|sample)[.]py|scripts/announcement_readers[.]txt|collectors/nse_events/run_daily[.]py|tests/test_announcement_(reader|backfill)[.]py|[.]github/workflows/announcement-reader[.]yml)$'; then
             echo "go=1" >> "$GITHUB_OUTPUT"
           else
-            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The reader's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Determine IST operating mode
-        id: schedule_mode
-        if: steps.changed.outputs.go == '1' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: |
-          hour="$(TZ=Asia/Kolkata date +%H)"
-          if (( 10#$hour >= 20 || 10#$hour < 10 )); then
-            echo "mode=backfill" >> "$GITHUB_OUTPUT"
-            echo "Night schedule (IST hour=$hour): historical backfill only; live collection is disabled."
-          else
-            echo "mode=live" >> "$GITHUB_OUTPUT"
-            echo "Day schedule (IST hour=$hour): live collection only; historical backfill is disabled."
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/setup-python@v5
         if: steps.changed.outputs.go == '1'
@@ -94,14 +109,14 @@ jobs:
         run: |
           echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
           exit 1
-      - name: Read
-        if: steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || steps.schedule_mode.outputs.mode == 'live')
+      - name: Read unified pipeline
+        if: steps.changed.outputs.go == '1'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          READER_MINUTES: '11'   # stop taking new filings after 11 minutes, so a run ends before the next starts
+          READER_MINUTES: '11'
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -111,40 +126,22 @@ jobs:
           CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
         run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
-      - name: Read historical announcements (night schedule only)
-        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.schedule_mode.outputs.mode == 'backfill'
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CARD_PROMPT_VARIANT: v2
-          CARD_PROMPT_COMPARE: '0'
-        run: |
-          set -euo pipefail
-          batch_size=8
-          max_batches=4
-          batch_minutes=3
-          echo "Night schedule: historical backfill only; batch_size=$batch_size, max_batches=$max_batches, batch_minutes=$batch_minutes"
-          echo "Live collection is disabled during the night window. Provider daily-call budgets and quota circuit breakers remain active."
-          python -u scripts/announcement_backfill.py --continuous --batch-size "$batch_size" --batch-minutes "$batch_minutes" --max-batches "$max_batches"
 
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
         with:
-          name: announcement-reader-dry-run
-          path: announcement_reader_dry_run.json
+          name: announcement-pipeline-dry-run
+          path: |
+            announcement_reader_dry_run.json
+            announcement_reader_xbrl_audit.json
           if-no-files-found: ignore
 
   next:
-    # Keep the production chain running on main; PR and experimental branch runs never start the chain.
+    # Keep the unified pipeline running on main; PR and experimental branch runs never start the chain.
     needs: read
     if: >-
       ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+          && !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)
           && needs.read.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -162,4 +159,4 @@ jobs:
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
           gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false
-          echo "next live v2 run requested" >> "$GITHUB_STEP_SUMMARY"
+          echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"

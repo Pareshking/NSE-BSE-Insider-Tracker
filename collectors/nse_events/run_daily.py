@@ -117,15 +117,18 @@ def merge_into_archive(r2, stream, new: pd.DataFrame, run_date: str) -> tuple[pd
 def security_master(r2, run_date: str, notes: list) -> SecurityMaster:
     vr_path = ROOT / SECURITY_MASTER_PATH
     vr = pd.read_csv(vr_path, dtype=str, keep_default_na=False) if vr_path.exists() else None
-    mcap_rows = []
+    mcap_rows, cap_as_of = [], None
     day = date.fromisoformat(run_date)
     for back in range(11):
-        body = get(r2, f'reference/market_cap/{(day - timedelta(days=back)).isoformat()}/data.json')
+        candidate_day = day - timedelta(days=back)
+        body = get(r2, f'reference/market_cap/{candidate_day.isoformat()}/data.json')
         if body:
-            mcap_rows = json.loads(body)
+            mcap_rows, cap_as_of = json.loads(body), candidate_day.isoformat()
             break
-    return SecurityMaster(vr_master=vr, nse_list=nse_list_frame(*nse_lists(r2, run_date, notes)),
-                          bse_list=bse_list_frame(mcap_rows), market_cap_rows=mcap_rows)
+    master = SecurityMaster(vr_master=vr, nse_list=nse_list_frame(*nse_lists(r2, run_date, notes)),
+                            bse_list=bse_list_frame(mcap_rows), market_cap_rows=mcap_rows)
+    master.market_cap_as_of = cap_as_of
+    return master
 
 
 def add_identity(df: pd.DataFrame, master: SecurityMaster) -> pd.DataFrame:

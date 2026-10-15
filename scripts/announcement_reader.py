@@ -101,10 +101,11 @@ CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dis
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
-           'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
+           'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
+           'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'market_cap')
+           'seconds', 'read_at', 'headline', 'points', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
@@ -573,32 +574,180 @@ def same_filing(a: dict, b: dict) -> bool:
 
 
 def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd.DataFrame:
-    """Both exchanges' filings in one shape, with ISIN, NSE symbol where there is one, group and market cap."""
+    """Normalize NSE/BSE filings and use a verified related NSE XBRL attachment when available."""
     from collectors.bse import announcements as bann
     from collectors.nse_events import announcements as nann
+
+    def clean(value):
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):
+                return None
+        except (TypeError, ValueError):
+            pass
+        value = str(value).strip()
+        return None if value.casefold() in ('', 'nan', 'none', '<na>') else value
+
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
-        isin = r.get('isin') or (master.resolve('nse', r.get('symbol'))[0] if master else None)
+        symbol = clean(r.get('symbol'))
+        isin = clean(r.get('isin'))
+        if not isin and master and symbol:
+            resolved = master.resolve('nse', symbol)
+            isin = clean(resolved[0] if resolved else None)
+        url = clean(r.get('file_url'))
+        xbrl_url = clean(r.get('xbrl_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
-                     'isin': isin, 'symbol': r.get('symbol'), 'company': r.get('company'),
-                     'subject': r.get('subject'), 'detail': r.get('text'),
-                     'group': nann.group_of(r.get('subject'), r.get('text')), 'file_url': r.get('file_url'),
+                     'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
+                     'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
+                     'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
+                     'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
+                     'xbrl_source_event_id': r['event_id'] if xbrl_url else None,
+                     'xbrl_source_url': xbrl_url, 'market_cap_match': None,
+                     'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     for r in (bse.to_dict('records') if bse is not None else []):
-        isin = master.resolve('bse', r.get('bse_code'))[0] if master and r.get('bse_code') else None
+        bse_code = clean(r.get('bse_code'))
+        resolved = master.resolve('bse', bse_code) if master and bse_code else None
+        isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
+        url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
-                     'symbol': rec.get('nse_symbol') or r.get('bse_code'), 'company': r.get('company'),
-                     'subject': r.get('subcategory') or r.get('category'), 'detail': r.get('headline'),
-                     'group': bann.group_of(r.get('subcategory'), r.get('category')), 'file_url': r.get('file_url'),
+                     'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
+                     'subject': clean(r.get('subcategory')) or clean(r.get('category')), 'detail': clean(r.get('headline')),
+                     'group': bann.group_of(clean(r.get('subcategory')) or clean(r.get('category')), clean(r.get('category'))), 'file_url': url,
+                     'content_url': url, 'xbrl_url': None, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
+                     'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    df['market_cap'] = [((master.record(i) or {}).get('market_cap') if master and i else None) for i in df['isin']]
-    return df
+    # Prefer the exact ISIN's official cap; if that ISIN is absent from the snapshot, retry the
+    # exchange symbol/code mapping. NSE feeds can carry stale ISINs while the listed symbol remains valid.
+    market_caps, cap_matches = [], []
+    def valid_cap(value):
+        number = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
+        return pd.notna(number) and number > 0
+    for row in df.to_dict('records'):
+        isin = clean(row.get('isin'))
+        record = master.record(isin) if master and isin else None
+        cap = record.get('market_cap') if record else None
+        match = 'isin' if valid_cap(cap) else None
+        if not valid_cap(cap) and master:
+            exchange = 'nse' if row.get('exchange') == 'NSE' else 'bse'
+            symbol = clean(row.get('symbol'))
+            resolved = master.resolve(exchange, symbol) if symbol else None
+            mapped_isin = clean(resolved[0] if resolved else None)
+            mapped = master.record(mapped_isin) if mapped_isin else None
+            mapped_cap = mapped.get('market_cap') if mapped else None
+            if valid_cap(mapped_cap):
+                cap, match = mapped_cap, 'exchange_symbol'
+        market_caps.append(cap if valid_cap(cap) else None)
+        cap_matches.append(match)
+    df['market_cap'] = market_caps
+    df['market_cap_match'] = cap_matches
+
+    # NSE exposes hasXbrl on a PDF row, while the related XBRL may arrive as a separate
+    # XML/XBRL announcement. Pair only an explicit hasXbrl=True row with a same-issuer,
+    # same-subject XBRL filing within one calendar day. Never synthesize an exchange URL.
+    def subject_base(value):
+        value = str(value or '').strip().casefold()
+        value = re.sub(r'\s*[-–—]\s*xbrl\s*$', '', value)
+        value = re.sub(r'\s*\(xbrl\)\s*$', '', value)
+        return re.sub(r'[^a-z0-9]+', ' ', value).strip()
+
+    def truthy(value):
+        return str(value).strip().casefold() in ('true', '1', 'yes')
+
+    def day(value):
+        parsed = pd.to_datetime(value, errors='coerce')
+        return None if pd.isna(parsed) else parsed.date()
+
+    records = df.to_dict('records')
+    xbrl_rows = []
+    for idx, row in enumerate(records):
+        if (row.get('exchange') == 'NSE' and str(row.get('file_type') or '').lower() in ('xml', 'xbrl', 'zip')
+                and re.search(r'\bxbrl\b', str(row.get('subject') or ''), re.IGNORECASE)
+                and row.get('file_url')):
+            xbrl_rows.append((idx, row))
+    used_xbrl = set()
+    for idx, row in enumerate(records):
+        if row.get('exchange') != 'NSE' or not truthy(row.get('has_xbrl')):
+            continue
+        if str(row.get('file_type') or '').lower() not in ('pdf', 'zip') or not row.get('file_url'):
+            continue
+        identifier = str(row.get('isin') or row.get('symbol') or '').strip().upper()
+        subject = subject_base(row.get('subject'))
+        broadcast_day = day(row.get('broadcast_date'))
+        if not identifier or not subject or broadcast_day is None:
+            continue
+        matches, nearby_xbrl = [], []
+        for xidx, xrow in xbrl_rows:
+            if xidx in used_xbrl or xidx == idx:
+                continue
+            xidentifier = str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper()
+            xday = day(xrow.get('broadcast_date'))
+            if xidentifier != identifier or xday is None or abs((xday - broadcast_day).days) > 1:
+                continue
+            candidate = (abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow)
+            nearby_xbrl.append(candidate)
+            if subject_base(xrow.get('subject')) == subject:
+                matches.append(candidate)
+        if matches:
+            _, _, xidx, xrow = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+        else:
+            # Subjects can differ between a PDF announcement and its XBRL companion.
+            # Only use a non-exact match when this issuer has exactly one eligible PDF and one
+            # XBRL attachment in the date window; ambiguous pairs fall back to the PDF.
+            other_pdfs = []
+            for pidx, prow in enumerate(records):
+                if pidx == idx or prow.get('exchange') != 'NSE' or not truthy(prow.get('has_xbrl')):
+                    continue
+                if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
+                    continue
+                pidentifier = str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper()
+                pday = day(prow.get('broadcast_date'))
+                if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
+                    other_pdfs.append(pidx)
+            if len(nearby_xbrl) != 1 or other_pdfs:
+                continue
+            _, _, xidx, xrow = nearby_xbrl[0]
+        row['content_url'] = xrow['file_url']
+        row['xbrl_source_event_id'] = xrow.get('event_id')
+        row['xbrl_source_url'] = xrow['file_url']
+        # This XML event now supplies the PDF event's content; suppress a duplicate model read.
+        records[xidx]['group'] = 'routine'
+        used_xbrl.add(xidx)
+    return pd.DataFrame(records)
+
+
+def xbrl_audit(cands: pd.DataFrame | None) -> dict:
+    """Dry-run diagnostics proving whether XBRL companions are present and being used."""
+    if cands is None or cands.empty:
+        return {'candidates': 0, 'has_xbrl_flagged': 0, 'direct_xbrl_urls': 0, 'xbrl_attachments': 0, 'xbrl_linked': 0,
+                'flagged_samples': [], 'direct_xbrl_samples': [], 'attachment_samples': [], 'linked_samples': []}
+    has_flag = cands.get('has_xbrl', pd.Series(index=cands.index, dtype=object)).map(
+        lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
+    subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
+        r'\bxbrl\b', case=False, regex=True)
+    attachment = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
+        ('xml', 'xbrl', 'zip')) & subject_xbrl
+    direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
+        lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
+    linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
+    fields = [field for field in ('event_id', 'exchange', 'symbol', 'isin', 'subject', 'broadcast_date',
+                                  'file_type', 'has_xbrl', 'file_url', 'content_url', 'xbrl_url',
+                                  'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
+    def sample(mask):
+        return cands.loc[mask, fields].head(50).to_dict('records')
+    return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
+            'direct_xbrl_urls': int(direct.sum()), 'xbrl_attachments': int(attachment.sum()),
+            'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
+            'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
+            'linked_samples': sample(linked)}
 
 
 def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
@@ -618,13 +767,14 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     finished = set()
     tries = {}
     if done is not None and not done.empty:
+        retryable = done['status'].isin(('failed', 'market_cap_unverified'))
         failed = done['status'] == 'failed'
-        # a read (or a copy of one) made with an older prompt is read again once, so its card has every part
+        # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
             (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
-        finished = set(done.loc[(~failed & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        finished = set(done.loc[(~retryable & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
-    keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip'])
+    keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
     c = c[keep & ~c['event_id'].isin(finished)]
     counts['already_done'] = int(keep.sum()) - len(c)
@@ -634,9 +784,13 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     earlier = [] if done is None or done.empty else done[done['status'].isin(('read',) + COPY_STATUSES)] \
         .to_dict('records')
     for r in c.sort_values('broadcast_at').to_dict('records'):   # oldest first, so the first copy is read
-        mcap = r.get('market_cap')
-        if mcap is not None and pd.notna(mcap) and mcap < MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.0f} Cr'})
+        mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
+        if pd.isna(mcap) or mcap <= 0:
+            status_rows.append({**r, 'status': 'market_cap_unverified',
+                                'reason': 'no verified market-cap value in the latest snapshot dated on or before yesterday'})
+            continue
+        if mcap < MIN_MCAP:
+            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr'})
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
@@ -644,6 +798,7 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
             continue
         read_rows.append(r)
     counts['below_100_cr'] = sum(x['status'] == 'below_100_cr' for x in status_rows)
+    counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
     if not to_read.empty:
@@ -767,8 +922,17 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 'read_at': datetime.now(timezone.utc).isoformat()}
         log('---', row['exchange'], row.get('symbol'), row.get('subject'))
         try:
-            data = fetch(row['file_url'])
+            content_url = row.get('content_url') or row['file_url']
+            data = fetch(content_url)
             doc, doc_notes = s.text_of(data)
+            # If the linked structured attachment is invalid/incomplete, fall back to the original PDF.
+            if content_url != row['file_url'] and not any(str(note).lower().startswith('xbrl:') for note in doc_notes):
+                xbrl_error = '; '.join(doc_notes)[:180]
+                fallback_data = fetch(row['file_url'])
+                fallback_doc, fallback_notes = s.text_of(fallback_data)
+                if fallback_doc.strip():
+                    data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
+                    content_url = row['file_url']
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
@@ -777,7 +941,10 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 base['tries'] = MAX_TRIES
                 reason = f'{reason} (permanent missing document; no retry)'
             return finish({**base, 'status': 'failed', 'reason': reason})
-        base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()), text_chars=len(doc))
+        source_format = ('xbrl' if any(str(note).lower().startswith('xbrl:') for note in doc_notes)
+                         else 'zip' if data[:2] == b'PK' else 'pdf')
+        base.update(content_url=content_url, file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
+                    text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
         with lock:
@@ -1141,7 +1308,10 @@ def main(argv=None):
     if r2 is not None:
         from collectors.nse_events.run_daily import security_master
         try:
-            master = security_master(r2, today.isoformat(), setup)
+            cap_as_of = today - timedelta(days=1)  # last available exchange snapshot on or before yesterday
+            master = security_master(r2, cap_as_of.isoformat(), setup)
+            log(f'market-cap eligibility snapshot requested as of {cap_as_of.isoformat()} or earlier; '
+                f'actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
@@ -1151,7 +1321,41 @@ def main(argv=None):
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
-    to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
+    current_candidates = candidates(nse, bse, master)
+    to_read, status_rows, counts = choose(current_candidates, done, today)
+
+    # One integrated pipeline: queue companies with eligible announcements, collect one verified
+    # historical source date, and AI-read only queued companies' historical filings before today's reads.
+    # Historical collection/AI errors are recorded but must not suppress current-day cards.
+    if r2 is not None and not args.dry_run:
+        from announcement_backfill import unified_company_history_stage
+        current_isins = set()
+        if not current_candidates.empty and 'isin' in current_candidates:
+            broadcast_dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
+            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
+                                  errors='coerce').fillna(0)
+            eligible_today = current_candidates[
+                (broadcast_dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+            ]
+            current_isins.update(eligible_today['isin'].dropna().astype(str))
+        if not to_read.empty and 'isin' in to_read:
+            current_isins.update(to_read['isin'].dropna().astype(str))
+        try:
+            history_result = unified_company_history_stage(
+                r2, current_isins, today, master, lanes, clients, setup,
+                batch_size=8, batch_minutes=2.0,
+            )
+            log('unified company-history stage', json.dumps(history_result, default=str))
+            # Historical rows were persisted through the same canonical event archive. Refresh today's done
+            # set and then attach the newly enriched, source-linked company memory to the live prompt.
+            done = load_archive(r2, READS_PREFIX, today)
+            to_read, status_rows, counts = choose(current_candidates, done, today)
+        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day processing
+            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
+            setup.append(message)
+            log(message)
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
@@ -1169,6 +1373,10 @@ def main(argv=None):
     if args.dry_run:
         Path('announcement_reader_dry_run.json').write_text(json.dumps(rows, indent=1, ensure_ascii=False, default=str),
                                                             encoding='utf-8')
+        xbrl_report = xbrl_audit(current_candidates)
+        Path('announcement_reader_xbrl_audit.json').write_text(
+            json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+        log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'direct_xbrl_urls', 'xbrl_attachments', 'xbrl_linked')}))
         return 0
     saver.pending += status
     saver.flush(final=True)

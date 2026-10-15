@@ -475,6 +475,250 @@ def read_state(r2) -> dict:
         raise RuntimeError('Backfill checkpoint is not valid JSON; refusing to overwrite it')
 
 
+
+# The integrated reader owns both current announcements and company-triggered historical work.
+PIPELINE_STATE_KEY = 'archive/announcement_pipeline/state.json'
+
+
+def read_pipeline_state(r2) -> dict:
+    """Read the unified pipeline's independent, resumable collection/company queue."""
+    from clean_writer import get
+    raw = get(r2, PIPELINE_STATE_KEY)
+    if not raw:
+        return {'schema_version': 1, 'collection_next_date': START_DEFAULT.isoformat(),
+                'target_isins': [], 'status': 'running'}
+    try:
+        state = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError('Unified announcement pipeline checkpoint is invalid JSON') from exc
+    if not isinstance(state, dict):
+        raise RuntimeError('Unified announcement pipeline checkpoint must be a JSON object')
+    state.setdefault('collection_next_date', START_DEFAULT.isoformat())
+    state.setdefault('target_isins', [])
+    return state
+
+
+def save_pipeline_state(r2, state: dict) -> None:
+    from clean_writer import put
+    state['updated_at'] = datetime.now(timezone.utc).isoformat()
+    put(r2, PIPELINE_STATE_KEY, json.dumps(state, indent=2, default=str).encode(), 'application/json')
+
+
+
+def recent_history_coverage_verified(r2, today: date) -> tuple[bool, str]:
+    """Verify the nightly collectors cover the three dates adjacent to the historical cursor."""
+    from clean_writer import get
+    report_day = today - timedelta(days=1)  # the nightly 22:45 IST collector ran on this date
+    start, end = today - timedelta(days=3), report_day
+    nse_raw = get(r2, f'clean/reports/announcements/{report_day.isoformat()}.json')
+    bse_raw = get(r2, f'clean/reports/announcements_bse/{report_day.isoformat()}.json')
+    if not nse_raw or not bse_raw:
+        return False, f'missing nightly NSE/BSE collection reports for {report_day}'
+    try:
+        nse_report, bse_report = json.loads(nse_raw), json.loads(bse_raw)
+    except (TypeError, ValueError):
+        return False, f'invalid nightly NSE/BSE collection report for {report_day}'
+    expected_window = [start.isoformat(), end.isoformat()]
+    if nse_report.get('window') != expected_window or nse_report.get('notes'):
+        return False, f'NSE nightly coverage not certified for {expected_window}'
+    for market in ('equities', 'sme'):
+        if not any(call.get('market') == market and call.get('from') == expected_window[0]
+                   and call.get('to') == expected_window[1] for call in nse_report.get('calls', [])):
+            return False, f'NSE {market} nightly coverage missing for {expected_window}'
+    if bse_report.get('window') != expected_window or bse_report.get('notes'):
+        return False, f'BSE nightly coverage not certified for {expected_window}'
+    days = {item.get('day'): item for item in bse_report.get('days', [])}
+    for offset in range(3):
+        day = (start + timedelta(days=offset)).isoformat()
+        item = days.get(day)
+        if (not item or item.get('short') or item.get('bse_count') is None
+                or int(item.get('unique') or 0) != int(item['bse_count'])):
+            return False, f'BSE nightly page coverage incomplete for {day}'
+    return True, ''
+
+
+def advance_pipeline_history_collection(r2, today: date, state: dict, notes: list[str]) -> bool:
+    """Collect one historical date per unified run; this is source collection, never market-wide AI reading.
+
+    A date cursor advances only after the existing two-exchange verifier certifies NSE + BSE. Failures
+    are checkpointed and surfaced but do not prevent current announcements from being read.
+    """
+    cutoff = today - timedelta(days=1)  # certify through yesterday; this workflow itself collects that date
+    try:
+        pointer = date.fromisoformat(str(state.get('collection_next_date') or START_DEFAULT.isoformat()))
+    except (TypeError, ValueError):
+        pointer = START_DEFAULT
+    if pointer < START_DEFAULT:
+        pointer = START_DEFAULT
+    while pointer <= cutoff and historical_day_collected(r2, pointer):
+        pointer += timedelta(days=1)
+    if pointer > cutoff:
+        # Every date from 2026-01-01 through yesterday has its own verified NSE+BSE marker.
+        # No separate nightly collector or report is required to declare the archive complete.
+        state.update(collection_next_date=pointer.isoformat(), collection_complete=True,
+                     collection_cutoff=cutoff.isoformat(), collection_last_error=None,
+                     recent_coverage_error=None)
+        save_pipeline_state(r2, state)
+        return True
+
+    state.update(collection_complete=False, collection_next_date=pointer.isoformat(),
+                 collection_cutoff=cutoff.isoformat(), collection_attempted_date=pointer.isoformat())
+    save_pipeline_state(r2, state)
+    try:
+        collect_historical_day(r2, pointer)
+        if not historical_day_collected(r2, pointer):
+            raise RuntimeError('collector returned without a verified NSE+BSE checkpoint')
+    except Exception as exc:  # noqa: BLE001 -- keep the current-day reader available
+        message = f'historical source collection {pointer}: {type(exc).__name__}: {exc}'[:500]
+        state['collection_last_error'] = message
+        save_pipeline_state(r2, state)
+        notes.append(message)
+        return False
+
+    next_day = pointer + timedelta(days=1)
+    complete = next_day > cutoff
+    state.update(collection_next_date=next_day.isoformat(), collection_last_error=None,
+                 collection_last_success=pointer.isoformat(), collection_complete=complete,
+                 recent_coverage_error=None)
+    save_pipeline_state(r2, state)
+    print(f'Unified pipeline: verified historical source collection for {pointer}; next={next_day}; '
+          f'full_range_complete={complete}.', flush=True)
+    return complete
+
+
+def _month_range(start: date, end: date) -> list[str]:
+    if end < start:
+        return []
+    month = start.replace(day=1)
+    last = end.replace(day=1)
+    out = []
+    while month <= last:
+        out.append(month.strftime('%Y-%m'))
+        month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+    return out
+
+
+
+def filter_target_company_history(candidates: pd.DataFrame, target_isins: set[str],
+                                  start: date, end: date) -> pd.DataFrame:
+    """Restrict historical AI candidates to target ISINs and an inclusive date range."""
+    if candidates is None or candidates.empty or 'isin' not in candidates or 'broadcast_date' not in candidates:
+        return pd.DataFrame() if candidates is None else candidates.iloc[0:0].copy()
+    target = {str(x).strip() for x in target_isins if x is not None and str(x).strip()}
+    dates = pd.to_datetime(candidates['broadcast_date'], errors='coerce').dt.date
+    return candidates[
+        candidates['isin'].astype(str).isin(target) & (dates >= start) & (dates <= end)
+    ].copy()
+
+
+def run_targeted_company_backfill(r2, target_isins: set[str], today: date, master, lanes: dict,
+                                  clients: dict, setup: list[str], *, batch_size: int = 8,
+                                  batch_minutes: float = 2.0, dry_run: bool = False) -> dict:
+    """Read only historical filings belonging to companies with current announcements or a saved target.
+
+    Existing source archives are queried month-by-month. Historical reads remain idempotent through the
+    canonical event_id read archive; company memory is updated only from verified read rows. The target
+    queue is retained until source collection is complete, because later collection dates may reveal more
+    history for the same company.
+    """
+    if dry_run or r2 is None:
+        return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': None}
+    clean_isins = {str(x).strip() for x in target_isins
+                   if x is not None and str(x).strip().lower() not in ('', 'nan', 'none')}
+    if not clean_isins:
+        return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': 0}
+
+    end = today - timedelta(days=1)
+    start = START_DEFAULT
+    if end < start:
+        return {'companies': len(clean_isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0}
+
+    # Use the caller's live R2 client and its already-configured lanes/quota ledger.
+    candidates_parts, reads_parts = [], []
+    for month in _month_range(start, end):
+        nse = month_parquet(r2, 'archive/announcements/nse/', month)
+        bse = month_parquet(r2, 'archive/announcements/bse/', month)
+        if nse.empty and bse.empty:
+            continue
+        frame = ar.candidates(nse, bse, master)
+        frame = filter_target_company_history(frame, clean_isins, start, end)
+        if frame.empty:
+            continue
+        candidates_parts.append(frame)
+        done_month = month_parquet(r2, ar.READS_PREFIX, month)
+        if not done_month.empty and 'isin' in done_month:
+            reads_parts.append(done_month[done_month['isin'].astype(str).isin(clean_isins)].copy())
+
+    candidates = pd.concat(candidates_parts, ignore_index=True) if candidates_parts else pd.DataFrame()
+    reads = pd.concat(reads_parts, ignore_index=True) if reads_parts else pd.DataFrame()
+    if candidates.empty:
+        return {'companies': len(clean_isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0}
+
+    # Only target ISINs can enter the model. Prefer the newest historical events so the current prompt gets
+    # useful recent context first; add_memory_context still excludes events later than each historical filing.
+    to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=start, date_to=end)
+    to_read = to_read.sort_values(['broadcast_date', 'broadcast_at'], ascending=False) if not to_read.empty else to_read
+    if not to_read.empty:
+        to_read = add_memory_context(r2, to_read)
+    saver = ar.Saver(r2, today.isoformat(), today)
+    rows, run_notes = ar.run(to_read, lanes, reads, batch_minutes * 60,
+                             max_filings=batch_size, on_row=saver.add)
+    statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
+                           'read_at': datetime.now(timezone.utc).isoformat()})
+                for row in status_rows.to_dict('records')] if status_rows is not None else []
+    saver.pending.extend(statuses)
+    saver.flush(final=True)
+    persisted = rows + statuses
+    memories_written = upsert_company_memories(r2, persisted)
+    # Recount from the just-updated source-of-truth frames; don't infer completion from attempted batch size.
+    updated_reads = pd.concat([reads, pd.DataFrame(persisted)], ignore_index=True) if persisted else reads
+    remaining_rows, _, _ = ar.choose(candidates, updated_reads, today, date_from=start, date_to=end)
+    result = {'companies': len(clean_isins), 'historical_candidates': len(candidates),
+              'selected': len(to_read), 'read': sum(1 for row in rows if row.get('status') == 'read'),
+              'remaining': len(remaining_rows), 'memory_companies_updated': memories_written,
+              'outcomes': pd.Series([r.get('status') for r in persisted]).value_counts().to_dict()
+              if persisted else {}, 'counts': counts, 'notes': run_notes}
+    print('Targeted historical company reads: ' + json.dumps(result, default=str), flush=True)
+    if os.environ.get('GITHUB_STEP_SUMMARY'):
+        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+            f.write('### Targeted company history\n\n' +
+                    '\n'.join(f'- **{k}:** {v}' for k, v in result.items()) + '\n')
+    return result
+
+
+def unified_company_history_stage(r2, current_isins: set[str], today: date, master, lanes: dict,
+                                  clients: dict, setup: list[str], *, batch_size: int = 8,
+                                  batch_minutes: float = 2.0, dry_run: bool = False) -> dict:
+    """Queue today's announcing companies, advance source collection, then AI-read only queued companies."""
+    if dry_run or r2 is None:
+        return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': None}
+    state = read_pipeline_state(r2)
+    queue = {str(x).strip() for x in state.get('target_isins', [])
+             if x is not None and str(x).strip().lower() not in ('', 'nan', 'none')}
+    queue.update(str(x).strip() for x in current_isins
+                 if x is not None and str(x).strip().lower() not in ('', 'nan', 'none'))
+    state['target_isins'] = sorted(queue)
+    state['last_current_companies'] = sorted(current_isins)
+    state['last_current_date'] = today.isoformat()
+    save_pipeline_state(r2, state)
+
+    # Keep the historical source archive progressing inside this same workflow; no separate night worker.
+    complete = advance_pipeline_history_collection(r2, today, state, setup)
+    state = read_pipeline_state(r2)
+    result = run_targeted_company_backfill(r2, queue, today, master, lanes, clients, setup,
+                                           batch_size=batch_size, batch_minutes=batch_minutes, dry_run=False)
+
+    # Retire a company only after all historical source dates are collected and its eligible queue is empty.
+    if complete and result.get('remaining') == 0:
+        state['target_isins'] = []
+        state['completed_target_companies_at'] = datetime.now(timezone.utc).isoformat()
+    else:
+        state['target_isins'] = sorted(queue)
+    state['last_targeted_history'] = result
+    save_pipeline_state(r2, state)
+    return result
+
+
 def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
                  max_batches: int, dry_run: bool = False, month_only: bool = False,
                  nse_only: bool = False) -> int:

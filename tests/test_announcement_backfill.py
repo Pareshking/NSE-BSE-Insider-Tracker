@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
+import pytest
 
 import announcement_backfill as backfill
 import announcement_reader as ar
@@ -20,6 +21,18 @@ def _candidate(eid, day, isin='INE000A01001', status=None):
         'broadcast_at': f'{day}T10:00:00+05:30', 'broadcast_date': day,
         'market_cap': 50_000_000_000, 'status': status, 'tries': 0,
     }
+
+
+def test_unified_history_completion_does_not_depend_on_nightly_collector(monkeypatch):
+    today = date(2026, 10, 15)
+    r2 = FakeR2()
+    state = {'collection_next_date': (today - timedelta(days=1)).isoformat()}
+    monkeypatch.setattr(backfill, 'historical_day_collected', lambda *_: True)
+    monkeypatch.setattr(backfill, 'recent_history_coverage_verified',
+                        lambda *_: pytest.fail('unified pipeline must not depend on a separate nightly workflow'))
+    assert backfill.advance_pipeline_history_collection(r2, today, state, []) is True
+    assert state['collection_complete'] is True
+    assert state['collection_cutoff'] == '2026-10-14'
 
 
 def test_continuous_worker_uses_only_checkpointed_completed_months():
@@ -304,3 +317,120 @@ def test_next_unfinished_history_day_reopens_legacy_nse_only_completion():
     assert backfill.next_unfinished_history_day(
         r2, date(2026, 1, 1), date(2026, 1, 3), {'next_history_date': '2026-01-03'}
     ) == date(2026, 1, 1)
+
+
+def test_targeted_history_filter_only_keeps_target_isins_and_inclusive_dates():
+    frame = pd.DataFrame([
+        _candidate('target-start', '2026-01-01', 'INE-TARGET'),
+        _candidate('other-company', '2026-03-01', 'INE-OTHER'),
+        _candidate('target-inside', '2026-05-12', 'INE-TARGET'),
+        _candidate('target-end', '2026-10-14', 'INE-TARGET'),
+        _candidate('target-before', '2025-12-31', 'INE-TARGET'),
+        _candidate('target-after', '2026-10-15', 'INE-TARGET'),
+    ])
+    selected = backfill.filter_target_company_history(
+        frame, {'INE-TARGET'}, date(2026, 1, 1), date(2026, 10, 14))
+    assert set(selected['event_id']) == {'target-start', 'target-inside', 'target-end'}
+    assert set(selected['isin']) == {'INE-TARGET'}
+
+
+def test_unified_pipeline_collection_cursor_advances_one_verified_day_per_run(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda client, key, body, content_type=None:
+                        client.objects.__setitem__(key, body if isinstance(body, bytes) else str(body).encode()))
+    collected = set()
+    monkeypatch.setattr(backfill, 'historical_day_collected',
+                        lambda client, day: day.isoformat() in collected)
+
+    def collect_one(client, day):
+        collected.add(day.isoformat())
+
+    monkeypatch.setattr(backfill, 'collect_historical_day', collect_one)
+    monkeypatch.setattr(backfill, 'recent_history_coverage_verified', lambda client, today: (True, ''))
+    today = date(2026, 1, 3)  # cutoff is yesterday (Jan 2): one historical date per call
+    state = backfill.read_pipeline_state(r2)
+    assert backfill.advance_pipeline_history_collection(r2, today, state, []) is False
+    state = backfill.read_pipeline_state(r2)
+    assert state['collection_next_date'] == '2026-01-02'
+    assert collected == {'2026-01-01'}
+
+    assert backfill.advance_pipeline_history_collection(r2, today, state, []) is True
+    state = backfill.read_pipeline_state(r2)
+    assert state['collection_next_date'] == '2026-01-03'
+    assert state['collection_complete'] is True
+    assert collected == {'2026-01-01', '2026-01-02'}
+
+
+def test_unified_pipeline_collection_failure_keeps_cursor_for_retry(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda client, key, body, content_type=None:
+                        client.objects.__setitem__(key, body if isinstance(body, bytes) else str(body).encode()))
+    monkeypatch.setattr(backfill, 'historical_day_collected', lambda client, day: False)
+
+    def fail_collection(client, day):
+        raise RuntimeError('BSE report unavailable')
+
+    monkeypatch.setattr(backfill, 'collect_historical_day', fail_collection)
+    notes = []
+    state = backfill.read_pipeline_state(r2)
+    assert backfill.advance_pipeline_history_collection(r2, date(2026, 1, 5), state, notes) is False
+    saved = backfill.read_pipeline_state(r2)
+    assert saved['collection_next_date'] == '2026-01-01'
+    assert saved['collection_last_error'].endswith('BSE report unavailable')
+    assert notes and 'historical source collection 2026-01-01' in notes[0]
+
+
+def test_recent_history_coverage_requires_verified_nse_feeds_and_complete_bse_pages(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    today = date(2026, 1, 5)
+    report_day = '2026-01-04'
+    window = ['2026-01-02', '2026-01-04']
+    r2.objects[f'clean/reports/announcements/{report_day}.json'] = json.dumps({
+        'window': window, 'notes': [],
+        'calls': [
+            {'market': 'equities', 'from': window[0], 'to': window[1]},
+            {'market': 'sme', 'from': window[0], 'to': window[1]},
+        ],
+    }).encode()
+    r2.objects[f'clean/reports/announcements_bse/{report_day}.json'] = json.dumps({
+        'window': window, 'notes': [],
+        'days': [{'day': day, 'bse_count': 10, 'unique': 10, 'short': False}
+                 for day in ('2026-01-02', '2026-01-03', '2026-01-04')],
+    }).encode()
+    assert backfill.recent_history_coverage_verified(r2, today) == (True, '')
+
+    report = json.loads(r2.objects[f'clean/reports/announcements_bse/{report_day}.json'])
+    report['days'][1]['short'] = True
+    r2.objects[f'clean/reports/announcements_bse/{report_day}.json'] = json.dumps(report).encode()
+    verified, reason = backfill.recent_history_coverage_verified(r2, today)
+    assert verified is False
+    assert 'BSE nightly page coverage incomplete' in reason
+
+
+def test_unified_pipeline_keeps_company_queue_until_history_is_fully_collected(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda client, key, body, content_type=None:
+                        client.objects.__setitem__(key, body if isinstance(body, bytes) else str(body).encode()))
+    monkeypatch.setattr(backfill, 'advance_pipeline_history_collection', lambda *args, **kwargs: False)
+    monkeypatch.setattr(backfill, 'run_targeted_company_backfill',
+                        lambda client, isins, *args, **kwargs:
+                        {'companies': len(isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0})
+    today = date(2026, 10, 14)
+    backfill.unified_company_history_stage(r2, {'INE-TARGET'}, today, None, {}, {}, [])
+    state = backfill.read_pipeline_state(r2)
+    assert state['target_isins'] == ['INE-TARGET']
+
+    monkeypatch.setattr(backfill, 'advance_pipeline_history_collection', lambda *args, **kwargs: True)
+    backfill.unified_company_history_stage(r2, set(), today, None, {}, {}, [])
+    state = backfill.read_pipeline_state(r2)
+    assert state['target_isins'] == []
