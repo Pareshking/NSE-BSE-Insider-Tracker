@@ -101,7 +101,8 @@ CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dis
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
-           'broadcast_at', 'broadcast_date', 'file_url', 'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
+           'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_source_event_id', 'xbrl_source_url',
+           'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
            'seconds', 'read_at', 'headline', 'points', 'market_cap')
@@ -573,26 +574,31 @@ def same_filing(a: dict, b: dict) -> bool:
 
 
 def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd.DataFrame:
-    """Both exchanges' filings in one shape, with ISIN, NSE symbol where there is one, group and market cap."""
+    """Normalize NSE/BSE filings and use a verified related NSE XBRL attachment when available."""
     from collectors.bse import announcements as bann
     from collectors.nse_events import announcements as nann
+
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
         isin = r.get('isin') or (master.resolve('nse', r.get('symbol'))[0] if master else None)
+        url = r.get('file_url')
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
                      'isin': isin, 'symbol': r.get('symbol'), 'company': r.get('company'),
                      'subject': r.get('subject'), 'detail': r.get('text'),
-                     'group': nann.group_of(r.get('subject'), r.get('text')), 'file_url': r.get('file_url'),
+                     'group': nann.group_of(r.get('subject'), r.get('text')), 'file_url': url,
+                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     for r in (bse.to_dict('records') if bse is not None else []):
         isin = master.resolve('bse', r.get('bse_code'))[0] if master and r.get('bse_code') else None
         rec = (master.record(isin) or {}) if master and isin else {}
+        url = r.get('file_url')
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
                      'symbol': rec.get('nse_symbol') or r.get('bse_code'), 'company': r.get('company'),
                      'subject': r.get('subcategory') or r.get('category'), 'detail': r.get('headline'),
-                     'group': bann.group_of(r.get('subcategory'), r.get('category')), 'file_url': r.get('file_url'),
+                     'group': bann.group_of(r.get('subcategory'), r.get('category')), 'file_url': url,
+                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
                      'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
@@ -600,8 +606,62 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     if df.empty:
         return df
     df['market_cap'] = [((master.record(i) or {}).get('market_cap') if master and i else None) for i in df['isin']]
-    return df
 
+    # NSE exposes hasXbrl on a PDF row, while the related XBRL may arrive as a separate
+    # XML/XBRL announcement. Pair only an explicit hasXbrl=True row with a same-issuer,
+    # same-subject XBRL filing within one calendar day. Never synthesize an exchange URL.
+    def subject_base(value):
+        value = str(value or '').strip().casefold()
+        value = re.sub(r'\s*[-–—]\s*xbrl\s*$', '', value)
+        value = re.sub(r'\s*\(xbrl\)\s*$', '', value)
+        return re.sub(r'[^a-z0-9]+', ' ', value).strip()
+
+    def truthy(value):
+        return str(value).strip().casefold() in ('true', '1', 'yes')
+
+    def day(value):
+        parsed = pd.to_datetime(value, errors='coerce')
+        return None if pd.isna(parsed) else parsed.date()
+
+    records = df.to_dict('records')
+    xbrl_rows = []
+    for idx, row in enumerate(records):
+        if (row.get('exchange') == 'NSE' and str(row.get('file_type') or '').lower() in ('xml', 'xbrl', 'zip')
+                and re.search(r'\bxbrl\b', str(row.get('subject') or ''), re.IGNORECASE)
+                and row.get('file_url')):
+            xbrl_rows.append((idx, row))
+    used_xbrl = set()
+    for idx, row in enumerate(records):
+        if row.get('exchange') != 'NSE' or not truthy(row.get('has_xbrl')):
+            continue
+        if str(row.get('file_type') or '').lower() not in ('pdf', 'zip') or not row.get('file_url'):
+            continue
+        identifier = str(row.get('isin') or row.get('symbol') or '').strip().upper()
+        subject = subject_base(row.get('subject'))
+        broadcast_day = day(row.get('broadcast_date'))
+        if not identifier or not subject or broadcast_day is None:
+            continue
+        matches = []
+        for xidx, xrow in xbrl_rows:
+            if xidx in used_xbrl or xidx == idx:
+                continue
+            xidentifier = str(xrow.get('isin') or xrow.get('symbol') or '').strip().upper()
+            xday = day(xrow.get('broadcast_date'))
+            if xidentifier != identifier or subject_base(xrow.get('subject')) != subject or xday is None:
+                continue
+            if abs((xday - broadcast_day).days) > 1:
+                continue
+            matches.append((abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow))
+        if not matches:
+            continue
+        _, _, xidx, xrow = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+        row['content_url'] = xrow['file_url']
+        row['xbrl_source_event_id'] = xrow.get('event_id')
+        row['xbrl_source_url'] = xrow['file_url']
+        # This XML event now supplies the PDF event's content; suppress a duplicate model read.
+        records[xidx]['group'] = 'routine'
+        used_xbrl.add(xidx)
+    return pd.DataFrame(records)
 
 def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
            date_from: date | None = None, date_to: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
@@ -775,8 +835,17 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 'read_at': datetime.now(timezone.utc).isoformat()}
         log('---', row['exchange'], row.get('symbol'), row.get('subject'))
         try:
-            data = fetch(row['file_url'])
+            content_url = row.get('content_url') or row['file_url']
+            data = fetch(content_url)
             doc, doc_notes = s.text_of(data)
+            # If the linked structured attachment is invalid/incomplete, fall back to the original PDF.
+            if content_url != row['file_url'] and not any(str(note).lower().startswith('xbrl:') for note in doc_notes):
+                xbrl_error = '; '.join(doc_notes)[:180]
+                fallback_data = fetch(row['file_url'])
+                fallback_doc, fallback_notes = s.text_of(fallback_data)
+                if fallback_doc.strip():
+                    data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
+                    content_url = row['file_url']
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
@@ -787,7 +856,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return finish({**base, 'status': 'failed', 'reason': reason})
         source_format = ('xbrl' if any(str(note).lower().startswith('xbrl:') for note in doc_notes)
                          else 'zip' if data[:2] == b'PK' else 'pdf')
-        base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
+        base.update(content_url=content_url, file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
                     text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
