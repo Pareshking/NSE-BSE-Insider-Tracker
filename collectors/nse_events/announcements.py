@@ -300,6 +300,25 @@ def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
     return out
 
 
+def cross_check(nse, a: date, b: date, market: str, first: pd.DataFrame, make_hook=None) -> tuple[pd.DataFrame, dict]:
+    """NSE gives no count to check a window against, so the window is asked for again as two halves and the
+    event ids compared. Returns (rows the first fetch lacked, counts). A window of one day is asked for twice."""
+    if a == b:
+        halves = [(a, b)]
+    else:
+        mid = a + (b - a) // 2
+        halves = [(a, mid), (mid + timedelta(days=1), b)]
+    frames = []
+    for x, y in halves:
+        if make_hook is not None:
+            nse.on_response = make_hook(x, y)
+        frames.append(parse(nse.announcements(x, y, market), market))
+    second = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last')
+    have, other = set(first['event_id']), set(second['event_id'])
+    extra = second[~second['event_id'].isin(have)]
+    return extra, {'first': len(have), 'second': len(other), 'only_first': len(have - other), 'only_second': len(other - have)}
+
+
 def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
         backfill_from: date | None = None, write_report: bool = True, backfill_to: date | None = None) -> dict:
     """The window's filings into raw and the archive; the count report unless `write_report` is False
@@ -316,12 +335,14 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     blocked = False
     for a, b in (month_chunks(start, end) if backfill_from else [(start, end)]):
         for market in FEEDS:
-            if raw is not None:
-                def hook(url, resp, a=a, b=b, market=market):   # exact bytes before parsing; a failed write stops the run
+            def make_hook(x, y, market=market):   # exact bytes before parsing; a failed write stops the run
+                def hook(url, resp):
                     raw.put('nse', 'announcements', resp.content, url=url, status=resp.status_code,
                             content_type=resp.headers.get('Content-Type'),
-                            covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market})
-                nse.on_response = hook
+                            covers={'from': x.isoformat(), 'to': y.isoformat(), 'index': market})
+                return hook
+            if raw is not None:
+                nse.on_response = make_hook(a, b)
             try:
                 rows = nse.announcements(a, b, market)
             except Blocked as exc:
@@ -332,9 +353,25 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
                 report['notes'].append(f'{market} {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
                 continue
             df = parse(rows, market)
-            report['calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(df),
-                                    'concall': int(df['subject'].isin(CONCALL).sum())})
+            call = {'market': market, 'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(df),
+                    'concall': int(df['subject'].isin(CONCALL).sum())}
+            try:
+                extra, check = cross_check(nse, a, b, market, df, make_hook if raw is not None else None)
+                call['cross_check'] = check
+                if len(extra):
+                    df = pd.concat([df, extra], ignore_index=True)
+                if check['only_second'] or check['only_first']:
+                    report['notes'].append(f"{market} {a}..{b}: the two fetches differ ({check['only_second']} filings only in "
+                                           f"the second, {check['only_first']} only in the first); the union is kept")
+            except Blocked as exc:
+                report['notes'].append(f'NSE refused the cross-check ({exc}); stopped, what was fetched is kept')
+                blocked = True
+            except Exception as exc:  # noqa: BLE001 -- the check must not lose the window it checks
+                report['notes'].append(f'{market} {a}..{b}: cross-check failed ({type(exc).__name__}: {exc})')
+            report['calls'].append(call)
             frames.append(df)
+            if blocked:
+                break
         if blocked:
             break
 

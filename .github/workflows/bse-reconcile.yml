@@ -1,0 +1,44 @@
+name: BSE reconciliation (read-only)
+
+# Each archived BSE day against BSE's own count for that day (scripts/bse_reconcile.py): one request a day, no filing
+# text. Writes only the small per-day result under clean/reports/announcements_bse/reconciliation/check/. Fails when
+# a finished day is short or over. By hand for any range; the collection also runs it for its own window.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'First day, YYYY-MM-DD (empty = the last 7 days)'
+        required: false
+        default: ''
+      to:
+        description: 'Last day, YYYY-MM-DD (empty = today)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Reconcile
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+        run: |
+          args=(--days 7)
+          [ -n "$FROM" ] && args=(--from "$FROM")
+          [ -n "$TO" ] && args+=(--to "$TO")
+          python -u scripts/bse_reconcile.py "${args[@]}"

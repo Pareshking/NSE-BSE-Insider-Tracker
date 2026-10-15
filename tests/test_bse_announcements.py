@@ -77,7 +77,8 @@ def test_run_reads_every_page_and_twice_adds_nothing():
     assert 'BSE-only share not counted' in ann.summary_markdown(rep)
 
 
-def test_short_day_and_refusal_are_reported():
+def test_short_day_and_refusal_are_reported(monkeypatch):
+    monkeypatch.setattr(ann, 'SHORT_PAUSE', 0)
     class Short(FakeBSE):
         def announcements(self, day, page):
             rows, n = super().announcements(day, page)

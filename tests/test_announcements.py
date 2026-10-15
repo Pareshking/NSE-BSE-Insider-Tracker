@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 from conftest import FIXTURES
@@ -85,10 +85,14 @@ def test_backfill_goes_month_by_month_and_refusal_stops():
     r2 = FakeR2()
     nse = FakeNSE(ROWS)
     ann.run(r2, nse, date(2026, 10, 5), backfill_from=date(2026, 8, 20))
-    assert nse.asked == [(a, b, m) for a, b in [(date(2026, 8, 20), date(2026, 8, 31)),
-                                                 (date(2026, 9, 1), date(2026, 9, 30)),
-                                                 (date(2026, 10, 1), date(2026, 10, 5))]
-                         for m in ('equities', 'sme')]
+    months = [(date(2026, 8, 20), date(2026, 8, 31)), (date(2026, 9, 1), date(2026, 9, 30)),
+              (date(2026, 10, 1), date(2026, 10, 5))]
+    # per month and market: the whole window, then the cross-check's two halves (each half asked for itself)
+    wholes = [(a, b, m) for a, b in months for m in ('equities', 'sme')]
+    assert [x for x in nse.asked if x in wholes] == wholes
+    for a, b in months:
+        mid = a + (b - a) // 2
+        assert (a, mid, 'equities') in nse.asked and (mid + timedelta(days=1), b, 'sme') in nse.asked
     rep = ann.run(FakeR2(), FakeNSE(ROWS, block=True), date(2026, 10, 5), backfill_from=date(2026, 8, 20))
     assert rep['calls'] == [] and rep['added'] == 0 and 'refused' in rep['notes'][0]
 

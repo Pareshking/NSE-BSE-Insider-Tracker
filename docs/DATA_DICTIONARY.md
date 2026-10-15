@@ -370,6 +370,15 @@ nightly fields, `transaction_date_to`, `intimation_date`, `pct_before`, `pct_aft
 executed: `BSE`, `NSE` or blank). Clean insider rows from BSE's CSV therefore get the intimation date and both Reg 7(2)
 deadline checks; rows from the nightly page capture still don't.
 
+## BSE day reconciliation (`clean/reports/announcements_bse/reconciliation/`)
+
+BSE states its own count of filings for a day. `{day}.json` is written by every full fetch of the day: `bse_count`,
+`fetched_unique`, `rows_without_id` (rows BSE sends without a NEWSID, which the archive cannot key; `without_id` lists
+up to 50 of them), `pages`, `retries` (repeat fetches after a short answer), `short`, `checked_at_utc`,
+`workflow_run_id`. `check/{day}.json` is written by `scripts/bse_reconcile.py`: `bse_count` against `archived` with a
+`status` of `ok`, `one_short` (usually one row without an ID), `short`, `over` or `not_checked`. NSE gives no count: its
+windows are fetched twice (whole, then in two halves) and the report names any difference.
+
 ## Filing text cache (`archive/filing_text/{nse|bse}/year=YYYY/month=MM/day=DD.parquet`)
 
 One file per exchange and broadcast day, one row per announcement file (`event_id` of `archive/announcements/`; the

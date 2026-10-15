@@ -101,3 +101,8 @@ jobs:
         run: |
           args=(--days 3); [ -n "$FROM" ] && args=(--from "$FROM" --to "$TO")
           python -u -m collectors.bse.announcements "${args[@]}"
+      - name: Reconcile BSE against BSE's own count
+        if: always() && matrix.exchanges != 'nse'   # fails the run when an archived day is short or over
+        run: |
+          args=(--days 7); [ -n "$FROM" ] && args=(--from "$FROM" --to "$TO")
+          python -u scripts/bse_reconcile.py "${args[@]}"
