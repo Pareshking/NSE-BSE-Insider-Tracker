@@ -13,8 +13,10 @@ def test_nse_history_collector_honours_bounded_month():
     report = nse_ann.run(FakeR2(), nse, date(2026, 10, 14),
                          backfill_from=date(2026, 1, 1), backfill_to=date(2026, 1, 31))
     assert report['window'] == ['2026-01-01', '2026-01-31']
-    assert nse.asked == [(date(2026, 1, 1), date(2026, 1, 31), market)
-                         for market in ('equities', 'sme')]
+    # each market: the whole month, then the cross-check's two halves
+    assert nse.asked == [(a, b, market) for market in ('equities', 'sme')
+                         for a, b in ((date(2026, 1, 1), date(2026, 1, 31)), (date(2026, 1, 1), date(2026, 1, 16)),
+                                      (date(2026, 1, 17), date(2026, 1, 31)))]
 
 
 def test_bse_history_collector_stops_at_requested_end_date():

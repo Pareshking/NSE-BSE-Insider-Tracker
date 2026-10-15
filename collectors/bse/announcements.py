@@ -28,8 +28,11 @@ groups (collectors/nse_events/announcements.py) from the 1,136 filings of
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -44,6 +47,9 @@ from collectors.bse.client import BSEClient, Blocked, Failed
 IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 3
 MAX_PAGES = 200   # 10,000 filings in a day; BSE's busiest day seen is far below
+SHORT_RETRIES = 2   # a day that ends below BSE's own count is fetched again this many times, pages merged
+SHORT_PAUSE = 20    # seconds before such a repeat
+RECONCILIATION = 'clean/reports/announcements_bse/reconciliation/'   # {day}.json: BSE's count against ours
 PREFIX = 'archive/announcements/bse/'
 ATTACHMENT = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/'
 COLUMNS = ('event_id', 'news_id', 'bse_code', 'company', 'category', 'subcategory', 'subject', 'headline',
@@ -134,10 +140,54 @@ def fetch_day(bse: BSEClient, day: date, known: set | None = None) -> tuple[list
             break
         if not got or (total is not None and len(rows) >= total):
             break
-    unique = {r.get('NEWSID') for r in rows}
+    unique = {row_key(r) for r in rows}
     return rows, {'day': day.isoformat(), 'bse_count': total, 'pages': page, 'rows': len(rows),
                   'unique': len(unique), 'caught_up': caught_up,
                   'short': not caught_up and total is not None and len(unique) < total}
+
+
+def row_key(r: dict) -> str:
+    """NEWSID (lower case), else a hash of the whole row: a row without an ID is still one filing, not 'None'."""
+    news = r.get('NEWSID')
+    return str(news).lower() if news else 'noid:' + hashlib.sha256(json.dumps(r, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+def fetch_day_complete(bse, day: date, known=None, retries: int | None = None, pause: float | None = None,
+                       sleep=None) -> tuple[list, dict]:
+    """fetch_day, fetched again (pages merged by row) while the day ends below BSE's own count.
+    15 Oct: 31 Mar, 24 Apr and 19 May each came back about 500 filings short and a fresh fetch was complete."""
+    retries = SHORT_RETRIES if retries is None else retries
+    pause = SHORT_PAUSE if pause is None else pause
+    rows, stats = fetch_day(bse, day, known)
+    attempts = 0
+    while stats['short'] and attempts < retries:
+        attempts += 1
+        print(f"BSE collection: {day.isoformat()} short ({stats['unique']} of {stats['bse_count']}); fetching again "
+              f'({attempts} of {retries})', flush=True)
+        (sleep or time.sleep)(pause)
+        more, again = fetch_day(bse, day, known)
+        have = {row_key(r) for r in rows}
+        rows = rows + [r for r in more if row_key(r) not in have]
+        total = again['bse_count'] if again['bse_count'] is not None else stats['bse_count']
+        unique = len({row_key(r) for r in rows})
+        stats = {**stats, 'bse_count': total, 'pages': stats['pages'] + again['pages'], 'rows': len(rows),
+                 'unique': unique, 'short': total is not None and unique < total}
+    stats['retries'] = attempts
+    return rows, stats
+
+
+def save_reconciliation(r2, stats: dict, rows: list, run_id: str | None = None) -> None:
+    """BSE's count against ours for one day, kept in R2 (the latest full fetch of the day), with the rows that have no
+    NEWSID (the archive cannot key them; the raw answers also hold them)."""
+    from clean_writer import put
+    keep = ('SCRIP_CD', 'SLONGNAME', 'NEWSSUB', 'DT_TM', 'CATEGORYNAME', 'SUBCATNAME', 'ATTACHMENTNAME')
+    without_id = [{k: r.get(k) for k in keep} for r in rows if not r.get('NEWSID')][:50]
+    body = {'day': stats['day'], 'bse_count': stats['bse_count'], 'fetched_unique': stats['unique'],
+            'rows_without_id': sum(1 for r in rows if not r.get('NEWSID')), 'pages': stats['pages'],
+            'retries': stats.get('retries', 0), 'short': stats['short'],
+            'checked_at_utc': datetime.now(timezone.utc).isoformat(),
+            'workflow_run_id': run_id or os.environ.get('GITHUB_RUN_ID'), 'without_id': without_id}
+    put(r2, f"{RECONCILIATION}{stats['day']}.json", json.dumps(body, indent=1, default=str).encode(), 'application/json')
 
 
 def known_ids(r2, day: date) -> set:
@@ -219,7 +269,7 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
     while day <= last:
         print(f'BSE collection: starting {day.isoformat()}', flush=True)
         try:
-            rows, stats = fetch_day(bse, day, known_ids(r2, day) if incremental and r2 is not None else None)
+            rows, stats = fetch_day_complete(bse, day, known_ids(r2, day) if incremental and r2 is not None else None)
         except Blocked as exc:
             report['notes'].append(f'BSE refused ({exc}); stopped, what was fetched is kept')
             print(f'BSE collection: blocked on {day.isoformat()}; stopping this window.', flush=True)
@@ -229,6 +279,11 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
             print(f'BSE collection: failed {day.isoformat()} ({exc}); continuing but month cannot be certified.', flush=True)
             day += timedelta(days=1)
             continue
+        if r2 is not None and not stats['caught_up']:   # a full fetch of the day: keep BSE's count against ours
+            try:
+                save_reconciliation(r2, stats, rows)
+            except Exception as exc:  # noqa: BLE001 -- the record must not stop the collection
+                report['notes'].append(f'{day}: reconciliation not saved ({type(exc).__name__}: {exc})')
         df = parse(rows)
         dropped += len(rows) - len(df)
         stats['concall'] = int(df['subcategory'].isin(CONCALL).sum())
@@ -243,6 +298,8 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
     short = [d['day'] for d in report['days'] if d['short']]
     if short:
         report['notes'].append(f'fewer filings than BSE counts on {", ".join(short)}')
+    # A finished day still short after the repeats fails the run; today's own day can grow while it is read.
+    report['short_days'] = [d for d in short if d < today.isoformat()]
     new = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last') if frames else None
     report['added'], report['partitions_written'] = merge_into_archive(r2, new, run_date) if r2 else (0, [])
     report['window_counts'] = counts(new, on_nse(new, master) if new is not None else None)
@@ -306,6 +363,9 @@ def main(argv=None):
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
             f.write(text)
+    if report.get('short_days'):
+        print(f"BSE collection: still short after repeats: {', '.join(report['short_days'])}", flush=True)
+        return 3
     return 0 if report['days'] else 2
 
 
