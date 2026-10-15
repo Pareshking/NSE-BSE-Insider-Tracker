@@ -371,3 +371,32 @@ def test_unified_pipeline_collection_failure_keeps_cursor_for_retry(monkeypatch)
     assert saved['collection_next_date'] == '2026-01-01'
     assert saved['collection_last_error'].endswith('BSE report unavailable')
     assert notes and 'historical source collection 2026-01-01' in notes[0]
+
+
+def test_recent_history_coverage_requires_verified_nse_feeds_and_complete_bse_pages(monkeypatch):
+    r2 = FakeR2()
+    import clean_writer
+    monkeypatch.setattr(clean_writer, 'get', lambda client, key: client.objects.get(key))
+    today = date(2026, 1, 5)
+    report_day = '2026-01-04'
+    window = ['2026-01-02', '2026-01-04']
+    r2.objects[f'clean/reports/announcements/{report_day}.json'] = json.dumps({
+        'window': window, 'notes': [],
+        'calls': [
+            {'market': 'equities', 'from': window[0], 'to': window[1]},
+            {'market': 'sme', 'from': window[0], 'to': window[1]},
+        ],
+    }).encode()
+    r2.objects[f'clean/reports/announcements_bse/{report_day}.json'] = json.dumps({
+        'window': window, 'notes': [],
+        'days': [{'day': day, 'bse_count': 10, 'unique': 10, 'short': False}
+                 for day in ('2026-01-02', '2026-01-03', '2026-01-04')],
+    }).encode()
+    assert backfill.recent_history_coverage_verified(r2, today) == (True, '')
+
+    report = json.loads(r2.objects[f'clean/reports/announcements_bse/{report_day}.json'])
+    report['days'][1]['short'] = True
+    r2.objects[f'clean/reports/announcements_bse/{report_day}.json'] = json.dumps(report).encode()
+    verified, reason = backfill.recent_history_coverage_verified(r2, today)
+    assert verified is False
+    assert 'BSE nightly page coverage incomplete' in reason
