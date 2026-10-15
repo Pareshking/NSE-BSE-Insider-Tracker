@@ -24,8 +24,11 @@ LIMIT_HEADERS = ('ratelimit', 'retry-after', 'quota')
 
 
 def models() -> list[tuple[str, str]]:
+    """The reader's models, then any candidates in ai_health_candidates.txt (same line format)."""
     out = []
-    for line in (HERE / 'announcement_readers.txt').read_text(encoding='utf-8').splitlines():
+    files = [HERE / 'announcement_readers.txt', HERE / 'ai_health_candidates.txt']
+    lines = [ln for f in files if f.exists() for ln in f.read_text(encoding='utf-8').splitlines()]
+    for line in lines:
         line = line.split('#', 1)[0].strip()
         if ':' not in line:
             continue

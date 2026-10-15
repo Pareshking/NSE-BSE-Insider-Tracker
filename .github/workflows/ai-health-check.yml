@@ -8,6 +8,7 @@ on:
     branches: [ccr-0caa4ce9-bh3n2s]
     paths:
       - 'scripts/ai_health_check.py'
+      - 'scripts/ai_health_candidates.txt'
       - '.github/workflows/ai-health-check.yml'
 
 permissions:
