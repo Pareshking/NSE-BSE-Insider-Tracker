@@ -214,7 +214,9 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
             'company': _text(row.get('companyName') or row.get('company')),
             'industry': None, 'subject': _text(row.get('subject') or row.get('eventType') or row.get('typeOfAnn')),
             'text': _text(row.get('details') or row.get('eventType')),
-            'file_url': url, 'file_type': file_type(url), 'file_size': size,
+            # The dedicated XBRL endpoint's attachment URL may have a .zip/.pdf-looking name;
+            # its contract identifies this as the XML payload URL (the reader validates its bytes).
+            'file_url': url, 'file_type': 'xbrl', 'file_size': size,
             'file_bytes': size_bytes(size), 'has_xbrl': True, 'xbrl_url': url,
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
