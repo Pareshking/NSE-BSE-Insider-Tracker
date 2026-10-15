@@ -720,6 +720,30 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         used_xbrl.add(xidx)
     return pd.DataFrame(records)
 
+
+def xbrl_audit(cands: pd.DataFrame | None) -> dict:
+    """Dry-run diagnostics proving whether XBRL companions are present and being used."""
+    if cands is None or cands.empty:
+        return {'candidates': 0, 'has_xbrl_flagged': 0, 'xbrl_attachments': 0, 'xbrl_linked': 0,
+                'flagged_samples': [], 'attachment_samples': [], 'linked_samples': []}
+    has_flag = cands.get('has_xbrl', pd.Series(index=cands.index, dtype=object)).map(
+        lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
+    subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
+        r'\bxbrl\b', case=False, regex=True)
+    attachment = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
+        ('xml', 'xbrl', 'zip')) & subject_xbrl
+    linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
+    fields = [field for field in ('event_id', 'exchange', 'symbol', 'isin', 'subject', 'broadcast_date',
+                                  'file_type', 'has_xbrl', 'file_url', 'content_url',
+                                  'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
+    def sample(mask):
+        return cands.loc[mask, fields].head(50).to_dict('records')
+    return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
+            'xbrl_attachments': int(attachment.sum()), 'xbrl_linked': int(linked.sum()),
+            'flagged_samples': sample(has_flag), 'attachment_samples': sample(attachment),
+            'linked_samples': sample(linked)}
+
+
 def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
            date_from: date | None = None, date_to: date | None = None) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Choose recent filings, or an explicit inclusive historical date range; no model calls here."""
@@ -1343,6 +1367,10 @@ def main(argv=None):
     if args.dry_run:
         Path('announcement_reader_dry_run.json').write_text(json.dumps(rows, indent=1, ensure_ascii=False, default=str),
                                                             encoding='utf-8')
+        xbrl_report = xbrl_audit(current_candidates)
+        Path('announcement_reader_xbrl_audit.json').write_text(
+            json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+        log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'xbrl_attachments', 'xbrl_linked')}))
         return 0
     saver.pending += status
     saver.flush(final=True)
