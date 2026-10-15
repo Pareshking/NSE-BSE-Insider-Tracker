@@ -144,7 +144,16 @@ class NSEClient:
                  '&type=announcements')
         if symbol:
             query += f'&symbol={symbol}'
-        j = self.get(f'{BASE}/api/XBRL-announcements?{query}')
+        self.warm_up()
+        old_referer = self.s.headers.get('Referer')
+        self.s.headers['Referer'] = BASE + '/companies-listing/corporate-filings-announcements-xbrl-trading-window-disclosure'
+        try:
+            j = self.get(f'{BASE}/api/XBRL-announcements?{query}')
+        finally:
+            if old_referer is None:
+                self.s.headers.pop('Referer', None)
+            else:
+                self.s.headers['Referer'] = old_referer
         return j if isinstance(j, list) else j.get('data', [])
 
     # --- further issues (confirmed 12 Oct 2026) -----------------------------
