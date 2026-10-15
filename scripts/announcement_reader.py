@@ -20,8 +20,9 @@ reads clean/current/announcement_reads.parquet. docs/ANNOUNCEMENT_READER.md has 
    units; the model gives numbers as written. Entity labels are kept but not shown yet (the only field
    where wrong values passed the checks, 13 Oct). Everything else is held back with its reason.
 5. Write: archive/announcement_reads/year=YYYY/month=MM.parquet by event_id, clean/current/
-   announcement_reads.parquet (the last READ_DAYS days) and the day's usage log in
-   clean/reports/announcement_reader/{date}.json (every call: model, answer, seconds).
+   announcement_reads.parquet (the last READ_DAYS days) and the run's usage ledger in
+   clean/reports/announcement_reader/{date}/runs/{run}.json (calls by model and answer, written every
+   minute and at the end, dry runs included: see UsageLedger).
 
 Only public filing text goes in a prompt.
 """
@@ -33,8 +34,9 @@ import json
 import os
 import re
 import sys
-import time
 import threading
+import time
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1247,24 +1249,81 @@ def usage(clients: dict, lanes: dict[str, Lane], since: dict[str, int] | None = 
             'left_out_as_rate_limited': {n: lane.rate_limited for n, lane in lanes.items() if lane.rate_limited}}
 
 
-def used_today(r2, run_date: str) -> dict:
-    """Calls by provider:model in today's earlier runs, from the usage log (the daily limits count them)."""
-    from clean_writer import get
-    body = get(r2, f'clean/reports/announcement_reader/{run_date}.json')
+USAGE_PREFIX = 'clean/reports/announcement_reader/'
+
+
+def used_today(r2, run_date: str, skip_run: str | None = None) -> dict:
+    """Calls by provider:model in today's runs, which the daily limits count: one ledger file a run
+    ({date}/runs/), plus the day file the reader appended to before 15 Oct 2026 ({date}.json)."""
+    from clean_writer import get, list_keys
     out = {}
-    for run_ in (json.loads(body).get('runs', []) if body else []):
-        for m, e in ((run_.get('usage') or {}).get('models') or {}).items():
+
+    def add(entry: dict):
+        for m, e in (((entry or {}).get('usage') or {}).get('models') or {}).items():
             out[m] = out.get(m, 0) + int(e.get('calls') or 0)
+
+    body = get(r2, f'{USAGE_PREFIX}{run_date}.json')
+    for run_ in (json.loads(body).get('runs', []) if body else []):
+        add(run_)
+    for key in list_keys(r2, f'{USAGE_PREFIX}{run_date}/runs/'):
+        if skip_run and key.endswith(f'/{skip_run}.json'):
+            continue
+        body = get(r2, key)
+        if body:
+            add(json.loads(body))
     return out
 
 
-def append_usage(r2, run_date: str, entry: dict):
-    from clean_writer import get, put
-    key = f'clean/reports/announcement_reader/{run_date}.json'
-    body = get(r2, key)
-    day = json.loads(body) if body else {'date': run_date, 'runs': []}
-    day['runs'].append(entry)
-    put(r2, key, json.dumps(day, indent=1, default=str).encode(), 'application/json')
+class UsageLedger:
+    """Every model call this process makes, in R2 at {date}/runs/{run_id}.json. The file holds the run's
+    total so far and is replaced, never appended to, so no call is counted twice; it is written every
+    `every` seconds while calls are made and once more at the end, so a run that is cancelled or times
+    out has already counted what it used. Dry runs write it too: the provider counts their calls."""
+
+    def __init__(self, r2, run_date: str, clients: dict, lanes: dict, source: str, every: float = 60.0):
+        self.r2, self.run_date, self.clients, self.lanes, self.source = r2, run_date, clients, lanes, source
+        self.every, self.extra = every, {}
+        self.run_id = '-'.join([os.environ.get('GITHUB_RUN_ID', 'local'), os.environ.get('GITHUB_RUN_ATTEMPT', '1'),
+                                source, uuid.uuid4().hex[:6]])
+        self.key = f'{USAGE_PREFIX}{run_date}/runs/{self.run_id}.json'
+        self.written_calls = None
+        self._lock, self._stop, self._thread = threading.Lock(), threading.Event(), None
+
+    def calls(self) -> int:
+        return sum(len(getattr(c, 'attempts', [])) for c in self.clients.values())
+
+    def write(self, force: bool = False) -> bool:
+        """Writes the run's total when it changed (or `force`); a failed write is logged and tried again."""
+        if self.r2 is None:
+            return False
+        from clean_writer import put
+        with self._lock:
+            n = self.calls()
+            if not force and n == self.written_calls:
+                return False
+            entry = {'at': datetime.now(timezone.utc).isoformat(), 'source': self.source, 'run_id': self.run_id,
+                     **self.extra, 'usage': usage(self.clients, self.lanes)}
+            try:
+                put(self.r2, self.key, json.dumps(entry, indent=1, default=str).encode(), 'application/json')
+            except Exception as exc:  # noqa: BLE001 -- the next write carries the same total
+                log('usage ledger not written, tried again later:', type(exc).__name__, exc)
+                return False
+            self.written_calls = n
+            return True
+
+    def start(self) -> 'UsageLedger':
+        def loop():
+            while not self._stop.wait(self.every):
+                self.write()
+        if self.r2 is not None:
+            self._thread = threading.Thread(target=loop, name='usage-ledger', daemon=True)
+            self._thread.start()
+        return self
+
+    def close(self, **extra) -> bool:
+        self._stop.set()
+        self.extra.update(extra)
+        return self.write(force=True)
 
 
 def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, setup: list[str]) -> str:
@@ -1384,6 +1443,15 @@ def main(argv=None):
         if not args.dry_run:
             raise
         setup.append(f'no R2 ({type(exc).__name__}); reads before this run not known')
+    ledger = UsageLedger(r2, today.isoformat(), clients, lanes, 'dry_run' if args.dry_run else 'live').start()
+    try:
+        return read_and_save(args, today, setup, clients, lanes, r2, ledger)
+    finally:
+        ledger.close(notes=setup)
+
+
+def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dict, r2, ledger: UsageLedger) -> int:
+    """main() after the clients and R2: read today's filings, save them, then company history."""
     master = None
     if r2 is not None:
         from collectors.nse_events.run_daily import security_master
@@ -1395,7 +1463,7 @@ def main(argv=None):
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
-        used = used_today(r2, today.isoformat())
+        used = used_today(r2, today.isoformat(), skip_run=ledger.run_id)
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
@@ -1415,6 +1483,9 @@ def main(argv=None):
               for r in status_rows.to_dict('records')]
     rows += status
     use = usage(clients, lanes)
+    ledger.extra.update(counts=counts, outcomes={str(k): int(v) for k, v in
+                                                 pd.Series([r['status'] for r in rows]).value_counts().items()})
+    ledger.write()
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
@@ -1464,10 +1535,7 @@ def main(argv=None):
         log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
             f'live queue counts={json.dumps(live_counts, default=str)}')
 
-    added = saver.added
-    append_usage(r2, today.isoformat(), {'at': datetime.now(timezone.utc).isoformat(), 'counts': counts,
-                                         'outcomes': pd.Series([r['status'] for r in rows]).value_counts().to_dict()
-                                         if rows else {}, 'added': added, 'usage': usage(clients, lanes), 'notes': setup})
+    ledger.extra['added'] = saver.added
     return 0
 
 

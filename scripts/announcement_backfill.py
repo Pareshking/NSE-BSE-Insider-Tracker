@@ -744,10 +744,22 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         save_state(r2, state)
         raise RuntimeError(state['last_error'])
 
-    used = ar.used_today(r2, today.isoformat())
+    ledger = ar.UsageLedger(r2, today.isoformat(), clients, lanes,
+                            'backfill_dry_run' if dry_run else 'historical_backfill').start()
+    used = ar.used_today(r2, today.isoformat(), skip_run=ledger.run_id)
     for lane in lanes.values():
         lane.used_today = used
+    try:
+        return backfill_batches(start, end, batch_size, batch_minutes, max_batches, dry_run, month_only, nse_only,
+                                today, r2, state, setup, clients, lanes)
+    finally:
+        ledger.close(notes=setup)
 
+
+def backfill_batches(start: date, end: date, batch_size: int, batch_minutes: float, max_batches: int, dry_run: bool,
+                     month_only: bool, nse_only: bool, today: date, r2, state: dict, setup: list[str], clients: dict,
+                     lanes: dict) -> int:
+    """run_backfill() after the clients: the batches, oldest first; its UsageLedger counts every call."""
     # Require every month in the requested range from both exchanges; never call an empty archive "complete".
     missing = [] if month_only else missing_source_months(r2, start, end)
     if missing:
@@ -806,9 +818,6 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         to_read = add_memory_context(r2, to_read)
         batch_ids = set(to_read['event_id'].astype(str))
         saver = None if dry_run else ar.Saver(r2, today.isoformat(), today)
-        # Usage is persisted per batch. Capture attempt offsets so repeated batches do not
-        # re-count earlier calls from the same long-lived client instances.
-        attempts_before = {prov: len(client.attempts) for prov, client in clients.items()}
         rows, notes = ar.run(to_read, lanes, reads, batch_minutes * 60,
                              max_filings=batch_size, on_row=saver.add if saver else None)
         statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
@@ -837,17 +846,6 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
             remaining_now = len(remaining_rows)
         else:
             remaining_now = max(0, len(to_read) - len(rows))
-        if month_only and not dry_run:
-            # Count historical calls in the same daily quota ledger used by the live reader.
-            ar.append_usage(r2, today.isoformat(), {
-                'at': datetime.now(timezone.utc).isoformat(),
-                'source': 'historical_backfill',
-                'counts': counts,
-                'outcomes': counts_now,
-                'added': saver.added if saver else 0,
-                'usage': ar.usage(clients, lanes, attempts_before),
-                'notes': setup,
-            })
         state.update({
             'status': 'running',
             'completed_batches': int(state.get('completed_batches', 0)) + 1,

@@ -896,3 +896,82 @@ def test_candidates_do_not_pair_unlabelled_unrelated_zip_without_exact_subject()
     out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
     assert out.loc['pdf:1', 'content_url'].endswith('X_results.pdf')
     assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
+
+
+def _ledger_store(monkeypatch):
+    import clean_writer
+    store = {}
+    monkeypatch.setattr(clean_writer, 'get', lambda r2, key: store.get(key))
+    monkeypatch.setattr(clean_writer, 'put', lambda r2, key, body, content_type=None: store.__setitem__(key, body))
+    monkeypatch.setattr(clean_writer, 'list_keys', lambda r2, prefix: sorted(k for k in store if k.startswith(prefix)))
+    return store
+
+
+def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch):
+    store = _ledger_store(monkeypatch)
+    c = FakeClient(['{}', '{}', '{}'])
+    lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': c})}
+    ledger = ar.UsageLedger(object(), '2026-10-15', {'nvidia': c}, lanes, 'live')
+    c.generate(['m'], 'p', 'read', True)
+    assert ledger.write()
+    c.generate(['m'], 'p', 'read', True)
+    c.generate(['m'], 'p', 'read', True)
+    assert ledger.write() and not ledger.write()        # unchanged total: nothing to write
+    runs = [k for k in store if '/runs/' in k]
+    assert runs == [ledger.key] and json.loads(store[ledger.key])['usage']['models']['nvidia:m']['calls'] == 3
+    assert ar.used_today(object(), '2026-10-15') == {'nvidia:m': 3}
+    assert ar.used_today(object(), '2026-10-15', skip_run=ledger.run_id) == {}
+
+
+def test_used_today_adds_every_run_and_the_old_day_file(monkeypatch):
+    store = _ledger_store(monkeypatch)
+    store['clean/reports/announcement_reader/2026-10-15.json'] = json.dumps(
+        {'runs': [{'usage': {'models': {'groq:q': {'calls': 4}}}}]}).encode()
+    for run, calls in (('1-1-live-a', 10), ('2-1-dry_run-b', 6)):
+        store[f'clean/reports/announcement_reader/2026-10-15/runs/{run}.json'] = json.dumps(
+            {'usage': {'models': {'groq:q': {'calls': calls}, 'zai:g': {'calls': 1}}}}).encode()
+    store['clean/reports/announcement_reader/2026-10-14/runs/x.json'] = json.dumps(
+        {'usage': {'models': {'groq:q': {'calls': 99}}}}).encode()      # another day: not counted
+    assert ar.used_today(object(), '2026-10-15') == {'groq:q': 20, 'zai:g': 2}
+
+
+def test_usage_ledger_has_counted_calls_before_a_run_is_cut_off(monkeypatch):
+    import time as _time
+    store = _ledger_store(monkeypatch)
+    c = FakeClient(['{}', '{}'])
+    ledger = ar.UsageLedger(object(), '2026-10-15', {'nvidia': c}, {}, 'live', every=0.01).start()
+    c.generate(['m'], 'p', 'read', True)
+    c.generate(['m'], 'p', 'read', True)
+    deadline = _time.monotonic() + 5
+    while ledger.written_calls != 2 and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    ledger._stop.set()                                   # cancelled: close() never runs
+    assert json.loads(store[ledger.key])['usage']['models']['nvidia:m']['calls'] == 2
+
+
+def test_usage_ledger_write_failure_is_retried_not_raised(monkeypatch):
+    import clean_writer
+    store = _ledger_store(monkeypatch)
+    c = FakeClient(['{}'])
+    c.generate(['m'], 'p', 'read', True)
+    ledger = ar.UsageLedger(object(), '2026-10-15', {'nvidia': c}, {}, 'dry_run')
+
+    def down(r2, key, body, content_type=None):
+        raise ConnectionError('R2 down')
+    monkeypatch.setattr(clean_writer, 'put', down)
+    assert not ledger.write()
+    monkeypatch.setattr(clean_writer, 'put', lambda r2, key, body, content_type=None: store.__setitem__(key, body))
+    assert ledger.close(counts={'candidates': 1})
+    saved = json.loads(store[ledger.key])
+    assert saved['source'] == 'dry_run' and saved['counts'] == {'candidates': 1}
+    assert saved['usage']['models']['nvidia:m']['calls'] == 1
+
+
+def test_daily_limit_counts_calls_recorded_by_earlier_runs(monkeypatch):
+    store = _ledger_store(monkeypatch)
+    monkeypatch.setitem(ar.DAILY_CALLS, 'groq:q', 100)
+    store['clean/reports/announcement_reader/2026-10-15/runs/7-1-dry_run-c.json'] = json.dumps(
+        {'usage': {'models': {'groq:q': {'calls': 95}}}}).encode()
+    lane = ar.Lane('groq', ['groq:q'], {'groq': FakeClient([])})
+    lane.used_today = ar.used_today(object(), '2026-10-15')
+    assert lane.models() == []                           # 95% of the day's 100 already used

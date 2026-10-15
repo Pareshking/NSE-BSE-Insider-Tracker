@@ -14,6 +14,14 @@ Current implementation paths:
   event ID, date, exchange and source URL. Backfill state: `archive/announcement_backfill/state.json`.
 - Site: Brief card "Filings read" from `clean/current/announcement_reads.parquet`.
 - Model test: `scripts/announcement_sample.py` and `scripts/announcement_sample_expected.json`.
+- Usage ledger (15 Oct): one file a run, `clean/reports/announcement_reader/{date}/runs/{run}.json`, holding that
+  run's calls by model and answer. It is replaced (never appended to) every minute while calls are made and at the
+  end, so a cancelled or timed-out run has already counted its calls and none is counted twice; dry runs (PR runs,
+  the 3-filing sample) write it too. The daily limits add every run's file for the day (`used_today`). Before
+  15 Oct the reader appended one entry per run at the end to `{date}.json`, which missed cancelled runs and dry
+  runs and, in the historical backfill, could count a batch's earlier calls again; those days are past, and the
+  limits are daily, so they no longer affect a limit. The AI health check (`scripts/ai_health_check.py`) is the
+  only caller outside the ledger, a handful of calls when run by hand.
 
 Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
