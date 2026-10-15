@@ -17,7 +17,7 @@ until that count is reached, and a day that ends short is listed in the
 report. Each page is stored byte for byte in raw_v2/bse/announcements/ first.
 Rows are merged into archive/announcements/bse/year=YYYY/month=MM.parquet by
 event_id (BSE's NEWSID), so fetching a day again never adds a filing twice.
-Concall filings are not archived (NOT_COLLECTED, counted in the report).
+Concall filings (CONCALL) are archived like the rest since 15 Oct (owner: everything is captured) and counted in the report.
 clean/reports/announcements_bse/{date}.json counts the window by day,
 category, reading group and NSE listing.
 
@@ -67,7 +67,7 @@ READING_GROUPS = {
                 'Press Release / Media Release (Revised)', 'Outcome without intimation', 'Acquisition',
                 'Scheme of Arrangement', 'Restructuring'),
 }
-NOT_COLLECTED = ('Analyst / Investor Meet', 'Earnings Call Transcript')   # concalls (08 Oct decision)
+CONCALL = ('Analyst / Investor Meet', 'Earnings Call Transcript')   # not archived until 15 Oct (08 Oct decision); archived since
 GROUP_OF = {s: g for g, subs in READING_GROUPS.items() for s in subs}
 
 
@@ -126,9 +126,9 @@ def fetch_day(bse: BSEClient, day: date, known: set | None = None) -> tuple[list
         got, count = bse.announcements(day, page)
         total = count if count is not None else total
         rows += got
-        # Do not treat an all-concall / missing-ID page as a catch-up page: `all([])` is True,
-        # which would silently stop before older pages containing readable announcements.
-        eligible = [r for r in got if r.get('NEWSID') and r.get('SUBCATNAME') not in NOT_COLLECTED]
+        # Do not treat a page of rows without an ID as a catch-up page: `all([])` is True, which would
+        # silently stop before older pages.
+        eligible = [r for r in got if r.get('NEWSID')]
         if known is not None and got and eligible and all(str(r['NEWSID']).lower() in known for r in eligible):
             caught_up = True
             break
@@ -231,10 +231,9 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
             continue
         df = parse(rows)
         dropped += len(rows) - len(df)
-        skip = df['subcategory'].isin(NOT_COLLECTED)
-        stats['not_archived_concall'] = int(skip.sum())
+        stats['concall'] = int(df['subcategory'].isin(CONCALL).sum())
         report['days'].append(stats)
-        frames.append(df[~skip])
+        frames.append(df)
         print(f"BSE collection: finished {day.isoformat()} pages={stats['pages']} "
               f"reported={stats['bse_count']} fetched_unique={stats['unique']} short={stats['short']}",
               flush=True)
@@ -256,11 +255,11 @@ def run(r2, bse: BSEClient, today: date, days: int = NIGHTLY_DAYS, start: date |
 
 def summary_markdown(report: dict) -> str:
     c = report.get('window_counts', {})
-    concall = sum(d.get('not_archived_concall', 0) for d in report.get('days', []))
+    concall = sum(d.get('concall', 0) for d in report.get('days', []))
     only = c.get('bse_only')
     lines = [f"### BSE announcements {report['window'][0]} to {report['window'][1]}", '',
              (f"{c.get('announcements', 0)} announcements from {c.get('companies', 0)} companies, "
-              f"{report.get('added', 0)} new to the archive; {concall} concall announcements not archived; "
+              f"{report.get('added', 0)} new to the archive; {concall} of them concall announcements; "
               + (f"BSE only (no NSE listing): {only['announcements']} from {only['companies']} companies."
                  if only else 'BSE-only share not counted (no security master).')), '',
              '| Reading group | Announcements | BSE only |', '|---|---|---|']

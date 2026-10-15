@@ -13,8 +13,8 @@ archive/announcements/nse/year=YYYY/month=MM.parquet by event_id (NSE's
 seq_id), so re-fetching never adds a filing twice; the month is the
 broadcast date's (IST). Two feeds, `market` equities (main board) and sme
 (SME board; 6-12 Oct 2026: 3,318 and 699 filings, no seq_id in both).
-Concall announcements are not archived (NOT_COLLECTED, counted in the
-report). Nothing goes to clean/current/: no
+Concall announcements (CONCALL) are archived like the rest since 15 Oct (owner:
+everything is captured) and counted in the report. Nothing goes to clean/current/: no
 page reads this yet. clean/reports/announcements/{date}.json counts the
 window by day, subject and reading group (READING_GROUPS) and the attachment types and sizes.
 
@@ -68,9 +68,10 @@ READING_GROUPS = {
     'to_sort': ('Outcome of Board Meeting', 'General Updates', 'Updates', 'Press Release', 'Others',
                 'Disclosure of material issue'),
 }
-# Not archived (docs/PRODUCT.md, 08 Oct: concalls say nothing about buying
-# or selling); counted in the report. The raw copy keeps NSE's whole answer.
-NOT_COLLECTED = ('Analysts/Institutional Investor Meet/Con. Call Updates',)
+# Concall filings (intimations, audio links, transcripts). Not archived until 15 Oct (08 Oct decision: they say
+# nothing about buying or selling); archived since the owner's 15 Oct decision to capture everything. Counted in the
+# report; their reading group is still `routine` until to-do 4.6 decides what is read.
+CONCALL = ('Analysts/Institutional Investor Meet/Con. Call Updates',)
 GROUP_OF = {s: g for g, subjects in READING_GROUPS.items() for s in subjects}
 # 'Allotment of Securities' also covers debt (IIFL Finance's perpetual NCDs,
 # 30 Sep 2026); NSE's one-line text names it, so such filings count as debt.
@@ -331,10 +332,9 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
                 report['notes'].append(f'{market} {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
                 continue
             df = parse(rows, market)
-            skip = df['subject'].isin(NOT_COLLECTED)
             report['calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(df),
-                                    'not_archived_concall': int(skip.sum())})
-            frames.append(df[~skip])
+                                    'concall': int(df['subject'].isin(CONCALL).sum())})
+            frames.append(df)
         if blocked:
             break
 
@@ -386,11 +386,11 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
 def summary_markdown(report: dict) -> str:
     """The run's counts as a short table for the GitHub run page."""
     c = report.get('window_counts', {})
-    concall = sum(x['not_archived_concall'] for x in report.get('calls', []))
+    concall = sum(x.get('concall', 0) for x in report.get('calls', []))
     lines = [f"### NSE announcements {report['window'][0]} to {report['window'][1]}", '',
              (f"{c.get('announcements', 0)} announcements from {c.get('companies', 0)} companies "
               f"({', '.join(f'{k} {v}' for k, v in c.get('by_market', {}).items())}), "
-              f"{report.get('added', 0)} new to the archive; {concall} concall announcements not archived."), '',
+              f"{report.get('added', 0)} new to the archive; {concall} of them concall announcements."), '',
              '| Reading group | Announcements | File MB |', '|---|---|---|']
     for g, e in c.get('by_group', {}).items():
         lines.append(f"| {g} | {e['announcements']} | {e['file_mb_total']} |")

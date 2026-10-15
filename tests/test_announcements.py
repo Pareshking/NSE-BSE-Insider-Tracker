@@ -70,13 +70,13 @@ def test_nightly_run_archives_by_month_and_twice_adds_nothing(monkeypatch):
     concall = dict(ROWS[0], seq_id='1', desc='Analysts/Institutional Investor Meet/Con. Call Updates')
     rep = ann.run(r2, FakeNSE(ROWS + [concall]), date(2026, 10, 1))
     assert rep['window'] == ['2026-09-29', '2026-10-01']
-    assert rep['added'] == len(ROWS) and rep['calls'][0]['not_archived_concall'] == 1
+    assert rep['added'] == len(ROWS) + 1 and rep['calls'][0]['concall'] == 1   # concalls are archived since 15 Oct
     keys = [k for k in r2.objects if k.startswith(ann.PREFIX)]
     assert keys and all('/year=2026/month=' in k for k in keys)
     arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in keys])
-    assert len(arch) == len(ROWS) and '1' not in set(arch['seq_id'])
+    assert len(arch) == len(ROWS) + 1 and '1' in set(arch['seq_id'])
     assert json.loads(r2.objects['clean/reports/announcements/2026-10-01.json'])['window_counts']['announcements'] \
-        == len(ROWS)
+        == len(ROWS) + 1
     assert ann.run(r2, FakeNSE(ROWS), date(2026, 10, 1))['added'] == 0
     assert 'buyback' in ann.summary_markdown(rep)
 

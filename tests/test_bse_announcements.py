@@ -40,7 +40,7 @@ def test_groups_come_from_bse_subcategory():
     assert ann.group_of('Daily Buy Back of equity shares') == 'routine'
     subs = {r['SUBCATNAME'] for r in ROWS}
     assert all(s in subs for g in ann.READING_GROUPS.values() for s in g)   # every mapped name seen on 12 Oct
-    assert set(ann.NOT_COLLECTED) <= subs
+    assert set(ann.CONCALL) <= subs
 
 
 class FakeBSE:
@@ -66,12 +66,12 @@ def test_run_reads_every_page_and_twice_adds_nothing():
     d12 = rep['days'][0]
     assert d12['bse_count'] == len(ROWS) and d12['unique'] == len(ROWS) and not d12['short']
     assert d12['pages'] == -(-len(ROWS) // 20)
-    concall = sum(r['SUBCATNAME'] in ann.NOT_COLLECTED for r in ROWS)
-    assert d12['not_archived_concall'] == concall and rep['added'] == len(ROWS) - concall
+    concall = sum(r['SUBCATNAME'] in ann.CONCALL for r in ROWS)
+    assert concall and d12['concall'] == concall and rep['added'] == len(ROWS)   # concalls are archived since 15 Oct
     keys = [k for k in r2.objects if k.startswith(ann.PREFIX)]
     assert keys == [ann.PREFIX + 'year=2026/month=10.parquet']
     arch = pd.read_parquet(io.BytesIO(r2.objects[keys[0]]))
-    assert len(arch) == len(ROWS) - concall
+    assert len(arch) == len(ROWS)
     assert json.loads(r2.objects['clean/reports/announcements_bse/2026-10-13.json'])['added'] == rep['added']
     assert ann.run(r2, FakeBSE(ROWS), date(2026, 10, 13), days=2)['added'] == 0
     assert 'BSE-only share not counted' in ann.summary_markdown(rep)
@@ -143,15 +143,24 @@ def test_bse_http_request_has_bounded_timeout():
     assert session.timeout == 45
 
 
-def test_incremental_fetch_does_not_stop_on_concall_only_page():
-    day = date(2026, 10, 12)
-    rows = [
-        dict(ROWS[0], NEWSID='call-1', NEWS_DT=day.isoformat() + 'T10:00:00', SUBCATNAME=ann.NOT_COLLECTED[0]),
-        dict(ROWS[1], NEWSID='call-2', NEWS_DT=day.isoformat() + 'T10:01:00', SUBCATNAME=ann.NOT_COLLECTED[1]),
+def _concall_rows(day):
+    return [
+        dict(ROWS[0], NEWSID='call-1', NEWS_DT=day.isoformat() + 'T10:00:00', SUBCATNAME=ann.CONCALL[0]),
+        dict(ROWS[1], NEWSID='call-2', NEWS_DT=day.isoformat() + 'T10:01:00', SUBCATNAME=ann.CONCALL[1]),
         dict(ROWS[2], NEWSID='known-3', NEWS_DT=day.isoformat() + 'T10:02:00', SUBCATNAME='Preferential Issue'),
     ]
-    bse = FakeBSE(rows, size=2)
-    fetched, stats = ann.fetch_day(bse, day, known={'known-3'})
-    assert bse.asked == [(day, 1), (day, 2)]
-    assert len(fetched) == 3
+
+
+def test_incremental_fetch_counts_archived_concall_rows_as_known():
+    day = date(2026, 10, 12)
+    bse = FakeBSE(_concall_rows(day), size=2)
+    fetched, stats = ann.fetch_day(bse, day, known={'call-1', 'call-2'})
+    assert bse.asked == [(day, 1)] and len(fetched) == 2 and stats['caught_up']
+
+
+def test_incremental_fetch_continues_past_a_page_with_an_unknown_concall():
+    day = date(2026, 10, 12)
+    bse = FakeBSE(_concall_rows(day), size=2)
+    fetched, stats = ann.fetch_day(bse, day, known={'call-2', 'known-3'})
+    assert bse.asked == [(day, 1), (day, 2)] and len(fetched) == 3
     assert stats['caught_up'] and not stats['short']
