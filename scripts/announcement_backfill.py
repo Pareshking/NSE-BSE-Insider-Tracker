@@ -241,9 +241,11 @@ def historical_day_ai_complete(r2, day: date) -> bool:
 
 
 def next_unfinished_history_day(r2, start: date, cutoff: date, state: dict) -> date | None:
-    """Resume from the durable cursor, validating date checkpoints before advancing."""
+    """Resume the cursor only when it was written for the current two-exchange scope."""
     pointer = start
-    raw_pointer = state.get('next_history_date')
+    # Older state cursors were advanced while BSE was explicitly skipped. Do not
+    # trust them until the scope migration rewinds and records the full scope.
+    raw_pointer = state.get('next_history_date') if state.get('history_scope') == ['NSE', 'BSE'] else None
     if raw_pointer:
         try:
             proposed = date.fromisoformat(raw_pointer)
