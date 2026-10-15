@@ -82,6 +82,16 @@ def main() -> int:
                    'archive/announcement_backfill/ai-days/'):
         ks = keys(r2, prefix)
         out.append(f'- `{prefix}`: {len(ks)} objects; first {[k[len(prefix):] for k in ks[:3]]} last {[k[len(prefix):] for k in ks[-3:]]}')
+    for k in sorted(keys(r2, 'archive/announcement_backfill/collection/')):
+        try:
+            m = json.loads(r2.get_object(Bucket=BUCKET, Key=k)['Body'].read())
+            v = m.get('verification') or {}
+            out.append(f'- marker `{k.rsplit("/", 1)[-1]}`: status {m.get("status")}, {m.get("from")} to {m.get("to")}, '
+                       f'scope {m.get("scope")}, run {m.get("workflow_run_id")}, at {m.get("completed_at")}, '
+                       f'exchanges {v.get("exchanges_verified")}, bse_skipped {v.get("bse_skipped")}, '
+                       f'bse_rows {v.get("bse_rows_reported")}')
+        except Exception as exc:  # noqa: BLE001
+            out.append(f'- marker `{k}`: not read ({type(exc).__name__})')
     for k in ks_state(r2):
         out.append(k)
     out.append('')
