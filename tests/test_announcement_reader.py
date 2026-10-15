@@ -59,6 +59,31 @@ def _cand(eid, exchange, isin, at, subject, detail='', group='fund_raise', mcap=
 
 
 
+
+def test_candidates_resolves_nan_isin_before_market_cap_filter():
+    class Master:
+        market_cap_as_of = '2026-10-14'
+        def resolve(self, exchange, identifier):
+            if exchange == 'nse' and identifier == 'BANKBARODA':
+                return ('INE028A01039', 'symbol')
+            return (None, None)
+        def record(self, isin):
+            if isin == 'INE028A01039':
+                return {'market_cap': 2_000_000_000_000, 'nse_symbol': 'BANKBARODA'}
+            return None
+
+    nse = pd.DataFrame([{
+        'event_id': 'nse:cap-map', 'symbol': 'BANKBARODA', 'isin': float('nan'),
+        'company': 'Bank of Baroda', 'subject': 'Acquisition', 'text': 'Announcement',
+        'file_url': 'https://nsearchives.nseindia.com/corporate/bankbaroda.pdf',
+        'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-15T09:00:00+05:30',
+        'broadcast_date': '2026-10-15', 'market': 'equities',
+    }])
+    out = ar.candidates(nse, pd.DataFrame(), Master()).iloc[0]
+    assert out['isin'] == 'INE028A01039'
+    assert out['market_cap'] == 2_000_000_000_000
+    assert out['market_cap_as_of'] == '2026-10-14'
+
 def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate_read():
     rows = pd.DataFrame([
         {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
