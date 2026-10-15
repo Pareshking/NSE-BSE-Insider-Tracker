@@ -654,13 +654,14 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     records = df.to_dict('records')
     structured_rows = []
     for idx, row in enumerate(records):
-        # NSE's hasXbrl flag is attached to the PDF row, but companion filenames and
-        # subjects are not consistently labelled "XBRL". Use the actual attachment
-        # format as the primary signal; issuer/date and ambiguity gates below prevent
-        # an unrelated same-day attachment from being selected.
-        if (row.get('exchange') == 'NSE'
-                and str(row.get('file_type') or '').strip().lower() in ('xml', 'xbrl', 'zip')
-                and row.get('file_url')):
+        # XML/XBRL files are reliable structured companions even when their subject omits
+        # "XBRL". A generic ZIP is not: these feeds also use ZIP for ordinary documents
+        # (for example KMP resignation attachments). Accept ZIP only when its subject or
+        # URL explicitly identifies XBRL; otherwise leave the PDF as the safe fallback.
+        file_type = str(row.get('file_type') or '').strip().lower()
+        xbrl_hint = re.search(r'\bxbrl\b', f"{row.get('subject') or ''} {row.get('file_url') or ''}", re.IGNORECASE)
+        is_xbrl_payload = file_type in ('xml', 'xbrl') or (file_type == 'zip' and bool(xbrl_hint))
+        if row.get('exchange') == 'NSE' and is_xbrl_payload and row.get('file_url'):
             structured_rows.append((idx, row))
     used_xbrl = set()
     for idx, row in enumerate(records):
@@ -685,26 +686,30 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             nearby_structured.append(candidate)
             if subject_base(xrow.get('subject')) == subject:
                 matches.append(candidate)
-        if matches:
-            _, _, xidx, xrow = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+        # Pair only when the issuer/date window has one eligible PDF and one eligible
+        # XBRL payload. Repeated generic subjects are common for separate KMP filings;
+        # choosing the first exact-subject match can cross-wire distinct disclosures.
+        other_pdfs = []
+        for pidx, prow in enumerate(records):
+            if pidx == idx or prow.get('exchange') != 'NSE' or not truthy(prow.get('has_xbrl')):
+                continue
+            if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
+                continue
+            pidentifier = str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper()
+            pday = day(prow.get('broadcast_date'))
+            if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
+                other_pdfs.append(pidx)
+        if len(matches) == 1 and not other_pdfs:
+            _, _, xidx, xrow = matches[0]
+        elif matches:
+            # More than one exact match is ambiguous; do not guess.
+            continue
         else:
             # Subjects can differ between a PDF announcement and its XBRL companion.
-            # Only use a non-exact match when this issuer has exactly one eligible PDF and one
-            # XBRL attachment in the date window; ambiguous pairs fall back to the PDF.
-            other_pdfs = []
-            for pidx, prow in enumerate(records):
-                if pidx == idx or prow.get('exchange') != 'NSE' or not truthy(prow.get('has_xbrl')):
-                    continue
-                if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
-                    continue
-                pidentifier = str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper()
-                pday = day(prow.get('broadcast_date'))
-                if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
-                    other_pdfs.append(pidx)
-            # Without an exact subject match, require an explicit XBRL label on the
-            # companion. An unrelated XML/ZIP on the same day is not sufficient.
+            # Without an exact subject match, require one explicitly XBRL-labelled
+            # companion and exactly one eligible PDF in the issuer/date window.
             labelled_nearby = [item for item in nearby_structured
-                                if re.search(r'\bxbrl\b', str(item[3].get('subject') or ''), re.IGNORECASE)]
+                                if re.search(r'\bxbrl\b', f"{item[3].get('subject') or ''} {item[3].get('file_url') or ''}", re.IGNORECASE)]
             if len(labelled_nearby) != 1 or other_pdfs:
                 continue
             _, _, xidx, xrow = labelled_nearby[0]
@@ -726,11 +731,16 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
         lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
     subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
         r'\bxbrl\b', case=False, regex=True)
-    attachment_format = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
-        ('xml', 'xbrl', 'zip'))
-    # Do not require "XBRL" in the subject: exchange attachment metadata may omit it.
+    file_type = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower()
+    attachment_format = file_type.isin(('xml', 'xbrl', 'zip'))
+    # XML/XBRL is a positive format signal without needing a subject label. ZIP is only
+    # counted as an XBRL attachment when its subject or URL explicitly identifies XBRL.
+    xbrl_hint = (
+        cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str)
+        + ' ' + cands.get('file_url', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str)
+    ).str.contains(r'\bxbrl\b', case=False, regex=True)
     structured_attachment = attachment_format
-    attachment = attachment_format & subject_xbrl
+    attachment = file_type.isin(('xml', 'xbrl')) | ((file_type == 'zip') & xbrl_hint)
     direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
