@@ -8,6 +8,7 @@ import zipfile
 from datetime import date, datetime, timezone
 
 import announcement_reader as ar
+import announcement_sample as sample
 import pandas as pd
 import pytest
 from test_archive_and_writer import FakeR2
@@ -996,3 +997,55 @@ def test_daily_limit_counts_calls_recorded_by_earlier_runs(monkeypatch):
     lane = ar.Lane('groq', ['groq:q'], {'groq': FakeClient([])})
     lane.used_today = ar.used_today(object(), now)
     assert lane.models() == []                           # 95% of the day's 100 already used
+
+
+class _Resp:
+    def __init__(self, status, body=b''):
+        self.status_code, self.content, self.ok = status, body, status < 400
+
+    def raise_for_status(self):
+        if not self.ok:
+            raise RuntimeError(f'HTTP {self.status_code}')
+
+
+class _Session:
+    def __init__(self, answers):
+        self.answers, self.asked = answers, []
+
+    def get(self, url, **_):
+        self.asked.append(url)
+        return self.answers[url]
+
+
+def test_bse_download_falls_back_to_attachhis_when_attachlive_is_gone():
+    live = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/a.pdf'
+    his = live.replace('AttachLive', 'AttachHis')
+    session = _Session({live: _Resp(404, b'<html>'), his: _Resp(200, b'%PDF-1.4')})
+    assert sample.download(live, session) == b'%PDF-1.4'
+    assert session.asked == [live, his]
+
+
+def test_bse_download_uses_attachlive_when_it_works_and_nse_never_falls_back():
+    live = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/a.pdf'
+    session = _Session({live: _Resp(200, b'%PDF')})
+    assert sample.download(live, session) == b'%PDF' and session.asked == [live]
+    nse = 'https://nsearchives.nseindia.com/corporate/X.pdf'
+    session = _Session({nse: _Resp(404)})
+    try:
+        sample.download(nse, session)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('a missing NSE file must raise')
+    assert session.asked == [nse]
+
+
+def test_bse_download_raises_the_first_error_when_both_paths_are_gone():
+    live = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/a.pdf'
+    session = _Session({live: _Resp(404), live.replace('AttachLive', 'AttachHis'): _Resp(404)})
+    try:
+        sample.download(live, session)
+    except RuntimeError as exc:
+        assert '404' in str(exc)
+    else:
+        raise AssertionError('both paths missing must raise')
