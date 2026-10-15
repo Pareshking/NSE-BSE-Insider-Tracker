@@ -133,6 +133,20 @@ class NSEClient:
         j = self.get(self.announcements_url(start, end, index))
         return j if isinstance(j, list) else j.get('data', [])
 
+    def xbrl_announcements(self, start: date, end: date, index: str = 'equities',
+                           symbol: str | None = None) -> list[dict]:
+        """Dedicated NSE Announcement XBRL feed; returns rows carrying attachment/ixbrl URLs.
+
+        This is separate from the normal announcements endpoint: its hasXbrl flag alone is
+        not a URL. The official XBRL page uses /api/XBRL-announcements with type=announcements.
+        """
+        query = (f'index={index}&from_date={self._d(start)}&to_date={self._d(end)}'
+                 '&type=announcements')
+        if symbol:
+            query += f'&symbol={symbol}'
+        j = self.get(f'{BASE}/api/XBRL-announcements?{query}')
+        return j if isinstance(j, list) else j.get('data', [])
+
     # --- further issues (confirmed 12 Oct 2026) -----------------------------
     # Preferential, rights and QIP, each in two stages. With from_date/to_date
     # NSE returns every filing it posted in the window, not only the latest
