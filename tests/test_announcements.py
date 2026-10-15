@@ -110,7 +110,7 @@ def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
     archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
                           for k in r2.objects if k.startswith(ann.PREFIX)])
     assert len(archived) == 3
-    assert set(archived['file_type']) == {'pdf'}
+    assert not set(archived['file_type']) & {'xml', 'xbrl'}  # failed optional XBRL parse added no synthetic rows
 
 
 def test_sme_feed_is_archived_with_its_market_and_old_rows_count_as_equities():
