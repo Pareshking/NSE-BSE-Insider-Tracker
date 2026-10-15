@@ -753,7 +753,7 @@ def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl
 
 
 
-def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_pdf_is_unique():
+def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_filing_id_matches():
     rows = pd.DataFrame([
         {'event_id': 'nse:pdf:litigation', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
          'company': 'Bharat Coking Coal Limited',
@@ -776,6 +776,26 @@ def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_pdf_is_uniq
     assert pdf['content_url'].endswith('BCCL_ROID_100383_KMP_Doc.zip')
     assert pdf['xbrl_source_event_id'] == xbrl.name
     assert xbrl['group'] == 'routine'
+
+
+def test_dedicated_xbrl_does_not_pair_mismatched_subject_by_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:pdf:litigation', 'symbol': 'X', 'isin': 'INE000A01000',
+         'company': 'X Ltd', 'subject': 'Pendency of Litigation(s)/dispute(s)',
+         'text': 'Litigation disclosure', 'file_url': 'https://nsearchives.nseindia.com/corporate/X_litigation.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100999:abc123', 'symbol': 'X', 'isin': 'INE000A01000',
+         'company': 'X Ltd', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'text': 'XBRL metadata', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_123.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_123.xml',
+         'broadcast_at': '2026-10-14T10:01:00+05:30', 'broadcast_date': '2026-10-14',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:pdf:litigation']
+    assert pdf['content_url'].endswith('X_litigation.pdf')
+    assert pd.isna(pdf['xbrl_source_event_id'])
 
 
 def test_dedicated_xbrl_feed_row_is_used_as_fast_path_without_duplicate_candidate():
