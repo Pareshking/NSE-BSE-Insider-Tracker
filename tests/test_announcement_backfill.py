@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
+import pytest
 
 import announcement_backfill as backfill
 import announcement_reader as ar
@@ -20,6 +21,18 @@ def _candidate(eid, day, isin='INE000A01001', status=None):
         'broadcast_at': f'{day}T10:00:00+05:30', 'broadcast_date': day,
         'market_cap': 50_000_000_000, 'status': status, 'tries': 0,
     }
+
+
+def test_unified_history_completion_does_not_depend_on_nightly_collector(monkeypatch):
+    today = date(2026, 10, 15)
+    r2 = FakeR2()
+    state = {'collection_next_date': (today - timedelta(days=1)).isoformat()}
+    monkeypatch.setattr(backfill, 'historical_day_collected', lambda *_: True)
+    monkeypatch.setattr(backfill, 'recent_history_coverage_verified',
+                        lambda *_: pytest.fail('unified pipeline must not depend on a separate nightly workflow'))
+    assert backfill.advance_pipeline_history_collection(r2, today, state, []) is True
+    assert state['collection_complete'] is True
+    assert state['collection_cutoff'] == '2026-10-14'
 
 
 def test_continuous_worker_uses_only_checkpointed_completed_months():
