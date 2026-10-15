@@ -41,7 +41,7 @@ permissions:
 
 concurrency:
   # One production pipeline; experiments on PRs/branches remain isolated.
-  group: announcement-pipeline-${{ github.event_name == 'pull_request' && 'pr' || (github.ref == 'refs/heads/main' && 'main' || github.ref_name) }}
+  group: ${{ github.event_name == 'pull_request' && 'announcement-pipeline-pr' || (github.ref == 'refs/heads/main' && 'nse-announcements' || github.ref_name) }}
   cancel-in-progress: false
 
 jobs:
