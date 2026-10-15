@@ -686,7 +686,8 @@ def test_xbrl_audit_counts_structured_attachments_without_subject_label():
     ])
     audit = ar.xbrl_audit(cands)
     assert audit['has_xbrl_flagged'] == 1
-    assert audit['xbrl_attachments'] == 1
+    assert audit['structured_attachments'] == 1
+    assert audit['xbrl_attachments'] == 0
     assert audit['xbrl_subject_labels'] == 0
 
 
