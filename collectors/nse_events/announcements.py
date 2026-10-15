@@ -46,7 +46,7 @@ NIGHTLY_DAYS = 3   # late broadcasts of the last two days are picked up again
 PREFIX = 'archive/announcements/nse/'
 FEEDS = ('equities', 'sme')   # NSE's index= values; stored as `market`
 COLUMNS = ('event_id', 'seq_id', 'market', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
-           'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'broadcast_at', 'disseminated_at', 'broadcast_date')
+           'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'xbrl_url', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
 # NSE subject lines (the `desc` field, exactly as in Sep 2026's 104 subjects)
 # for each later reading job. Everything else is routine for that purpose.
@@ -109,6 +109,17 @@ def _file(v):
     return v if v and v.lower().startswith('http') else None
 
 
+
+def _xbrl_file(row: dict) -> str | None:
+    """Return an exchange-supplied XBRL URL if the announcement payload exposes one."""
+    for key, value in (row or {}).items():
+        if 'xbrl' in str(key).casefold():
+            url = _file(value)
+            if url:
+                return url
+    return None
+
+
 def file_type(url) -> str | None:
     """'pdf', 'zip' (224 in Sep 2026: several PDFs, or a PDF and its XML) or another extension."""
     return url.rsplit('.', 1)[-1].lower() if isinstance(url, str) and '.' in url.rsplit('/', 1)[-1] else None
@@ -132,6 +143,7 @@ def parse(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
             'file_size': _text(r.get('attFileSize') or r.get('fileSize')) if url else None,
             'file_bytes': size_bytes(r.get('attFileSize') or r.get('fileSize')) if url else None,
             'has_xbrl': bool(r.get('hasXbrl')) if r.get('hasXbrl') is not None else None,
+            'xbrl_url': _xbrl_file(r),
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
             'broadcast_date': at.date().isoformat() if at is not None else None,
