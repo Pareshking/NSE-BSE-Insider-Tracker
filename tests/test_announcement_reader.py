@@ -710,6 +710,26 @@ def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl
     assert out.loc['attachment:unlabelled', 'group'] == 'routine'
 
 
+
+
+def test_candidates_pair_observed_xbrl_even_when_upstream_flag_is_false():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:false-flag', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results announcement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'xml:false-flag', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_results.xml',
+         'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:false-flag', 'content_url'].endswith('X_results.xml')
+    assert out.loc['pdf:false-flag', 'xbrl_source_event_id'] == 'xml:false-flag'
+
+
 def test_xbrl_audit_counts_structured_attachments_without_subject_label():
     cands = pd.DataFrame([
         {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
@@ -725,6 +745,8 @@ def test_xbrl_audit_counts_structured_attachments_without_subject_label():
     ])
     audit = ar.xbrl_audit(cands)
     assert audit['has_xbrl_flagged'] == 1
+    assert audit['has_xbrl_flagged_pdf_rows'] == 1
+    assert audit['flagged_without_direct_xbrl_url'] == 2
     assert audit['structured_attachments'] == 1
     assert audit['xbrl_attachments'] == 1  # XML format is a positive signal without a subject label
     assert audit['xbrl_subject_labels'] == 0
