@@ -29,7 +29,11 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | 1.1a Archive gaps | **Open: cause found, fix coded** | the gaps report lists no weekday without filings for NSE and BSE from 1 Jan (holidays named), and the nightly collection has run two nights in a row |
 | 1.2 Context blindness: does memory reach the prompt | **Closed 15 Oct** (measured; newline bug fixed; the rest is 1.2a) | done |
 | 1.2a Memory selection and content | **Open, owner to approve** | see its row |
-| 1.3 onwards | Open, not started | |
+| 1.3 Structured memory, no vector database | **Closed 15 Oct** | done |
+| 1.4 Informational vs actionable | **Later**, waits on 8.1 (rejected for now) | |
+| 2.1 to 2.5 | **Closed or deferred 15 Oct** (2.1 deferred, 2.2 and 2.4 not applicable, 2.3 have, 2.5 evidence) | see rows |
+| 2.6 External scheduler | **Open: evidence in, waiting for the owner's call** | owner approves or rejects the recommendation |
+| 2.7 onwards | Open, not started | |
 
 ## 1. Vision
 
@@ -39,20 +43,20 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | 1.1a | **Closed by owner 15 Oct** (collection run for March to 15 Oct still going; verify at its end). Fill the archive gaps and keep collecting | **Cause found 15 Oct** (`ANNOUNCEMENT_READER.md`, archive gaps): March NSE job cancelled; BSE Mar–Sep never fetched (history ran NSE-only but wrote markers); 2–12 Oct before the nightly existed; nothing collecting since the reader absorbed the collector. Fix: `announcement-collect.yml` (nightly, no AI, any range by hand) | Re-run Mar–12 Oct for both exchanges; the gaps report shows no weekday without filings | |
 | 1.2 | Context blindness: a filing read without the company's past | **Measured 15 Oct** (`scripts/memory_report.py`): 754 companies, 1,078 events (850 from January, 228 from October; none between), median 1 event a company, max 7, 522 companies with just 1; 2 MB in all. Of 1,337 read filings 99% had an ISIN but only 21.7% had any earlier event in memory (an upper bound: memory now holds later events too). 20% of events are `routine`, and a prompt block can be a compliance-officer notice (Varroc). Only the headline line goes into the prompt, never the checked fields (40% of events) or numbers (36%); one block is about 1.2–1.5 KB for 6–7 events. Bug found and fixed: lines were joined with a literal `
 ` | Closed; findings in 1.2a | Closed |
-| 1.2a | **New:** memory selection and content | Open: (1) skip routine and boilerplate events and keep the 8 slots for events that matter; (2) pass the checked numbers and fields, not only the headline; (3) put financials from the results XBRL (#99) into memory; (4) include same-day earlier filings (today a strict earlier-date rule); (5) memory is thin because only January and October were read: it fills only as every filing is read (items 3.12, 4.14) | Memory block for a sample of companies shows only events that matter, with numbers, tested | |
-| 1.3 | Vector search fails on financial state, so use structured memory | Same approach already: no vector DB | None (confirm only) | |
-| 1.4 | Informational facts update memory vs a few actionable signals a day | Partial: Brief and Actions pages; no "memory-only" tier | Decide after 8.1 | |
+| 1.2a | **New:** memory selection and content | **Design approved by the owner 15 Oct; built after the reader is re-enabled and reading everything (3.12, 4.14)**. Open: (1) skip routine and boilerplate events and keep the 8 slots for events that matter; (2) pass the checked numbers and fields, not only the headline; (3) put financials from the results XBRL (#99) into memory; (4) include same-day earlier filings (today a strict earlier-date rule); (5) memory is thin because only January and October were read: it fills only as every filing is read (items 3.12, 4.14) | Memory block for a sample of companies shows only events that matter, with numbers, tested | |
+| 1.3 | Vector search fails on financial state, so use structured memory | Same approach already: no vector DB | None (confirm only) | **Closed 15 Oct** (owner) |
+| 1.4 | Informational facts update memory vs a few actionable signals a day | Partial: Brief and Actions pages; no "memory-only" tier | Decide after 8.1 | **Later** (owner, 15 Oct): waits on 8.1, which is deferred |
 
 ## 2. Hosting
 
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
-| 2.1 | React + Cloudflare Pages/Workers + D1 instead of Streamlit | **Conflict**: "Streamlit stays" (07 Oct). The 1 GB memory problem was fixed in #96 | Watch memory for a week; revisit only if it comes back | |
-| 2.2 | D1 (SQLite) for search and filters | Missing: Parquet in R2 read by the site | Only relevant if 2.1 is approved | |
-| 2.3 | One memory file per company in R2 | Have: `archive/company_memory/{ISIN}.json` (by ISIN, not BSE code; see 7.F3) | None | |
-| 2.4 | Daily feed file and a homepage snapshot | Partial: `clean/current/announcement_reads.parquet` (60 days) and slim precomputed artifacts | None unless 2.1 | |
-| 2.5 | BSE blocks foreign datacentre IPs, so run on an Indian connection or self-hosted runner | Unknown for the runner: BSE refuses this container; the GitHub runner's BSE results are not confirmed | Read the BSE collector's fetch records in `raw_v2/bse/` (HTTP status by day) | |
-| 2.6 | External cron (cron-job.org) instead of GitHub's late cron | Partial: the reader chains its own next run (`job next`); nightly jobs start 1–3 h late | Measure the actual start delays of the nightly workflows | |
+| 2.1 | React + Cloudflare Pages/Workers + D1 instead of Streamlit | **Conflict**: "Streamlit stays" (07 Oct). The 1 GB memory problem was fixed in #96 | Watch memory for a week; revisit only if it comes back | **Deferred** (owner, 15 Oct): the Streamlit memory fix (#96) holds; revisit only if memory returns |
+| 2.2 | D1 (SQLite) for search and filters | Missing: Parquet in R2 read by the site | Only relevant if 2.1 is approved | Not applicable while 2.1 is deferred |
+| 2.3 | One memory file per company in R2 | Have: `archive/company_memory/{ISIN}.json` (by ISIN, not BSE code; see 7.F3) | None | **Closed 15 Oct**: have |
+| 2.4 | Daily feed file and a homepage snapshot | Partial: `clean/current/announcement_reads.parquet` (60 days) and slim precomputed artifacts | None unless 2.1 | **Closed 15 Oct**: no change needed while 2.1 is deferred |
+| 2.5 | BSE blocks foreign datacentre IPs, so run on an Indian connection or self-hosted runner | Unknown for the runner: BSE refuses this container; the GitHub runner's BSE results are not confirmed | Read the BSE collector's fetch records in `raw_v2/bse/` (HTTP status by day). **Done 15 Oct:** 40 of 40 fetches HTTP 200 from the GitHub runner (13–15 Oct, and 14:49 UTC today while the gap run pulled April), so BSE does not block the runner; a block is still handled (`Blocked` stops the window and is reported) | **Closed 15 Oct** (evidence in the row) |
+| 2.6 | External cron (cron-job.org) instead of GitHub's late cron | Partial: the reader chains its own next run (`job next`); nightly jobs start 1–3 h late | **Measured 15 Oct (schedule runs 1–14 Oct):** R2 Storage (cron 18:00 UTC) started 21:28–23:55 UTC, NSE events (cron 16:00 UTC) 19:34–22:37 UTC: 3.5 to 6.5 hours late, not 1–3. Our 22:45 IST collection will start about 02:30–05:00 IST. Fine for nightly jobs. Recommendation: no external scheduler; the reader keeps its own chain. An external one needs a GitHub token held by a third party | Awaiting owner: Approve the recommendation (no external scheduler) / Reject |
 | 2.7 | Never store raw PDFs in R2 | Have: PDFs are not stored; text only, never as files | None | |
 | 2.8 | Local compressed text cache, so a re-read never downloads again | Partial: same file or text is copied (`same_file`/`same_text`), but extracted text is not kept | Decide on an R2 text cache (`.json.gz` per filing) and measure the size | |
 | 2.9 | Protect D1 read caps, cache the system page | Not applicable unless 2.1 | | |
@@ -68,7 +72,7 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | 3.4 | Groq llama-3.1-8b-instant as a cheap gatekeeper | Missing (Groq runs Qwen 3.8 as a reader) | Check its limit; test on 4.4 | |
 | 3.5 | NVIDIA deepseek-r1 / llama-3.3-70b for deep reading | Partial: NVIDIA Gemma 4 | Check the catalog; 24-filing test | |
 | 3.6 | Z.ai glm-4.7-flash for long documents, glm-4.6v-flash vision | Partial: GLM-4.5-Flash; 4.7-Flash was in a sample run | Check the 4.7 result in the docs; check the vision model is free | |
-| 3.7 | Two accounts per provider, keys alternating | Missing | **Read each provider's terms first**: several forbid multiple free accounts. Your decision | |
+| 3.7 | Two accounts per provider, keys alternating | Missing | **Read each provider's terms first**: several forbid multiple free accounts. Your decision | **Rejected** (owner, 15 Oct) |
 | 3.8 | 95% limit per (provider, key), with RPM, TPM and RPD tracked | Partial: daily calls at 95% with per-provider reset (#98); no RPM/TPM tracking | Measure 429s per minute in the usage files | |
 | 3.9 | On 429 or 404, rotate out and move to the next provider | Have: the next model in the lane, then another lane | | |
 | 3.10 | All providers busy: pause 60 s, resume from the queue, drop nothing | Partial: unread filings wait for the next run; `failed` after 3 tries | Check results-season volume against capacity (see 4.4) | |
@@ -111,7 +115,7 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | 5.11 | Indian fiscal period normalising (Q2FY27 etc.) | Partial: results have `period_end`; reads keep the period as written | Check the read periods we hold | |
 | 5.12 | Consolidated preferred over standalone, never mixed | Partial: results keep both rows, marked | Choose one per company/quarter in the clean table | |
 | 5.13 | Every number grounded in its quote | Have: stricter (a quote per value, digits must match) | | |
-| 5.14 | Model-declared formulas with ASSUMPTION variables, evaluated by an AST checker | **Conflict**: our rule is that the model gives numbers as written and our code computes; assumptions are invented numbers (rule 7) | Your decision | |
+| 5.14 | Model-declared formulas with ASSUMPTION variables, evaluated by an AST checker | **Conflict**: our rule is that the model gives numbers as written and our code computes; assumptions are invented numbers (rule 7) | Your decision | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 5.15 | Check memory before saying "not disclosed" | Partial: gaps flagged neutrally | Add a memory lookup when memory has the item | |
 | 5.16 | Delta merge: missing fields never overwrite; re-reads replace only their own entry | Have: upsert by event_id | | |
 | 5.17 | Dilution post-money; ratios "N/A" when net worth ≤ 0 | Partial: size vs market cap; no dilution % | Add post-money dilution where shares are read | |
@@ -122,9 +126,9 @@ section number, nothing dropped. Per point: what we have, the first step, and th
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
 | 6.1 | Header: symbol, BSE code, market cap, size tier, time, after-market tag | Partial: no BSE code, no "after market" tag | Small; add if wanted | |
-| 6.2 | Credibility score, liquidity (₹ Cr a day), impact label | **Conflict**: no "impact" labels and no scores (07 and 13 Oct). Liquidity is data, not a score | Liquidity yes/no? | |
+| 6.2 | Credibility score, liquidity (₹ Cr a day), impact label | **Conflict**: no "impact" labels and no scores (07 and 13 Oct). Liquidity is data, not a score | Liquidity yes/no? | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 6.3 | "What happened" facts, quoted | Have | | |
-| 6.4 | "Why it matters" from memory | **Conflict in part**: held back until our history supports it (14 Oct); allowed only from our own data | After 5.x | |
+| 6.4 | "Why it matters" from memory | **Conflict in part**: held back until our history supports it (14 Oct); allowed only from our own data | After 5.x | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 6.5 | "What to track next" | Missing | Only from filed dates (results date, record date) | |
 | 6.6 | Footer: revenue, debt, net worth, 1W/1M/1Y | Partial: 1W/1M/1Y yes; revenue from results soon; debt/net worth after 4.2 | | |
 | 6.7 | "N of M numbers verified" | Partial: held-back reasons counted | Show the count on the card | |
@@ -182,19 +186,19 @@ Each needs data we may not have yet. "Needs" says what.
 
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
-| 8.1 | Four gates (size, trend break, price not run up, no red flags) | **Conflict in part**: "a signal leads only if the measured record supports it" (12 Oct). The gates could be measured as signals in Track record first | Your decision | |
-| 8.2 | 0–100 actionability score | **Conflict**: no scores (07 Oct) | Your decision | |
+| 8.1 | Four gates (size, trend break, price not run up, no red flags) | **Conflict in part**: "a signal leads only if the measured record supports it" (12 Oct). The gates could be measured as signals in Track record first | Your decision | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
+| 8.2 | 0–100 actionability score | **Conflict**: no scores (07 Oct) | Your decision | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 8.L1 | Price reaction after each filing (+1D/+3D/+5D, 15:30 cut-off) | Partial: Track record does this for insider signals; not for announcements | Extend the timing rules to read filings by category | |
 | 8.L1b | Lower the weight of categories with no reaction | Missing (needs 8.L1) | | |
 | 8.L1c | "Missed" filings (>8% move, 3× volume in 48 h) re-read | Missing | | |
 | 8.L2 | Forecast vs actual | Missing (needs guidance 5.5) | | |
-| 8.L3 | Star / noise feedback injected into prompts | Missing. The repo is public: feedback must live in R2, not the repo | Your decision | |
+| 8.L3 | Star / noise feedback injected into prompts | Missing. The repo is public: feedback must live in R2, not the repo | Your decision | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 
 ## 9. Site
 
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
-| 9.1 | Design: warm alabaster, dark mode, three fonts | **Conflict**: our design was decided 08 Oct (Geist, #F6F7F9, indigo) | | |
+| 9.1 | Design: warm alabaster, dark mode, three fonts | **Conflict**: our design was decided 08 Oct (Geist, #F6F7F9, indigo) | | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 9.2 | Top signals and pre-market brief, "since 15:30" filter | Partial: Brief and Actions pages | Add a "since last close" filter? | |
 | 9.3 | Live feed with search, dates, session, category, sector, cap filters | Partial: Filings read page (heading, period, exchange, size, search) | Sector and session filters missing | |
 | 9.4 | Company directory and "inflection radar" (3 triggers in 90 days) | Partial: Screener; no radar | After 5.x | |
@@ -215,9 +219,10 @@ Each needs data we may not have yet. "Needs" says what.
 
 | # | Point | Ours today | First step | Your call |
 |---|---|---|---|---|
+| 12.1 | **New (owner, 15 Oct): inventory of `main`**: every script, workflow and module and whether anything still uses it; then removals in small batches the owner approves, tests green each time (no wholesale deletion; git history keeps everything) | Missing | After 1.1a is verified (the collection run and two nightly runs) | **Approved** (owner, 15 Oct) |
 | 11.1 | 5-company smoke test before a wide backfill | Missing as a habit | Pick 5 of **our** companies with known filings; run the backfill on them only | |
 | 11.2 | Backfill only companies ≥ ₹100 Cr | Have (below ₹100 Cr is never read) | | |
-| 11.3 | 2025 baseline pass (facts only) then the 2026 pass (cards) | **Conflict**: history from 08 Oct 2025, AI backfill from 01 Jan 2026 | Your decision | |
+| 11.3 | 2025 baseline pass (facts only) then the 2026 pass (cards) | **Conflict**: history from 08 Oct 2025, AI backfill from 01 Jan 2026 | Your decision | **Rejected for now** (owner, 15 Oct): conflicts with an earlier decision; reopen only if you choose to |
 | 11.4 | Monthly checkpoints, resumable | Have (`state.json`, monthly markers) | | |
 | 11.5 | Daily deltas in 3–5 minutes | Partial: reader every ~15 min (paused) | | |
 | 11.6 | 08:45 brief and a Sunday review | Partial: Brief page | | |

@@ -220,7 +220,7 @@ so it ends before the next starts; what it does not reach waits for the next run
   `workflow_dispatch`, which GitHub lets a workflow start with its own token), at least 10 minutes after
   the last one started and 30 after a failure; a cancelled run ends the chain. GitHub's schedule (every 15
   minutes) is kept only to restart the chain: on 13-14 Oct it started no run in the first hour after the
-  merge, and the nightly jobs start 1-3 hours late. **Off switch:** set the repository variable
+  merge, and the nightly jobs start 3.5-6.5 hours late (measured 15 Oct on 1-14 Oct runs). **Off switch:** set the repository variable
   `READER_LOOP` to `off` (Settings, Secrets and variables, Actions, Variables) or disable the workflow in
   the Actions tab; on again: remove the variable and run the workflow by hand once. The public repo's
   Actions minutes are free; each cycle collects NSE and BSE once (about 2 minutes).
