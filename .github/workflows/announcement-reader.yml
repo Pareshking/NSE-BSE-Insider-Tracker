@@ -54,7 +54,7 @@ permissions:
 
 concurrency:
   # One production pipeline; experiments on PRs/branches remain isolated.
-  group: ${{ github.event_name == 'pull_request' && 'announcement-pipeline-pr' || (github.ref == 'refs/heads/main' && 'nse-announcements' || github.ref_name) }}
+  group: ${{ github.event_name == 'pull_request' && 'announcement-pipeline-pr' || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
   # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
