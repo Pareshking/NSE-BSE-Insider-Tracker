@@ -652,7 +652,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         return None if pd.isna(parsed) else parsed.date()
 
     records = df.to_dict('records')
-    xbrl_rows = []
+    structured_rows = []
     for idx, row in enumerate(records):
         # NSE's hasXbrl flag is attached to the PDF row, but companion filenames and
         # subjects are not consistently labelled "XBRL". Use the actual attachment
@@ -661,7 +661,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         if (row.get('exchange') == 'NSE'
                 and str(row.get('file_type') or '').strip().lower() in ('xml', 'xbrl', 'zip')
                 and row.get('file_url')):
-            xbrl_rows.append((idx, row))
+            structured_rows.append((idx, row))
     used_xbrl = set()
     for idx, row in enumerate(records):
         if row.get('exchange') != 'NSE' or not truthy(row.get('has_xbrl')):
@@ -673,8 +673,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         broadcast_day = day(row.get('broadcast_date'))
         if not identifier or not subject or broadcast_day is None:
             continue
-        matches, nearby_xbrl = [], []
-        for xidx, xrow in xbrl_rows:
+        matches, nearby_structured = [], []
+        for xidx, xrow in structured_rows:
             if xidx in used_xbrl or xidx == idx:
                 continue
             xidentifier = str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper()
@@ -682,7 +682,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             if xidentifier != identifier or xday is None or abs((xday - broadcast_day).days) > 1:
                 continue
             candidate = (abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow)
-            nearby_xbrl.append(candidate)
+            nearby_structured.append(candidate)
             if subject_base(xrow.get('subject')) == subject:
                 matches.append(candidate)
         if matches:
@@ -701,9 +701,13 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                 pday = day(prow.get('broadcast_date'))
                 if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
                     other_pdfs.append(pidx)
-            if len(nearby_xbrl) != 1 or other_pdfs:
+            # Without an exact subject match, require an explicit XBRL label on the
+            # companion. An unrelated XML/ZIP on the same day is not sufficient.
+            labelled_nearby = [item for item in nearby_structured
+                                if re.search(r'\bxbrl\b', str(item[3].get('subject') or ''), re.IGNORECASE)]
+            if len(labelled_nearby) != 1 or other_pdfs:
                 continue
-            _, _, xidx, xrow = nearby_xbrl[0]
+            _, _, xidx, xrow = labelled_nearby[0]
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
@@ -716,7 +720,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 def xbrl_audit(cands: pd.DataFrame | None) -> dict:
     """Dry-run diagnostics proving whether XBRL companions are present and being used."""
     if cands is None or cands.empty:
-        return {'candidates': 0, 'has_xbrl_flagged': 0, 'direct_xbrl_urls': 0, 'xbrl_attachments': 0, 'xbrl_linked': 0,
+        return {'candidates': 0, 'has_xbrl_flagged': 0, 'direct_xbrl_urls': 0, 'xbrl_attachments': 0, 'structured_attachments': 0, 'xbrl_subject_labels': 0, 'xbrl_linked': 0,
                 'flagged_samples': [], 'direct_xbrl_samples': [], 'attachment_samples': [], 'linked_samples': []}
     has_flag = cands.get('has_xbrl', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
@@ -725,7 +729,8 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
     attachment_format = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
         ('xml', 'xbrl', 'zip'))
     # Do not require "XBRL" in the subject: exchange attachment metadata may omit it.
-    attachment = attachment_format
+    structured_attachment = attachment_format
+    attachment = attachment_format & subject_xbrl
     direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
@@ -736,7 +741,8 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
         return cands.loc[mask, fields].head(50).to_dict('records')
     return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
             'direct_xbrl_urls': int(direct.sum()), 'xbrl_attachments': int(attachment.sum()),
-            'xbrl_subject_labels': int((attachment & subject_xbrl).sum()),
+            'structured_attachments': int(structured_attachment.sum()),
+            'xbrl_subject_labels': int((structured_attachment & subject_xbrl).sum()),
             'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
             'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
             'linked_samples': sample(linked)}
