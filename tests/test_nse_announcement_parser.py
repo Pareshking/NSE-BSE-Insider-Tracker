@@ -2,7 +2,7 @@
 import pandas as pd
 import pytest
 
-from collectors.nse_events.announcements import parse
+from collectors.nse_events.announcements import parse, parse_xbrl
 
 
 @pytest.mark.parametrize(
@@ -43,3 +43,38 @@ def test_has_xbrl_parses_boolean_values_without_truthy_string_bug(raw, expected)
 def test_has_xbrl_unknown_values_remain_unknown():
     parsed = parse([{"seq_id": "124", "hasXbrl": {"unexpected": "shape"}}])
     assert pd.isna(parsed.iloc[0]["has_xbrl"])
+
+
+
+def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
+    raw = [{
+        "appId": "APP-123",
+        "symbol": "MARATHON",
+        "companyName": "Marathon Nextgen Realty Limited",
+        "subject": "Outcome of Board Meeting",
+        "eventType": "Outcome of Board Meeting",
+        "broadcastDateTime": "15-Oct-2026 10:00:00",
+        "disseminationDateTime": "15-Oct-2026 10:00:03",
+        "attachment": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.xml",
+        "ixbrl": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.html",
+        "xbrlFileSize": "3.2 KB",
+    }]
+    first = parse_xbrl(raw, "equities")
+    second = parse_xbrl(raw, "equities")
+    assert len(first) == 1
+    row = first.iloc[0]
+    assert row["event_id"].startswith("nse:xbrl:equities:APP-123:")
+    assert row["event_id"] == second.iloc[0]["event_id"]
+    assert row["symbol"] == "MARATHON"
+    assert row["subject"] == "Outcome of Board Meeting"
+    assert row["file_type"] == "xml"
+    assert row["file_url"].endswith("MARATHON_123.xml")
+    assert row["xbrl_url"] == row["file_url"]
+    assert bool(row["has_xbrl"]) is True
+    assert row["broadcast_date"] == "2026-10-15"
+    assert row["file_bytes"] == 3276
+
+
+def test_dedicated_xbrl_feed_ignores_rows_without_an_xml_attachment():
+    parsed = parse_xbrl([{"appId": "APP-EMPTY", "symbol": "X", "ixbrl": "https://example.com/display.html"}])
+    assert parsed.empty
