@@ -101,7 +101,7 @@ CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dis
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
-           'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_source_event_id', 'xbrl_source_url',
+           'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
@@ -597,11 +597,14 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             resolved = master.resolve('nse', symbol)
             isin = clean(resolved[0] if resolved else None)
         url = clean(r.get('file_url'))
+        xbrl_url = clean(r.get('xbrl_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
                      'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
                      'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
-                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
+                     'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
+                     'xbrl_source_event_id': r['event_id'] if xbrl_url else None,
+                     'xbrl_source_url': xbrl_url, 'market_cap_match': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
@@ -615,7 +618,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                      'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subcategory')) or clean(r.get('category')), 'detail': clean(r.get('headline')),
                      'group': bann.group_of(clean(r.get('subcategory')) or clean(r.get('category')), clean(r.get('category'))), 'file_url': url,
-                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
+                     'content_url': url, 'xbrl_url': None, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
                      'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
@@ -724,23 +727,26 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 def xbrl_audit(cands: pd.DataFrame | None) -> dict:
     """Dry-run diagnostics proving whether XBRL companions are present and being used."""
     if cands is None or cands.empty:
-        return {'candidates': 0, 'has_xbrl_flagged': 0, 'xbrl_attachments': 0, 'xbrl_linked': 0,
-                'flagged_samples': [], 'attachment_samples': [], 'linked_samples': []}
+        return {'candidates': 0, 'has_xbrl_flagged': 0, 'direct_xbrl_urls': 0, 'xbrl_attachments': 0, 'xbrl_linked': 0,
+                'flagged_samples': [], 'direct_xbrl_samples': [], 'attachment_samples': [], 'linked_samples': []}
     has_flag = cands.get('has_xbrl', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
     subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
         r'\bxbrl\b', case=False, regex=True)
     attachment = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower().isin(
         ('xml', 'xbrl', 'zip')) & subject_xbrl
+    direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
+        lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
     fields = [field for field in ('event_id', 'exchange', 'symbol', 'isin', 'subject', 'broadcast_date',
-                                  'file_type', 'has_xbrl', 'file_url', 'content_url',
+                                  'file_type', 'has_xbrl', 'file_url', 'content_url', 'xbrl_url',
                                   'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
     def sample(mask):
         return cands.loc[mask, fields].head(50).to_dict('records')
     return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
-            'xbrl_attachments': int(attachment.sum()), 'xbrl_linked': int(linked.sum()),
-            'flagged_samples': sample(has_flag), 'attachment_samples': sample(attachment),
+            'direct_xbrl_urls': int(direct.sum()), 'xbrl_attachments': int(attachment.sum()),
+            'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
+            'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
             'linked_samples': sample(linked)}
 
 
@@ -1370,7 +1376,7 @@ def main(argv=None):
         xbrl_report = xbrl_audit(current_candidates)
         Path('announcement_reader_xbrl_audit.json').write_text(
             json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
-        log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'xbrl_attachments', 'xbrl_linked')}))
+        log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'direct_xbrl_urls', 'xbrl_attachments', 'xbrl_linked')}))
         return 0
     saver.pending += status
     saver.flush(final=True)
