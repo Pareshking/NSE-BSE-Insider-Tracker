@@ -418,7 +418,7 @@ def xbrl_text(data: bytes) -> str:
     return 'XBRL FACTS (exchange-provided structured data; use exact values and contexts):\n' + '\n'.join(facts)
 
 
-def text_of(data: bytes) -> tuple[str, list[str]]:
+def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]:
     """Prefer usable XBRL facts in XML or ZIP attachments; fall back to PDF text when absent or invalid."""
     notes = [f'{len(data) / 1024 ** 2:.1f} MB']
     text = ''
@@ -443,9 +443,9 @@ def text_of(data: bytes) -> tuple[str, list[str]]:
             text = pdf_text(data)
     if not text.strip():
         notes.append('no text layer (scanned?)')
-    if len(text) > MAX_CHARS:
-        notes.append(f'cut to {MAX_CHARS:,} of {len(text):,} characters')
-        text = text[:MAX_CHARS]
+    if limit and len(text) > limit:
+        notes.append(f'cut to {limit:,} of {len(text):,} characters')
+        text = text[:limit]
     return text, notes
 
 

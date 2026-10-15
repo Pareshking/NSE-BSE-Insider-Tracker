@@ -1,0 +1,59 @@
+name: Filing text cache (no AI)
+
+# Download each announcement file once and keep its text in archive/filing_text/ (scripts/filing_text_extract.py,
+# insiders_clean/filing_text.py). No model reads anything here. After every successful announcement collection it
+# fills the last 3 days; by hand it takes any range and stops at the time budget (run it again to continue: finished
+# filings are skipped). The text is raw: cleaning for a model is a later step (docs/BLUEPRINT_TODO.md 4.14).
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'First day, YYYY-MM-DD (empty = the last 3 days)'
+        required: false
+        default: ''
+      to:
+        description: 'Last day, YYYY-MM-DD (empty = today)'
+        required: false
+        default: ''
+      minutes:
+        description: 'Stop starting new files after this many minutes (the job limit is 6 hours)'
+        required: false
+        default: '300'
+  workflow_run:
+    workflows: ['Announcement collection (no AI)']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: filing-text
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Extract text
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          MINUTES: ${{ inputs.minutes || '300' }}
+        run: |
+          args=(--minutes "$MINUTES")
+          [ -n "$FROM" ] && args+=(--from "$FROM")
+          [ -n "$TO" ] && args+=(--to "$TO")
+          python -u scripts/filing_text_extract.py "${args[@]}"
