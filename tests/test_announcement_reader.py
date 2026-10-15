@@ -125,8 +125,8 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
     assert out.loc['xbrl:1', 'group'] == 'routine'  # one model read, using the structured source
     assert out.loc['pdf:other', 'content_url'].endswith('X_director.pdf')  # unrelated filing stays separate
     assert pd.isna(out.loc['pdf:other', 'xbrl_source_event_id'])
-    assert out.loc['pdf:2', 'content_url'].endswith('Y_financials.xml')  # unique issuer/date fallback
-    assert out.loc['pdf:2', 'xbrl_source_event_id'] == 'xbrl:2'
+    assert out.loc['pdf:2', 'content_url'].endswith('Y_financials.pdf')  # subject mismatch without filing-ID proof stays PDF
+    assert pd.isna(out.loc['pdf:2', 'xbrl_source_event_id'])
     assert out.loc['xbrl:2', 'group'] == 'routine'
 
 
@@ -759,7 +759,7 @@ def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_filing_id_m
          'company': 'Bharat Coking Coal Limited',
          'subject': 'Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company',
          'text': 'Litigation disclosure',
-         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_14102026164107_litigation_announcement_signed.pdf',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/BCCL_ROID_100383_KMP_Doc.pdf',
          'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T16:41:07+05:30',
          'broadcast_date': '2026-10-14', 'market': 'equities'},
         {'event_id': 'nse:xbrl:equities:100383:abc123', 'symbol': 'BHARATCOAL', 'isin': 'INE05XR01022',
