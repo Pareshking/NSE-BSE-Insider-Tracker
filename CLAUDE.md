@@ -24,3 +24,4 @@ decision) and `docs/TODO.md` (where things stand, what is next) first.
 5. Raw is write-once (`raw_v2/`); filtering happens in the clean layer with counted reasons.
 6. Product window: transactions from 8 Oct 2025 (`insiders_clean/pipeline.py`).
 7. Never invent data, columns, endpoints or results; say what is missing.
+8. Never half a document: a filing is read in full or marked not read with the reason; a day of announcements is complete (the exchange's own count) or named short.

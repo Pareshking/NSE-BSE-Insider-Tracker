@@ -247,6 +247,36 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             '</div></article>')
 
 
+IN_FULL = ('read', 'same_file', 'same_text', 'same_filing_other_exchange')   # same_*: a copy of a read file or filing
+NOT_READ = {'no_text': 'no text layer', 'not_read': 'longer than the reader limit', 'failed': 'could not be downloaded',
+            'quota_deferred': 'waiting for model capacity', 'market_cap_unverified': 'market cap not verified'}
+
+
+def coverage(reads: pd.DataFrame, since: pd.Timestamp) -> dict:
+    """How many of the filings the reader looked at since `since` were read in full, and why the rest were not.
+    A card is built only from a file read in full; the rest is counted here, never summarised from a part."""
+    if reads is None or reads.empty or 'status' not in reads:
+        return {}
+    day = pd.to_datetime(reads['broadcast_date'], errors='coerce')
+    r = reads[day >= since.normalize()]
+    n = r['status'].value_counts()
+    out = {'looked_at': int(len(r)), 'in_full': int(sum(n.get(k, 0) for k in IN_FULL)),
+           'below_100_cr': int(n.get('below_100_cr', 0)), 'not_read': {NOT_READ[k]: int(n[k]) for k in NOT_READ if n.get(k, 0)}}
+    return out if out['looked_at'] else {}
+
+
+def coverage_html(c: dict) -> str:
+    if not c:
+        return ''
+    parts = [f'<b>{c["in_full"]:,}</b> read in full']
+    if c['not_read']:
+        parts.append(f'<b>{sum(c["not_read"].values()):,}</b> not read (' + ', '.join(f'{v:,} {esc(k)}' for k, v in c['not_read'].items()) + ')')
+    if c['below_100_cr']:
+        parts.append(f'{c["below_100_cr"]:,} below Rs 100 Cr (not sent to a model)')
+    return (f'<p class="evl">Of {c["looked_at"]:,} filings the reader looked at: ' + '; '.join(parts)
+            + '. A filing that was not read in full is never summarised from a part.</p>')
+
+
 def recent(reads: pd.DataFrame, since: pd.Timestamp) -> pd.DataFrame:
     """Filings with something to show, made public on or after `since`, newest first. The same file filed
     again (on the other exchange, or under another subject) is one card: the copies go in its `also_filed`."""
@@ -416,5 +446,5 @@ def render(reads: pd.DataFrame, since: pd.Timestamp, ctx=None, history: dict | N
     if r.empty:
         return
     with kit.card('Filings read', 'br_reads', f'since {kit.day(since)}: values checked against the filing\'s own words'):
-        st.html(LEGEND + cards_html(r, reads, ctx, history)
+        st.html(LEGEND + coverage_html(coverage(reads, since)) + cards_html(r, reads, ctx, history)
                 + '<p class="evl"><a href="/filings" target="_self">Every filing read, with filters →</a></p>')

@@ -1049,3 +1049,51 @@ def test_bse_download_raises_the_first_error_when_both_paths_are_gone():
         assert '404' in str(exc)
     else:
         raise AssertionError('both paths missing must raise')
+
+
+def test_a_filing_in_the_text_cache_is_read_without_a_download():
+    asked = []
+
+    def cache(row):
+        asked.append(row['event_id'])
+        return {'text': DOC, 'notes': '0.1 MB', 'file_sha256': 'f' * 64, 'status': 'ok'} if row['event_id'] == 'nse:1' else None
+
+    def fetch(url):
+        assert 'nse:1' not in url, 'a cached filing must not be downloaded'
+        return b'one'
+
+    client = FakeClient([QIP, QIP])
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': client})}
+    rows, _ = ar.run(_qips(2), lanes, None, 600, fetch=fetch, idle_wait=0.01, text_cache=cache,
+                     max_filings=2)
+    by = {r['event_id']: r for r in rows}
+    assert sorted(asked) == ['nse:1', 'nse:2']
+    assert by['nse:1']['status'] == 'read' and by['nse:1']['file_sha256'] == 'f' * 64
+    assert by['nse:1']['source_format'] == 'pdf' and by['nse:1']['text_chars'] == len(DOC)
+
+
+def test_a_document_longer_than_the_reader_limit_is_held_back_not_read_in_part(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, ['0.1 MB', 'cut to 300,000 of 450,000 characters']))
+    client = FakeClient([QIP])
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': client})}
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01, max_filings=1)
+    assert rows[0]['status'] == 'not_read' and 'not read in part' in rows[0]['reason'] and 'cut to' in rows[0]['reason']
+    assert client.asked == []   # no model was asked
+    done = pd.DataFrame(rows)
+    assert ar.choose(_qips(1), done, date(2026, 10, 13))[0].empty   # final until long documents are read by section
+
+
+def test_a_cached_document_over_the_limit_is_held_back_the_same_way(monkeypatch):
+    monkeypatch.setattr(ar.s, 'MAX_CHARS', 20)
+    cache = lambda row: {'text': DOC, 'notes': '0.1 MB', 'file_sha256': 'a' * 64, 'status': 'ok'}   # noqa: E731
+    client = FakeClient([QIP])
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': client})}
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda u: 1 / 0, idle_wait=0.01, text_cache=cache, max_filings=1)
+    assert rows[0]['status'] == 'not_read' and 'cut to 20 of' in rows[0]['reason'] and client.asked == []
+
+
+def test_a_cached_empty_file_is_no_text_without_a_download():
+    cache = lambda row: {'text': '', 'notes': 'no text layer (scanned?)', 'file_sha256': 'b' * 64, 'status': 'no_text'}   # noqa: E731
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': FakeClient([])})}
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda u: 1 / 0, idle_wait=0.01, text_cache=cache, max_filings=1)
+    assert rows[0]['status'] == 'no_text' and 'no text layer' in rows[0]['reason']
