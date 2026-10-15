@@ -109,6 +109,7 @@ jobs:
     needs: read
     if: >-
       ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+          && !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)
           && needs.read.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
