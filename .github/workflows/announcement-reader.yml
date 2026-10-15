@@ -143,11 +143,6 @@ jobs:
     # TEMPORARY SAFETY GATE: prevent the automatic self-dispatch chain during the audit.
     needs: read
     if: false
-    # Keep the unified pipeline running on main after the audit gate is removed.
-    
-      ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-          && !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true)
-          && needs.read.result != 'cancelled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
