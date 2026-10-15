@@ -650,3 +650,41 @@ def test_openai_compatible_rate_limit_is_logged_and_not_retried():
         client.generate(['qwen/qwen3.8-27b'], 'prompt', 'read', True)
     assert session.calls == 1
     assert len(client.attempts) == 1 and client.attempts[0][1] == 429
+
+
+def test_candidates_pairs_xbrl_attachment_even_when_subject_is_not_labelled_xbrl():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:unlabelled', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results announcement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/X_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'attachment:unlabelled', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X_results.xml',
+         'file_type': 'xml', 'has_xbrl': False, 'broadcast_at': '2026-10-14T10:02:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:unlabelled', 'content_url'].endswith('X_results.xml')
+    assert out.loc['pdf:unlabelled', 'xbrl_source_event_id'] == 'attachment:unlabelled'
+    assert out.loc['attachment:unlabelled', 'group'] == 'routine'
+
+
+def test_xbrl_audit_counts_structured_attachments_without_subject_label():
+    cands = pd.DataFrame([
+        {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
+         'subject': 'Financial Results', 'broadcast_date': '2026-10-14', 'file_type': 'pdf',
+         'has_xbrl': True, 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'xbrl_url': None, 'content_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
+        {'event_id': 'xml:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
+         'subject': 'Financial Results', 'broadcast_date': '2026-10-14', 'file_type': 'xml',
+         'has_xbrl': False, 'file_url': 'https://nsearchives.nseindia.com/corporate/X.xml',
+         'xbrl_url': None, 'content_url': 'https://nsearchives.nseindia.com/corporate/X.xml',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
+    ])
+    audit = ar.xbrl_audit(cands)
+    assert audit['has_xbrl_flagged'] == 1
+    assert audit['xbrl_attachments'] == 1
+    assert audit['xbrl_subject_labels'] == 0
