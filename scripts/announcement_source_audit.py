@@ -130,6 +130,35 @@ def archive(r2, prefix):
     say('')
 
 
+def xbrl_pairs(r2):
+    """Does each XBRL-feed row have a main-feed filing of the same symbol broadcast at (nearly) the same moment?"""
+    say('### 2b. NSE XBRL feed rows against main-feed filings (same symbol, broadcast time)', '')
+    parts = sorted(k for k in keys(r2, 'archive/announcements/nse/') if k.endswith('.parquet'))
+    df = pd.concat([pd.read_parquet(io.BytesIO(body(r2, k))) for k in parts[-2:]], ignore_index=True)
+    df['t'] = pd.to_datetime(df['broadcast_at'], errors='coerce', utc=True)
+    x = df[df['event_id'].astype(str).str.startswith('nse:xbrl:')]
+    m = df[~df['event_id'].astype(str).str.startswith('nse:xbrl:')]
+    say(f'XBRL-feed rows: {len(x)}; attachment types {short(x["file_url"].astype(str).str.rsplit(".", n=1).str[-1].value_counts().to_dict())}')
+    exact, near, none, examples = 0, 0, 0, []
+    for _, r in x.iterrows():
+        same = m[(m['symbol'] == r['symbol'])]
+        gap = (same['t'] - r['t']).abs().dt.total_seconds()
+        if (gap <= 2).sum() == 1:
+            exact += 1
+        elif (gap <= 300).any():
+            near += 1
+        else:
+            none += 1
+        if len(examples) < 6:
+            best = same.loc[gap.idxmin()] if len(gap.dropna()) else None
+            examples.append(f'- `{r["symbol"]}` XBRL "{r["subject"]}" at {r["broadcast_at"]} -> '
+                            + (f'nearest PDF "{best["subject"]}" at {best["broadcast_at"]} ({gap.min():.0f} s), '
+                               f'`{short(best["file_url"], 120)}`' if best is not None else 'no main-feed filing'))
+    say(f'One main-feed filing within 2 s: {exact}; only within 5 min: {near}; none: {none}', *examples)
+    nofile = m['file_url'].astype(str).str.endswith('/-').sum()
+    say(f'Main-feed rows whose file_url ends in "/-" (no file): {nofile} of {len(m)}', '')
+
+
 def state(r2):
     today = datetime.now(IST).date().isoformat()
     say('### 3. Reader state in R2', '')
@@ -167,6 +196,10 @@ def main() -> int:
     say('### 2. Archive tables', '')
     for prefix in ('archive/announcements/nse/', 'archive/announcements/bse/'):
         archive(r2, prefix)
+    try:
+        xbrl_pairs(r2)
+    except Exception as exc:  # noqa: BLE001
+        say(f'XBRL pairing check failed: {type(exc).__name__}: {exc}', '')
     state(r2)
     text = '\n'.join(out) + '\n'
     print(text)
