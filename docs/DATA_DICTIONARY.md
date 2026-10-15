@@ -370,6 +370,24 @@ nightly fields, `transaction_date_to`, `intimation_date`, `pct_before`, `pct_aft
 executed: `BSE`, `NSE` or blank). Clean insider rows from BSE's CSV therefore get the intimation date and both Reg 7(2)
 deadline checks; rows from the nightly page capture still don't.
 
+## Filing text cache (`archive/filing_text/{nse|bse}/year=YYYY/month=MM/day=DD.parquet`)
+
+One file per exchange and broadcast day, one row per announcement file (`event_id` of `archive/announcements/`; the
+NSE XBRL-feed rows `nse:xbrl:*` are left out). Written by `scripts/filing_text_extract.py`, no model. The text is what
+the reader receives from `announcement_sample.text_of` (PDF text with `pdftotext -layout`, a ZIP's PDFs under
+`=== file: name ===` lines, XBRL facts where the attachment is XBRL) without the model length cut. Raw: cleaning
+for a model comes later. We keep no PDFs.
+
+| column | meaning |
+|---|---|
+| `event_id`, `exchange`, `broadcast_date`, `file_url` | the announcement and its file link |
+| `status` | `ok`, `no_text` (no text layer, scanned?) or `failed` |
+| `tries`, `reason` | attempts so far (a missing file, HTTP 404 or 410, counts as final); the error of a failure |
+| `file_bytes`, `file_sha256` | size and SHA-256 of the downloaded file |
+| `extractor`, `extracted_at` | version of the extraction and when it ran (UTC) |
+| `pages`, `chars`, `notes` | pages (form feeds) and characters of the text; the extraction's notes |
+| `text` | the extracted text |
+
 ## Not yet collected
 
 Board meetings and shareholding patterns from BSE (NSE's cover dual-listed companies; BSE-only companies have none).
