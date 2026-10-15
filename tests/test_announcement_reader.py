@@ -123,11 +123,36 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
     assert out.loc['xbrl:2', 'group'] == 'routine'
 
 
+
+def test_nse_parser_preserves_exchange_supplied_xbrl_url():
+    from collectors.nse_events import announcements as nann
+    url = 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml'
+    assert nann._xbrl_file({'hasXbrl': True, 'xbrlUrl': url, 'attchmntFile': 'https://nsearchives.nseindia.com/corporate/X.pdf'}) == url
+    assert nann._xbrl_file({'hasXbrl': True, 'attchmntFile': 'https://nsearchives.nseindia.com/corporate/X.pdf'}) is None
+
+
+def test_candidates_use_exchange_supplied_xbrl_url_directly():
+    nse = pd.DataFrame([{
+        'event_id': 'nse:direct-xbrl', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+        'subject': 'Financial Results', 'text': 'Results announcement',
+        'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+        'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+        'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+        'broadcast_date': '2026-10-14', 'market': 'equities',
+    }])
+    row = ar.candidates(nse, pd.DataFrame(), None).iloc[0]
+    assert row['file_url'].endswith('X.pdf')
+    assert row['content_url'].endswith('X.xml')
+    assert row['xbrl_source_event_id'] == 'nse:direct-xbrl'
+    assert row['xbrl_source_url'].endswith('X.xml')
+
+
 def test_xbrl_audit_reports_flags_attachments_and_links():
     cands = pd.DataFrame([
         {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
          'subject': 'General Updates', 'broadcast_date': '2026-10-14', 'file_type': 'pdf',
          'has_xbrl': True, 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
          'content_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
          'xbrl_source_event_id': 'xbrl:1', 'xbrl_source_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml'},
         {'event_id': 'xbrl:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
@@ -139,6 +164,7 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
     audit = ar.xbrl_audit(cands)
     assert audit['candidates'] == 2
     assert audit['has_xbrl_flagged'] == 1
+    assert audit['direct_xbrl_urls'] == 1
     assert audit['xbrl_attachments'] == 1
     assert audit['xbrl_linked'] == 1
     assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
