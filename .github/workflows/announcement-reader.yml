@@ -36,8 +36,11 @@ on:
       - 'scripts/announcement_sample.py'
       - 'scripts/announcement_readers.txt'
       - 'collectors/nse_events/run_daily.py'
+      - 'collectors/nse_events/announcements.py'
+      - 'collectors/nse_events/client.py'
       - 'tests/test_announcement_reader.py'
       - 'tests/test_announcement_backfill.py'
+      - 'tests/test_nse_announcement_parser.py'
       - '.github/workflows/announcement-reader.yml'
   pull_request:
     paths:
@@ -46,8 +49,11 @@ on:
       - 'scripts/announcement_sample.py'
       - 'scripts/announcement_readers.txt'
       - 'collectors/nse_events/run_daily.py'
+      - 'collectors/nse_events/announcements.py'
+      - 'collectors/nse_events/client.py'
       - 'tests/test_announcement_reader.py'
       - 'tests/test_announcement_backfill.py'
+      - 'tests/test_nse_announcement_parser.py'
       - '.github/workflows/announcement-reader.yml'
 
 permissions:
