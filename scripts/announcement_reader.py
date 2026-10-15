@@ -723,7 +723,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             id_matches = []
             for item in nearby_structured:
                 app_id = xbrl_app_id(item)
-                if app_id and re.search(rf'(?<![0-9]){re.escape(app_id)}(?![0-9])', str(row.get('file_url') or '')):
+                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', str(row.get('file_url') or '')):
                     id_matches.append(item)
             if len(id_matches) != 1:
                 continue
@@ -731,7 +731,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             id_pdfs = []
             for pidx in [idx] + other_pdfs:
                 purl = str(records[pidx].get('file_url') or '')
-                if re.search(rf'(?<![0-9]){re.escape(app_id)}(?![0-9])', purl):
+                if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', purl):
                     id_pdfs.append(pidx)
             if len(id_pdfs) != 1:
                 continue
