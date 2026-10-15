@@ -792,7 +792,10 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
             (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
-        finished = set(done.loc[(~retryable & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        exhausted_failures = failed & (pd.to_numeric(done['tries'], errors='coerce').fillna(0) >= MAX_TRIES)
+        # Only genuine repeated filing failures consume MAX_TRIES. Quota-deferred work and
+        # missing-cap rows remain retryable, even if a prior status carried a large tries count.
+        finished = set(done.loc[(~retryable & ~stale) | exhausted_failures, 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
