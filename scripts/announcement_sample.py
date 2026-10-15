@@ -135,6 +135,7 @@ class Gemini:
         self.s.headers['x-goog-api-key'] = key
         self.sleep = sleep
         self.last = {}
+        self.attempts = []   # (model, HTTP status or error name, seconds) for each generation request
 
     def models(self) -> list[dict]:
         out, token = [], None
@@ -170,7 +171,10 @@ class Gemini:
                     last = f'{model}: {type(exc).__name__}'
                     continue
                 log(f'{kind} {model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
-                if r.status_code in (429, 500, 503):
+                if r.status_code == 429:
+                    # A hard quota/rate-limit response is a stop signal, not a retry hint.
+                    raise RuntimeError(f'{model}: HTTP 429: {r.text[:300]}')
+                if r.status_code in (500, 503):
                     last = f'{model}: HTTP {r.status_code}'
                     continue
                 if r.status_code != 200:
