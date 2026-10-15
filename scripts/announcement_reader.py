@@ -578,26 +578,43 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     from collectors.bse import announcements as bann
     from collectors.nse_events import announcements as nann
 
+    def clean(value):
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):
+                return None
+        except (TypeError, ValueError):
+            pass
+        value = str(value).strip()
+        return None if value.casefold() in ('', 'nan', 'none', '<na>') else value
+
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
-        isin = r.get('isin') or (master.resolve('nse', r.get('symbol'))[0] if master else None)
-        url = r.get('file_url')
+        symbol = clean(r.get('symbol'))
+        isin = clean(r.get('isin'))
+        if not isin and master and symbol:
+            resolved = master.resolve('nse', symbol)
+            isin = clean(resolved[0] if resolved else None)
+        url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
-                     'isin': isin, 'symbol': r.get('symbol'), 'company': r.get('company'),
-                     'subject': r.get('subject'), 'detail': r.get('text'),
-                     'group': nann.group_of(r.get('subject'), r.get('text')), 'file_url': url,
+                     'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
+                     'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
+                     'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
                      'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     for r in (bse.to_dict('records') if bse is not None else []):
-        isin = master.resolve('bse', r.get('bse_code'))[0] if master and r.get('bse_code') else None
+        bse_code = clean(r.get('bse_code'))
+        resolved = master.resolve('bse', bse_code) if master and bse_code else None
+        isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
-        url = r.get('file_url')
+        url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
-                     'symbol': rec.get('nse_symbol') or r.get('bse_code'), 'company': r.get('company'),
-                     'subject': r.get('subcategory') or r.get('category'), 'detail': r.get('headline'),
-                     'group': bann.group_of(r.get('subcategory'), r.get('category')), 'file_url': url,
+                     'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
+                     'subject': clean(r.get('subcategory')) or clean(r.get('category')), 'detail': clean(r.get('headline')),
+                     'group': bann.group_of(clean(r.get('subcategory')) or clean(r.get('category')), clean(r.get('category'))), 'file_url': url,
                      'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
                      'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
