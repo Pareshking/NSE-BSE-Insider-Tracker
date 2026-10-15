@@ -229,17 +229,28 @@ class OpenAICompat:
                 self.last[kind] = t0 = time.monotonic()
                 try:
                     r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
-                    if r.status_code == 400 and json_mode and 'response_format' in r.text:
-                        body.pop('response_format')   # a model without JSON mode: the prompt asks for JSON anyway
-                        r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
                 except requests.RequestException as exc:
-                    log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
                     self.attempts.append((model, type(exc).__name__, round(time.monotonic() - t0, 1)))
+                    log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
                     last = f'{model}: {type(exc).__name__}'
                     continue
                 self.attempts.append((model, r.status_code, round(time.monotonic() - t0, 1)))
+                if r.status_code == 400 and json_mode and 'response_format' in r.text:
+                    body.pop('response_format')   # a model without JSON mode: the prompt asks for JSON anyway
+                    t_retry = time.monotonic()
+                    try:
+                        r = self.s.post(f'{self.base}/chat/completions', json=body, timeout=self.call_seconds)
+                    except requests.RequestException as exc:
+                        self.attempts.append((model, type(exc).__name__, round(time.monotonic() - t_retry, 1)))
+                        log(f'{kind} {self.name}:{model}: retry {type(exc).__name__}')
+                        last = f'{model}: {type(exc).__name__}'
+                        continue
+                    self.attempts.append((model, r.status_code, round(time.monotonic() - t_retry, 1)))
                 log(f'{kind} {self.name}:{model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
-                if r.status_code in (429, 500, 502, 503, 504):
+                if r.status_code == 429:
+                    # Do not retry after the provider explicitly reports a rate limit/quota response.
+                    raise RuntimeError(f'{self.name}:{model}: HTTP 429: {r.text[:300]}')
+                if r.status_code in (500, 502, 503, 504):
                     last = f'{model}: HTTP {r.status_code}'
                     continue
                 if r.status_code != 200:
