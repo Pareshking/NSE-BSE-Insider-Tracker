@@ -57,8 +57,8 @@ def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
         "eventType": "Outcome of Board Meeting",
         "broadcastDateTime": "15-Oct-2026 10:00:00",
         "disseminationDateTime": "15-Oct-2026 10:00:03",
-        "attachment": "https://nsearchives.nseindia.com/corporate/MARATHON_ROID_123_KMP_Doc.zip",
-        "ixbrl": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_123.html",
+        "attachment": "https://nsearchives.nseindia.com/corporate/xbrl/CIM_123_WebXMLFile_20261015_100000000.xml",
+        "ixbrl": "https://nsearchives.nseindia.com/corporate/ixbrl/CIM_123_20261015_100000000_WEB.html",
         "xbrlFileSize": "3.2 KB",
     }]
     first = parse_xbrl(raw, "equities")
@@ -70,11 +70,26 @@ def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
     assert row["symbol"] == "MARATHON"
     assert row["subject"] == "Outcome of Board Meeting"
     assert row["file_type"] == "xbrl"
-    assert row["file_url"].endswith("MARATHON_ROID_123_KMP_Doc.zip")
+    assert row["file_url"].endswith("_WebXMLFile_20261015_100000000.xml")
     assert row["xbrl_url"] == row["file_url"]
     assert bool(row["has_xbrl"]) is True
     assert row["broadcast_date"] == "2026-10-15"
     assert row["file_bytes"] == 3276
+
+
+def test_dedicated_xbrl_feed_zip_of_documents_is_not_called_xbrl():
+    # As NSE sent it on 15 Oct 2026: a 487 KB ZIP of the filing's documents beside the XML rows of ~5 KB.
+    row = parse_xbrl([{"appId": "100514", "symbol": "BRACEPORT", "subject": "Resignation of Director/KMP/SMP",
+                       "attachment": "https://nsearchives.nseindia.com/corporate/BRACEPORT_ROID_100514_KMP_Doc.zip",
+                       "broadcastDateTime": "15-Oct-2026 14:12:58", "xbrlFileSize": "487.00 KB"}], "equities").iloc[0]
+    assert row["file_type"] == "zip" and row["xbrl_url"] is None and bool(row["has_xbrl"]) is False
+
+
+def test_nse_link_to_no_file_is_no_file():
+    from collectors.nse_events.announcements import _file
+    assert _file("https://nsearchives.nseindia.com/corporate/-") is None
+    assert _file("-") is None
+    assert _file("https://nsearchives.nseindia.com/corporate/GIRIRAJ_15102026160812_DPRegIntimation.pdf").endswith(".pdf")
 
 
 def test_dedicated_xbrl_feed_ignores_rows_without_an_xml_attachment():

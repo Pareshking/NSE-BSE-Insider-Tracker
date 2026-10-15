@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import date, datetime, timezone
 
 import announcement_reader as ar
 import pandas as pd
@@ -918,21 +918,42 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     c.generate(['m'], 'p', 'read', True)
     assert ledger.write() and not ledger.write()        # unchanged total: nothing to write
     runs = [k for k in store if '/runs/' in k]
-    assert runs == [ledger.key] and json.loads(store[ledger.key])['usage']['models']['nvidia:m']['calls'] == 3
-    assert ar.used_today(object(), '2026-10-15') == {'nvidia:m': 3}
-    assert ar.used_today(object(), '2026-10-15', skip_run=ledger.run_id) == {}
+    saved = json.loads(store[ledger.key])
+    assert runs == [ledger.key] and saved['usage']['models']['nvidia:m']['calls'] == 3
+    assert sum(saved['calls_by_minute']['nvidia:m'].values()) == 3
+    now = datetime.now(timezone.utc)
+    assert ar.used_today(object(), now) == {'nvidia:m': 3}
+    assert ar.used_today(object(), now, skip_run=ledger.run_id) == {}
 
 
-def test_used_today_adds_every_run_and_the_old_day_file(monkeypatch):
+def _run_file(store, day, run, minutes):
+    store[f'clean/reports/announcement_reader/{day}/runs/{run}.json'] = json.dumps(
+        {'calls_by_minute': minutes}).encode()
+
+
+def test_each_provider_counts_its_own_day(monkeypatch):
     store = _ledger_store(monkeypatch)
-    store['clean/reports/announcement_reader/2026-10-15.json'] = json.dumps(
-        {'runs': [{'usage': {'models': {'groq:q': {'calls': 4}}}}]}).encode()
-    for run, calls in (('1-1-live-a', 10), ('2-1-dry_run-b', 6)):
-        store[f'clean/reports/announcement_reader/2026-10-15/runs/{run}.json'] = json.dumps(
-            {'usage': {'models': {'groq:q': {'calls': calls}, 'zai:g': {'calls': 1}}}}).encode()
-    store['clean/reports/announcement_reader/2026-10-14/runs/x.json'] = json.dumps(
-        {'usage': {'models': {'groq:q': {'calls': 99}}}}).encode()      # another day: not counted
-    assert ar.used_today(object(), '2026-10-15') == {'groq:q': 20, 'zai:g': 2}
+    # 15 Oct 2026 14:00 IST = 08:30 UTC; Pacific midnight (PDT) = 07:00 UTC, so Gemini's day began 1.5 h ago.
+    now = datetime(2026, 10, 15, 8, 30, tzinfo=timezone.utc)
+    _run_file(store, '2026-10-15', 'a', {
+        'gemini:g': {'2026-10-15T06:59Z': 5, '2026-10-15T07:01Z': 2},   # before / after Pacific midnight
+        'groq:q': {'2026-10-15T06:59Z': 5, '2026-10-15T07:01Z': 2}})    # both inside the last 24 hours
+    _run_file(store, '2026-10-14', 'b', {
+        'groq:q': {'2026-10-14T08:29Z': 7, '2026-10-14T08:31Z': 3},      # 24 h and 1 min / 23 h 59 min ago
+        'nvidia:n': {'2026-10-14T20:00Z': 4}})
+    store['clean/reports/announcement_reader/2026-10-15.json'] = json.dumps(   # before 15 Oct: no minutes
+        {'runs': [{'at': '2026-10-15T07:30:00+00:00', 'usage': {'models': {'gemini:g': {'calls': 1}}}},
+                  {'at': '2026-10-15T06:30:00+00:00', 'usage': {'models': {'gemini:g': {'calls': 9}}}}]}).encode()
+    _run_file(store, '2026-10-13', 'old', {'nvidia:n': {'2026-10-13T20:00Z': 50}})   # not read
+    assert ar.used_today(object(), now) == {'gemini:g': 3, 'groq:q': 10, 'nvidia:n': 4}
+
+
+def test_gemini_day_follows_pacific_daylight_saving():
+    winter = datetime(2026, 12, 15, 12, 0, tzinfo=timezone.utc)
+    summer = datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc)
+    assert ar.window_start('gemini', winter) == datetime(2026, 12, 15, 8, 0, tzinfo=timezone.utc)
+    assert ar.window_start('gemini', summer) == datetime(2026, 7, 15, 7, 0, tzinfo=timezone.utc)
+    assert ar.window_start('nvidia', summer) == datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
 
 
 def test_usage_ledger_has_counted_calls_before_a_run_is_cut_off(monkeypatch):
@@ -970,8 +991,8 @@ def test_usage_ledger_write_failure_is_retried_not_raised(monkeypatch):
 def test_daily_limit_counts_calls_recorded_by_earlier_runs(monkeypatch):
     store = _ledger_store(monkeypatch)
     monkeypatch.setitem(ar.DAILY_CALLS, 'groq:q', 100)
-    store['clean/reports/announcement_reader/2026-10-15/runs/7-1-dry_run-c.json'] = json.dumps(
-        {'usage': {'models': {'groq:q': {'calls': 95}}}}).encode()
+    now = datetime(2026, 10, 15, 8, 30, tzinfo=timezone.utc)
+    _run_file(store, '2026-10-15', '7-1-dry_run-c', {'groq:q': {'2026-10-15T08:00Z': 95}})
     lane = ar.Lane('groq', ['groq:q'], {'groq': FakeClient([])})
-    lane.used_today = ar.used_today(object(), '2026-10-15')
+    lane.used_today = ar.used_today(object(), now)
     assert lane.models() == []                           # 95% of the day's 100 already used

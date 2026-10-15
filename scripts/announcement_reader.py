@@ -39,6 +39,7 @@ import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -68,10 +69,24 @@ SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in th
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
 SLOW_STRIKES = 2              # timeouts in a row before a model is left out for the run
 # Free calls a day (as listed 13 Oct), by provider:model or provider; a lane stops a model at 95% of it,
-# counting today's earlier runs (usage log) and this one. NVIDIA's ~10K a day "may vary"; Z.ai lists none.
+# counting the provider's day so far (usage ledger, every run) and this run. NVIDIA's ~10K a day "may vary";
+# Z.ai lists none.
 DAILY_CALLS = {'groq:qwen/qwen3.8-27b': 1000, 'gemini:gemini-3.5-flash-lite': 500,
                'gemini:gemini-3.1-flash-lite': 500, 'nvidia': 10_000}
 DAILY_SHARE = 0.95
+# When each provider's day starts (15 Oct 2026). Gemini's per-day quotas reset at midnight Pacific time
+# (Google's rate-limit page). Groq, NVIDIA and Z.ai publish no reset time (Groq's headers count down a rolling
+# window), so their calls are counted over the last 24 hours: never fewer than any daily reset would count.
+RESET_TZ = {'gemini': 'America/Los_Angeles'}
+
+
+def window_start(prov: str, now: datetime) -> datetime:
+    """Start (UTC) of the day `prov` counts its daily limit in, for the moment `now` (aware)."""
+    tz = RESET_TZ.get(prov)
+    if tz:
+        local = now.astimezone(ZoneInfo(tz))
+        return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    return now.astimezone(timezone.utc) - timedelta(hours=24)
 PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemini: its own client
 # The live reader's categories (14 Oct, owner): the kinds of event listed companies file, after SEBI's LODR
 # Schedule III (Regulation 30) and what the exchanges carry besides (results, monthly updates, ratings). The
@@ -583,7 +598,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         if not isin and master and symbol:
             resolved = master.resolve('nse', symbol)
             isin = clean(resolved[0] if resolved else None)
-        url = clean(r.get('file_url'))
+        url = nann._file(clean(r.get('file_url')))   # archived rows may hold NSE's '.../corporate/-' (no file)
         xbrl_url = clean(r.get('xbrl_url'))
         xbrl_feed_row = str(r.get('event_id') or '').startswith('nse:xbrl:')
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
@@ -1252,25 +1267,45 @@ def usage(clients: dict, lanes: dict[str, Lane], since: dict[str, int] | None = 
 USAGE_PREFIX = 'clean/reports/announcement_reader/'
 
 
-def used_today(r2, run_date: str, skip_run: str | None = None) -> dict:
-    """Calls by provider:model in today's runs, which the daily limits count: one ledger file a run
-    ({date}/runs/), plus the day file the reader appended to before 15 Oct 2026 ({date}.json)."""
+def used_today(r2, now: datetime | None = None, skip_run: str | None = None) -> dict:
+    """Calls by provider:model inside each provider's current day (window_start), from every run's ledger
+    file of today and yesterday (IST folders) and the day files the reader appended to before 15 Oct 2026.
+    A ledger file counts its calls by the minute they were seen; an entry without minutes (the old day files)
+    counts all its calls at its own time."""
     from clean_writer import get, list_keys
-    out = {}
+    now = now or datetime.now(timezone.utc)
+    starts, out = {}, {}
+
+    def counted(model: str, at: str) -> bool:
+        prov = model.split(':', 1)[0]
+        if prov not in starts:
+            starts[prov] = window_start(prov, now)
+        t = pd.Timestamp(at)
+        return (t.tz_localize(timezone.utc) if t.tzinfo is None else t) >= starts[prov]
 
     def add(entry: dict):
+        minutes = entry.get('calls_by_minute')
+        if minutes is not None:
+            for m, by_minute in minutes.items():
+                n = sum(int(c) for at, c in by_minute.items() if counted(m, at))
+                if n:
+                    out[m] = out.get(m, 0) + n
+            return
         for m, e in (((entry or {}).get('usage') or {}).get('models') or {}).items():
-            out[m] = out.get(m, 0) + int(e.get('calls') or 0)
+            if entry.get('at') and counted(m, entry['at']):
+                out[m] = out.get(m, 0) + int(e.get('calls') or 0)
 
-    body = get(r2, f'{USAGE_PREFIX}{run_date}.json')
-    for run_ in (json.loads(body).get('runs', []) if body else []):
-        add(run_)
-    for key in list_keys(r2, f'{USAGE_PREFIX}{run_date}/runs/'):
-        if skip_run and key.endswith(f'/{skip_run}.json'):
-            continue
-        body = get(r2, key)
-        if body:
-            add(json.loads(body))
+    today = now.astimezone(IST).date()
+    for day in (today - timedelta(days=1), today):
+        body = get(r2, f'{USAGE_PREFIX}{day.isoformat()}.json')
+        for run_ in (json.loads(body).get('runs', []) if body else []):
+            add(run_)
+        for key in list_keys(r2, f'{USAGE_PREFIX}{day.isoformat()}/runs/'):
+            if skip_run and key.endswith(f'/{skip_run}.json'):
+                continue
+            body = get(r2, key)
+            if body:
+                add(json.loads(body))
     return out
 
 
@@ -1287,6 +1322,7 @@ class UsageLedger:
                                 source, uuid.uuid4().hex[:6]])
         self.key = f'{USAGE_PREFIX}{run_date}/runs/{self.run_id}.json'
         self.written_calls = None
+        self.by_minute, self.stamped = {}, {}   # provider:model -> {minute (UTC): calls}; attempts stamped
         self._lock, self._stop, self._thread = threading.Lock(), threading.Event(), None
 
     def calls(self) -> int:
@@ -1301,8 +1337,16 @@ class UsageLedger:
             n = self.calls()
             if not force and n == self.written_calls:
                 return False
-            entry = {'at': datetime.now(timezone.utc).isoformat(), 'source': self.source, 'run_id': self.run_id,
-                     **self.extra, 'usage': usage(self.clients, self.lanes)}
+            now = datetime.now(timezone.utc)
+            minute = now.strftime('%Y-%m-%dT%H:%MZ')
+            for prov, c in self.clients.items():
+                new = getattr(c, 'attempts', [])[self.stamped.get(prov, 0):]
+                self.stamped[prov] = self.stamped.get(prov, 0) + len(new)
+                for model, *_ in new:   # seen at most `every` seconds after the call
+                    per = self.by_minute.setdefault(f'{prov}:{model}', {})
+                    per[minute] = per.get(minute, 0) + 1
+            entry = {'at': now.isoformat(), 'source': self.source, 'run_id': self.run_id, **self.extra,
+                     'usage': usage(self.clients, self.lanes), 'calls_by_minute': self.by_minute}
             try:
                 put(self.r2, self.key, json.dumps(entry, indent=1, default=str).encode(), 'application/json')
             except Exception as exc:  # noqa: BLE001 -- the next write carries the same total
@@ -1311,10 +1355,25 @@ class UsageLedger:
             self.written_calls = n
             return True
 
-    def start(self) -> 'UsageLedger':
+    def refresh(self):
+        """Re-reads the other runs' calls into the lanes, so a run that overlaps another (the backfill and the
+        live reader) stops a model at its limit too, not only at what was used when it started."""
+        try:
+            used = used_today(self.r2, skip_run=self.run_id)
+        except Exception as exc:  # noqa: BLE001 -- keep the last known counts
+            log('usage of other runs not re-read:', type(exc).__name__, exc)
+            return
+        for lane in self.lanes.values():
+            lane.used_today = used
+
+    def start(self, refresh_every: float = 300.0) -> 'UsageLedger':
         def loop():
+            last = time.monotonic()
             while not self._stop.wait(self.every):
                 self.write()
+                if time.monotonic() - last >= refresh_every:
+                    self.refresh()
+                    last = time.monotonic()
         if self.r2 is not None:
             self._thread = threading.Thread(target=loop, name='usage-ledger', daemon=True)
             self._thread.start()
@@ -1463,7 +1522,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
-        used = used_today(r2, today.isoformat(), skip_run=ledger.run_id)
+        used = used_today(r2, skip_run=ledger.run_id)
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())

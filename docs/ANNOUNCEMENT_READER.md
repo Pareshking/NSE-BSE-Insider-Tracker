@@ -22,6 +22,19 @@ Current implementation paths:
   runs and, in the historical backfill, could count a batch's earlier calls again; those days are past, and the
   limits are daily, so they no longer affect a limit. The AI health check (`scripts/ai_health_check.py`) is the
   only caller outside the ledger, a handful of calls when run by hand.
+- Provider days (15 Oct): a daily limit counts the provider's own day, not IST's. Gemini's resets at midnight
+  Pacific time (12:30 or 13:30 IST); Groq, NVIDIA and Z.ai publish no reset time, so their calls are counted over
+  the last 24 hours (`RESET_TZ`, `window_start`). The ledger keeps each run's calls by the minute they were seen,
+  and a running reader re-reads the other runs' calls every 5 minutes, so two runs at once (live and backfill)
+  stop at the limit too: on 15 Oct the day file showed Gemini 3.5 Flash-Lite at 492 of its 500.
+- What the exchanges send (read-only audit, `scripts/announcement_source_audit.py`, 15 Oct): NSE's `hasXbrl` is
+  true on every row (2,600 of 2,600 in October), so it says nothing; NSE's `sm_isin` is empty on every row (the
+  ISIN comes from the security master); 55 of 21,963 NSE filings link to `.../corporate/-`, which is no file and
+  is now treated as none. NSE's XBRL announcement feed (`/api/XBRL-announcements`) carried 55 rows from 1 to
+  15 Oct, all director/KMP changes: 35 XML files and 20 ZIPs of the filing's documents (the same ZIP the main
+  feed links, so they are now kept as ZIPs, not XBRL). The XML rows often have no PDF of their own, and the
+  nearest filing in time can be a different event, so they are not paired with PDFs. Announcement XBRL can
+  therefore not save model calls in any number; the XBRL that would is the quarterly results' (not collected yet).
 
 Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
