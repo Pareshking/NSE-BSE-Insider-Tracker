@@ -746,7 +746,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
 
     ledger = ar.UsageLedger(r2, today.isoformat(), clients, lanes,
                             'backfill_dry_run' if dry_run else 'historical_backfill').start()
-    used = ar.used_today(r2, today.isoformat(), skip_run=ledger.run_id)
+    used = ar.used_today(r2, skip_run=ledger.run_id)
     for lane in lanes.values():
         lane.used_today = used
     try:
@@ -922,6 +922,7 @@ def run_continuous(start: date, end: date, batch_size: int, batch_minutes: float
     if state.get('history_scope') != expected_scope:
         state['history_scope'] = expected_scope
         state['next_history_date'] = start.isoformat()
+        state['completed_history_dates'] = []   # NSE-only dates; a day's own checkpoint decides, not this list
         state['scope_migration_at'] = datetime.now(timezone.utc).isoformat()
         save_state(r2, state)
 

@@ -104,9 +104,13 @@ def _text(v):
 
 
 def _file(v):
-    """NSE's attachment link, or None where it shows '-' (259 filings in Sep 2026)."""
+    """NSE's attachment link, or None where it shows '-' (259 filings in Sep 2026) or a link to no file:
+    NSE also writes https://nsearchives.nseindia.com/corporate/- (3 of 202 filings, 15 Oct 2026)."""
     v = _text(v)
-    return v if v and v.lower().startswith('http') else None
+    if not v or not v.lower().startswith('http'):
+        return None
+    last = v.rstrip('/').rsplit('/', 1)[-1]
+    return None if last in ('', '-') or '/' not in v.split('://', 1)[-1] else v
 
 
 
@@ -208,16 +212,17 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
         at = timestamp(row.get('broadcastDateTime')) or timestamp(row.get('disseminationDateTime'))
         sent = timestamp(row.get('disseminationDateTime'))
         size = _text(row.get('xbrlFileSize') or row.get('fileSize'))
+        is_xml = file_type(url) == 'xml'
         out.append({
             'event_id': event_id, 'seq_id': str(stable_id), 'market': market,
             'symbol': _text(row.get('symbol')), 'isin': _text(row.get('isin')),
             'company': _text(row.get('companyName') or row.get('company')),
             'industry': None, 'subject': _text(row.get('subject') or row.get('eventType') or row.get('typeOfAnn')),
             'text': _text(row.get('details') or row.get('eventType')),
-            # The dedicated XBRL endpoint's attachment URL may have a .zip/.pdf-looking name;
-            # its contract identifies this as the XML payload URL (the reader validates its bytes).
-            'file_url': url, 'file_type': 'xbrl', 'file_size': size,
-            'file_bytes': size_bytes(size), 'has_xbrl': True, 'xbrl_url': url,
+            # Only an .xml attachment is XBRL: the feed also lists ZIPs of the filing's documents
+            # (e.g. BRACEPORT_ROID_100514_KMP_Doc.zip, 15 Oct 2026), which are kept as what they are.
+            'file_url': url, 'file_type': 'xbrl' if is_xml else file_type(url), 'file_size': size,
+            'file_bytes': size_bytes(size), 'has_xbrl': is_xml, 'xbrl_url': url if is_xml else None,
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
             'broadcast_date': at.date().isoformat() if at is not None else None,
