@@ -101,7 +101,7 @@ CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dis
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
 COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subject', 'detail', 'group',
-           'broadcast_at', 'broadcast_date', 'file_url', 'file_sha256', 'text_sha256', 'text_chars', 'status',
+           'broadcast_at', 'broadcast_date', 'file_url', 'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
            'seconds', 'read_at', 'headline', 'points', 'market_cap')
@@ -583,6 +583,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                      'isin': isin, 'symbol': r.get('symbol'), 'company': r.get('company'),
                      'subject': r.get('subject'), 'detail': r.get('text'),
                      'group': nann.group_of(r.get('subject'), r.get('text')), 'file_url': r.get('file_url'),
+                     'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     for r in (bse.to_dict('records') if bse is not None else []):
@@ -592,6 +593,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                      'symbol': rec.get('nse_symbol') or r.get('bse_code'), 'company': r.get('company'),
                      'subject': r.get('subcategory') or r.get('category'), 'detail': r.get('headline'),
                      'group': bann.group_of(r.get('subcategory'), r.get('category')), 'file_url': r.get('file_url'),
+                     'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     df = pd.DataFrame(rows)
@@ -618,13 +620,14 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     finished = set()
     tries = {}
     if done is not None and not done.empty:
+        retryable = done['status'].isin(('failed', 'market_cap_unverified'))
         failed = done['status'] == 'failed'
-        # a read (or a copy of one) made with an older prompt is read again once, so its card has every part
+        # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
             (done['prompt_version'] != PROMPT_VERSION if 'prompt_version' in done else True)
-        finished = set(done.loc[(~failed & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
+        finished = set(done.loc[(~retryable & ~stale) | (done['tries'].fillna(0) >= MAX_TRIES), 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
-    keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip'])
+    keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
     c = c[keep & ~c['event_id'].isin(finished)]
     counts['already_done'] = int(keep.sum()) - len(c)
@@ -634,9 +637,13 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     earlier = [] if done is None or done.empty else done[done['status'].isin(('read',) + COPY_STATUSES)] \
         .to_dict('records')
     for r in c.sort_values('broadcast_at').to_dict('records'):   # oldest first, so the first copy is read
-        mcap = r.get('market_cap')
-        if mcap is not None and pd.notna(mcap) and mcap < MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.0f} Cr'})
+        mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
+        if pd.isna(mcap) or mcap <= 0:
+            status_rows.append({**r, 'status': 'market_cap_unverified',
+                                'reason': 'no verified market-cap value in the latest snapshot dated on or before yesterday'})
+            continue
+        if mcap < MIN_MCAP:
+            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr'})
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
@@ -644,6 +651,7 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
             continue
         read_rows.append(r)
     counts['below_100_cr'] = sum(x['status'] == 'below_100_cr' for x in status_rows)
+    counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
     if not to_read.empty:
@@ -777,7 +785,10 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 base['tries'] = MAX_TRIES
                 reason = f'{reason} (permanent missing document; no retry)'
             return finish({**base, 'status': 'failed', 'reason': reason})
-        base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()), text_chars=len(doc))
+        source_format = ('xbrl' if any(str(note).lower().startswith('xbrl:') for note in doc_notes)
+                         else 'zip' if data[:2] == b'PK' else 'pdf')
+        base.update(file_sha256=_sha(data), text_sha256=_sha(re.sub(r'\s+', ' ', doc).strip()),
+                    text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
         with lock:
@@ -1141,7 +1152,10 @@ def main(argv=None):
     if r2 is not None:
         from collectors.nse_events.run_daily import security_master
         try:
-            master = security_master(r2, today.isoformat(), setup)
+            cap_as_of = today - timedelta(days=1)  # last available exchange snapshot on or before yesterday
+            master = security_master(r2, cap_as_of.isoformat(), setup)
+            log(f'market-cap eligibility snapshot requested as of {cap_as_of.isoformat()} or earlier; '
+                f'actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
