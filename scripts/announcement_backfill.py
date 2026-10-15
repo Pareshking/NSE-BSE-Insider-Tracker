@@ -560,6 +560,19 @@ def _month_range(start: date, end: date) -> list[str]:
     return out
 
 
+
+def filter_target_company_history(candidates: pd.DataFrame, target_isins: set[str],
+                                  start: date, end: date) -> pd.DataFrame:
+    """Restrict historical AI candidates to target ISINs and an inclusive date range."""
+    if candidates is None or candidates.empty or 'isin' not in candidates or 'broadcast_date' not in candidates:
+        return pd.DataFrame() if candidates is None else candidates.iloc[0:0].copy()
+    target = {str(x).strip() for x in target_isins if x is not None and str(x).strip()}
+    dates = pd.to_datetime(candidates['broadcast_date'], errors='coerce').dt.date
+    return candidates[
+        candidates['isin'].astype(str).isin(target) & (dates >= start) & (dates <= end)
+    ].copy()
+
+
 def run_targeted_company_backfill(r2, target_isins: set[str], today: date, master, lanes: dict,
                                   clients: dict, setup: list[str], *, batch_size: int = 8,
                                   batch_minutes: float = 2.0, dry_run: bool = False) -> dict:
@@ -591,10 +604,7 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
         if nse.empty and bse.empty:
             continue
         frame = ar.candidates(nse, bse, master)
-        if frame.empty or 'isin' not in frame:
-            continue
-        dates = pd.to_datetime(frame.get('broadcast_date'), errors='coerce').dt.date
-        frame = frame[frame['isin'].astype(str).isin(clean_isins) & (dates >= start) & (dates <= end)].copy()
+        frame = filter_target_company_history(frame, clean_isins, start, end)
         if frame.empty:
             continue
         candidates_parts.append(frame)
