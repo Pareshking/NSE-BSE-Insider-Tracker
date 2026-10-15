@@ -26,6 +26,17 @@ on:
         default: false
   schedule:
     - cron: '7,22,37,52 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/announcement_reader.py'
+      - 'scripts/announcement_backfill.py'
+      - 'scripts/announcement_sample.py'
+      - 'scripts/announcement_readers.txt'
+      - 'collectors/nse_events/run_daily.py'
+      - 'tests/test_announcement_reader.py'
+      - 'tests/test_announcement_backfill.py'
+      - '.github/workflows/announcement-reader.yml'
   pull_request:
     paths:
       - 'scripts/announcement_reader.py'
