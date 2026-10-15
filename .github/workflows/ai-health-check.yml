@@ -1,0 +1,32 @@
+name: AI health check (one tiny request per model)
+
+# Sends each model of scripts/announcement_readers.txt one "Reply with OK" request and reports the status, time
+# and rate-limit headers (scripts/ai_health_check.py). No filings, no R2. Manual run.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-0caa4ce9-bh3n2s]
+    paths:
+      - 'scripts/ai_health_check.py'
+      - '.github/workflows/ai-health-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Ask each model
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -u scripts/ai_health_check.py
