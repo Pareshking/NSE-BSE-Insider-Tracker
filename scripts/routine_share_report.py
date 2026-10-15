@@ -64,6 +64,10 @@ def main() -> int:
     n = n[~n['event_id'].astype(str).str.startswith('nse:xbrl:')]
     report('NSE', n, [nse.group_of(s, t) for s, t in zip(n['subject'], n['text'])], 'subject')
     b = load(r2, bse.PREFIX)
+    out.append(f'BSE archive columns: {list(b.columns)}')
+    for col in ('subcategory', 'category'):
+        if col not in b:
+            b[col] = None
     report('BSE', b, [bse.group_of(s, c) for s, c in zip(b['subcategory'], b['category'])], 'subcategory')
     text = '\n'.join(out) + '\n'
     print(text)
