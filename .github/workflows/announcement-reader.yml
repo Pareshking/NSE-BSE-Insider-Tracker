@@ -70,6 +70,18 @@ jobs:
           else
             echo "go=0" >> "$GITHUB_OUTPUT"; echo "The reader's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Determine IST operating mode
+        id: schedule_mode
+        if: steps.changed.outputs.go == '1' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          hour="$(TZ=Asia/Kolkata date +%H)"
+          if (( 10#$hour >= 20 || 10#$hour < 10 )); then
+            echo "mode=backfill" >> "$GITHUB_OUTPUT"
+            echo "Night schedule (IST hour=$hour): historical backfill only; live collection is disabled."
+          else
+            echo "mode=live" >> "$GITHUB_OUTPUT"
+            echo "Day schedule (IST hour=$hour): live collection only; historical backfill is disabled."
+          fi
       - uses: actions/setup-python@v5
         if: steps.changed.outputs.go == '1'
         with:
@@ -83,7 +95,7 @@ jobs:
           echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
           exit 1
       - name: Read
-        if: steps.changed.outputs.go == '1'
+        if: steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || steps.schedule_mode.outputs.mode == 'live')
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -99,8 +111,8 @@ jobs:
           CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
         run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
-      - name: Read historical announcements when the live queue is idle
-        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      - name: Read historical announcements (night schedule only)
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.schedule_mode.outputs.mode == 'backfill'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -114,16 +126,11 @@ jobs:
           CARD_PROMPT_COMPARE: '0'
         run: |
           set -euo pipefail
-          hour="$(TZ=Asia/Kolkata date +%H)"
-          if (( 10#$hour >= 10 && 10#$hour < 20 )); then
-            echo "Backfill mode: daytime live-only (IST hour=$hour); historical backfill is disabled until 20:00 IST."
-            exit 0
-          fi
           batch_size=8
           max_batches=4
           batch_minutes=3
-          echo "Backfill mode: nighttime accelerated (IST hour=$hour); batch_size=$batch_size, max_batches=$max_batches, batch_minutes=$batch_minutes"
-          echo "Live reading has already run first. Historical backfill is night-only; provider daily-call budgets and quota circuit breakers remain active."
+          echo "Night schedule: historical backfill only; batch_size=$batch_size, max_batches=$max_batches, batch_minutes=$batch_minutes"
+          echo "Live collection is disabled during the night window. Provider daily-call budgets and quota circuit breakers remain active."
           python -u scripts/announcement_backfill.py --continuous --batch-size "$batch_size" --batch-minutes "$batch_minutes" --max-batches "$max_batches"
 
       - uses: actions/upload-artifact@v4
