@@ -1151,7 +1151,36 @@ def main(argv=None):
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
     nse, bse = collect(r2, today, args.dry_run, setup)
     done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
-    to_read, status_rows, counts = choose(candidates(nse, bse, master), done, today)
+    current_candidates = candidates(nse, bse, master)
+    to_read, status_rows, counts = choose(current_candidates, done, today)
+
+    # One integrated pipeline: queue companies with eligible announcements, collect one verified
+    # historical source date, and AI-read only queued companies' historical filings before today's reads.
+    # Historical collection/AI errors are recorded but must not suppress current-day cards.
+    if r2 is not None and not args.dry_run:
+        from announcement_backfill import unified_company_history_stage
+        current_isins = set()
+        if not current_candidates.empty and 'isin' in current_candidates:
+            broadcast_dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            groups = current_candidates.get('group', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
+            urls = current_candidates.get('file_url', pd.Series(index=current_candidates.index, dtype=str)).fillna('').astype(str)
+            caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
+                                  errors='coerce').fillna(0)
+            eligible_today = current_candidates[
+                (broadcast_dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+            ]
+            current_isins.update(eligible_today['isin'].dropna().astype(str))
+        if not to_read.empty and 'isin' in to_read:
+            current_isins.update(to_read['isin'].dropna().astype(str))
+        history_result = unified_company_history_stage(
+            r2, current_isins, today, master, lanes, clients, setup,
+            batch_size=8, batch_minutes=2.0,
+        )
+        log('unified company-history stage', json.dumps(history_result, default=str))
+        # Historical rows were persisted through the same canonical event archive. Refresh today's done
+        # set and then attach the newly enriched, source-linked company memory to the live prompt.
+        done = load_archive(r2, READS_PREFIX, today)
+        to_read, status_rows, counts = choose(current_candidates, done, today)
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
