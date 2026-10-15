@@ -6,9 +6,11 @@ be counted and changed without another download:
   1. page breaks become blank lines; every line loses its leading and trailing blanks (layout padding is ~39% of
      the characters of a filing); a run of 3 or more spaces inside a line, a table's column gap, becomes ' | ' so a
      row still reads left to right; shorter runs become one space; runs of blank lines become one;
-  2. page furniture: a line that repeats exactly (only a page number inside it may differ) on 3 or more pages of a
-     document of 3 or more pages (running headers and footers) is kept once, at its first appearance (a table's
-     column header stays), and a line that is only a page number ('Page 3 of 12', '3', '- 3 -') goes;
+  2. page furniture: a line at the top or bottom edge of a page (its first or last 3 lines) that repeats exactly (only
+     a page number inside it may differ) on 3 or more pages of a document of 3 or more pages (running headers and
+     footers), and is mostly text (a line of mostly digits is data), is kept once, at its first appearance; a line that
+     is only a page number ('Page 3 of 12', '3', '- 3 -') goes. A row in the middle of a page never counts, so a voting
+     table that repeats the same row for every resolution is kept whole;
   3. the exchanges' own address lines in the 'To, The Manager, BSE Limited / National Stock Exchange ...' block that
      opens almost every filing letter (Phiroze Jeejeebhoy Towers, Dalal Street, Exchange Plaza, Bandra Kurla Complex);
   4. the letterhead's contact lines (Registered / Corporate Office, CIN, Tel, Fax, E-mail, Website) in the first 25
@@ -41,12 +43,27 @@ def _key(line: str) -> str:
     return re.sub(r'\bpage\s*\d+(?:\s*(?:of|/)\s*\d+)?', 'page #', line, flags=re.IGNORECASE).lower()
 
 
+EDGE = 3   # lines at the top and the bottom of a page that can be furniture
+
+
+def _mostly_text(line: str) -> bool:
+    alnum = sum(c.isalnum() for c in line)
+    return alnum > 0 and sum(c.isdigit() for c in line) / alnum <= 0.5
+
+
 def clean(text: str, subject: str | None = None) -> tuple[str, dict]:
     """(cleaned text, characters removed by rule)."""
-    removed = Counter()
+    out, removed, _ = clean_with_lines(text, subject)
+    return out, removed
+
+
+def clean_with_lines(text: str, subject: str | None = None) -> tuple[str, dict, dict]:
+    """(cleaned text, characters removed by rule, the removed lines by rule): what a check needs to show that only
+    the intended lines went."""
+    removed, lines_removed = Counter(), {}
     before = len(text or '')
     if not text:
-        return '', {}
+        return '', {}, {}
     pages = text.split('\f')
     lines_by_page = []
     for p in pages:
@@ -59,20 +76,29 @@ def clean(text: str, subject: str | None = None) -> tuple[str, dict]:
         lines_by_page.append(lines)
     removed['padding'] = before - sum(len(x) for x in ('\n'.join(l) for l in lines_by_page)) - 0
     # page furniture: repeated lines, page numbers
+    def edges(lines):
+        nb = [i for i, x in enumerate(lines) if x]
+        return set(nb[:EDGE]) | set(nb[-EDGE:])
+
     if len(pages) >= 3:
-        seen = Counter(k for lines in lines_by_page for k in {_key(x) for x in lines if x})
+        seen = Counter(k for lines in lines_by_page for k in {_key(lines[i]) for i in edges(lines) if _mostly_text(lines[i])})
         furniture = {k for k, n in seen.items() if n >= 3 and len(k) > 1}
     else:
         furniture = set()
     kept_pages, shown_once = [], set()
     for lines in lines_by_page:
-        out = []
-        for ln in lines:
+        out, edge = [], edges(lines)
+        for i, ln in enumerate(lines):
             key = _key(ln)
-            if ln and (PAGE_NUMBER.match(ln) or (key in furniture and key in shown_once)):
+            if ln and PAGE_NUMBER.match(ln):
                 removed['page furniture'] += len(ln) + 1
+                lines_removed.setdefault('page number', []).append(ln)
                 continue
-            if ln and key in furniture:
+            if ln and i in edge and key in furniture:
+                if key in shown_once:
+                    removed['page furniture'] += len(ln) + 1
+                    lines_removed.setdefault('repeated edge line', []).append(ln)
+                    continue
                 shown_once.add(key)
             out.append(ln)
         kept_pages.append(out)
@@ -85,11 +111,13 @@ def clean(text: str, subject: str | None = None) -> tuple[str, dict]:
     for i, ln in enumerate(flat):
         if ln and EXCHANGE_ADDRESS.search(ln) and len(ln) < 110:
             removed['exchange address'] += len(ln) + 1
+            lines_removed.setdefault('exchange address', []).append(ln)
             continue
         if ln and not keep_letterhead and (i in head or i in tail) and LETTERHEAD.match(ln) and len(ln) < 160:
             removed['letterhead contacts'] += len(ln) + 1
+            lines_removed.setdefault('letterhead contacts', []).append(ln)
             continue
         out.append(ln)
     text_out = re.sub(r'\n{3,}', '\n\n', '\n'.join(out)).strip()
     removed['padding'] = max(before - len(text_out) - sum(v for k, v in removed.items() if k != 'padding'), 0)
-    return text_out, {k: int(v) for k, v in removed.items() if v}
+    return text_out, {k: int(v) for k, v in removed.items() if v}, lines_removed

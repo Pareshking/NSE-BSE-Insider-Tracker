@@ -64,8 +64,8 @@ def test_letterhead_lines_in_the_middle_of_a_long_document_are_content():
 
 def test_lines_repeated_on_three_pages_and_page_numbers_go_but_a_line_on_two_pages_stays():
     pages = [f'ACME LIMITED Annual Report\nbody of page {i} with value {i}00\nPage {i} of 4' for i in range(1, 5)]
-    pages[1] += '\nOnly here and on the next page'
-    pages[2] += '\nOnly here and on the next page'
+    pages[1] = pages[1].replace('\nbody', '\nOnly here and on the next page\nbody')
+    pages[2] = pages[2].replace('\nbody', '\nOnly here and on the next page\nbody')
     text, removed = clean('\f'.join(pages))
     assert text.count('ACME LIMITED Annual Report') == 1 and 'Page 1 of 4' not in text and removed['page furniture'] > 0
     assert text.count('Only here and on the next page') == 2
@@ -96,3 +96,25 @@ def test_a_table_header_repeated_on_every_page_is_kept_once_with_the_first_table
     text, _ = clean('\f'.join(pages))
     assert text.count('Particulars | Quarter ended 30.09.2026 | Quarter ended 30.09.2025') == 1
     assert text.index('Particulars') < text.index('row 1')
+
+
+def test_identical_rows_in_the_middle_of_pages_are_kept_so_a_voting_table_stays_whole():
+    row = 'Promoter    E-Voting    8188115    100.0000    8188115    0    100.0000    0.0000'
+    pages = [f'Resolution {i}\nCategory  Mode  Votes\n{row}\nPublic    E-Voting    {i}00    50.0000\nResult: passed\nfooter line one\nfooter two\nfooter three'
+             for i in range(1, 6)]
+    text, removed = clean('\f'.join(pages))
+    assert text.count('Promoter | E-Voting | 8188115 | 100.0000 | 8188115 | 0 | 100.0000 | 0.0000') == 5
+    assert all(f'Public | E-Voting | {i}00 | 50.0000' in text for i in range(1, 6))
+
+
+def test_an_edge_line_that_is_mostly_digits_is_data_not_furniture():
+    pages = ['Annual Report\nbody one\n1234567 890123 456789', 'Annual Report\nbody two\n1234567 890123 456789',
+             'Annual Report\nbody three\n1234567 890123 456789']
+    text, _ = clean('\f'.join(pages))
+    assert text.count('1234567 890123 456789') == 3 and text.count('Annual Report') == 1
+
+
+def test_clean_with_lines_names_the_removed_lines_by_rule():
+    from insiders_clean.text_clean import clean_with_lines
+    _, _, lines = clean_with_lines(LETTER, 'Allotment of Securities')
+    assert any('Phiroze' in x for x in lines['exchange address']) and any('CIN:' in x for x in lines['letterhead contacts'])
