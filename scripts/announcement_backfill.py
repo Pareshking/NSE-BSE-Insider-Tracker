@@ -595,7 +595,6 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
     if end < start:
         return {'companies': len(clean_isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0}
 
-    from r2_writer import r2_client
     # Use the caller's live R2 client and its already-configured lanes/quota ledger.
     candidates_parts, reads_parts = [], []
     for month in _month_range(start, end):
@@ -617,9 +616,10 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
     if candidates.empty:
         return {'companies': len(clean_isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0}
 
-    # Only target ISINs can enter the model. Process oldest first so the memory timeline is causal.
+    # Only target ISINs can enter the model. Prefer the newest historical events so the current prompt gets
+    # useful recent context first; add_memory_context still excludes events later than each historical filing.
     to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=start, date_to=end)
-    to_read = to_read.sort_values(['broadcast_date', 'broadcast_at'], ascending=True) if not to_read.empty else to_read
+    to_read = to_read.sort_values(['broadcast_date', 'broadcast_at'], ascending=False) if not to_read.empty else to_read
     if not to_read.empty:
         to_read = add_memory_context(r2, to_read)
     saver = ar.Saver(r2, today.isoformat(), today)
