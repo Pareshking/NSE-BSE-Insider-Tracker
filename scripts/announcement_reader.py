@@ -1288,8 +1288,8 @@ def collect(r2, today: date, dry_run: bool, notes: list):
                 break
             except Exception as exc:  # noqa: BLE001
                 notes.append(f'NSE {market}: {type(exc).__name__}: {exc}'[:200])
-        # Exercise the dedicated XBRL endpoint in dry-runs too. Its client timeout is bounded
-        # to 10 seconds/one attempt so an optional XBRL outage cannot delay the live PDF fallback.
+        # Exercise the dedicated NSE XBRL-announcements feed in dry-runs as well as production.
+        # Its client timeout is bounded to 10 seconds/one attempt; failures never block PDF reads.
         # Respect NSE's hard-stop rule on 401/403/429; never probe another endpoint after a block.
         if not nse_blocked:
             for market in nann.FEEDS:
