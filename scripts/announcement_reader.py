@@ -267,22 +267,7 @@ def clients_for(entries, env=os.environ) -> tuple[dict, list[str]]:
 
 
 class GeminiCalls(s.Gemini):
-    """Gemini's client with the call log the usage report and daily limits read (as OpenAICompat keeps)."""
-
-    def __init__(self, key: str, **kw):
-        super().__init__(key, **kw)
-        self.attempts = []
-
-    def generate(self, models, prompt, kind, json_mode):
-        t0 = time.monotonic()
-        try:
-            text, u, used = super().generate(models, prompt, kind, json_mode)
-        except RuntimeError as exc:
-            self.attempts.append((models[0], 'busy or refused' if 'busy' in str(exc) else 'error',
-                                  round(time.monotonic() - t0, 1)))
-            raise
-        self.attempts.append((used, 200, round(time.monotonic() - t0, 1)))
-        return text, u, used
+    """Gemini client; the base client records each actual HTTP generation attempt."""
 
 
 def usable(entries: list[str]) -> list[str]:
