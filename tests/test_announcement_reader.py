@@ -762,7 +762,14 @@ def test_dedicated_xbrl_feed_row_is_used_as_fast_path_without_duplicate_candidat
          'broadcast_at': '2026-10-15T10:00:00+05:30', 'broadcast_date': '2026-10-15',
          'market': 'equities'},
     ])
-    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    class Master:
+        market_cap_as_of = '2026-10-14'
+        def resolve(self, exchange, symbol):
+            return ('INE182D01010', 'exchange_symbol') if exchange == 'nse' and symbol == 'MARATHON' else None
+        def record(self, isin):
+            return {'market_cap': 2_000_000_000} if isin == 'INE182D01010' else None
+
+    out = ar.candidates(rows, pd.DataFrame(), Master()).set_index('event_id')
     pdf = out.loc['nse:pdf:1']
     xbrl = out.loc['nse:xbrl:equities:APP-123:abc123']
     assert pdf['content_url'].endswith('MARATHON_123.xml')
