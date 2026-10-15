@@ -583,13 +583,15 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             isin = clean(resolved[0] if resolved else None)
         url = clean(r.get('file_url'))
         xbrl_url = clean(r.get('xbrl_url'))
+        xbrl_feed_row = str(r.get('event_id') or '').startswith('nse:xbrl:')
         rows.append({'event_id': r['event_id'], 'exchange': 'NSE', 'market': r.get('market') or 'equities',
                      'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
-                     'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
-                     'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
-                     'xbrl_source_event_id': r['event_id'] if xbrl_url else None,
-                     'xbrl_source_url': xbrl_url, 'market_cap_match': None,
+                     # Dedicated XBRL rows are companion payloads, never standalone user-facing cards.
+                     'group': 'routine' if xbrl_feed_row else nann.group_of(clean(r.get('subject')), clean(r.get('text'))),
+                     'file_url': url, 'content_url': xbrl_url or url, 'xbrl_url': xbrl_url,
+                     'xbrl_source_event_id': r['event_id'] if xbrl_url and not xbrl_feed_row else None,
+                     'xbrl_source_url': xbrl_url if not xbrl_feed_row else None, 'market_cap_match': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
