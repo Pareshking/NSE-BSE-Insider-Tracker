@@ -681,20 +681,37 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         broadcast_day = day(row.get('broadcast_date'))
         if not identifier or not subject or broadcast_day is None:
             continue
-        matches = []
+        matches, nearby_xbrl = [], []
         for xidx, xrow in xbrl_rows:
             if xidx in used_xbrl or xidx == idx:
                 continue
-            xidentifier = str(xrow.get('isin') or xrow.get('symbol') or '').strip().upper()
+            xidentifier = str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper()
             xday = day(xrow.get('broadcast_date'))
-            if xidentifier != identifier or subject_base(xrow.get('subject')) != subject or xday is None:
+            if xidentifier != identifier or xday is None or abs((xday - broadcast_day).days) > 1:
                 continue
-            if abs((xday - broadcast_day).days) > 1:
+            candidate = (abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow)
+            nearby_xbrl.append(candidate)
+            if subject_base(xrow.get('subject')) == subject:
+                matches.append(candidate)
+        if matches:
+            _, _, xidx, xrow = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+        else:
+            # Subjects can differ between a PDF announcement and its XBRL companion.
+            # Only use a non-exact match when this issuer has exactly one eligible PDF and one
+            # XBRL attachment in the date window; ambiguous pairs fall back to the PDF.
+            other_pdfs = []
+            for pidx, prow in enumerate(records):
+                if pidx == idx or prow.get('exchange') != 'NSE' or not truthy(prow.get('has_xbrl')):
+                    continue
+                if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
+                    continue
+                pidentifier = str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper()
+                pday = day(prow.get('broadcast_date'))
+                if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
+                    other_pdfs.append(pidx)
+            if len(nearby_xbrl) != 1 or other_pdfs:
                 continue
-            matches.append((abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow))
-        if not matches:
-            continue
-        _, _, xidx, xrow = sorted(matches, key=lambda item: (item[0], item[1]))[0]
+            _, _, xidx, xrow = nearby_xbrl[0]
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
