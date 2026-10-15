@@ -1172,15 +1172,20 @@ def main(argv=None):
             current_isins.update(eligible_today['isin'].dropna().astype(str))
         if not to_read.empty and 'isin' in to_read:
             current_isins.update(to_read['isin'].dropna().astype(str))
-        history_result = unified_company_history_stage(
-            r2, current_isins, today, master, lanes, clients, setup,
-            batch_size=8, batch_minutes=2.0,
-        )
-        log('unified company-history stage', json.dumps(history_result, default=str))
-        # Historical rows were persisted through the same canonical event archive. Refresh today's done
-        # set and then attach the newly enriched, source-linked company memory to the live prompt.
-        done = load_archive(r2, READS_PREFIX, today)
-        to_read, status_rows, counts = choose(current_candidates, done, today)
+        try:
+            history_result = unified_company_history_stage(
+                r2, current_isins, today, master, lanes, clients, setup,
+                batch_size=8, batch_minutes=2.0,
+            )
+            log('unified company-history stage', json.dumps(history_result, default=str))
+            # Historical rows were persisted through the same canonical event archive. Refresh today's done
+            # set and then attach the newly enriched, source-linked company memory to the live prompt.
+            done = load_archive(r2, READS_PREFIX, today)
+            to_read, status_rows, counts = choose(current_candidates, done, today)
+        except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day processing
+            message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
+            setup.append(message)
+            log(message)
     if r2 is not None:
         to_read = with_company_memory(r2, to_read)
     saver = None if args.dry_run else Saver(r2, today.isoformat(), today)
