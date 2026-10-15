@@ -715,7 +715,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             # Without an exact subject match, require one explicitly XBRL-labelled
             # companion and exactly one eligible PDF in the issuer/date window.
             labelled_nearby = [item for item in nearby_structured
-                                if re.search(r'\bxbrl\b', f"{item[3].get('subject') or ''} {item[3].get('file_url') or ''}", re.IGNORECASE)]
+                                if str(item[3].get('event_id') or '').startswith('nse:xbrl:')
+                                or re.search(r'\bxbrl\b', f"{item[3].get('subject') or ''} {item[3].get('file_url') or ''}", re.IGNORECASE)]
             if len(labelled_nearby) != 1 or other_pdfs:
                 continue
             _, _, xidx, xrow = labelled_nearby[0]
