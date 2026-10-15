@@ -72,17 +72,26 @@ def test_candidates_resolves_nan_isin_before_market_cap_filter():
                 return {'market_cap': 2_000_000_000_000, 'nse_symbol': 'BANKBARODA'}
             return None
 
-    nse = pd.DataFrame([{
-        'event_id': 'nse:cap-map', 'symbol': 'BANKBARODA', 'isin': float('nan'),
-        'company': 'Bank of Baroda', 'subject': 'Acquisition', 'text': 'Announcement',
-        'file_url': 'https://nsearchives.nseindia.com/corporate/bankbaroda.pdf',
-        'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-15T09:00:00+05:30',
-        'broadcast_date': '2026-10-15', 'market': 'equities',
-    }])
-    out = ar.candidates(nse, pd.DataFrame(), Master()).iloc[0]
-    assert out['isin'] == 'INE028A01039'
-    assert out['market_cap'] == 2_000_000_000_000
-    assert out['market_cap_as_of'] == '2026-10-14'
+    nse = pd.DataFrame([
+        {'event_id': 'nse:cap-map', 'symbol': 'BANKBARODA', 'isin': float('nan'),
+         'company': 'Bank of Baroda', 'subject': 'Acquisition', 'text': 'Announcement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/bankbaroda.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-15T09:00:00+05:30',
+         'broadcast_date': '2026-10-15', 'market': 'equities'},
+        {'event_id': 'nse:stale-isin', 'symbol': 'BANKBARODA', 'isin': 'INEOLD000000',
+         'company': 'Bank of Baroda', 'subject': 'Acquisition', 'text': 'Announcement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/bankbaroda-stale.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-15T09:01:00+05:30',
+         'broadcast_date': '2026-10-15', 'market': 'equities'},
+    ])
+    out = ar.candidates(nse, pd.DataFrame(), Master()).set_index('event_id')
+    assert out.loc['nse:cap-map', 'isin'] == 'INE028A01039'
+    assert out.loc['nse:cap-map', 'market_cap'] == 2_000_000_000_000
+    assert out.loc['nse:cap-map', 'market_cap_match'] == 'isin'
+    assert out.loc['nse:stale-isin', 'isin'] == 'INEOLD000000'  # preserve source identity
+    assert out.loc['nse:stale-isin', 'market_cap'] == 2_000_000_000_000
+    assert out.loc['nse:stale-isin', 'market_cap_match'] == 'exchange_symbol'
+    assert set(out['market_cap_as_of']) == {'2026-10-14'}
 
 def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate_read():
     rows = pd.DataFrame([
