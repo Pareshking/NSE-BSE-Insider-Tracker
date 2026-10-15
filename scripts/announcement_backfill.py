@@ -504,6 +504,39 @@ def save_pipeline_state(r2, state: dict) -> None:
     put(r2, PIPELINE_STATE_KEY, json.dumps(state, indent=2, default=str).encode(), 'application/json')
 
 
+
+def recent_history_coverage_verified(r2, today: date) -> tuple[bool, str]:
+    """Verify the nightly collectors cover the three dates adjacent to the historical cursor."""
+    from clean_writer import get
+    report_day = today - timedelta(days=1)  # the nightly 22:45 IST collector ran on this date
+    start, end = today - timedelta(days=3), report_day
+    nse_raw = get(r2, f'clean/reports/announcements/{report_day.isoformat()}.json')
+    bse_raw = get(r2, f'clean/reports/announcements_bse/{report_day.isoformat()}.json')
+    if not nse_raw or not bse_raw:
+        return False, f'missing nightly NSE/BSE collection reports for {report_day}'
+    try:
+        nse_report, bse_report = json.loads(nse_raw), json.loads(bse_raw)
+    except (TypeError, ValueError):
+        return False, f'invalid nightly NSE/BSE collection report for {report_day}'
+    expected_window = [start.isoformat(), end.isoformat()]
+    if nse_report.get('window') != expected_window or nse_report.get('notes'):
+        return False, f'NSE nightly coverage not certified for {expected_window}'
+    for market in ('equities', 'sme'):
+        if not any(call.get('market') == market and call.get('from') == expected_window[0]
+                   and call.get('to') == expected_window[1] for call in nse_report.get('calls', [])):
+            return False, f'NSE {market} nightly coverage missing for {expected_window}'
+    if bse_report.get('window') != expected_window or bse_report.get('notes'):
+        return False, f'BSE nightly coverage not certified for {expected_window}'
+    days = {item.get('day'): item for item in bse_report.get('days', [])}
+    for offset in range(3):
+        day = (start + timedelta(days=offset)).isoformat()
+        item = days.get(day)
+        if (not item or item.get('short') or item.get('bse_count') is None
+                or int(item.get('unique') or 0) != int(item['bse_count'])):
+            return False, f'BSE nightly page coverage incomplete for {day}'
+    return True, ''
+
+
 def advance_pipeline_history_collection(r2, today: date, state: dict, notes: list[str]) -> bool:
     """Collect one historical date per unified run; this is source collection, never market-wide AI reading.
 
@@ -520,10 +553,14 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
     while pointer <= cutoff and historical_day_collected(r2, pointer):
         pointer += timedelta(days=1)
     if pointer > cutoff:
-        state.update(collection_next_date=pointer.isoformat(), collection_complete=True,
-                     collection_cutoff=cutoff.isoformat(), collection_last_error=None)
+        recent_ok, recent_reason = recent_history_coverage_verified(r2, today)
+        state.update(collection_next_date=pointer.isoformat(), collection_complete=recent_ok,
+                     collection_cutoff=cutoff.isoformat(), collection_last_error=None,
+                     recent_coverage_error=None if recent_ok else recent_reason)
         save_pipeline_state(r2, state)
-        return True
+        if not recent_ok:
+            notes.append('historical source coverage not complete: ' + recent_reason)
+        return recent_ok
 
     state.update(collection_complete=False, collection_next_date=pointer.isoformat(),
                  collection_cutoff=cutoff.isoformat(), collection_attempted_date=pointer.isoformat())
@@ -540,12 +577,19 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
         return False
 
     next_day = pointer + timedelta(days=1)
+    complete = False
+    recent_reason = None
+    if next_day > cutoff:
+        complete, recent_reason = recent_history_coverage_verified(r2, today)
+        if not complete:
+            notes.append('historical source coverage not complete: ' + recent_reason)
     state.update(collection_next_date=next_day.isoformat(), collection_last_error=None,
-                 collection_last_success=pointer.isoformat(), collection_complete=next_day > cutoff)
+                 collection_last_success=pointer.isoformat(), collection_complete=complete,
+                 recent_coverage_error=recent_reason)
     save_pipeline_state(r2, state)
-    print(f'Unified pipeline: verified historical source collection for {pointer}; next={next_day}.',
-          flush=True)
-    return bool(state['collection_complete'])
+    print(f'Unified pipeline: verified historical source collection for {pointer}; next={next_day}; '
+          f'full_range_complete={complete}.', flush=True)
+    return complete
 
 
 def _month_range(start: date, end: date) -> list[str]:
