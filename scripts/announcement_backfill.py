@@ -806,6 +806,9 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
         to_read = add_memory_context(r2, to_read)
         batch_ids = set(to_read['event_id'].astype(str))
         saver = None if dry_run else ar.Saver(r2, today.isoformat(), today)
+        # Usage is persisted per batch. Capture attempt offsets so repeated batches do not
+        # re-count earlier calls from the same long-lived client instances.
+        attempts_before = {prov: len(client.attempts) for prov, client in clients.items()}
         rows, notes = ar.run(to_read, lanes, reads, batch_minutes * 60,
                              max_filings=batch_size, on_row=saver.add if saver else None)
         statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION,
@@ -842,7 +845,7 @@ def run_backfill(start: date, end: date, batch_size: int, batch_minutes: float,
                 'counts': counts,
                 'outcomes': counts_now,
                 'added': saver.added if saver else 0,
-                'usage': ar.usage(clients, lanes),
+                'usage': ar.usage(clients, lanes, attempts_before),
                 'notes': setup,
             })
         state.update({
