@@ -122,6 +122,27 @@ def test_candidates_prefers_related_nse_xbrl_attachment_and_suppresses_duplicate
     assert out.loc['pdf:2', 'xbrl_source_event_id'] == 'xbrl:2'
     assert out.loc['xbrl:2', 'group'] == 'routine'
 
+
+def test_xbrl_audit_reports_flags_attachments_and_links():
+    cands = pd.DataFrame([
+        {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
+         'subject': 'General Updates', 'broadcast_date': '2026-10-14', 'file_type': 'pdf',
+         'has_xbrl': True, 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'content_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'xbrl_source_event_id': 'xbrl:1', 'xbrl_source_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml'},
+        {'event_id': 'xbrl:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
+         'subject': 'General Updates-XBRL', 'broadcast_date': '2026-10-14', 'file_type': 'xml',
+         'has_xbrl': False, 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'content_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
+    ])
+    audit = ar.xbrl_audit(cands)
+    assert audit['candidates'] == 2
+    assert audit['has_xbrl_flagged'] == 1
+    assert audit['xbrl_attachments'] == 1
+    assert audit['xbrl_linked'] == 1
+    assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
+
 def test_choose_excludes_unverified_market_cap_and_keeps_exactly_100_cr():
     today = date(2026, 10, 13)
     c = pd.DataFrame([
