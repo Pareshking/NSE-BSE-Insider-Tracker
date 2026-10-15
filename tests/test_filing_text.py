@@ -119,3 +119,31 @@ def test_pending_ignores_other_rows_and_keeps_the_never_tried():
     cached = pd.DataFrame([{'event_id': 'nse:1', 'status': 'ok', 'tries': 1},
                            {'event_id': 'nse:2', 'status': 'failed', 'tries': 3}])
     assert list(ft.pending(rows, cached)['event_id']) == ['nse:3']
+
+
+def test_newest_first_starts_with_the_last_day_and_a_stop_leaves_the_oldest_for_the_next_run():
+    r2 = FakeR2()
+    rows = [('nse:1', 'https://nsearchives.nseindia.com/corporate/1.pdf', 'pdf', '2026-10-13'),
+            ('nse:2', 'https://nsearchives.nseindia.com/corporate/2.pdf', 'pdf', '2026-10-14'),
+            ('nse:3', 'https://nsearchives.nseindia.com/corporate/3.pdf', 'pdf', '2026-10-15')]
+    put_parquet(r2, 'archive/announcements/nse/year=2026/month=10.parquet',
+                pd.DataFrame(rows, columns=['event_id', 'file_url', 'file_type', 'broadcast_date']))
+    order = []
+
+    def download(url):
+        order.append(url[-5:])
+        return b't'
+
+    now = {'t': 0.0}
+
+    def clock():
+        return now['t']
+
+    def slow(url):
+        now['t'] += 40
+        return download(url)
+
+    first = fx.run(r2, date(2026, 10, 13), date(2026, 10, 15), minutes=1, workers=1, pause=0, download=slow,
+                   text_of=lambda d, limit=None: (d.decode(), []), clock=clock, newest_first=True)
+    assert order[0] == '3.pdf' and first['stopped_early']
+    assert ft.load_day(r2, 'nse', date(2026, 10, 15)).shape[0] == 1 and ft.load_day(r2, 'nse', date(2026, 10, 13)).empty

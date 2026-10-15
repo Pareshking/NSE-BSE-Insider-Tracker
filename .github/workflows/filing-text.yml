@@ -19,6 +19,11 @@ on:
         description: 'Stop starting new files after this many minutes (the job limit is 6 hours)'
         required: false
         default: '300'
+      newest_first:
+        description: 'Start with the last day (a long fill: recent days first)'
+        required: false
+        default: true
+        type: boolean
   workflow_run:
     workflows: ['Announcement collection (no AI)']
     types: [completed]
@@ -52,8 +57,10 @@ jobs:
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
           MINUTES: ${{ inputs.minutes || '300' }}
+          NEWEST: ${{ inputs.newest_first }}
         run: |
           args=(--minutes "$MINUTES")
           [ -n "$FROM" ] && args+=(--from "$FROM")
           [ -n "$TO" ] && args+=(--to "$TO")
+          [ "$NEWEST" = "true" ] && args+=(--newest-first)
           python -u scripts/filing_text_extract.py "${args[@]}"

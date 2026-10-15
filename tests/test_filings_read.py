@@ -241,3 +241,19 @@ def test_every_category_of_the_live_reader_has_a_label_and_a_heading():
     shown = set(ar.CATEGORIES) - {'routine'}
     assert shown <= set(fr.CATEGORY), shown - set(fr.CATEGORY)
     assert all(filings.heading_of(c) != filings.OTHER for c in shown), [c for c in shown if filings.heading_of(c) == 'Other']
+
+
+def test_a_bse_file_older_than_two_days_links_to_the_history_path_and_the_rest_keep_their_link():
+    live = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/a.pdf'
+    now = pd.Timestamp('2026-10-15 18:00', tz='UTC')   # 15 Oct 23:30 IST
+    link = fr.filing_link
+    assert link(live, '2026-10-12T10:00:00+05:30', now) == live.replace('AttachLive', 'AttachHis')   # 3 days
+    assert link(live, '2026-10-13T10:00:00+05:30', now) == live                                      # 2 days
+    assert link(live, '2026-10-15T10:00:00+05:30', now) == live
+    nse = 'https://nsearchives.nseindia.com/corporate/X.pdf'
+    assert link(nse, '2026-01-01T10:00:00+05:30', now) == nse
+    assert link(None, '2026-01-01T10:00:00+05:30', now) == '' and link(live, None, now) == live
+    already = live.replace('AttachLive', 'AttachHis')
+    assert link(already, '2026-01-01T10:00:00+05:30', now) == already
+    # the boundary is in IST: a filing at 00:30 IST on 13 Oct is still 2 days old at 23:30 IST on 15 Oct
+    assert link(live, '2026-10-13T00:30:00+05:30', now) == live
