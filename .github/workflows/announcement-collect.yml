@@ -1,0 +1,103 @@
+name: Announcement collection (no AI)
+
+# Every NSE and BSE announcement into raw_v2/ and archive/announcements/, with the daily count reports. No model
+# reads anything here and nothing here depends on the reader workflow: collecting must never stop because reading
+# is paused (the archive had no new days from 15 Oct, 09:10 IST, when the reader workflow absorbed the old
+# collector, and it is disabled). Nightly: the last 3 days. By hand: any date range, one job a month, each month
+# NSE then BSE (a failed NSE step does not skip BSE). Filings are merged by event_id, so a window can be re-run.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'History: first day, YYYY-MM-DD (empty = the nightly window of 3 days)'
+        required: false
+        default: ''
+      to:
+        description: 'History: last day, YYYY-MM-DD (empty = today)'
+        required: false
+        default: ''
+      exchanges:
+        description: 'Which exchange (history only)'
+        required: false
+        default: 'both'
+        type: choice
+        options: [both, nse, bse]
+  schedule:
+    - cron: '15 17 * * *'  # 22:45 IST every day (filings are broadcast on weekends too)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: announcement-collect
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          EXCHANGES: ${{ inputs.exchanges }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          from datetime import date, datetime, timedelta, timezone
+          ist = timezone(timedelta(hours=5, minutes=30))
+          today = datetime.now(ist).date()
+          start_text, end_text = os.environ['FROM'].strip(), os.environ['TO'].strip()
+          ex = os.environ['EXCHANGES'].strip() or 'both'
+          if not start_text:
+              include = [{'label': 'nightly', 'from': '', 'to': '', 'exchanges': 'both'}]
+          else:
+              start = date.fromisoformat(start_text)
+              end = date.fromisoformat(end_text) if end_text else today
+              assert start <= end <= today, 'from must be on or before to, and to not in the future'
+              include, cur = [], start
+              while cur <= end:
+                  nxt = date(cur.year + (cur.month == 12), cur.month % 12 + 1, 1)
+                  last = min(nxt - timedelta(days=1), end)
+                  include.append({'label': cur.strftime('%Y-%m'), 'from': cur.isoformat(), 'to': last.isoformat(),
+                                  'exchanges': ex})
+                  cur = nxt
+          print('matrix=' + json.dumps({'include': include}))
+          PY
+
+  collect:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 150   # BSE: ~23 pages a day, 4-6 s apart, so a month is about an hour
+    strategy:
+      fail-fast: false
+      max-parallel: 3   # separate runners, separate IPs; BSE refuses a client that is too fast
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    name: collect (${{ matrix.label }})
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      FROM: ${{ matrix.from }}
+      TO: ${{ matrix.to }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Collect NSE announcements
+        if: matrix.exchanges != 'bse'
+        run: |
+          args=(--days 3); [ -n "$FROM" ] && args=(--from "$FROM" --to "$TO")
+          python -u -m collectors.nse_events.announcements "${args[@]}"
+      - name: Collect BSE announcements
+        if: always() && matrix.exchanges != 'nse'   # a failed NSE step must not cost the BSE filings
+        run: |
+          args=(--days 3); [ -n "$FROM" ] && args=(--from "$FROM" --to "$TO")
+          python -u -m collectors.bse.announcements "${args[@]}"

@@ -36,11 +36,23 @@ Current implementation paths:
   nearest filing in time can be a different event, so they are not paired with PDFs. Announcement XBRL can
   therefore not save model calls in any number; the XBRL that would is the quarterly results' (not collected yet).
 
+- Archive gaps (15 Oct, read-only report `scripts/archive_gaps_report.py`, to-do 1.1a). Weekdays from 1 Jan with no
+  filing: NSE 29 (all of March; 2, 5-9 and 12 Oct), BSE 160 (March to September, same October days). Causes:
+  (1) March: the month job of the 14 Oct history run (`collect-months (2026-03)`, run 38537438107) was cancelled
+  by the next push (concurrency), so no marker and no rows; (2) BSE March to September: from 14 Oct 14:10 IST
+  (#71) the history collection ran NSE-only to unblock NSE, and still wrote `collection_verified` markers
+  (scope NSE, `bse_skipped` true), so the months look done and BSE was never fetched; (3) 2 to 12 Oct: the nightly
+  collector started on 13 Oct (3-day window) and the history collection stopped at the month before; (4) the
+  15 Oct unify commit (`4a6dde7`) deleted the nightly `announcements.yml` and the history workflow and left
+  collection inside the reader workflow, which is disabled: nothing collected from then until
+  `announcement-collect.yml` (collection alone, no model). 26 Jan is a holiday (34 NSE and 57 BSE filings), not a gap.
+  Weekend filings exist (NSE 69 days, BSE 17).
+
 Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
 Code:
 - Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
-  `collectors/bse/announcements.py` (BSE), workflow `announcements.yml` (nightly, 3 days).
+  `collectors/bse/announcements.py` (BSE), workflow `announcement-collect.yml` (nightly, 3 days; any range by hand; no model).
 - Live reader: `scripts/announcement_reader.py`, lanes in `scripts/announcement_readers.txt`, workflow
   `announcement-reader.yml` (every 15 minutes on `main`; on a PR a 3-filing dry run, nothing written).
 - Site: Brief card "Filings read" (`streamlit_app/screens/filings_read.py`) from
