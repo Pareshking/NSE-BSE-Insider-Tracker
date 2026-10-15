@@ -1,0 +1,51 @@
+name: Announcements from raw (no exchange request)
+
+# Rebuild archive rows from the exact exchange answers saved in raw_v2/ (scripts/announcements_from_raw.py): today
+# the concall filings that the collectors dropped before 15 Oct. Reads R2, writes only new archive rows, asks no
+# exchange and calls no model. Shares the collection's concurrency group so it never writes a month at the same
+# time as a collection run. Dry run first: it prints the counts and writes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Which exchange'
+        required: false
+        default: 'both'
+        type: choice
+        options: [both, nse, bse]
+      dry_run:
+        description: 'Count only, write nothing'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: announcement-collect
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Rebuild
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          SOURCE: ${{ inputs.source }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          args=(--source "${SOURCE:-both}")
+          [ "$DRY" != "false" ] && args+=(--dry-run)
+          python -u scripts/announcements_from_raw.py "${args[@]}"

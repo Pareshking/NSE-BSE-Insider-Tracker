@@ -36,6 +36,7 @@ Current implementation paths:
   nearest filing in time can be a different event, so they are not paired with PDFs. Announcement XBRL can
   therefore not save model calls in any number; the XBRL that would is the quarterly results' (not collected yet).
 
+- Concall filings (15 Oct, owner: capture everything): both collectors now archive them (`CONCALL`); they stay in the `routine` reading group, so the reader does not read them until to-do 4.6/4.9 decide how; `scripts/announcements_from_raw.py` rebuilds earlier months' concall rows from the saved exchange answers.
 - Archive gaps (15 Oct, read-only report `scripts/archive_gaps_report.py`, to-do 1.1a). Weekdays from 1 Jan with no
   filing: NSE 29 (all of March; 2, 5-9 and 12 Oct), BSE 160 (March to September, same October days). Causes:
   (1) March: the month job of the 14 Oct history run (`collect-months (2026-03)`, run 38537438107) was cancelled
