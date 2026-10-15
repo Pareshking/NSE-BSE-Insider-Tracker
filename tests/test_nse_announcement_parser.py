@@ -1,4 +1,5 @@
 """Regression tests for parsing NSE attachment metadata."""
+import pandas as pd
 import pytest
 
 from collectors.nse_events.announcements import parse
@@ -34,11 +35,11 @@ def test_has_xbrl_parses_boolean_values_without_truthy_string_bug(raw, expected)
     parsed = parse([row])
     actual = parsed.iloc[0]["has_xbrl"]
     if expected is None:
-        assert actual is None or actual != actual  # pandas nullable boolean may be NA
+        assert pd.isna(actual)  # pandas nullable boolean may be NA
     else:
         assert bool(actual) is expected
 
 
 def test_has_xbrl_unknown_values_remain_unknown():
     parsed = parse([{"seq_id": "124", "hasXbrl": {"unexpected": "shape"}}])
-    assert parsed.iloc[0]["has_xbrl"] is None or parsed.iloc[0]["has_xbrl"] != parsed.iloc[0]["has_xbrl"]
+    assert pd.isna(parsed.iloc[0]["has_xbrl"])
