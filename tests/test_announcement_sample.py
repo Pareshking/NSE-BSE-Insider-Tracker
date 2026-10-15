@@ -124,13 +124,13 @@ def test_a_busy_model_hands_over_to_the_next_at_once():
         a.Gemini('k', session=s, sleep=lambda _: None).generate(['m1', 'm2'], 'p', 'read', True)
         raise AssertionError('should have given up')
     except RuntimeError as exc:
-        assert 'busy' in str(exc) and len(s.asked) == 4   # two rounds over both models
+        assert 'HTTP 429' in str(exc) and len(s.asked) == 4   # 429 is terminal; never retry after it
 
 
 def test_other_providers_answer_in_the_openai_form_and_readers_come_from_the_run_file():
     body = {'choices': [{'message': {'content': '<think>{x}</think>{"category": "rights"}'}}],
             'usage': {'prompt_tokens': 900}}
-    s = _Session([_Resp(429), _Resp(200, body)])
+    s = _Session([_Resp(503), _Resp(200, body)])
     c = a.OpenAICompat('groq', 'https://x/v1', 'k', session=s, sleep=lambda _: None)
     text, usage, used = c.generate(['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'], 'p', 'read', True)
     assert (a.parse_json(text), usage['promptTokenCount'], used) == ({'category': 'rights'}, 900, 'qwen/qwen3.8-27b')

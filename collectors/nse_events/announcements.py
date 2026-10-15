@@ -110,6 +110,25 @@ def _file(v):
 
 
 
+
+def _boolish(value):
+    """Parse exchange boolean fields without treating the string 'false' as true."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "1", "yes", "y"}:
+            return True
+        if normalized in {"false", "0", "no", "n"}:
+            return False
+        if not normalized:
+            return None
+    return None
+
 def _xbrl_file(row: dict) -> str | None:
     """Return an exchange-supplied XBRL URL if the announcement payload exposes one."""
     for key, value in (row or {}).items():
@@ -142,7 +161,7 @@ def parse(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
             'file_url': (url := _file(r.get('attchmntFile'))), 'file_type': file_type(url),
             'file_size': _text(r.get('attFileSize') or r.get('fileSize')) if url else None,
             'file_bytes': size_bytes(r.get('attFileSize') or r.get('fileSize')) if url else None,
-            'has_xbrl': bool(r.get('hasXbrl')) if r.get('hasXbrl') is not None else None,
+            'has_xbrl': _boolish(r.get('hasXbrl')),
             'xbrl_url': _xbrl_file(r),
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
