@@ -151,8 +151,7 @@ class Gemini:
                 return out
 
     def generate(self, models: list[str], prompt: str, kind: str, json_mode: bool) -> tuple[str, dict, str]:
-        """(text, usage, model that answered). On 429/500/503 the next model is tried at once; when all
-        are busy, one more round after a pause (free-tier refusals come in spells: 13 Oct, 14:25 UTC)."""
+        """(text, usage, model that answered); record every actual generation request."""
         body = {'contents': [{'role': 'user', 'parts': [{'text': prompt}]}],
                 'generationConfig': {'temperature': 0, **({'responseMimeType': 'application/json'} if json_mode else {})}}
         last = ''
@@ -167,9 +166,11 @@ class Gemini:
                 try:
                     r = self.s.post(f'{API}/models/{model}:generateContent', json=body, timeout=CALL_SECONDS)
                 except requests.RequestException as exc:
+                    self.attempts.append((model, type(exc).__name__, round(time.monotonic() - self.last[kind], 1)))
                     log(f'{kind} {model}: {type(exc).__name__}')
                     last = f'{model}: {type(exc).__name__}'
                     continue
+                self.attempts.append((model, r.status_code, round(time.monotonic() - self.last[kind], 1)))
                 log(f'{kind} {model}: HTTP {r.status_code}', '' if r.status_code == 200 else r.text[:200])
                 if r.status_code == 429:
                     # A hard quota/rate-limit response is a stop signal, not a retry hint.
