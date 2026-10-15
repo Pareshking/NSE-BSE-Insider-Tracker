@@ -1,8 +1,10 @@
+from datetime import date
 """Regression tests for parsing NSE attachment metadata."""
 import pandas as pd
 import pytest
 
 from collectors.nse_events.announcements import parse, parse_xbrl
+from collectors.nse_events.client import NSEClient
 
 
 @pytest.mark.parametrize(
@@ -78,3 +80,15 @@ def test_dedicated_xbrl_feed_rows_are_normalized_as_stable_xml_companions():
 def test_dedicated_xbrl_feed_ignores_rows_without_an_xml_attachment():
     parsed = parse_xbrl([{"appId": "APP-EMPTY", "symbol": "X", "ixbrl": "https://example.com/display.html"}])
     assert parsed.empty
+
+
+
+def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch):
+    requested = []
+    monkeypatch.setattr(NSEClient, "get", lambda self, url: requested.append(url) or {"data": [{"appId": "APP-1"}]})
+    client = NSEClient()
+    rows = client.xbrl_announcements(date(2026, 10, 15), date(2026, 10, 15), "equities")
+    assert rows == [{"appId": "APP-1"}]
+    assert requested == [
+        "https://www.nseindia.com/api/XBRL-announcements?index=equities&from_date=15-10-2026&to_date=15-10-2026&type=announcements"
+    ]
