@@ -105,7 +105,7 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'market_cap')
+           'seconds', 'read_at', 'headline', 'points', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
@@ -601,7 +601,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                      'isin': isin, 'symbol': symbol, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subject')), 'detail': clean(r.get('text')),
                      'group': nann.group_of(clean(r.get('subject')), clean(r.get('text'))), 'file_url': url,
-                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
+                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
                      'has_xbrl': r.get('has_xbrl'), 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
@@ -615,14 +615,37 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                      'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
                      'subject': clean(r.get('subcategory')) or clean(r.get('category')), 'detail': clean(r.get('headline')),
                      'group': bann.group_of(clean(r.get('subcategory')) or clean(r.get('category')), clean(r.get('category'))), 'file_url': url,
-                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None,
+                     'content_url': url, 'xbrl_source_event_id': None, 'xbrl_source_url': None, 'market_cap_match': None,
                      'has_xbrl': None, 'market_cap_as_of': getattr(master, 'market_cap_as_of', None),
                      'file_type': r.get('file_type'), 'broadcast_at': r.get('broadcast_at'),
                      'broadcast_date': r.get('broadcast_date')})
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    df['market_cap'] = [((master.record(i) or {}).get('market_cap') if master and i else None) for i in df['isin']]
+    # Prefer the exact ISIN's official cap; if that ISIN is absent from the snapshot, retry the
+    # exchange symbol/code mapping. NSE feeds can carry stale ISINs while the listed symbol remains valid.
+    market_caps, cap_matches = [], []
+    def valid_cap(value):
+        number = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
+        return pd.notna(number) and number > 0
+    for row in df.to_dict('records'):
+        isin = clean(row.get('isin'))
+        record = master.record(isin) if master and isin else None
+        cap = record.get('market_cap') if record else None
+        match = 'isin' if valid_cap(cap) else None
+        if not valid_cap(cap) and master:
+            exchange = 'nse' if row.get('exchange') == 'NSE' else 'bse'
+            symbol = clean(row.get('symbol'))
+            resolved = master.resolve(exchange, symbol) if symbol else None
+            mapped_isin = clean(resolved[0] if resolved else None)
+            mapped = master.record(mapped_isin) if mapped_isin else None
+            mapped_cap = mapped.get('market_cap') if mapped else None
+            if valid_cap(mapped_cap):
+                cap, match = mapped_cap, 'exchange_symbol'
+        market_caps.append(cap if valid_cap(cap) else None)
+        cap_matches.append(match)
+    df['market_cap'] = market_caps
+    df['market_cap_match'] = cap_matches
 
     # NSE exposes hasXbrl on a PDF row, while the related XBRL may arrive as a separate
     # XML/XBRL announcement. Pair only an explicit hasXbrl=True row with a same-issuer,
