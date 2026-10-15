@@ -726,22 +726,25 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
     if cands is None or cands.empty:
         return {'candidates': 0, 'has_xbrl_flagged': 0, 'has_xbrl_flagged_pdf_rows': 0,
                 'flagged_without_direct_xbrl_url': 0, 'direct_xbrl_urls': 0, 'xbrl_attachments': 0,
-                'structured_attachments': 0, 'xbrl_subject_labels': 0, 'xbrl_linked': 0,
-                'flagged_samples': [], 'direct_xbrl_samples': [], 'attachment_samples': [], 'linked_samples': []}
+                'structured_attachments': 0, 'zip_attachments': 0, 'xbrl_labelled_zip_attachments': 0,
+                'xbrl_subject_labels': 0, 'xbrl_linked': 0,
+                'flagged_samples': [], 'direct_xbrl_samples': [], 'attachment_samples': [],
+                'structured_samples': [], 'zip_samples': [], 'linked_samples': []}
     has_flag = cands.get('has_xbrl', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: str(value).strip().casefold() in ('true', '1', 'yes'))
     subject_xbrl = cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.contains(
         r'\bxbrl\b', case=False, regex=True)
     file_type = cands.get('file_type', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str).str.lower()
-    attachment_format = file_type.isin(('xml', 'xbrl', 'zip'))
-    # XML/XBRL is a positive format signal without needing a subject label. ZIP is only
-    # counted as an XBRL attachment when its subject or URL explicitly identifies XBRL.
+    zip_attachment = file_type.eq('zip')
+    # XML/XBRL is a positive structured-format signal without a subject label.
+    # ZIP is only an archive format: it is not evidence of XBRL unless its subject or URL says XBRL.
     xbrl_hint = (
         cands.get('subject', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str)
         + ' ' + cands.get('file_url', pd.Series(index=cands.index, dtype=str)).fillna('').astype(str)
     ).str.contains(r'\bxbrl\b', case=False, regex=True)
-    structured_attachment = attachment_format
-    attachment = file_type.isin(('xml', 'xbrl')) | ((file_type == 'zip') & xbrl_hint)
+    structured_attachment = file_type.isin(('xml', 'xbrl'))
+    xbrl_labelled_zip = zip_attachment & xbrl_hint
+    attachment = structured_attachment | xbrl_labelled_zip
     direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
@@ -757,9 +760,12 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
             'flagged_without_direct_xbrl_url': int((has_flag & ~direct).sum()),
             'direct_xbrl_urls': int(direct.sum()), 'xbrl_attachments': int(attachment.sum()),
             'structured_attachments': int(structured_attachment.sum()),
-            'xbrl_subject_labels': int((structured_attachment & subject_xbrl).sum()),
+            'zip_attachments': int(zip_attachment.sum()),
+            'xbrl_labelled_zip_attachments': int(xbrl_labelled_zip.sum()),
+            'xbrl_subject_labels': int((attachment & subject_xbrl).sum()),
             'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
             'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
+            'structured_samples': sample(structured_attachment), 'zip_samples': sample(zip_attachment),
             'linked_samples': sample(linked)}
 
 
