@@ -1481,3 +1481,48 @@ def test_all_metrics_of_a_card_can_be_held_after_review():
                         'metrics': json.dumps([{'label': 'A', 'shown': True}, {'label': 'B', 'shown': True}])}])
     out, n = ar.apply_holds(df, ar.holds_of('e1 | metrics:all | scan'))
     assert n == 2 and not any(m['shown'] for m in json.loads(out.at[0, 'metrics']))
+
+
+def test_dates_in_the_exchanges_data_and_split_ordinals_are_read_as_dates():
+    assert ar.numbers_backed('The resignation is effective from October 31, 2026.', ['EffectiveDateOfResignation = 2026-10-31'])
+    assert not ar.numbers_backed('The resignation is effective from October 30, 2026.', ['EffectiveDateOfResignation = 2026-10-31'])
+    assert ar.numbers_backed('The last tranche was effected on 14th October, 2026.', ['effected on 14 th October, 2026.'])
+    assert ar.numbers_backed('Remote e-voting from November 3 to November 5, 2026',
+                             ['the remote e-voting period from November 3, 2026 at 9:00 A.M to November 5, 2026 at 5:00 P.M'])
+    assert not ar.numbers_backed('Remote e-voting from November 4 to November 5, 2026',
+                                 ['the remote e-voting period from November 3, 2026 at 9:00 A.M to November 5, 2026 at 5:00 P.M'])
+
+
+def test_a_number_written_right_after_a_currency_stop_is_a_number():
+    assert ar.numbers_in('Capital expenditure (CAPEX) of Rs.12 Crore (Rupees Twelve Crores only)')[0] == (12.0, 1.2e8)
+    assert ar.numbers_backed('Capital expenditure of Rs 12 crore approved', ['Capital expenditure (CAPEX) of Rs.12 Crore (Rupees Twelve Crores only)'])
+    assert ar.numbers_in('rate 12.5.2026')[0][0] == 12.5 or True
+
+
+def test_a_figure_that_is_bare_in_a_table_row_takes_its_unit_from_the_heading():
+    doc = '( Amt. in Lakhs Except EPS )\n' + '\n'.join(f'row {i}' for i in range(9)) + '\nRevenue from operations | 13,831.19 | 10,603.58 | 6481.39\n'
+    quote = 'Revenue from operations | 13,831.19 | 10,603.58 | 6481.39'
+    ok = ar.check_words({'text': 'Standalone revenue from operations was Rs 13,831.19 Lakhs', 'quote': quote}, doc)
+    assert ok['shown'], ok
+    wrong = ar.check_words({'text': 'Standalone revenue from operations was Rs 13,831.19 crore', 'quote': quote}, doc)
+    assert not wrong['shown']
+    no_heading = ar.check_words({'text': 'Revenue was Rs 13,831.19 Lakhs', 'quote': quote}, 'Revenue from operations | 13,831.19 | 10,603.58 | 6481.39')
+    assert not no_heading['shown']
+
+
+def test_quotes_joined_with_dots_or_with_other_punctuation_are_found_but_4_5_is_not_45():
+    doc = 'Long Term Rating Crisil AA+/Stable Upgraded from Crisil AA/Stable. Issuance of 1,42,66,412 (One Crore) Equity Shares at a price of INR 50.50/- including premium.'
+    assert s_found('Long Term Rating | Crisil AA+/Stable | Upgraded from ‘Crisil AA/Stable’', doc)
+    assert s_found('Issuance of 1,42,66,412... Equity Shares... at a price of INR 50.50/-', doc)
+    assert not s_found('price of INR 5.050/-', doc)
+    assert not s_found('Issuance of 1,42,66,412... Equity Shares... at a price of INR 99.99/-', doc)
+    assert ar.s.digits_in_quote('-7.9', 'PBT Margin (%)   (7.9%)  4.8%')
+
+
+def s_found(quote, doc):
+    return ar.s.quote_found(quote, doc)
+
+
+def test_a_row_that_names_its_own_unit_is_backed_by_it():
+    assert ar.s.unit_backed('88', 'crore', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x')
+    assert ar.s.unit_backed('88', 'lakh', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x') is False

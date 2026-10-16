@@ -461,6 +461,12 @@ def _norm(s: str) -> str:
     return re.sub(r'\s+', '', s)
 
 
+def _loose(s) -> str:
+    """Lower-case letters and digits only, except that a comma or point between two digits stays."""
+    s = re.sub(r'[^a-z0-9.,]', '', _norm(s))
+    return re.sub(r'(?<!\d)[.,]|[.,](?!\d)', '', s)
+
+
 NUMBER = r'\d[\d,]*(?:\.\d+)?'
 
 
@@ -472,7 +478,17 @@ def quote_found(quote, doc: str) -> str | bool:
     q = _norm(quote or '')
     if len(q) < 8:
         return False
-    if q in _norm(doc):
+    flat_doc = _norm(doc)
+    if q in flat_doc:
+        return 'exact'
+    # A quote the model joined with "..." (two or more passages of the document): every passage must be in it.
+    parts = [x for x in re.split(r'\.{3,}|…', str(quote)) if len(_norm(x)) >= 8]
+    if len(parts) >= 2 and all(_norm(x) in flat_doc for x in parts):
+        return 'exact'
+    # The same words with other punctuation (a "|" between table cells, curly quotes, a colon for "=", commas):
+    # numbers keep their commas and points, so 4.5 is never read as 45.
+    lq = _loose(quote)
+    if len(lq) >= 12 and lq in _loose(doc):
         return 'exact'
     words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]
     numbers = {w.replace(',', '') for w in words if w[0].isdigit()}
@@ -493,7 +509,7 @@ def digits_in_quote(value, quote) -> bool:
     if v is None:
         return False
     numbers = [float(n.replace(',', '')) for n in re.findall(r'\d[\d,]*(?:\.\d+)?', str(quote or ''))]
-    return any(abs(n - v) < 1e-6 * max(1, abs(v)) for n in numbers)
+    return any(abs(n - abs(v)) < 1e-6 * max(1, abs(v)) for n in numbers)   # (7.9%) is -7.9
 
 
 # The words that may follow a number for each unit in UNIT ('Rs. 300 Cr.', '28,200.00 Lakhs', 'ZAR 238 mn').
@@ -528,8 +544,17 @@ def unit_backed(value, unit, quote, found, doc: str | None = None) -> bool | Non
         if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)) and re.match(
                 r'\s*(?:' + UNIT_WORDS[mult] + r')(?![a-z])', quote[m.end():], re.IGNORECASE):
             return True
-    if doc is not None and not any(re.search(r'(?<![a-z])(?:' + w + r')(?![a-z])', str(quote or ''), re.IGNORECASE)
-                                   for w in UNIT_WORDS.values()):
+    here = {m for m, rx in _UNIT_WORDS_ANY.items() if rx.search(str(quote or ''))}
+    if here == {mult}:
+        # the row names its own unit just before the figure ("Total Income (Rs Cr)  88  137  +57%"): the unit word
+        # stands before the number with nothing but punctuation between them; a unit word after it is another number's
+        for m in re.finditer(NUMBER, str(quote or '')):
+            if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+                head = str(quote)[:m.start()]
+                u = list(_UNIT_WORDS_ANY[mult].finditer(head))
+                if u and not re.search(r'[\w]', head[u[-1].end():]):
+                    return True
+    if doc is not None and not here:
         return table_unit(quote, mult, doc)   # a table row copied whole: its unit is in the heading above it
     return False
 
@@ -539,12 +564,12 @@ _UNIT_WORDS_ANY = {m: re.compile(r'(?<![a-z])(?:' + w + r')(?![a-z])', re.IGNORE
 
 def table_unit(quote, mult, doc: str) -> bool:
     """A table quote keeps its unit in the heading ('Rs. Crore | Quarter ended ...'): the unit word must be in the
-    table block of the number's line (8 lines above, 2 below), and no other unit word of a different size beside it."""
+    table block of the number's line (14 lines above, 2 below), and no other unit word of a different size beside it."""
     numbers = {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}
     lines = str(doc).splitlines()
     for i, ln in enumerate(lines):
         if numbers & {n.replace(',', '') for n in re.findall(NUMBER, ln)}:
-            block = ' '.join(lines[max(0, i - 8):i + 3])
+            block = ' '.join(lines[max(0, i - 14):i + 3])
             if _UNIT_WORDS_ANY[mult].search(block) and not any(
                     rx.search(block) for m, rx in _UNIT_WORDS_ANY.items() if m != mult):
                 return True
