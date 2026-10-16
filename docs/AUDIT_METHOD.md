@@ -48,3 +48,12 @@ Results headline is about the results; routine results statements are not points
 from / reduced from"; unit read from the nearest heading; scan misreads ("3Qth") do not hold a long quote; short table rows
 match on whole tokens; unreadable text is not read; a headline with a deal amount does not use another figure; QoQ, YoY
 and six-month changes from the results table's own columns (September quarter first).
+
+
+## Round log
+- Golden 1 (replay of the original 100): 3 OK / 48 MINOR / 49 MAJOR.
+- Replay #9 (prompt live-16): 22 OK / 48 MINOR / 30 MAJOR (10 opus reviewers, 10 cards each). Largest root causes: wrong figure leads a
+  results card, false "number not in quote" / "unit not backed" holds (conversions, table-heading units), unfilled `{..}` tokens,
+  rating headline without new/old size and rating, stake/pledge party and before/after not parsed, open loops from table fragments,
+  call recordings read as results. Fixed in live-17 (see git log); not yet: SAST table parsing, multi-tranche totals, number words,
+  fuzzy re-anchor, linking earlier filings.
