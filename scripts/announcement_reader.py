@@ -1218,7 +1218,8 @@ def full_person_name(text: str, doc: str, names=()) -> str:
     return text
 
 
-_SAST_PARTY = re.compile(r'Name\(s\)\s+of\s+the\s+(acquirer|seller)[^|\n]*\|\s*([^\n|]+)', re.IGNORECASE)
+_SAST_PARTY = re.compile(r'Name\(s\)\s+of\s+the\s+(acquirer|seller)(?:\s+and\s+Persons)?\s*(?:Acting\s+in\s+Concert\s*)?(?:\(PAC\)\s*)?(?:with\s+the\s+)?(?:acquirer\s*)?[|:]?\s*'
+                         r'([A-Z0-9][^\n|]{2,80}?)(?=\s*(?:\(|\n|\||Acting|Persons?\b|$))', re.IGNORECASE)
 _PARTY_STOP = {'private', 'limited', 'ltd', 'pvt', 'the', 'and', 'company', 'trustee', 'india', 'a/c', 'fund'}
 
 
