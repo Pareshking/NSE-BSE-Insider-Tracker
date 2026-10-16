@@ -1974,3 +1974,10 @@ def test_results_headline_uses_filing_quarter_and_inr_for_million():
     assert r.indian_currency('million', '1,200 million', False) is None
     m = [{'shown': True, 'number': 1.2e9, 'currency': 'INR', 'label': 'Revenue from operations', 'period': 'Q1', 'quote': 'q'}]
     assert 'Q2 FY27' in r.results_headline(m, ('X', 'X Ltd'), doc)['text']
+
+
+def test_unit_from_the_table_heading_when_the_model_names_another():
+    from scripts import announcement_sample as sm
+    doc = 'Results\ntin million, except per share data\nRevenue from operations | 118,076 | 116,080\n'
+    assert sm.nearest_unit('Revenue from operations 118,076', doc) == 1e6
+    assert sm.nearest_unit('Revenue from operations 999', doc) is None

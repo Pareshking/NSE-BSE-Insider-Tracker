@@ -638,12 +638,29 @@ def table_unit(quote, mult, doc: str) -> bool:
     # unit word nearest before the number, within 2,500 characters, is the table's unit.
     text = str(doc)
     for n in numbers:
-        for m in re.finditer(r'(?<![\d,.])' + re.escape(n).replace(r'\,', r',?') + r'(?![\d])', text):
+        for m in re.finditer(r'(?<![\d,.])' + ',?'.join(re.escape(c) for c in n) + r'(?![\d])', text):
             before = text[max(0, m.start() - 2500):m.start()]
             near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
             if near and max(near)[1] == mult:
                 return True
     return False
+
+
+def nearest_unit(quote, doc: str) -> float | None:
+    """The size of the unit word nearest before the quote's number in the document, within 2,500 characters (the table's
+    own heading: "tin million" in LTM, where the model said lakh), or None when there is none or the numbers are not found."""
+    text = str(doc)
+    best = None
+    for n in {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}:
+        for m in re.finditer(r'(?<![\d,.])' + ',?'.join(re.escape(c) for c in n) + r'(?![\d])', text):
+            before = text[max(0, m.start() - 2500):m.start()]
+            near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
+            if near:
+                unit = max(near)[1]
+                if best not in (None, unit):
+                    return None      # two numbers, two answers: no repair
+                best = unit
+    return best
 
 
 def _num(v):

@@ -603,7 +603,15 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if number is None:
             reasons.append('not one number')
         if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
-            reasons.append('unit not backed by its quote')
+            # A results table's unit is in its heading: when the model named another unit than the one printed nearest
+            # before the figure (LTM: lakh for "tin million"), the printed one is used, never the model's.
+            alt = s.nearest_unit(quote, doc) if str(out.get('category') or '') == 'financial_results' else None
+            alt_name = {v: k for k, v in (('thousand', 1e3), ('lakh', 1e5), ('crore', 1e7), ('million', 1e6), ('billion', 1e9))}.get(alt)
+            mult0 = s.UNIT.get(str(unit_m or 'rupees').strip().lower().rstrip('.'), 1)
+            if alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
+                unit_m, number = alt_name, s.in_units(value, alt_name)
+            else:
+                reasons.append('unit not backed by its quote')
         if PROJECTION.search(str(quote or '')):
             reasons.append('its quote is a projection or estimate, not a reported figure')
         metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
@@ -1251,7 +1259,10 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             headline['subtitle'] = sub
     if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
         ours = results_headline(metrics, names, doc)
-        if ours and (' profit after tax' in ours['text'] and ' revenue' in ours['text'] or not (isinstance(headline, dict) and headline.get('shown') and re.search(r'\d', str(headline.get('text'))))):
+        shown_text = str(headline.get('text')) if isinstance(headline, dict) and headline.get('shown') else ''
+        if ours and (' profit after tax' in ours['text'] and ' revenue' in ours['text'] or '%' in ours['text']
+                     or re.search(r'\b(?:lakhs?|lacs?|million|mn)\b', shown_text, re.IGNORECASE)   # Paushak: "revenue rises to 8,932 lakh"
+                     or not re.search(r'\d', shown_text)):
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
     if isinstance(headline, dict) and headline.get('shown'):
         headline['text'] = fiscal_label(headline['text'], doc)
