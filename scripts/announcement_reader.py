@@ -56,8 +56,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-5' if PROMPT_VARIANT == 'v2' else
-                  'live-4-ab' if PROMPT_COMPARE else 'live-4')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-7' if PROMPT_VARIANT == 'v2' else
+                  'live-6-ab' if PROMPT_COMPARE else 'live-6')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -101,7 +101,7 @@ ADDED = {
     'acquisition': 'buying a company, a stake or a business, or setting up a subsidiary',
     'divestment': 'selling a company, a stake, a business, a unit or an asset',
     'merger_demerger': 'merger, demerger, amalgamation or another scheme of arrangement',
-    'agreement': 'joint venture, partnership, MoU, licensing, shareholder or other strategic agreement',
+    'agreement': 'joint venture, partnership, MoU, licensing, shareholder or other strategic agreement, or a contract or agreement cancelled or terminated',
     'delisting': 'voluntary delisting of the shares',
     'licence_approval': 'a licence, approval, patent or clearance granted, renewed, suspended or withdrawn',
     'operations_start': 'commercial production or operations started at a plant, unit or project',
@@ -115,7 +115,14 @@ ADDED = {
     'management_change': 'appointment, resignation or removal of a director, CEO, CFO or other key officer',
     'corporate_change': 'change of name, registered office, share transfer agent, or of the memorandum or articles',
 }
-CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **ADDED,
+# 16 Oct card audit: a terminated contract was filed as an order win, and an ESG score as a credit rating.
+CLARIFIED = {
+    'order_win': 'orders or contracts received or won (a contract cancelled or terminated is not an order win: it is "agreement")',
+    'rating_upgrade': 'credit rating of debt or bank loans raised by a rating agency (an ESG, governance or other non-credit score is "routine")',
+    'rating_downgrade': 'credit rating of debt or bank loans lowered or put on watch negative (not an ESG or governance score)',
+    'rating_reaffirmed': 'credit rating of debt or bank loans kept unchanged (not an ESG or governance score)',
+}
+CATEGORIES = {**{k: CLARIFIED.get(k, v) for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **ADDED,
               'routine': s.CATEGORIES['routine']}
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
@@ -447,7 +454,8 @@ CARD_ASK = (
     'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
-    'rates you work out yourself.\n\n')
+    'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out.\n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, '
@@ -469,7 +477,9 @@ CARD_ASK_V2 = (
     'number must occur in that quote or be an allowed exact unit conversion (12,000 lakh = 120 crore). No opinion, '
     'forecast, impact claim, independently calculated growth rate, inferred consequence or unsupported completion '
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
-    'invent one; preserve independently supported points. Return the existing JSON schema only.\n\n')
+    'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
+    'Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -505,12 +515,43 @@ def numbers_in(text) -> list[tuple[float, float]]:
     return out
 
 
+_MONTHS = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+_MONTH_RX = r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?'
+_DATE_RXS = (
+    (re.compile(r'(?<![\d.])(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4})(?![\d])'), lambda g: (g[2], g[1], g[0])),
+    (re.compile(r'(?<![\d.])(\d{1,2})(?:st|nd|rd|th)?[\s,-]*(?:of\s+)?' + _MONTH_RX + r'[\s,.-]*(\d{4})', re.IGNORECASE),
+     lambda g: (g[2], _MONTHS[g[1].lower()], g[0])),
+    (re.compile(_MONTH_RX + r'[\s,.-]*(\d{1,2})(?:st|nd|rd|th)?[\s,.-]+(\d{4})', re.IGNORECASE),
+     lambda g: (g[2], _MONTHS[g[0].lower()], g[1])),
+)
+
+
+def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
+    """The calendar dates of a text ('22.10.2026', '22nd October 2026', 'October 22, 2026' are one date) and the
+    text with them cut out, so that a date's day, month and year are not read as loose numbers."""
+    found, rest = set(), str(text or '')
+    for rx, build in _DATE_RXS:
+        def take(m, build=build):
+            y, mo, d = (int(x) for x in build(m.groups()))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                found.add((y, mo, d))
+                return ' '
+            return m.group(0)
+        rest = rx.sub(take, rest)
+    return found, rest
+
+
 def numbers_backed(text, quotes) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
     lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
     backed by 250 crore (a dropped unit)."""
-    have = [pair for q in quotes for pair in numbers_in(q)]
+    quotes = list(quotes)
+    have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
+    have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
+    claim_dates, text = dates_in(text)
+    if not claim_dates <= have_dates:
+        return False
 
     def backed(n, c):
         for n2, c2 in have:

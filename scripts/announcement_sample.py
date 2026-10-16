@@ -528,6 +528,9 @@ def unit_backed(value, unit, quote, found, doc: str | None = None) -> bool | Non
         if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)) and re.match(
                 r'\s*(?:' + UNIT_WORDS[mult] + r')(?![a-z])', quote[m.end():], re.IGNORECASE):
             return True
+    if doc is not None and not any(re.search(r'(?<![a-z])(?:' + w + r')(?![a-z])', str(quote or ''), re.IGNORECASE)
+                                   for w in UNIT_WORDS.values()):
+        return table_unit(quote, mult, doc)   # a table row copied whole: its unit is in the heading above it
     return False
 
 
