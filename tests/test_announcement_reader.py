@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import zipfile
 from datetime import date, datetime, timezone
 
@@ -1384,3 +1385,20 @@ def test_the_last_save_rebuilds_the_clean_table_when_there_are_holds_even_with_n
     monkeypatch.setattr(ar, 'HOLDS_FILE', tmp_path / 'holds.txt')
     saver.flush(final=True)
     assert calls == [[]]
+
+
+def test_a_resting_lane_does_not_hold_the_run_up_when_there_is_nothing_left_for_it(monkeypatch):
+    """16 Oct: NVIDIA began resting (10 minutes) as the last filings were read; the run waited it out with no work left."""
+    monkeypatch.setattr(ar, 'COOLDOWN_SECONDS', 600)
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    down = RuntimeError('all nvidia read models busy or refused (x: ReadTimeout)')
+    health = {}
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:a', 'nvidia:b'], {'nvidia': FakeClient([down] * 50)}, health=health),
+             'zai': ar.Lane('zai', ['zai:m'], {'zai': FakeClient([QIP] * 50)}, health=health)}
+    result = {}
+    t = threading.Thread(target=lambda: result.update(zip(('rows', 'notes'), ar.run(
+        _qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01, max_filings=3))), daemon=True)
+    t.start()
+    t.join(20)
+    assert not t.is_alive(), 'the run waited for a resting lane that had nothing to do'
+    assert len(result['rows']) == 3 and all(r['status'] == 'read' for r in result['rows'])
