@@ -1402,3 +1402,41 @@ def test_a_resting_lane_does_not_hold_the_run_up_when_there_is_nothing_left_for_
     t.join(20)
     assert not t.is_alive(), 'the run waited for a resting lane that had nothing to do'
     assert len(result['rows']) == 3 and all(r['status'] == 'read' for r in result['rows'])
+
+
+def test_a_year_ago_value_is_not_taken_from_a_row_of_table_numbers():
+    """16 Oct: Ambani Orgochem showed +29.2% from the second column of a table whose year-ago column was the third."""
+    row = 'Net Sales/Income from Operations(Net of taxes)      16,998.03        13,158.71              10,915.18     24,073.89'
+    sentence = 'Profit after tax for Q2FY27 stands at Rs. 975 Crore vs. Rs. 735 Crore, up by 33% YoY'
+    assert ar.table_row_without_comparison(row)
+    assert not ar.table_row_without_comparison(sentence)
+    assert not ar.table_row_without_comparison('Total income rose to Rs 361 crores from Rs 319 crores')
+    m = {'shown': True, 'unit': 'lakh', 'number': 1699803000.0, 'value': '16,998.03'}
+    out = ar.with_previous(m, {'previous': '13,158.71', 'previous_period': 'H1 FY26', 'previous_quote': row}, row)
+    assert 'previous' not in out and 'change_pct' not in out and 'table row' in out['previous_held']
+    m2 = {'shown': True, 'unit': 'crore', 'number': 9750000000.0, 'value': '975'}
+    out = ar.with_previous(m2, {'previous': '735', 'previous_period': 'Q2FY26', 'previous_quote': sentence}, sentence)
+    assert out['previous'] == '735' and out['change_pct'] == 32.7
+
+
+def test_previous_values_can_be_held_after_review():
+    metrics = json.dumps([{'label': 'A', 'previous': '1', 'previous_quote': 'q', 'change_pct': 5.0},
+                          {'label': 'B', 'previous': '2', 'change_pct': 7.0}])
+    df = pd.DataFrame([{'event_id': 'e1', 'headline': None, 'points': '[]', 'metrics': metrics}])
+    out, n = ar.apply_holds(df, ar.holds_of('e1 | previous:2 | wrong column'))
+    ms = json.loads(out.at[0, 'metrics'])
+    assert n == 1 and ms[0]['previous'] == '1' and 'previous' not in ms[1] and 'wrong column' in ms[1]['previous_held']
+    out, n = ar.apply_holds(df, ar.holds_of('e1 | previous:all | wrong column'))
+    assert n == 2 and all('previous' not in m for m in json.loads(out.at[0, 'metrics']))
+
+
+def test_an_evoting_cutoff_date_is_not_a_record_date_and_a_field_can_be_held_after_review():
+    doc = 'The Company has fixed Thursday, November 5, 2026 as the "Cutoff Date" for determining the eligibility of members to vote by remote e-voting.'
+    out = {'fields': [{'name': 'record_date', 'value': '2026-11-05', 'quote': doc}]}
+    _, fields, _ = ar.validate(out, doc)
+    assert not fields[0]['shown'] and 'record date' in fields[0]['reason']
+    df = pd.DataFrame([{'event_id': 'e1', 'headline': None, 'points': '[]', 'metrics': '[]',
+                        'fields': json.dumps([{'name': 'record_date', 'shown': True, 'reason': None}, {'name': 'shares', 'shown': True, 'reason': None}])}])
+    res, n = ar.apply_holds(df, ar.holds_of('e1 | field:record_date | e-voting cut-off'))
+    fs = json.loads(res.at[0, 'fields'])
+    assert n == 1 and not fs[0]['shown'] and fs[1]['shown']
