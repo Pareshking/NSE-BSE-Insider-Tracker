@@ -896,8 +896,28 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
             r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
         reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
+    why = direction_reason(text)
+    if why:
+        reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
             'reason': '; '.join(reasons) or None}
+
+
+_DIRECTION = re.compile(r'(?P<n1>\d[\d,]*\.?\d*)\s*(?:crores?|cr|lakhs?|lacs?|million|mn)?[^.\d]{0,25}?\b(?P<word>up|higher|increased?|rose|grew|down|lower|decreased?|fell|declined?)\b'
+                        r'[^.\d]{0,12}?\b(?:from|vs\.?|against)\b[^.\d]{0,12}?(?P<n2>\d[\d,]*\.?\d*)', re.IGNORECASE)
+
+
+def direction_reason(text) -> str | None:
+    """'up' next to two numbers that fall, or 'down' next to two that rise ("net profit 70.69 crores, up from 79.29 crores", Jindal Saw)."""
+    for m in _DIRECTION.finditer(str(text or '')):
+        try:
+            n1, n2 = float(m.group('n1').replace(',', '')), float(m.group('n2').replace(',', ''))
+        except ValueError:
+            continue
+        up = m.group('word').lower() in ('up', 'higher', 'increase', 'increased', 'rose', 'grew')
+        if n1 != n2 and ((up and n1 < n2) or (not up and n1 > n2)):
+            return f'says {m.group("word")} but its two figures go the other way ({m.group("n1")} from {m.group("n2")})'
+    return None
 
 
 # --- headline figures are put in by our code, from values already checked ------------------------------------------
@@ -1281,6 +1301,8 @@ def results_headline(metrics, names=(), doc='') -> dict | None:
     name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
 
     def part(m, word):
+        if word == 'revenue' and re.search(r'total\s+income', str(m.get('label')), re.IGNORECASE) and not re.search(r'revenue|sales', str(m.get('label')), re.IGNORECASE):
+            word = 'total income'      # a Total Income row is not revenue from operations (International Travel House, Jindal Saw)
         txt = f"{word} {money_text(m['number'], m['currency'])}"
         ch = [f"{m['change_pct']:+.1f}% YoY"] if isinstance(m.get('change_pct'), (int, float)) else []
         ch += [f"{m['qoq_pct']:+.1f}% QoQ"] if isinstance(m.get('qoq_pct'), (int, float)) else []
@@ -1300,10 +1322,20 @@ _ENDED = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|
 _MONTH_NO = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
 
 
+_ENDED_MDY = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|year)\s+ended\s+(?:on\s+)?(?:the\s+)?([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})', re.IGNORECASE)
+
+
+def _quarter_ends(doc) -> set:
+    """The period-end dates the filing states, '30th September 2026' or 'September 30, 2026' (day, month, year)."""
+    head = str(doc)[:6000]
+    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(head)}
+    ends |= {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for m, d, y in _ENDED_MDY.findall(head)}
+    return {e for e in ends if e[1]}
+
+
 def quarter_label(doc: str) -> str | None:
     """'Q2 FY27' from the one quarter-end date the filing states ('quarter ended 30 September 2026'), else None."""
-    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(str(doc)[:6000])}
-    ends = {e for e in ends if e[1] in (3, 6, 9, 12)}
+    ends = {e for e in _quarter_ends(doc) if e[1] in (3, 6, 9, 12)}
     if len(ends) != 1:
         return None
     _, mo, yr = next(iter(ends))
@@ -1314,8 +1346,7 @@ def fiscal_label(text: str, doc: str) -> str:
     """'Q2 FY26' for a quarter that ended 30 September 2026 is Q2 FY27 (Karur Vysya, Tips Music): the fiscal year is the year it
     ends and the quarter follows the month of the date the filing gives. Rewritten from the filing's own date, only when the filing
     states one quarter-end date."""
-    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(str(doc)[:6000])}
-    ends = {e for e in ends if e[1]}
+    ends = _quarter_ends(doc)
     if len(ends) != 1:
         return text
     _, mo, yr = next(iter(ends))
@@ -1384,7 +1415,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
     if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
         ours = results_headline(metrics, names, doc)
         shown_text = str(headline.get('text')) if isinstance(headline, dict) and headline.get('shown') else ''
-        if ours and (' profit after tax' in ours['text'] and ' revenue' in ours['text'] or '%' in ours['text']
+        if ours and (' profit after tax' in ours['text'] and (' revenue' in ours['text'] or ' total income' in ours['text']) or '%' in ours['text']
                      or re.search(r'\b(?:lakhs?|lacs?|million|mn)\b', shown_text, re.IGNORECASE)   # Paushak: "revenue rises to 8,932 lakh"
                      or not re.search(r'\d', shown_text)):
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}

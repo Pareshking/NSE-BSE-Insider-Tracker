@@ -2046,3 +2046,23 @@ def test_annual_charge_is_not_stated_as_a_total():
     assert ar.basis_reason('Power Grid wins project for Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore')
     assert ar.basis_reason('Power Grid wins project with annual charge of Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore') is None
     assert ar.basis_reason('Wins order for Rs. 7 Cr', 'order worth Rs. 7 Cr') is None
+
+
+def test_quarter_end_in_month_first_form():
+    assert ar.quarter_label('Results for the quarter ended September 30, 2026') == 'Q2 FY27'
+    assert ar.fiscal_label('Tips Music Q2 FY26 results', 'financial results for the quarter ended September 30, 2026') == 'Tips Music Q2 FY27 results'
+
+
+def test_heading_unit_when_the_filing_names_one():
+    from scripts import announcement_sample as sm
+    assert sm.heading_unit('Statement\nRs in lacs\nQuarter Ended') == 1e5
+    assert sm.heading_unit('(₹ crores)\nParticulars') == 1e7
+    assert sm.heading_unit('Rs in lacs ... later ... (₹ crores)') is None
+    assert sm.nearest_unit('Profit 77', 'Statement Rs in lacs\nnothing here') == 1e5
+
+
+def test_up_from_a_higher_figure_is_not_said():
+    assert ar.direction_reason('Standalone net profit ₹70.69 crores, up from ₹79.29 crores')
+    assert ar.direction_reason('Profit ₹80 crores, up from ₹70 crores') is None
+    assert ar.direction_reason('Profit ₹60 crores, down from ₹70 crores') is None
+    assert ar.direction_reason('Profit ₹80 crores, down from ₹70 crores')

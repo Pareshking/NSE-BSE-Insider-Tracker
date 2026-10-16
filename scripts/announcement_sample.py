@@ -668,9 +668,21 @@ def nearest_unit(quote, doc: str, value=None) -> float | None:
             if near:
                 unit = max(near)[1]
                 if best not in (None, unit):
-                    return None      # two numbers, two answers: no repair
+                    return heading_unit(doc)      # two answers for the same figure: only a heading that is the filing's one unit decides
                 best = unit
-    return best
+    return best if best is not None else heading_unit(doc)
+
+
+_HEADING_UNIT = re.compile(r'(?:\(|\b)(?:Rs\.?|₹|INR|Rupees|Amount|Figures?|All\s+amounts?)\s*(?:in|\()?\s*(?:the\s+)?(?:Rs\.?\s*)?(lakhs?|lacs?|crores?|crs?\b|million|mn\b|billion)', re.IGNORECASE)
+
+
+def heading_unit(doc) -> float | None:
+    """The one unit the filing's table headings name ("Rs in lacs", "(₹ crores)", "in million"), when every heading names the same."""
+    found = set()
+    for m in _HEADING_UNIT.finditer(str(doc)):
+        w = m.group(1).lower()
+        found.add(1e5 if w.startswith(('lakh', 'lac')) else 1e7 if w.startswith(('crore', 'cr')) else 1e9 if w.startswith('billion') else 1e6)
+    return found.pop() if len(found) == 1 else None
 
 
 def _num(v):
