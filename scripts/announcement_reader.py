@@ -1134,6 +1134,13 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
+    def work_for(lane: Lane) -> bool:
+        """Something a resting lane could read once rested: a filing to read, one it has not tried, or another lane
+        busy (it may hand a filing back). A cross-check is optional and is not worth waiting for."""
+        return bool(any(lane.name not in j['tried'] for j in retry)
+                    or (fresh and (max_filings is None or taken < max_filings))
+                    or (busy - {lane.name}))
+
     def take(lane: Lane):
         """('read', job) / ('fail', job) / ('check', rec) / ('wait', None) / ('stop', None), under the lock."""
         nonlocal taken
@@ -1141,9 +1148,11 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             alive.discard(lane.name)
             return 'stop', None
         if not lane.models():
-            if lane.cooling():       # only resting: try again in a moment, the other lanes read meanwhile
+            # Only resting: try again in a moment while there is something this lane could take once rested (16 Oct: a
+            # lane that began resting at the end of the run held it up the whole 10 minutes with nothing left to read).
+            if lane.cooling() and work_for(lane):
                 return 'wait', None
-            alive.discard(lane.name)  # every model at its daily limit
+            alive.discard(lane.name)  # every model at its daily limit, or nothing left for it
             return 'stop', None
         for job in retry:
             if lane.name not in job['tried']:
