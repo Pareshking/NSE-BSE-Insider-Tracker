@@ -56,8 +56,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-7' if PROMPT_VARIANT == 'v2' else
-                  'live-6-ab' if PROMPT_COMPARE else 'live-6')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-8' if PROMPT_VARIANT == 'v2' else
+                  'live-7-ab' if PROMPT_COMPARE else 'live-7')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -455,7 +455,7 @@ CARD_ASK = (
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
-    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out.\n\n')
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out.\n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, '
@@ -478,7 +478,7 @@ CARD_ASK_V2 = (
     'forecast, impact claim, independently calculated growth rate, inferred consequence or unsupported completion '
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
-    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
     'Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
@@ -1431,6 +1431,64 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# --- cards held after review ------------------------------------------------------------------------------
+# A headline or point that every check passed and a person found wrong (16 Oct: "Supreme Court upholds AT1 Bonds
+# write-down order", "approved unearned ... results") is listed in scripts/card_holds.txt as
+# `event_id | headline | reason` (what: headline, point:N counting from 1, or words for the headline and all points).
+# The clean table shows it as held back with that reason; the reads archive keeps the read as it was made (rule 5).
+HOLDS_FILE = HERE / 'card_holds.txt'
+
+
+def holds_of(text: str) -> dict[str, list[tuple[str, str]]]:
+    out: dict[str, list[tuple[str, str]]] = {}
+    for line in text.splitlines():
+        line = line.split('#', 1)[0].strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split('|', 2)]
+        if len(parts) != 3 or not parts[0] or not re.fullmatch(r'headline|words|point:[1-9]\d*', parts[1]) or not parts[2]:
+            raise ValueError(f'card_holds.txt: expected "event_id | headline, point:N or words | reason", got {line!r}')
+        out.setdefault(parts[0], []).append((parts[1], parts[2]))
+    return out
+
+
+def apply_holds(df: pd.DataFrame, holds: dict[str, list[tuple[str, str]]]) -> tuple[pd.DataFrame, int]:
+    """`df` with the listed headlines and points shown as held back; (table, number of items held)."""
+    if df is None or df.empty or not holds or 'event_id' not in df:
+        return df, 0
+    df, n = df.copy(), 0
+
+    def hold(item: dict, reason: str) -> None:
+        nonlocal n
+        if item and item.get('shown') is not False:
+            n += 1
+        item['shown'], item['reason'] = False, '; '.join(r for r in (item.get('reason'), f'held after review: {reason}') if r)
+
+    for idx in df.index[df['event_id'].isin(holds)]:
+        head = load_json(df.at[idx, 'headline'], None)
+        points = load_json(df.at[idx, 'points'], [])
+        for what, reason in holds[df.at[idx, 'event_id']]:
+            if what in ('headline', 'words') and isinstance(head, dict):
+                hold(head, reason)
+            if what == 'words':
+                for pt in points:
+                    hold(pt, reason)
+            elif what.startswith('point:') and int(what[6:]) <= len(points):
+                hold(points[int(what[6:]) - 1], reason)
+        df.at[idx, 'headline'] = json.dumps(head, ensure_ascii=False, default=str) if head else df.at[idx, 'headline']
+        df.at[idx, 'points'] = json.dumps(points, ensure_ascii=False, default=str)
+    return df, n
+
+
+def load_json(v, default):
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except ValueError:
+            return default
+    return default
+
+
 def write(r2, rows: list[dict], run_date: str, today: date) -> int:
     """Rows merged into the reads archive by event_id (a filing read again replaces its row), then the clean
     table rebuilt from it. Returns the number of filings new to the archive."""
@@ -1457,6 +1515,9 @@ def write(r2, rows: list[dict], run_date: str, today: date) -> int:
     if arch is not None:
         recent = arch[pd.to_datetime(arch['broadcast_date'], errors='coerce')
                       >= pd.Timestamp(today - timedelta(days=READ_DAYS))]
+        recent, held = apply_holds(recent, holds_of(HOLDS_FILE.read_text(encoding='utf-8')) if HOLDS_FILE.exists() else {})
+        if held:
+            log(f'{held} headlines and points held after review (scripts/card_holds.txt)')
         put_parquet(r2, CLEAN_KEY, recent.reset_index(drop=True))
     return added
 
@@ -1484,7 +1545,7 @@ class Saver:
             self._flush(final)
 
     def _flush(self, final: bool) -> None:
-        if not self.pending:
+        if not self.pending and not (final and HOLDS_FILE.exists() and HOLDS_FILE.read_text(encoding='utf-8').strip()):
             return
         try:
             self.added += self.writer(self.r2, self.pending, self.run_date, self.today)

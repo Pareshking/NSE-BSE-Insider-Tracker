@@ -1,0 +1,5 @@
+# Headlines and points held back after review. One line each: event_id | headline, point:N (from 1) or words | reason
+# The clean table shows the item as held back with "held after review: <reason>"; the reads archive is not changed.
+# Remove a line when the filing has been read again and the new card is right.
+nse:106819548 | headline | the filing says the Supreme Court upheld the Bombay High Court judgment of 20 Jan 2023 and dismissed the appeals of the Bank, RBI and Union of India; it does not say the Court upheld the write-down, which the headline states
+bse:17e02497-9619-49ea-979e-2bd7dd9d6f5e | headline | says "unearned" where the filing says "Unaudited" results
