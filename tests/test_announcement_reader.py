@@ -1962,3 +1962,14 @@ def test_quote_found_through_lost_ligatures():
     q = 'Capital investment proposal for additional facilities for manufacturing of Unit at an estimated cost of Rs. 500 Crore approx.'
     assert sm.quote_found(q, doc) == 'exact'
     assert not sm.quote_found(q.replace('500', '600'), doc)
+
+
+def test_results_headline_uses_filing_quarter_and_inr_for_million():
+    from scripts import announcement_reader as r
+    doc = 'Unaudited financial results for the quarter ended 30 September 2026'
+    assert r.quarter_label(doc) == 'Q2 FY27'
+    assert r.indian_currency('million', 'tin million 1,200', True) == 'INR'
+    assert r.indian_currency('million', 'USD 1,200 million', True) is None
+    assert r.indian_currency('million', '1,200 million', False) is None
+    m = [{'shown': True, 'number': 1.2e9, 'currency': 'INR', 'label': 'Revenue from operations', 'period': 'Q1', 'quote': 'q'}]
+    assert 'Q2 FY27' in r.results_headline(m, ('X', 'X Ltd'), doc)['text']

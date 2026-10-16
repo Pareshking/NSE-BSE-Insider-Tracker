@@ -608,7 +608,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('its quote is a projection or estimate, not a reported figure')
         metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
-                        'currency': (currency_in_quote(value, quote) or indian_currency(unit_m, quote)) if money else None,
+                        'currency': (currency_in_quote(value, quote) or indian_currency(unit_m, quote, str(out.get('category') or '') == 'financial_results')) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
     for m in metrics:
         if m['shown'] and m.get('number') is not None:
@@ -1041,10 +1041,14 @@ PHYSICAL_UNIT = re.compile(r'\s{0,2}(MMSCMD|MMBTU|MTPA|MTPD|TPD|TPA|GWh|MWh|kWh|
 QUALIFIER = re.compile(r'(more\s+than|over|approximately|approx\.?|about|nearly|around|up\s*to|upto|at\s+least|~)\s*$', re.IGNORECASE)
 
 
-def indian_currency(unit, quote) -> str | None:
+def indian_currency(unit, quote, results=False) -> str | None:
     """Lakh and crore are rupee words: a figure in either with no other currency in its quote is in rupees (LTM, Paushak, Jindal Saw:
     'Rs in lacs' sits in the heading, the row has the bare figure). Million and billion are not: no currency, no guess."""
     if str(unit or '').strip().lower().rstrip('.') in ('lakh', 'lakhs', 'lac', 'lacs', 'crore', 'crores', 'cr', 'crs') \
+            and not re.search(r'US\$|USD|\$|EUR|€|GBP|£|AED|SGD|CAD|JPY', str(quote or '')):
+        return 'INR'
+    # A results table of an Indian listed company in millions ("tin million": the scan lost the rupee sign: LTM, ITH, Jindal Saw)
+    if results and str(unit or '').strip().lower().rstrip('.') in ('million', 'millions', 'mn', 'billion', 'bn') \
             and not re.search(r'US\$|USD|\$|EUR|€|GBP|£|AED|SGD|CAD|JPY', str(quote or '')):
         return 'INR'
     return None
@@ -1134,7 +1138,7 @@ def promote_point(headline, points, names=(), extra=()):
     return headline, points
 
 
-def results_headline(metrics, names=()) -> dict | None:
+def results_headline(metrics, names=(), doc='') -> dict | None:
     """A results card with no headline left: revenue and profit of the quarter, each with the change we worked out from the
     table's own columns, in the company's short name (LTM, Paushak, Jindal Saw, Kabra, ITH: the card had boilerplate or nothing)."""
     shown = [m for m in metrics if m.get('shown') and isinstance(m.get('number'), (int, float)) and m.get('currency')]
@@ -1156,6 +1160,7 @@ def results_headline(metrics, names=()) -> dict | None:
         ch += [f"{m['qoq_pct']:+.1f}% QoQ"] if isinstance(m.get('qoq_pct'), (int, float)) else []
         return txt + (f" ({', '.join(ch)})" if ch else '')
     period = next((str(m.get('period')) for m in (rev, pat) if m and m.get('period') and str(m.get('period')).lower() not in NO_PERIOD_WORDS), '')
+    period = quarter_label(doc) or period
     body = '; '.join(part(m, w) for m, w in ((rev, 'revenue'), (pat, 'profit after tax')) if m)
     basis = next((b for m in (rev, pat) if m for b in ('consolidated', 'standalone') if re.search(b, str(m.get('label')), re.IGNORECASE)), '')
     if basis:
@@ -1167,6 +1172,16 @@ def results_headline(metrics, names=()) -> dict | None:
 
 _ENDED = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|year)\s+ended\s+(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(?:day\s+of\s+)?([A-Za-z]{3,9})\.?,?\s*(\d{4})', re.IGNORECASE)
 _MONTH_NO = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+
+
+def quarter_label(doc: str) -> str | None:
+    """'Q2 FY27' from the one quarter-end date the filing states ('quarter ended 30 September 2026'), else None."""
+    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(str(doc)[:6000])}
+    ends = {e for e in ends if e[1] in (3, 6, 9, 12)}
+    if len(ends) != 1:
+        return None
+    _, mo, yr = next(iter(ends))
+    return f"Q{ {6: 1, 9: 2, 12: 3, 3: 4}[mo] } FY{(yr + 1 if mo >= 4 else yr) % 100:02d}"
 
 
 def fiscal_label(text: str, doc: str) -> str:
@@ -1235,7 +1250,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
     if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
-        ours = results_headline(metrics, names)
+        ours = results_headline(metrics, names, doc)
         if ours and (' profit after tax' in ours['text'] and ' revenue' in ours['text'] or not (isinstance(headline, dict) and headline.get('shown') and re.search(r'\d', str(headline.get('text'))))):
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
     if isinstance(headline, dict) and headline.get('shown'):
