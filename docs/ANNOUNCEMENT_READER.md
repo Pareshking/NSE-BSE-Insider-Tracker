@@ -556,3 +556,14 @@ owner's rule; at most 70 characters. The subtitle holds the second most useful f
 - **Order firmness** kept apart: firm order, letter of intent, preferred bidder, framework agreement; never added up
   as one order book.
 - **Last reported is not current**: a balance sheet item carries its date and age on the card.
+
+### Build order of the context work (owner, 16 Oct, third message)
+
+Three foundations first, in this order, before sector playbooks and adaptive headlines: (1) a **reliable historical
+company profile** (results over 12 quarters, balance sheet lines, share count and ownership, each value with
+source, period, publication date, unit, basis and whether reported, calculated or estimated); (2) a
+**deterministic context engine** for before and after comparisons and materiality; (3) an **event-linked memory**
+of transactions, projects and financial changes over time. The rule for every material announcement: what
+happened, what changed, how significant it is for this company, and what evidence is still needed to understand
+its consequences. Sector analysis and adaptive headlines come only once these work, so that they cannot produce
+confident but unsupported conclusions.
