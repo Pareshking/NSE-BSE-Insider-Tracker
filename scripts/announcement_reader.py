@@ -385,7 +385,8 @@ def text_is_garbled(doc: str) -> bool:
     return bad >= 25 and bad >= 0.04 * max(1, len(toks))
 
 
-FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*[\d,.]+(?:\s*/-)?', re.IGNORECASE)
+FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*[\d,.]+(?:\s*/-)?'
+                        r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
 NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets', re.IGNORECASE)
 DEAL_WORDS = re.compile(r'consideration|invest|aggregat|issue\s+size|\bamount\b|subscri|price|raise|worth|valu(?:e|ation)', re.IGNORECASE)
 

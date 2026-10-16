@@ -1545,3 +1545,9 @@ def test_the_headline_has_a_subtitle_checked_like_the_headline():
 def test_the_prompt_asks_for_the_owners_headline_format():
     for ask in (ar.CARD_ASK, ar.CARD_ASK_V2):
         assert 'HEADLINE FORMAT' in ask and 'Ujjivan SFB approves ₹409 Cr preferential issue' in ask and '"subtitle"' in ask
+
+
+def test_a_share_described_as_rupees_n_each_is_face_value_not_a_price():
+    assert ar.FACE_VALUE.search('allotted 1,000 equity shares of Rs.5/- each')
+    assert ar.FACE_VALUE.search('equity shares of Rs. 10 each')
+    assert not ar.FACE_VALUE.search('at a price of Rs 45.65 per share')
