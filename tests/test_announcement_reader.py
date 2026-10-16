@@ -1752,3 +1752,38 @@ def test_headline_uses_the_deal_amount_not_a_metric_figure():
     assert why is None and '₹149.5 Cr' in text or '₹150 Cr' in text
     _, why = ar.fill_tokens('Tejas Q2 revenue {m1}', [], metrics)   # no amount field: a results headline is fine
     assert why is None
+
+
+def test_results_filing_headline_is_about_results_and_routine_points_are_not_news():
+    doc = ('The Board declared an interim dividend of INR 25 per share. The results were reviewed by the Statutory Auditors. '
+           'Revenue from operations 118,076.')
+    out = {'category': 'financial_results',
+           'headline': {'text': 'LTM declares interim dividend of ₹25 per share', 'quote': 'declared an interim dividend of INR 25 per share'},
+           'points': [{'text': 'Results were reviewed by Statutory Auditors', 'quote': 'The results were reviewed by the Statutory Auditors.'}]}
+    head, points = ar.card_words(out, doc, [], [])
+    assert not head['shown'] and 'results' in head['reason']
+    assert not points[0]['shown'] and 'every results filing' in points[0]['reason']
+    out['category'] = 'dividend'
+    head, points = ar.card_words(out, doc, [], [])
+    assert head['shown'] and points[0]['shown']
+
+
+def test_scan_misreads_do_not_hold_a_long_quote_and_unit_comes_from_the_nearest_heading():
+    import announcement_sample as sm
+    doc = 'approved the Unaudited Financial Results of the Company for the quarter and half year ended on 3Qth September, 2026.'
+    assert sm.quote_found('approved the Unaudited Financial Results of the Company for the quarter and half year ended on 30th September, 2026.', doc) == 'exact'
+    assert not sm.quote_found('approved the Unaudited Financial Results of the Company for the quarter and half year ended on 30th November, 2026.', doc)
+    flat = 'Dividend INR 25 crore. ' + 'x ' * 400 + '(₹ in million) Net profit after tax (5-6) 13,799 12,000'
+    assert sm.unit_backed(13799, 'million', 'Net profit after tax (5-6) 13,799', 'exact', flat) is True
+    assert sm.unit_backed(13799, 'crore', 'Net profit after tax (5-6) 13,799', 'exact', flat) is False
+
+
+def test_rating_headline_must_carry_a_change_in_the_facility_size():
+    doc = 'Crisil Ratings has reaffirmed. Long Term Bank Facilities Rs.5106 Crore (Enhanced from Rs.4621 Crore) Crisil A+/Stable.'
+    out = {'category': 'rating_reaffirmed',
+           'headline': {'text': 'Crisil reaffirms Skipper at A+/Stable', 'quote': 'Crisil Ratings has reaffirmed'}}
+    head, _ = ar.card_words(out, doc, [], [])
+    assert not head['shown'] and 'enhanced' in head['reason']
+    out['headline']['text'] = 'Crisil reaffirms Skipper at A+/Stable; facilities enhanced to Rs 5,106 Cr'
+    head, _ = ar.card_words(out, doc, [], [])
+    assert 'enhanced from' not in (head.get('reason') or '')

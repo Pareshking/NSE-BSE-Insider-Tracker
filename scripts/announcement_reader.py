@@ -57,7 +57,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-13' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-14' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -632,7 +632,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'For an ESOP or warrant the price is the "exercise price" or "issue price" row, not the face value. '
              'Use a {m1}-style token only for a metric you list (none listed, no token). For a credit rating the rating agency acts (Crisil reaffirms X), not the company; '
              'for a shareholding disclosure name the acquirer and the seller; when a person resigns or is appointed the person is the subject; '
-             'an amount the filing calls "not exceeding" or "up to" keeps those words; a demand of duty plus penalty is called both; '
+             'an amount the filing calls "not exceeding" or "up to" keeps those words; a rating headline gives the action, the rating and, when the filing says "enhanced from X" or "reduced from X", the change in the size of the facilities (a bigger limit is the news); a results headline is about the results, never a dividend or an appointment; a demand of duty plus penalty is called both; '
              'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number.\n\n')
     return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
@@ -888,12 +888,32 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 
 
+FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
+ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
+                                   r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
+                                   r'figures for the previous (?:period|year) (?:have been|has been) regrouped', re.IGNORECASE)
+
+
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
+    results_filing = str(out.get('category') or '') == 'financial_results'
+    if results_filing:   # Paushak (16 Oct): the card showed "reviewed by the auditors" and "one segment" and no profit
+        for pt in points:
+            if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
+                pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
     headline = check_words(out.get('headline'), doc)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
+        if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
+                and not FACILITY_CHANGE_SAID.search(headline['text']):   # Skipper (16 Oct): the news was the bigger limit
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), 'the filing changes the size of the facilities (enhanced from / reduced from): that is the news, and the headline leaves it out') if x)
+        if results_filing and not RESULTS_WORDS.search(headline['text']):   # LTM (16 Oct): a dividend led a results filing
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), 'the headline of a results filing is about the results; the dividend or another decision comes after') if x)
         if token_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
