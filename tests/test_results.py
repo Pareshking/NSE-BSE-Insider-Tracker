@@ -105,3 +105,42 @@ def test_pages_until_total_count_and_xbrl_read_once():
     assert set(again['xbrl_status']) == {'ok'} and len(again) == 2   # the pending one is retried, the read one kept
     table = results.clean(got)
     assert 'xbrl_json' not in table and table['quarter_revenue'].notna().sum() == 2
+
+
+def test_a_backfill_fetches_several_files_at_once_and_a_refusal_stops_them_all(monkeypatch):
+    from datetime import date
+    pages = [{'data': [{**ROW, 'seq_Id': str(201500 + k), 'xbrl': f'http://x/{k}.xml'} for k in range(8)], 'totalCount': 8}]
+    nse, report = FakeNSE(pages), {'notes': []}
+    rows = run_daily.results_filings(nse, None, date(2026, 10, 12), date(2026, 10, 15), report)
+
+    class Worker:
+        def __init__(self, pause=None):
+            pass
+
+        def xbrl(self, url):
+            return XBRL
+    monkeypatch.setattr(run_daily, 'NSEClient', Worker)
+    got = run_daily.fetch_results_xbrl(nse, None, rows, None, report, max_xbrl=6, workers=3)
+    assert sorted(got['xbrl_status'].astype(str)) == ['ok'] * 6 + ['pending'] * 2 and report['results_xbrl_fetched'] == 6
+
+    class Refusing(Worker):
+        def xbrl(self, url):
+            raise run_daily.Blocked('HTTP 429')
+    monkeypatch.setattr(run_daily, 'NSEClient', Refusing)
+    report = {'notes': []}
+    got = run_daily.fetch_results_xbrl(nse, None, rows, None, report, max_xbrl=8, workers=3)
+    assert set(got['xbrl_status'].astype(str)) == {'pending'} and report['results_xbrl_blocked']
+
+
+def test_a_long_span_is_listed_in_windows_of_31_days():
+    from datetime import date
+    seen = []
+
+    class Windows(FakeNSE):
+        def integrated_results_url(self, start, end, page=1, size=100):
+            seen.append((start, end))
+            return f'list?page={page}'
+    rows = run_daily.results_filings(Windows([{'data': [ROW], 'totalCount': 1}]), None, date(2026, 1, 1), date(2026, 3, 15), {'notes': []})
+    windows = sorted(set(seen))
+    assert windows[0] == (date(2026, 1, 1), date(2026, 1, 31)) and windows[-1][1] == date(2026, 3, 15) and len(windows) == 3
+    assert len(rows) == 1
