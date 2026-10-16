@@ -29,6 +29,14 @@ on:
         description: 'Catch-up round number (set by the workflow)'
         required: false
         default: '1'
+      max_results_xbrl:
+        description: 'dataset=results: results XBRL files to fetch this run (nightly 500; a backfill 3000)'
+        required: false
+        default: '500'
+      results_workers:
+        description: 'dataset=results: files fetched at once (nightly 1 with NSE pause; a backfill 4)'
+        required: false
+        default: '1'
   schedule:
     - cron: '0 16 * * 1-6'  # 21:30 IST, Monday-Saturday
 
@@ -43,7 +51,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,7 +66,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           FROM: ${{ inputs.from || '' }}
-        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" ${FROM:+--from "$FROM"}
+        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" --max-results-xbrl "${{ inputs.max_results_xbrl || '500' }}" --results-workers "${{ inputs.results_workers || '1' }}" ${FROM:+--from "$FROM"}
       # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
       # rate-limits by IP); with chain=1 the next run starts by itself while
       # files are pending, up to 15 rounds, and stops if NSE refused a file
@@ -71,17 +79,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ROUND: ${{ inputs.round || '1' }}
           DAYS: ${{ inputs.days || '10' }}
+          DATASET: ${{ inputs.dataset || 'all' }}
+          MAXRES: ${{ inputs.max_results_xbrl || '500' }}
+          WORKERS: ${{ inputs.results_workers || '1' }}
         run: |
           [ -f nse_events_report.json ] || { echo "no report written; stopping"; exit 0; }
-          read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
+          if [ "$DATASET" = "results" ]; then
+            # results backfill: another round while filings are pending, this round fetched some and NSE refused none
+            read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
+          import json
+          r = json.load(open('nse_events_report.json'))
+          print(r.get('pending_results', 0), r.get('results_xbrl_fetched', 0), int(bool(r.get('results_xbrl_blocked'))))
+          PY
+          )
+            LIMIT=80
+            NEXT="gh workflow run nse-events.yml -f days=$DAYS -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS"
+          else
+            read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
           import json
           r = json.load(open('nse_events_report.json'))
           print(r.get('pending_xbrl', 0) + r.get('pending_members', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
           PY
           )
+            LIMIT=15
+            NEXT="gh workflow run nse-events.yml -f days=$DAYS -f dataset=shareholding -f chain=1 -f round=$((ROUND + 1))"
+          fi
           echo "round $ROUND: pending $PENDING, parsed $FETCHED, refused $BLOCKED"
-          if [ "$PENDING" -gt 0 ] && [ "$FETCHED" -gt 0 ] && [ "$BLOCKED" -eq 0 ] && [ "$ROUND" -lt 15 ]; then
-            gh workflow run nse-events.yml -f days="$DAYS" -f dataset=shareholding -f chain=1 -f round=$((ROUND + 1))
+          if [ "$PENDING" -gt 0 ] && [ "$FETCHED" -gt 0 ] && [ "$BLOCKED" -eq 0 ] && [ "$ROUND" -lt "$LIMIT" ]; then
+            $NEXT
             echo "started round $((ROUND + 1))"
           else
             echo "catch-up finished or stopped"
