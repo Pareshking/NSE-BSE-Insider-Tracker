@@ -64,6 +64,14 @@ READING_GROUPS = {
                 'Delay/default in the payment of fines/penalties/dues etc. to authority',
                 'Reasons for Delayed/Non-submission of Financial Results', 'Suspension of Trading',
                 'Resignation of Director/KMP/SMP'),
+    # Core types the owner's triage (16 Oct) names as the memory of a company, which the first list left as routine
+    # (about 70 filings a day on NSE, measured by routine_share_report): orders, deals, ratings, management and director
+    # changes, litigation, presentations, new production, clarifications of results and of media reports.
+    'core': ('Bagging/Receiving of orders/contracts', 'Acquisition', 'Agreements', 'Credit Rating', 'Credit Rating- New',
+             'Investor Presentation', 'Change in Management', 'Resignation', 'Cessation', 'Change in Director(s)',
+             'Appointment', 'Pendency of Litigation(s)/dispute(s) or the outcome impacting the Company',
+             'Commencement of commercial production/operations', 'Clarification - Financial Results',
+             'Reply to Clarification- Financial results', 'News Verification'),
     # Broad subjects whose PDF may hold any of the above.
     'to_sort': ('Outcome of Board Meeting', 'General Updates', 'Updates', 'Press Release', 'Others',
                 'Disclosure of material issue'),

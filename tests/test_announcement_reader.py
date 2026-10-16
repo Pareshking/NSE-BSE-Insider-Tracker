@@ -1732,3 +1732,12 @@ def test_target_capital_is_not_a_deal_amount_and_units_are_not_doubled():
     f, why = ar.fill_tokens('Urban Company plans {amount} Cr raise', [{'name': 'amount', 'shown': True, 'number': 25e9, 'currency': 'INR'}], [])
     assert f == 'Urban Company plans ₹2,500 Cr raise' and why is None
     assert ar.money_text(2325000, 'INR') == '₹23.3 Lakh'
+
+
+def test_core_types_of_the_triage_are_read_not_routine():
+    from collectors.nse_events import announcements as nann
+    from collectors.bse import announcements as bann
+    for subject in ('Bagging/Receiving of orders/contracts', 'Credit Rating', 'Change in Management', 'Investor Presentation'):
+        assert nann.group_of(subject) == 'core'
+    assert nann.group_of('Trading Window') == 'routine' and nann.group_of('Copy of Newspaper Publication') == 'routine'
+    assert bann.group_of('Award of Order / Receipt of Order') == 'core' and bann.group_of('Closure of Trading Window') == 'routine'
