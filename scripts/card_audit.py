@@ -20,6 +20,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
+import announcement_reader as ar  # noqa: E402
 import announcement_sample as s  # noqa: E402
 from clean_writer import read_parquet  # noqa: E402
 from r2_writer import r2_client  # noqa: E402
@@ -32,7 +33,7 @@ NUMBER = re.compile(r'\d[\d,]*\.?\d*')
 
 
 def norm(t: str) -> str:
-    return re.sub(r'\s+', ' ', str(t or '')).strip().casefold()
+    return s._norm(str(t or ''))
 
 
 def load(v, default):
@@ -51,7 +52,7 @@ def numbers(t: str) -> set[str]:
 def problems(doc: str, claim: str, quote: str) -> list[str]:
     out = []
     out += unit_problems(claim, quote)
-    if norm(quote) not in norm(doc):
+    if not s.quote_found(quote, doc):
         out.append('QUOTE NOT IN TEXT')
     missing = numbers(claim) - numbers(quote)
     if missing:
@@ -100,6 +101,35 @@ def unit_problems(claim: str, quote: str) -> list[str]:
     return out
 
 
+def revalidate(r: dict, doc: str) -> list[str]:
+    """Run today's rules over the stored card and say which shown items they would now hold back."""
+    fields = [{'name': f.get('name'), 'value': f.get('value'), 'quote': f.get('quote')} for f in load(r.get('fields'), [])]
+    for f in load(r.get('fields'), []):
+        if f.get('name') == 'amount' and f.get('unit'):
+            fields.append({'name': 'amount_unit', 'value': f.get('unit'), 'quote': None})
+    metrics = [{k: m.get(k) for k in ('label', 'period', 'value', 'unit', 'quote')} for m in load(r.get('metrics'), [])]
+    head, points = load(r.get('headline'), {}) or {}, load(r.get('points'), [])
+    out = {'fields': fields, 'metrics': metrics, 'headline': head,
+           'points': [{'text': p.get('text'), 'quote': p.get('quote')} for p in points]}
+    _, nf, nm = ar.validate(out, doc)
+    new_head, new_points = ar.card_words(out, doc, nf, nm)
+    was = {('f', f.get('name'), str(f.get('value'))): f.get('shown') for f in load(r.get('fields'), [])}
+    lines = []
+    for f in nf:
+        if not f['shown'] and was.get(('f', f['name'], str(f['value']))):
+            lines.append(f"field {f['name']} = {f['value']} now held: {f['reason']}")
+    old_m = {(m.get('label'), m.get('period'), str(m.get('value'))): m.get('shown') for m in load(r.get('metrics'), [])}
+    for m in nm:
+        if not m['shown'] and old_m.get((m['label'], m['period'], str(m['value']))):
+            lines.append(f"metric {m['label']} [{m['period']}] = {m['value']} {m['unit']} now held: {m['reason']}")
+    if head.get('shown') and new_head and not new_head.get('shown'):
+        lines.append(f"headline now held: {new_head.get('reason')}: {head.get('text')}")
+    for old, new in zip(points, new_points or []):
+        if old.get('shown') and new and not new.get('shown'):
+            lines.append(f"point now held: {new.get('reason')}: {old.get('text')}")
+    return lines
+
+
 def main() -> int:
     r2 = r2_client()
     df = read_parquet(r2, 'clean/current/announcement_reads.parquet')
@@ -134,12 +164,12 @@ def main() -> int:
         for f in load(r.get('fields'), []):
             if f.get('shown'):
                 print(f"- FIELD {f.get('name')} = {f.get('value')}\n  - quote: \"{f.get('quote')}\"")
-                if norm(f.get('quote')) not in norm(doc):
+                if not s.quote_found(f.get('quote'), doc):
                     flags.append(f"field {f.get('name')}: QUOTE NOT IN TEXT")
         for m in load(r.get('metrics'), []):
             if m.get('shown'):
                 print(f"- METRIC {m.get('label')} [{m.get('period')}] = {m.get('value')} {m.get('unit')}\n  - quote: \"{m.get('quote')}\"")
-                if norm(m.get('quote')) not in norm(doc):
+                if not s.quote_found(m.get('quote'), doc):
                     flags.append(f"metric {m.get('label')}: QUOTE NOT IN TEXT")
                 mu = str(m.get('unit') or '').lower()
                 qa = amounts(m.get('quote'))
@@ -148,6 +178,9 @@ def main() -> int:
                                  f"check the table header")
                 if mu in ('rupees', 'rs', '₹') and currencies(m.get('quote')) == {'usd'}:
                     flags.append(f"metric {m.get('label')}: unit is rupees but the quote is in dollars")
+        changed = revalidate(r, doc) if doc else []
+        for line in changed:
+            print(f'- **NOW HELD BY CURRENT RULES:** {line}')
         held = [x for k in ('points', 'fields', 'metrics') for x in load(r.get(k), []) if not x.get('shown')]
         for x in held:
             print(f"- held back ({x.get('reason')}): {str(x.get('text') or x.get('value') or x.get('label'))[:140]}")
