@@ -57,7 +57,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-14' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-15' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -702,7 +702,13 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'Use a {m1}-style token only for a metric you list (none listed, no token). For a credit rating the rating agency acts (Crisil reaffirms X), not the company; '
              'for a shareholding disclosure name the acquirer and the seller; when a person resigns or is appointed the person is the subject; '
              'an amount the filing calls "not exceeding" or "up to" keeps those words; a rating headline gives the action, the rating and, when the filing says "enhanced from X" or "reduced from X", the change in the size of the facilities (a bigger limit is the news); a results headline is about the results, never a dividend or an appointment; a demand of duty plus penalty is called both; '
-             'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number.\n\n')
+             'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number. '
+             'The headline carries what an investor needs first: results = the quarter\'s revenue and profit with their growth tokens, never a dividend or an appointment first; '
+             'order = value (say if with or without GST), customer, period; fund raise = instrument, size, price, who, approvals still needed; '
+             'open offer = acquirer, shares and %, price; stake change = who bought or sold, before and after %; promoter pledge = who, shares, % of capital, lender, created or released; '
+             'debt = size, coupon, tenure, secured or not; litigation or tax demand = forum, amount, stage, direction, and whether interest is excluded; '
+             'rating = agency, action, rating and any change in the facilities; management = the person, role, effective date, reason if given; dividend = per share and record date. '
+             'If the filing does not give a size, price or value, the card does not invent one.\n\n')
     return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
