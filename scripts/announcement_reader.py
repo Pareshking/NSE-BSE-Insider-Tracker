@@ -574,6 +574,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if not isinstance(m, dict):
             continue
         value, quote, unit_m = m.get('value'), m.get('quote'), m.get('unit')
+        if str(unit_m or '').strip().lower() in ('', 'unit', 'units', 'number', 'count'):
+            unit_m = physical_unit(quote, value) or unit_m   # MT, MW, MMBTU, employees: the printed unit, never 'units'
         qf = s.quote_found(quote, doc)
         reasons = [] if qf else ['quote not found in the filing']
         if garbled_near(doc, quote):
@@ -591,7 +593,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('unit not backed by its quote')
         if PROJECTION.search(str(quote or '')):
             reasons.append('its quote is a projection or estimate, not a reported figure')
-        metrics.append({'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
+        metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
@@ -980,6 +982,38 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+PHYSICAL_UNIT = re.compile(r'\s{0,2}(MMSCMD|MMBTU|MTPA|MTPD|TPD|TPA|GWh|MWh|kWh|MVA|GW|MW|kW|MT|KL|tonnes?|tons?|kg|km|'
+                           r'employees|people|stores?|keys|rooms|outlets|vehicles|schools|districts|customers|users|orders|'
+                           r'beds|acres|sq\.?\s?ft)\b', re.IGNORECASE)
+QUALIFIER = re.compile(r'(more\s+than|over|approximately|approx\.?|about|nearly|around|up\s*to|upto|at\s+least|~)\s*$', re.IGNORECASE)
+
+
+def physical_unit(quote, value) -> str | None:
+    """The unit printed right after the metric's number in its quote when it is a physical one ('69,617.424 MT',
+    'more than 3,000 employees'), so the card never says 'units' for tonnes, megawatts or people (Steel Exchange, BHEL, Persistent)."""
+    v = s._num(value)
+    if v is None:
+        return None
+    for m in re.finditer(s.NUMBER, str(quote or '')):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+            u = PHYSICAL_UNIT.match(str(quote)[m.end():])
+            if u:
+                return u.group(1)
+    return None
+
+
+def qualifier_of(quote, value) -> str | None:
+    """'more than', 'approximately', 'up to', 'nearly' written just before the number in the quote: the card keeps it."""
+    v = s._num(value)
+    if v is None:
+        return None
+    for m in re.finditer(s.NUMBER, str(quote or '')):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+            q = QUALIFIER.search(re.sub(r'(?:Rs\.?|INR|₹|US\$|\$)\s*$', '', str(quote)[max(0, m.start() - 24):m.start()]))
+            return re.sub(r'\s+', ' ', q.group(1)).lower().replace('upto', 'up to').rstrip('.') if q else None
+    return None
+
+
 def card_numbers(fields, metrics) -> list[float]:
     """The numbers of the card's shown deal fields (size, price, shares) and metrics (already checked against their own quotes), in base units: a
     headline or point may state one of them without repeating it in its own quote (Kabra: the revenue is in the

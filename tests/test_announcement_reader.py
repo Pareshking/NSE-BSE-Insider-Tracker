@@ -1834,3 +1834,12 @@ def test_repeated_points_are_dropped_and_a_surviving_point_leads_when_the_headli
     head, points = ar.card_words(out, doc, fields, metrics)
     assert head['shown'] and [p['shown'] for p in points] == [False, True]
     assert 'repeats' in points[0]['reason']
+
+
+def test_physical_units_and_qualifiers_are_kept_on_metrics():
+    doc = 'Production of 69,617.424 MT in Q2. The Company has more than 3,000 employees in Hyderabad.'
+    out = {'metrics': [{'label': 'Production', 'period': 'Q2 FY27', 'value': '69,617.424', 'unit': 'units', 'quote': 'Production of 69,617.424 MT in Q2'},
+                       {'label': 'Employees in Hyderabad', 'period': '2026', 'value': '3,000', 'unit': 'units', 'quote': 'more than 3,000 employees in Hyderabad'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert [m['unit'] for m in metrics] == ['MT', 'employees'] and all(m['shown'] for m in metrics)
+    assert metrics[1]['qualifier'] == 'more than' and metrics[0]['qualifier'] is None

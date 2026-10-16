@@ -97,6 +97,11 @@ def value_text(f: dict) -> str:
 
 
 def metric_text(m: dict) -> str:
+    q = str(m.get('qualifier') or '').strip()
+    return (q + ' ' if q else '') + _metric_text(m)
+
+
+def _metric_text(m: dict) -> str:
     n, unit = m.get('number'), str(m.get('unit') or '').strip().lower()
     if n is None:
         return str(m.get('value'))
