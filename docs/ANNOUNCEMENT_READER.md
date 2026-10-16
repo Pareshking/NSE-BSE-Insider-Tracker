@@ -458,6 +458,23 @@ The card should tell what the event means for this company, not only what the fi
 | Acquisition, divestment, stake change | Value against acquirer's market cap and TTM revenue; stake before, after, change in percentage points; cash or shares; funding source; expected completion | Fields from the filing | Acquirer size from the tables above |
 | Capacity and capex | Existing, new, increase %; project cost; spent and remaining; commissioning date; phase (Jindal Paradip: 12.5 MTPA entering operation, 25 MTPA across two phases) | Card fields (capacity_to) | Earlier capacity cards for the company; phase needs a field of its own in the prompt |
 
+Shape (owner's proposal, 16 Oct): a reusable **context engine** between the stored facts and the card, not more
+model prose. `insiders_clean/context.py`: pure functions `context_for(event, tables)` returning blocks; each block has
+`kind`, `label`, `value`, `unit`, `inputs` (name, value, as-of date, source table) and `status` (`ok` or
+`unavailable` with the reason). Computed in the precompute step and stored beside the card, so the site only renders
+and a rule change needs no re-read. Three layers on the card, always labelled apart:
+
+- **Reported fact**: from the filing, with its quote (an order of Rs 500 Cr).
+- **Calculation**: ours, from dated inputs (order / TTM revenue = 50%; debt after = before - repaid, pro forma).
+- **Interpretation**: only from a written rule with its threshold (an order of 25% or more of TTM revenue is "large
+  for the company"), never a model's guess. The model writes no "why it matters" (13 Oct decision stands: it would
+  be invented without concalls and annual reports). A fixed "Unknowns" line lists, from the code, which inputs were
+  missing.
+
+Rules: missing is never zero (no baseline, no comparison: "not available: no debt figure since 31 Mar 2026"); every
+comparison shows both dates (a March debt figure is labelled March, with its age); facts, calculations and
+interpretations are never mixed in one sentence.
+
 Build order, each step behind its own tests and a sample on real cards: (1) fundraising blocks (all inputs in
 hand but shares outstanding); (2) quarterly results XBRL for the last 8 quarters, then results and order blocks;
 (3) debt; (4) capacity and M&A blocks that need only the filing and earlier cards.
