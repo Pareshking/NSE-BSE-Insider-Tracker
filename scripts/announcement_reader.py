@@ -1961,6 +1961,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if out is None:
         return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
     cat, fields, metrics = validate(out, doc)
+    cat_before = cat
     cat = category_override(cat, subject, doc)
     for f in fields:   # a dividend is not a price (LTM: 'Price a share 25' on a results card)
         if f.get('name') in ('price_per_share', 'max_price_per_share') and re.search(r'dividend', str(f.get('quote') or ''), re.IGNORECASE):
@@ -1969,6 +1970,10 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
+    if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
+            and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
+        headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
+        headline, points = promote_point(headline, points, names, (), 'routine')
     facts_head, facts_points = people_change(doc, names)
     if facts_head and cat in ('management_change', 'auditor_resignation', None):
         headline, points = facts_head, facts_points + [p for p in points if p.get('shown') and not any(p.get('text') == q.get('text') for q in facts_points)][:1]

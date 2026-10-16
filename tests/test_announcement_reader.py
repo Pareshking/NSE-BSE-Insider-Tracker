@@ -2066,3 +2066,12 @@ def test_up_from_a_higher_figure_is_not_said():
     assert ar.direction_reason('Profit ₹80 crores, up from ₹70 crores') is None
     assert ar.direction_reason('Profit ₹60 crores, down from ₹70 crores') is None
     assert ar.direction_reason('Profit ₹80 crores, down from ₹70 crores')
+
+
+def test_call_recording_filed_as_results_does_not_headline_results():
+    doc = 'Sub: Audio recording of earnings call for Q2 FY27 unaudited results'
+    out = {'category': 'financial_results', 'headline': {'text': 'Karur Vysya Bank posts unaudited Q2 results', 'quote': 'Audio recording of earnings call for Q2 FY27 unaudited results'},
+           'points': [], 'fields': [], 'metrics': []}
+    res = ar.result_of(out, doc, 'zai:x', 1.0, 'zai', ('KARURVYSYA', 'Karur Vysya Bank Ltd'), 'Updates')
+    assert res['category'] == 'routine'
+    assert not (res['headline'] and res['headline'].get('shown') and 'posts' in res['headline']['text'])
