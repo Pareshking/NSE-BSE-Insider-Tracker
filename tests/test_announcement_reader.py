@@ -1843,3 +1843,32 @@ def test_physical_units_and_qualifiers_are_kept_on_metrics():
     _, _, metrics = ar.validate(out, doc)
     assert [m['unit'] for m in metrics] == ['MT', 'employees'] and all(m['shown'] for m in metrics)
     assert metrics[1]['qualifier'] == 'more than' and metrics[0]['qualifier'] is None
+
+
+def test_a_quote_with_another_column_interleaved_is_found_as_a_table_row():
+    import announcement_sample as sm
+    doc = ('Purpose | To reduce the power cost by way of shifting towards\n| the solar and wind power energy, which are cost\n'
+           '| effective and environment friendly.\nTarget | Agganga Energy')
+    q = 'To reduce the power cost by way of shifting towards the solar and wind power energy, which are cost effective and environment friendly.'
+    assert sm.quote_found(q, doc.replace('\\\n', '\n')) in ('exact', 'table')
+    interleaved = ('To reduce the power cost by way of shifting towards  | Nature of business\nthe solar and wind power energy, which are cost  | Renewable power\n'
+                   'effective and environment friendly.  | None')
+    assert sm.quote_found(q, interleaved) == 'table'
+    assert not sm.quote_found('The company plans to build a new plant in Gujarat next year for solar modules.', interleaved)
+
+
+def test_open_loops_are_the_filings_own_sentences_with_their_dates():
+    doc = ("Completion remains subject to due diligence, definitive agreements and required approvals. The Company will apply to the "
+           "Stock Exchanges for listing and trading approval. The Hon'ble NCLAT fixed the next date of hearing on November 06, 2026. "
+           "The reply in DRC-06 is due by October 29, 2026. Details will be intimated in due course. The Board met today.")
+    loops = ar.extract_open_loops(doc)
+    assert [l['type'] for l in loops] == ['approval_pending', 'listing_pending', 'hearing', 'due_date', 'further_disclosure']
+    assert loops[2]['date'] == '2026-11-06' and loops[3]['date'] == '2026-10-29' and loops[0]['date'] is None
+    assert ar.extract_open_loops('The Board met today.') == []
+
+
+def test_a_cover_letter_on_a_large_file_is_not_read_as_if_it_were_the_filing():
+    letter = 'Dear Sir, we enclose herewith the order of the NCLT sanctioning the scheme. Yours faithfully.'
+    assert ar.enclosure_unread_reason(letter, 5_700_000) and 'not read' in ar.enclosure_unread_reason(letter, 5_700_000)
+    assert ar.enclosure_unread_reason(letter, 40_000) is None            # a small file: the letter is the filing
+    assert ar.enclosure_unread_reason('x ' * 3000 + ' enclosed', 5_700_000) is None   # a long text is a real document

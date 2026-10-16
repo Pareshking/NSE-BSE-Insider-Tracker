@@ -483,6 +483,28 @@ def _tokens(text) -> list[str]:
     return _TOKEN.findall(unicodedata.normalize('NFKC', str(text or '')).lower())
 
 
+def _spread_run(quote, doc, slack: int = 3) -> bool:
+    """Every token of the quote, in order, within a stretch of the document no longer than slack times the quote (plus 20
+    tokens): the quote's words with other columns' words between them. Needs 6 or more tokens, so that two sentences
+    cannot meet by chance; the card shows such a quote as a table row, not as in the filing."""
+    q = _tokens(quote)
+    if len(q) < 6:
+        return False
+    d = _tokens(doc)
+    span = slack * len(q) + 20
+    for i, t in enumerate(d):
+        if t != q[0]:
+            continue
+        j, k = i + 1, 1
+        while k < len(q) and j < len(d) and j - i <= span:
+            if d[j] == q[k]:
+                k += 1
+            j += 1
+        if k == len(q):
+            return True
+    return False
+
+
 def _token_run(quote, doc) -> bool:
     """The quote's words and numbers as one unbroken run of the document's tokens (a "|" or spaces between cells
     do not matter; 110 is not 11070). Needs two tokens, one of them a number."""
@@ -518,6 +540,8 @@ def quote_found(quote, doc: str) -> str | bool:
     # on both sides, for a quote long enough that two different sentences cannot meet by chance.
     if len(lq) >= 24 and _ocr(lq) in _ocr(_loose(doc)):
         return 'exact'
+    if _spread_run(quote, doc):   # a table's text with another column interleaved line by line (Minda Corp, Om Galaxy, TFCI)
+        return 'table'
     words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]
     numbers = {w.replace(',', '') for w in words if w[0].isdigit()}
     if not numbers or len(words) < 2:

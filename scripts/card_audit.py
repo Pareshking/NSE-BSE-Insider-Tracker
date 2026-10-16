@@ -251,6 +251,8 @@ def main() -> int:
         changed = revalidate(r, doc) if doc else []
         for line in changed:
             print(f'- **NOW HELD BY CURRENT RULES:** {line}')
+        for lp in load(r.get('open_loops'), []):
+            print(f"- OPEN LOOP ({lp.get('type')}{', ' + str(lp.get('date')) if lp.get('date') else ''}): {str(lp.get('text'))[:200]}")
         held = [x for k in ('points', 'fields', 'metrics') for x in load(r.get(k), []) if not x.get('shown')]
         for x in held:
             print(f"- held back ({x.get('reason')}): {str(x.get('text') or x.get('value') or x.get('label'))[:140]}")

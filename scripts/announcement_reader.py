@@ -134,7 +134,7 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'market_cap_match', 'market_cap')
+           'seconds', 'read_at', 'headline', 'points', 'open_loops', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
@@ -476,6 +476,19 @@ def unreadable_reason(doc: str) -> str | None:
     chars = [c for c in str(doc or '') if not c.isspace()]
     if len(chars) >= 200 and sum(c == '\ufffd' for c in chars) > 0.2 * len(chars):
         return 'the text did not extract from the PDF (replacement characters); needs OCR, not read'
+    return None
+
+
+ENCLOSURE = re.compile(r'\bencl(?:ose[sd]?|osing|osures?|\.)(?=\W)|attached\s+herewith|copy\s+of\s+(?:the\s+)?[^.]{0,60}\bis\s+(?:enclosed|attached)', re.IGNORECASE)
+
+
+def enclosure_unread_reason(doc: str, size: int) -> str | None:
+    """A short cover letter on a large file that says it encloses the document: the enclosure (often a scan) did not come out
+    as text, so the filing was not read in full (GFL: 2,517 characters of a 5.7 MB file; Tips Music; String Metaverse; Texmo;
+    Avishkar). CLAUDE.md rule 8: marked not read, with the reason, not carded from the letter."""
+    n = len(str(doc or '').strip())
+    if size and size > 300_000 and n < 3000 and ENCLOSURE.search(str(doc)):
+        return f'a cover letter only ({n:,} characters of a {size / 1e6:.1f} MB file): the enclosure it mentions did not come out as text; not read'
     return None
 
 
@@ -982,6 +995,37 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+LOOP_PATTERNS = (
+    ('approval_pending', re.compile(r'subject\s+to\b[^.;]{0,90}(?:approval|consent|sanction|no[- ]objection|clearance|due\s+diligence|definitive|conditions?\s+precedent)', re.IGNORECASE)),
+    ('further_disclosure', re.compile(r'(?:will|shall)\s+be\s+(?:intimated|informed|disclosed|furnished|provided|announced|submitted|notified)\b|in\s+due\s+course|further\s+(?:details|disclosures?)\b[^.;]{0,40}(?:will|shall)', re.IGNORECASE)),
+    ('due_date', re.compile(r'(?:on\s+or\s+before|not\s+later\s+than|expected\s+to\s+(?:be\s+)?(?:complete[d]?|commence[d]?|commission(?:ed)?|clos(?:e|ed))|to\s+be\s+completed|(?:reply|response|appeal|payment)\b[^.;]{0,30}\b(?:due|within|by))\b', re.IGNORECASE)),
+    ('hearing', re.compile(r'(?:next\s+(?:date\s+of\s+)?hearing|listed\s+for|posted\s+for|adjourned\s+to|matter\s+is\s+(?:now\s+)?(?:listed|posted))\b', re.IGNORECASE)),
+    ('listing_pending', re.compile(r'will\s+apply\s+(?:to|for)\b[^.;]{0,80}(?:listing|approval)|(?:listing|trading)\s+approval\b[^.;]{0,60}(?:awaited|to\s+be|will\s+be)', re.IGNORECASE)),
+)
+
+
+def extract_open_loops(doc, limit: int = 6) -> list[dict]:
+    """Things the filing itself says are still to happen (an approval, a hearing, a due date, a further disclosure, a listing),
+    each as the filing's own sentence with its date if it has one. Written beside the card and into company memory so the
+    next filing of the company can close the loop (golden set 1: 40 cards named a pending step that nothing kept)."""
+    text = re.sub(r'\s+', ' ', str(doc or ''))
+    sentences = re.split(r'(?<=[.;])\s+(?=[A-Z0-9(])', text)
+    out, seen = [], set()
+    for sent in sentences:
+        if not 25 <= len(sent) <= 400:
+            continue
+        for kind, rx in LOOP_PATTERNS:
+            if rx.search(sent) and sent not in seen:
+                seen.add(sent)
+                dates = dates_in(sent)[0]
+                out.append({'type': kind, 'text': sent.strip()[:260],
+                            'date': (lambda d: f'{d[0]:04d}-{int(d[1]):02d}-{int(d[2]):02d}')(min(dates)) if dates else None})
+                break
+        if len(out) >= limit:
+            break
+    return out
+
+
 PHYSICAL_UNIT = re.compile(r'\s{0,2}(MMSCMD|MMBTU|MTPA|MTPD|TPD|TPA|GWh|MWh|kWh|MVA|GW|MW|kW|MT|KL|tonnes?|tons?|kg|km|'
                            r'employees|people|stores?|keys|rooms|outlets|vehicles|schools|districts|customers|users|orders|'
                            r'beds|acres|sq\.?\s?ft)\b', re.IGNORECASE)
@@ -1550,7 +1594,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points}
+            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc)}
 
 
 def read_one(lane: Lane, row: dict, doc: str) -> dict:
@@ -1619,7 +1663,7 @@ def finish(rec: dict) -> dict:
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
     rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
         sum(not m['shown'] for m in rec.get('metrics') or [])
-    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points'):
+    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'open_loops'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
     rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
     return {c: rec.get(c) for c in COLUMNS}
@@ -1756,7 +1800,11 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
-        bad_text = unreadable_reason(doc)
+        try:
+            size = len(data) if data is not None else int(float(row.get('file_bytes') or 0))
+        except (TypeError, ValueError):
+            size = 0
+        bad_text = unreadable_reason(doc) or enclosure_unread_reason(doc, size)
         if bad_text:   # rule 8: a filing whose text did not come out is marked not read, not guessed from its subject
             return finish({**base, 'status': 'not_read', 'reason': bad_text})
         cut = next((n for n in doc_notes if str(n).startswith('cut to ')), None)
@@ -1904,7 +1952,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'headline': res['headline'], 'points': res['points'], 'seconds': res['seconds']})
+                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds']})
         with lock:
             docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
         add_row(rec)
