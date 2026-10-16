@@ -1784,7 +1784,7 @@ def test_rating_headline_must_carry_a_change_in_the_facility_size():
     out = {'category': 'rating_reaffirmed',
            'headline': {'text': 'Crisil reaffirms Skipper at A+/Stable', 'quote': 'Crisil Ratings has reaffirmed'}}
     head, _ = ar.card_words(out, doc, [], [])
-    assert not head['shown'] and 'enhanced' in head['reason']
+    assert head['shown'] and 'enhanced from' in head['text']      # the filing's own change leads, not the model's wording
     out['headline']['text'] = 'Crisil reaffirms Skipper at A+/Stable; facilities enhanced to Rs 5,106 Cr'
     head, _ = ar.card_words(out, doc, [], [])
     assert 'enhanced from' not in (head.get('reason') or '')
@@ -1981,3 +1981,11 @@ def test_unit_from_the_table_heading_when_the_model_names_another():
     doc = 'Results\ntin million, except per share data\nRevenue from operations | 118,076 | 116,080\n'
     assert sm.nearest_unit('Revenue from operations 118,076', doc) == 1e6
     assert sm.nearest_unit('Revenue from operations 999', doc) is None
+
+
+def test_facility_change_headline_from_split_table_cells():
+    from scripts import announcement_reader as r
+    doc = 'Facilities | Amount | Rating | Rating Action\nLong Term | Bank Rs.5106 | Crore | Crisil A+/Stable | Reaffirmed\nFacilities | (Enhanced | from\nShort Term | Bank Rs.4621 Crore) | Crisil A1 | Reaffirmed\n'
+    h = r.facility_change_headline(doc, ('Skipper', 'Skipper Ltd'))
+    assert h and 'enhanced from ₹4,621' not in h['text'] and '4621 Cr' in h['text'] and h['text'].startswith('Skipper')
+    assert r.facility_change_headline('Rating reaffirmed. Facilities unchanged.', ('A',)) is None
