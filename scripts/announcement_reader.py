@@ -540,7 +540,7 @@ CARD_ASK = (
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"). Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). \n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). \n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, '
@@ -564,7 +564,7 @@ CARD_ASK_V2 = (
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"). Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). Return the existing JSON schema only.\n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -707,6 +707,12 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dic
     reasons = [] if qf else ['quote not found in the filing']
     if re.search(r'\d', text) and garbled_near(doc, quote):
         reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
+    if re.search(r'non[- ]?promoter', str(quote or ''), re.IGNORECASE) and re.search(r'\bpromoters?\b', text, re.IGNORECASE) \
+            and not re.search(r'non[- ]?promoter|public|mix', text, re.IGNORECASE):
+        reasons.append('its quote says the allottees are promoters and non-promoters: the words name only promoters')
+    if re.search(r'not\s+less\s+than|at\s+least|minimum\s+(?:price|of)', str(quote or ''), re.IGNORECASE) \
+            and TOKEN.search(text) and re.search(r'\{price\}', text) and not re.search(r'floor|minimum|at least|from|\+|not less|min', text, re.IGNORECASE):
+        reasons.append('the price is a floor ("not less than") in its quote')
     if CONDITION.search(str(quote or '')) and not CONDITION_KEPT.search(text):
         reasons.append('drops the condition its quote states (subject to approval)')
     if keep_up_to and UPTO_QUOTE.search(str(quote or '')) and not UPTO_KEPT.search(text):
@@ -800,11 +806,38 @@ def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str
             bad.append(m.group(0))
             return m.group(0)
         return out
+    tokens = TOKEN.findall(text)
+    if len(tokens) != len(set(tokens)):
+        return text, 'a token is used twice in the headline: one value cannot be both the amount and the growth'
     filled = TOKEN.sub(value, text)
     return filled, ('a figure of the headline is not among the checked values: ' + ', '.join(bad)) if bad else None
 
 
-def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[dict | None, list[dict]]:
+def headline_name_reason(text: str, names=()) -> str | None:
+    """A headline names the company by its short name: not by the exchange symbol (ONEGLOBAL, MGEL, RPEL) and not by the
+    full legal name with "Ltd" or "Limited"."""
+    first = re.split(r'[\s,:]', str(text or '').strip(), 1)[0]
+    symbol = str(names[0] or '').strip() if len(names) > 0 else ''
+    if symbol and len(symbol) >= 3 and first == symbol and symbol.isupper() and len(first) > 1:
+        return 'starts with the exchange symbol, not the company\'s short name'
+    if re.search(r'\b(?:Ltd\.?|Limited|Pvt\.?|Private)\b', str(text or ''), re.IGNORECASE):
+        return 'uses the full legal name (Ltd, Limited) instead of the short name'
+    return None
+
+
+CORRECTION = re.compile(r'\bcorrigendum\b|inadvertently\s+omitted|in\s+supersession|\brevised\s+disclosure\b|\baddendum\b', re.IGNORECASE)
+CORRECTION_SAID = re.compile(r'corrig|correct|addend|revis|amend|supersed|omitted|clarif', re.IGNORECASE)
+
+
+def correction_reason(text: str, doc: str) -> str | None:
+    """A corrigendum, addendum or revised disclosure is not a new event: its headline says so."""
+    if CORRECTION.search(str(doc or '')[:4000]) and not CORRECTION_SAID.search(str(text or '')):
+        return 'the filing corrects or adds to an earlier one: the headline must say so'
+    return None
+
+
+
+def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
     headline = check_words(out.get('headline'), doc)
@@ -813,7 +846,8 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[
         if token_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
-        quality_reason = headline_quality_reason(headline['text'])
+        quality_reason = headline_quality_reason(headline['text']) or headline_name_reason(headline['text'], names) \
+            or correction_reason(headline['text'], doc)
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
@@ -1225,7 +1259,7 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
 
 # --- reading ---------------------------------------------------------------------------
 
-def result_of(out, doc: str, used: str, secs: float, lane_name: str) -> dict:
+def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=()) -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
@@ -1234,7 +1268,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str) -> dict:
     raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
-    headline, points = card_words(out, doc, fields, metrics)
+    headline, points = card_words(out, doc, fields, metrics, names)
     withdrawn = headline and WITHDRAWN.search(str((headline or {}).get('text') or ''))
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
@@ -1253,7 +1287,7 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
-    return result_of(s.parse_json(text), doc, used, secs, lane.name)
+    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')))
 
 
 # Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
@@ -1296,7 +1330,8 @@ def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
     res = []
     for k, job in enumerate(jobs, 1):
         item = by_id.get(str(k))
-        res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name) if item is not None else None)
+        res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name,
+                             (job['row'].get('symbol'), job['row'].get('company'))) if item is not None else None)
     return res
 
 

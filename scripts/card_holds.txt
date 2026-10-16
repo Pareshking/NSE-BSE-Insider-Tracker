@@ -72,3 +72,16 @@ bse:9144f669-055b-47a5-8fb1-55ce0c86a9e9 | headline | names the subsidiary Sterl
 bse:147c1a3d-fc92-4219-afc7-59052f89a5bb | metrics:all | standalone and consolidated figures are mixed with no label
 bse:ec2a5539-be53-44da-a599-fcf2eeabb793 | headline | "discloses" with no figure: the news is a pledge of 5.14 lakh shares and a release of 5.16 lakh
 bse:a758b681-9376-4fe9-aeb1-0bdaf375d381 | headline | names the promoter, not the listed company, with "discloses" and no figure
+bse:e4a2be85-b010-4543-b13c-261849912c33 | headline | the quarter ended 30 September 2026 is Q2 FY27, not Q3
+bse:3bc20556-562e-41a3-bb8d-56f6301b8045 | field:shares | 1,42,66,412 are only the equity shares: the warrants are left out, so shares x price is not the amount
+bse:3bc20556-562e-41a3-bb8d-56f6301b8045 | metrics:all | the Rs 120 Cr and Rs 75 Cr are earmarked plans ("up to ~"), shown as plain figures
+bse:5f57314b-99d3-438c-82d5-9ff984f85cb7 | headline | BSE granted in-principle approval, the company approved nothing here; Rs 558.93 is a floor ("not less than")
+bse:5f57314b-99d3-438c-82d5-9ff984f85cb7 | field:price_per_share | Rs 558.93 is a floor price ("not less than"), not the issue price
+bse:e82b53fe-8a3f-4b70-a8d1-958a356fb668 | headline | drops "up to" and the approvals condition, and the smallest item (a related-party stake purchase for Rs 1.2 lakh) is not the main news
+nse:106820027 | metrics:all | the quotes are paraphrases, the results table is not in the filing text read, and an H1 exceptional item looks like a misread column
+bse:1ed115bd-7fb9-461c-933d-6b339b6d3837 | headline | these are Non-GAAP figures (GAAP consolidated EBITDA is 219, not 43) and the card does not say so
+bse:1ed115bd-7fb9-461c-933d-6b339b6d3837 | metrics:all | Non-GAAP figures labelled as consolidated results
+bse:9d3fa507-cb53-4ec0-abb8-46604deae148 | headline | the 16 Oct meeting approved a corrigendum to the EGM notice; shareholders have not yet voted
+bse:9d3fa507-cb53-4ec0-abb8-46604deae148 | field:amount | Rs 4,113.93 lakh is one of two totals (item 3 has another)
+nse:106820074 | headline | the amount shown is not a checked field (the amount field was held) and "approx." is dropped
+bse:ad97159b-a888-483a-b47e-56055c8f0a9f | headline | the filing replies to a BSE volume-movement query, which the headline leaves out
