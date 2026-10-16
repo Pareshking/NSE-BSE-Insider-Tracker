@@ -1310,3 +1310,11 @@ def test_a_table_quote_keeps_its_unit_only_when_the_table_heading_has_it():
     lakh = doc.replace('Rs. Crore', 'Rs. in Lakhs')
     _, _, metrics = ar.validate(out, lakh)
     assert not metrics[0]['shown']                       # the heading says lakh, the card says crore
+
+
+def test_prompt_separates_terminations_and_esg_scores_and_asks_for_the_main_news():
+    for variant in ('baseline', 'v2'):
+        p = ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 'Updates'}, 'text', variant)
+        assert 'main news' in p and 'Add no word that the quote does not contain' in p
+    assert 'terminated is not an order win' in ar.CATEGORIES['order_win']
+    assert 'ESG' in ar.CATEGORIES['rating_upgrade'] and 'terminated' in ar.CATEGORIES['agreement']

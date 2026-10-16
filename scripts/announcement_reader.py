@@ -56,8 +56,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-5' if PROMPT_VARIANT == 'v2' else
-                  'live-4-ab' if PROMPT_COMPARE else 'live-4')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-7' if PROMPT_VARIANT == 'v2' else
+                  'live-6-ab' if PROMPT_COMPARE else 'live-6')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -101,7 +101,7 @@ ADDED = {
     'acquisition': 'buying a company, a stake or a business, or setting up a subsidiary',
     'divestment': 'selling a company, a stake, a business, a unit or an asset',
     'merger_demerger': 'merger, demerger, amalgamation or another scheme of arrangement',
-    'agreement': 'joint venture, partnership, MoU, licensing, shareholder or other strategic agreement',
+    'agreement': 'joint venture, partnership, MoU, licensing, shareholder or other strategic agreement, or a contract or agreement cancelled or terminated',
     'delisting': 'voluntary delisting of the shares',
     'licence_approval': 'a licence, approval, patent or clearance granted, renewed, suspended or withdrawn',
     'operations_start': 'commercial production or operations started at a plant, unit or project',
@@ -115,7 +115,14 @@ ADDED = {
     'management_change': 'appointment, resignation or removal of a director, CEO, CFO or other key officer',
     'corporate_change': 'change of name, registered office, share transfer agent, or of the memorandum or articles',
 }
-CATEGORIES = {**{k: v for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **ADDED,
+# 16 Oct card audit: a terminated contract was filed as an order win, and an ESG score as a credit rating.
+CLARIFIED = {
+    'order_win': 'orders or contracts received or won (a contract cancelled or terminated is not an order win: it is "agreement")',
+    'rating_upgrade': 'credit rating of debt or bank loans raised by a rating agency (an ESG, governance or other non-credit score is "routine")',
+    'rating_downgrade': 'credit rating of debt or bank loans lowered or put on watch negative (not an ESG or governance score)',
+    'rating_reaffirmed': 'credit rating of debt or bank loans kept unchanged (not an ESG or governance score)',
+}
+CATEGORIES = {**{k: CLARIFIED.get(k, v) for k, v in s.CATEGORIES.items() if k not in ('deal_or_dispute', 'routine')}, **ADDED,
               'routine': s.CATEGORIES['routine']}
 KNOWN_CATEGORIES = set(CATEGORIES) | {'deal_or_dispute'}
 COPY_STATUSES = ('same_file', 'same_text', 'same_filing_other_exchange')
@@ -447,7 +454,8 @@ CARD_ASK = (
     'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
-    'rates you work out yourself.\n\n')
+    'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out.\n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, '
@@ -469,7 +477,9 @@ CARD_ASK_V2 = (
     'number must occur in that quote or be an allowed exact unit conversion (12,000 lakh = 120 crore). No opinion, '
     'forecast, impact claim, independently calculated growth rate, inferred consequence or unsupported completion '
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
-    'invent one; preserve independently supported points. Return the existing JSON schema only.\n\n')
+    'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
+    'Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
