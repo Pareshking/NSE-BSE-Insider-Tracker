@@ -29,4 +29,4 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python -u scripts/results_context_probe.py | tee probe.md >> "$GITHUB_STEP_SUMMARY"
+        run: python -u scripts/results_context_probe.py | tee probe.md | tee -a "$GITHUB_STEP_SUMMARY"
