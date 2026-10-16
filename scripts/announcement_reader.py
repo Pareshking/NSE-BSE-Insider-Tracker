@@ -506,7 +506,7 @@ CARD_ASK_V2 = (
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
     'Return the existing JSON schema only.\n\n')
 
-_NUM = re.compile(r'(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
+_NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
 _MULT = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'crores': 1e7, 'cr': 1e7, 'crs': 1e7,
          'million': 1e6, 'mn': 1e6, 'm': 1e6, 'billion': 1e9, 'bn': 1e9, 'thousand': 1e3, 'k': 1e3}
@@ -543,10 +543,11 @@ def numbers_in(text) -> list[tuple[float, float]]:
 _MONTHS = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
 _MONTH_RX = r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?'
 _DATE_RXS = (
+    (re.compile(r'(?<![\d.])(\d{4})-(\d{2})-(\d{2})(?![\d])'), lambda g: (g[0], g[1], g[2])),   # 2026-10-31 (the exchanges' data)
     (re.compile(r'(?<![\d.])(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4})(?![\d])'), lambda g: (g[2], g[1], g[0])),
-    (re.compile(r'(?<![\d.])(\d{1,2})(?:st|nd|rd|th)?[\s,-]*(?:of\s+)?' + _MONTH_RX + r'[\s,.-]*(\d{4})', re.IGNORECASE),
+    (re.compile(r'(?<![\d.])(\d{1,2})\s?(?:st|nd|rd|th)?[\s,-]*(?:of\s+)?' + _MONTH_RX + r'[\s,.-]*(\d{4})', re.IGNORECASE),
      lambda g: (g[2], _MONTHS[g[1].lower()], g[0])),
-    (re.compile(_MONTH_RX + r'[\s,.-]*(\d{1,2})(?:st|nd|rd|th)?[\s,.-]+(\d{4})', re.IGNORECASE),
+    (re.compile(_MONTH_RX + r'[\s,.-]*(\d{1,2})\s?(?:st|nd|rd|th)?[\s,.-]+(\d{4})', re.IGNORECASE),
      lambda g: (g[2], _MONTHS[g[0].lower()], g[1])),
 )
 
@@ -566,7 +567,7 @@ def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
     return found, rest
 
 
-def numbers_backed(text, quotes) -> bool:
+def numbers_backed(text, quotes, unit_ok=None) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
     lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
@@ -574,6 +575,7 @@ def numbers_backed(text, quotes) -> bool:
     quotes = list(quotes)
     have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
     have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
+    have_days = {d for _, _, d in have_dates}   # "from November 3 to November 5, 2026" gives the first date no year
     claim_dates, text = dates_in(text)
     if not claim_dates <= have_dates:
         return False
@@ -583,7 +585,12 @@ def numbers_backed(text, quotes) -> bool:
             return False
 
     def backed(n, c):
+        if c == n and n == int(n) and int(n) in have_days:
+            return True
         for n2, c2 in have:
+            if (unit_ok is not None and c != n and c2 == n2 and abs(n - n2) <= 1e-9 * max(1.0, abs(n))
+                    and unit_ok(n, c / n)):
+                return True            # the quote has the figure bare and the table's heading gives the unit
             if abs(n - n2) <= 1e-9 * max(1.0, abs(n)) and abs(c - c2) <= 0.005 * max(1.0, abs(c)):
                 return True            # as written, same unit
             if c != n and abs(c - c2) <= 0.005 * max(1.0, abs(c2)):
@@ -632,7 +639,7 @@ def check_words(item, doc: str, more_quotes=()) -> dict | None:
     reasons = [] if qf else ['quote not found in the filing']
     if re.search(r'\d', text) and text_is_garbled(doc):
         reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
-    if not numbers_backed(text, [quote]):
+    if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
         reasons.append('says approved where its quote says recommended')
