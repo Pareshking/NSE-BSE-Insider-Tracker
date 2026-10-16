@@ -9,6 +9,11 @@ on:
         description: 'Cards read in the last this many hours'
         required: false
         default: '6'
+  push:
+    branches: [ccr-0caa4ce9-bh3n2s]
+    paths:
+      - 'scripts/card_audit.py'
+      - '.github/workflows/card-audit.yml'
 
 permissions:
   contents: read
