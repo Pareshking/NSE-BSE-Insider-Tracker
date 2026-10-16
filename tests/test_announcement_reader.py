@@ -1933,3 +1933,16 @@ def test_company_memory_keeps_the_open_loops_of_a_read():
            'headline': '{"text": "X approves preferential issue", "shown": true}', 'points': '[]', 'fields': '[]', 'metrics': '[]',
            'open_loops': '[{"type": "approval_pending", "text": "Subject to shareholders\' approval.", "date": null}]'}
     assert bf.verified_event(row)['open_loops'][0]['type'] == 'approval_pending'
+
+
+def test_the_point_that_carries_the_checked_figure_leads_and_an_unstated_upgrade_is_held():
+    doc = 'The Board approved the merger of two units effective 01.11.2026. The estimated cost of the expansion is Rs. 500 Crore approx.'
+    out = {'category': 'capex', 'fields': [{'name': 'amount', 'value': '500', 'unit': 'crore', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'}],
+           'headline': {'text': 'BHEL approves Rs 800 Cr expansion', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'},
+           'points': [{'text': 'Merger of two units effective 1 Nov 2026', 'quote': 'merger of two units effective 01.11.2026'},
+                      {'text': 'Estimated cost of the expansion is Rs 500 Cr', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'}]}
+    _, fields, metrics = ar.validate(out, doc)
+    head, points = ar.card_words(out, doc, fields, metrics, ('BHEL', 'BHEL Limited'))
+    assert head['promoted_from_point'] and '500 Cr' in head['text']
+    held = ar.check_words({'text': 'KEI ESG rating upgraded to Excellent', 'quote': 'assigned a rating of 71 (Excellent)'}, 'assigned a rating of 71 (Excellent)')
+    assert not held['shown'] and 'upgraded' in held['reason']

@@ -848,6 +848,9 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
         reasons.append('says approved where its quote says recommended')
+    if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
+            r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
+        reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
             'reason': '; '.join(reasons) or None}
 
@@ -1109,17 +1112,25 @@ def drop_repeats(headline, points):
     return points
 
 
-def promote_point(headline, points, names=()):
+def promote_point(headline, points, names=(), extra=()):
     """No headline survived the checks: the first point that did survive (each is proved by its own quote) leads the card,
     in the company's short name, rather than a card with nothing on it (golden set 1: Aegis, Regency, Kabra, ITH)."""
     if isinstance(headline, dict) and headline.get('shown'):
         return headline, points
+    best, best_score = None, -1
     for i, pt in enumerate(points):
         text = str(pt.get('text') or '').strip()
         if pt.get('shown') and text and '{' not in text and len(text) <= 160:
-            lead = {**pt, 'text': rewrite_name(text.rstrip('.'), names), 'promoted_from_point': True,
-                    'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) else None}
-            return lead, points[:i] + points[i + 1:]
+            nums = numbers_in(dates_in(text)[1])
+            score = 3 * any(abs(c - x) <= 0.005 * max(1, abs(x)) for _, c in nums for x in extra) + (1 if nums else 0) \
+                - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0)
+            if score > best_score:
+                best, best_score = i, score
+    if best is not None:
+        pt = points[best]
+        lead = {**pt, 'text': rewrite_name(str(pt['text']).strip().rstrip('.'), names), 'promoted_from_point': True,
+                'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) else None}
+        return lead, points[:best] + points[best + 1:]
     return headline, points
 
 
@@ -1229,7 +1240,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
     if isinstance(headline, dict) and headline.get('shown'):
         headline['text'] = fiscal_label(headline['text'], doc)
-    headline, points = promote_point(headline, points, names)
+    headline, points = promote_point(headline, points, names, extra)
     return headline, drop_repeats(headline, points)
 
 
