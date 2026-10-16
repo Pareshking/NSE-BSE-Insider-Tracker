@@ -272,3 +272,12 @@ def test_coverage_counts_what_was_read_in_full_and_names_why_the_rest_was_not():
     assert 'Of 9 filings' in html and '<b>3</b> read in full' in html and '<b>5</b> not read' in html
     assert '2 could not be downloaded' in html and 'never summarised from a part' in html
     assert fr.coverage(pd.DataFrame(), pd.Timestamp('2026-10-10')) == {} and fr.coverage_html({}) == ''
+
+
+def test_a_checked_subtitle_sits_under_the_headline_and_a_held_one_is_not_shown():
+    sub = {'text': 'Up to 6.32 crore equity shares', 'quote': 'up to 6,32,00,000 equity shares', 'evidence': 'exact', 'shown': True}
+    headline = {'text': 'Ujjivan SFB approves ₹409 Cr preferential issue', 'quote': 'q', 'evidence': 'exact', 'shown': True, 'subtitle': sub}
+    html = fr.card_html(row(headline=json.dumps(headline), points='[]'))
+    assert '<h4 class="rc-h">Ujjivan SFB approves ₹409 Cr preferential issue</h4><p class="rc-sub">Up to 6.32 crore equity shares</p>' in html
+    held = dict(headline, subtitle=dict(sub, shown=False, reason='a number not in its quote'))
+    assert 'rc-sub' not in fr.card_html(row(headline=json.dumps(held), points='[]')).split('<details')[0]

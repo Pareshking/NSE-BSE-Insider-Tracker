@@ -196,6 +196,9 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     title = headline['text'] if headline else (
         f'{r.get("company") or sym}: {category.lower()}'
         + (f' · {" · ".join(fallback_terms[:2])}' if fallback_terms else ''))
+    sub = headline.get('subtitle') if headline else None
+    sub = sub if isinstance(sub, dict) and sub.get('shown') and sub.get('text') else None
+    sub_html = f'<p class="rc-sub">{esc(sub["text"])}</p>' if sub else ''
     body = ''.join(f'<li>{_bold_figures(p["text"])}</li>' for p in points)
     body = f'<ul class="rc-pts">{body}</ul>' if body else ''
 
@@ -214,7 +217,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     figs = f'<div class="rc-box"><p class="rc-lbl">The figures</p><table class="rc-figs">{figs}</table></div>' if figs else ''
 
     quotes = [(FIELD[f['name']], f) for f in fields] + [(_metric_label(m), m) for m in metrics[:6]] + \
-        [('Point', p) for p in points] + ([('Headline', headline)] if headline else [])
+        [('Point', p) for p in points] + ([('Headline', headline)] if headline else []) + ([('Subtitle', sub)] if sub else [])
     src = ''.join(f'<li><span>{esc(lbl)}</span>{_evidence(q.get("evidence"))}<q>{esc(str(q.get("quote") or ""))}</q></li>'
                   for lbl, q in quotes if q.get('quote'))
     reasons = pd.Series([h.get('reason') for h in held if h.get('reason')], dtype=object).value_counts()
@@ -240,7 +243,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{body}{figs}{_before_html(before)}{terms}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'

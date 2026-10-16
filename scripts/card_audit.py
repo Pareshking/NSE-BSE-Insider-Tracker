@@ -25,10 +25,11 @@ import announcement_sample as s  # noqa: E402
 from clean_writer import read_parquet  # noqa: E402
 from r2_writer import r2_client  # noqa: E402
 
+from insiders_clean.filing_text import Cache as TextCache  # noqa: E402
 from insiders_clean.text_clean import clean  # noqa: E402
 
 HOURS = float(os.environ.get('HOURS', '6'))
-EXCERPT = int(os.environ.get('EXCERPT', '2200'))
+EXCERPT = int(os.environ.get('EXCERPT', '3000'))
 NUMBER = re.compile(r'\d[\d,]*\.?\d*')
 
 
@@ -144,6 +145,30 @@ def revalidate(r: dict, doc: str) -> list[str]:
     return lines
 
 
+def excerpt(text: str, quotes, head: int = None, around: int = 700) -> str:
+    """The opening of the filing plus a window around every quote shown from it (merged), so that a long filing is
+    never cut off before the words a card rests on. A short filing is given whole."""
+    head = EXCERPT if head is None else head
+    if len(text) <= 3 * EXCERPT:
+        return text
+    spans = [(0, head)]
+    flat = re.sub(r'\s+', ' ', text)
+    # positions in `flat` map back approximately through the same collapse; windows are taken from `flat`
+    for q in quotes:
+        key = re.sub(r'\s+', ' ', str(q or '')).strip()[:60]
+        at = flat.find(key) if len(key) >= 12 else -1
+        if at >= 0:
+            spans.append((max(0, at - around), at + len(key) + around))
+    spans.sort()
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(b, merged[-1][1]))
+        else:
+            merged.append((a, b))
+    return '\n[...]\n'.join(flat[a:b] for a, b in merged)
+
+
 def main() -> int:
     r2 = r2_client()
     df = read_parquet(r2, 'clean/current/announcement_reads.parquet')
@@ -156,12 +181,17 @@ def main() -> int:
     df = df[df['_t'] >= since].sort_values('_t')
     print(f'## Card audit: {len(df)} filings read in the last {HOURS:g} hours\n')
     flagged = 0
+    text_cache = TextCache(r2)
     for r in df.to_dict('records'):
         url = r.get('content_url') or r.get('file_url')
-        try:
-            doc, notes = s.text_of(s.download(url))
-        except Exception as exc:  # noqa: BLE001
-            doc, notes = '', [f'download failed: {type(exc).__name__}: {exc}']
+        cached = text_cache(r) if text_cache is not None and url == r.get('file_url') else None
+        if cached is not None and str(cached.get('text') or '').strip():   # the very text the reader was given
+            doc, notes = str(cached['text']), ['from the text cache']
+        else:
+            try:
+                doc, notes = s.text_of(s.download(url))
+            except Exception as exc:  # noqa: BLE001
+                doc, notes = '', [f'download failed: {type(exc).__name__}: {exc}']
         flags = []
         print(f"### {r['exchange']} {r.get('symbol')} | {r.get('subject')} | {r.get('company')}")
         print(f"- event_id `{r.get('event_id')}`")
@@ -178,7 +208,9 @@ def main() -> int:
                 flags += problems(doc, p.get('text'), p.get('quote'))
         for f in load(r.get('fields'), []):
             if f.get('shown'):
-                print(f"- FIELD {f.get('name')} = {f.get('value')}\n  - quote: \"{f.get('quote')}\"")
+                unit = f" {f.get('unit')}" if f.get('unit') else ''
+                cur = f" [{f.get('currency')}]" if f.get('currency') else ''
+                print(f"- FIELD {f.get('name')} = {f.get('value')}{unit}{cur}\n  - quote: \"{f.get('quote')}\"")
                 if not s.quote_found(f.get('quote'), doc):
                     flags.append(f"field {f.get('name')}: QUOTE NOT IN TEXT")
         for m in load(r.get('metrics'), []):
@@ -213,7 +245,13 @@ def main() -> int:
             flagged += 1
             print('- **AUDIT FLAGS:** ' + '; '.join(flags))
         cleaned, _ = clean(doc, r.get('subject'))
-        print(f"\n<details><summary>the filing's text</summary>\n\n```\n{cleaned[:EXCERPT]}\n```\n</details>\n")
+        if not doc.strip():
+            print('- **AUDIT FLAGS:** the audit could not get the filing text, so nothing of this card can be checked here')
+        quotes = [head.get('quote')] if head else []
+        quotes += [p.get('quote') for p in load(r.get('points'), []) if p.get('shown')]
+        quotes += [f.get('quote') for f in load(r.get('fields'), []) if f.get('shown')]
+        quotes += [m.get('quote') for m in load(r.get('metrics'), []) if m.get('shown')]
+        print(f"\n<details><summary>the filing's text</summary>\n\n```\n{excerpt(cleaned, quotes)}\n```\n</details>\n")
     print(f'\n**Independent re-check: {flagged} of {len(df)} cards have a flag.**')
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         pass

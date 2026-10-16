@@ -14,3 +14,32 @@ nse:106819730 | field:price_per_share | Rs 10 is the face value of the shares, n
 nse:106819295 | field:amount | Rs 0.02 crore is the turnover of the company being liquidated, not the size of a deal
 nse:106819273 | metrics:all | the filing is a scan with a mangled text layer (183 mangled number tokens), so its figures cannot be trusted
 bse:9ac94bb8-eed8-4efb-af82-6a3535fd0252 | point:3 | adds compliance with FSSAI regulations and international culinary standards, which its quote does not state
+bse:7f61e4b1-0b9b-48d9-a831-a0ecbdceba4a | field:price_per_share | Rs 10 is the face value of the shares, not a price
+bse:8a1c0949-bd60-4d5b-87b1-0859865fbc55 | field:price_per_share | Rs 5 is the face value of the shares, not the price they were allotted at
+bse:0475def9-0d85-4d28-8f3f-3e26bf7b154b | metrics:all | the 50% is a projection ("projected to deliver"), not a reported figure
+nse:106819842 | point:2 | the family relationship is not in its quote, which only says she is a promoter
+bse:a6f4cedd-b93b-432b-ade8-bfca19b19d22 | point:2 | adds "without new share issuance or cash payment", which its quote does not state
+bse:a6f4cedd-b93b-432b-ade8-bfca19b19d22 | headline | the news of the day is receipt of the certified copy; the approval was pronounced on 1 October
+bse:92aed455-d5e8-4e6f-b8a1-ec3e073ef9dc | point:3 | its quote says "certain customary provisions", not the specific covenants it lists
+bse:858af46b-6b76-4818-a624-b3e5881b206f | point:1 | only the majority of the tribunal directed the payment; the dissenting member rejected it
+nse:106819185 | field:amount | Rs 23.40 crore is the 75% balance paid now, not the whole consideration
+nse:106819185 | field:allottee_is_promoter | the allottees are promoter group and non-promoters
+bse:9041e16e-6f01-42f2-9239-ff834c6fc9e9 | field:allottee_is_promoter | its quote says the allottees include promoters
+bse:79875074-3577-488b-b7e8-0ae77594d4ed | field:price_per_share | $1 is the face value of the new subsidiary's shares, not a price
+bse:79875074-3577-488b-b7e8-0ae77594d4ed | field:offer_pct | a wholly owned subsidiary is incorporated; there is no offer
+bse:79875074-3577-488b-b7e8-0ae77594d4ed | field:amount | the figure is the share capital of the new subsidiary, not a deal size
+bse:79875074-3577-488b-b7e8-0ae77594d4ed | field:shares | the shares are the new subsidiary's own capital, not a deal
+bse:58c4e869-e998-425c-8c96-09e379e68597 | metrics:all | the turnover is the subsidiary's, and the metric does not say so
+bse:5159d8e8-3ffc-43f3-8f18-5af0fd1a6116 | field:shares | Cupid is the investor converting warrants it holds in another company, not the issuer
+bse:5159d8e8-3ffc-43f3-8f18-5af0fd1a6116 | field:price_per_share | Cupid is the investor converting warrants it holds in another company, not the issuer
+bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:price_per_share | the issue was withdrawn: these are the withdrawn proposal's terms
+bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:shares | the issue was withdrawn: these are the withdrawn proposal's terms
+bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:amount | the issue was withdrawn: these are the withdrawn proposal's terms
+bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:allottee_is_promoter | the issue was withdrawn: these are the withdrawn proposal's terms
+nse:106819204 | headline | the filing says compounding amount, not penalty
+nse:106819881 | field:amount | the Rs 44.46 crore is a contract renewal mentioned in a results release, not this filing's deal
+nse:106818942 | field:amount | Rs 38.82 crore is the tax only; the penalty is another Rs 38.82 crore
+nse:106819066 | headline | drops "a maximum of" from the shares approved for listing
+bse:d028f7ff-e0ff-4541-a901-f352b057749b | headline | the directors are additional directors, effective on the EGM date and subject to member approval
+bse:7768eed1-27e2-43de-af5c-a1cc51ccdd97 | headline | the filing says the price movement "appears to be" market driven
+nse:106819018 | point:2 | adds "immediate"; the filing says the MoU does not by itself create a commitment

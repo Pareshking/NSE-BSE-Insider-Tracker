@@ -1526,3 +1526,72 @@ def s_found(quote, doc):
 def test_a_row_that_names_its_own_unit_is_backed_by_it():
     assert ar.s.unit_backed('88', 'crore', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x')
     assert ar.s.unit_backed('88', 'lakh', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x') is False
+
+
+def test_the_headline_has_a_subtitle_checked_like_the_headline():
+    doc = ('Issue of up to 6,32,00,000 equity shares at Rs 64.70 each aggregating up to ~Rs. 409.04 crores on a preferential basis.')
+    out = {'headline': {'text': 'Ujjivan SFB approves ₹409 Cr preferential issue',
+                        'quote': 'aggregating up to ~Rs. 409.04 crores on a preferential basis'},
+           'subtitle': {'text': 'Up to 6.32 crore equity shares', 'quote': 'Issue of up to 6,32,00,000 equity shares at Rs 64.70 each'}}
+    headline, _ = ar.card_words(out, doc, [], [])
+    assert headline['shown'] and headline['subtitle']['shown']
+    out['subtitle'] = {'text': 'Up to 7.32 crore equity shares', 'quote': 'Issue of up to 6,32,00,000 equity shares at Rs 64.70 each'}
+    headline, _ = ar.card_words(out, doc, [], [])
+    assert headline['shown'] and not headline['subtitle']['shown'] and 'number' in headline['subtitle']['reason']
+    out['headline']['text'] = 'Ujjivan SFB approves ₹490 Cr preferential issue'
+    assert not ar.card_words(out, doc, [], [])[0]['shown']                    # ₹490 Cr is not ₹409.04 crore
+
+
+def test_the_prompt_asks_for_the_owners_headline_format():
+    for ask in (ar.CARD_ASK, ar.CARD_ASK_V2):
+        assert 'HEADLINE FORMAT' in ask and 'Ujjivan SFB approves ₹409 Cr preferential issue' in ask and '"subtitle"' in ask
+
+
+def test_a_share_described_as_rupees_n_each_is_face_value_not_a_price():
+    assert ar.FACE_VALUE.search('allotted 1,000 equity shares of Rs.5/- each')
+    assert ar.FACE_VALUE.search('equity shares of Rs. 10 each')
+    assert not ar.FACE_VALUE.search('at a price of Rs 45.65 per share')
+
+
+def test_a_projected_figure_is_not_shown_as_a_metric():
+    doc = 'The solution is projected to deliver an approximately 50% improvement in customer experience. Revenue was 50% higher.'
+    out = {'metrics': [{'label': 'improvement', 'period': None, 'value': '50', 'unit': 'percent',
+                        'quote': 'projected to deliver an approximately 50% improvement in customer experience'},
+                       {'label': 'growth', 'period': None, 'value': '50', 'unit': 'percent', 'quote': 'Revenue was 50% higher'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert not metrics[0]['shown'] and 'projection' in metrics[0]['reason']
+    assert metrics[1]['shown']
+
+
+def test_an_answer_with_nothing_in_it_is_a_failed_read_so_another_lane_tries():
+    res = ar.result_of({}, 'Some filing text.', 'model', 1.0, 'gemini')
+    assert res['ok'] is False and 'nothing to show' in res['error']
+    assert ar.result_of({'category': 'routine'}, 'Some filing text.', 'model', 1.0, 'gemini')['ok'] is True
+
+
+def _field(name, value, quote, doc=None):
+    _, fields, _ = ar.validate({'fields': [{'name': name, 'value': value, 'quote': quote}]}, doc or quote)
+    return fields[0]
+
+
+def test_a_mixed_or_promoter_allottee_is_not_called_non_promoter_and_the_reverse():
+    assert not _field('allottee_is_promoter', 'false', 'to Promoters and Non-Promoters/Public shareholders')['shown']
+    assert not _field('allottee_is_promoter', 'true', 'Promoters Group and Non-Promoters Group')['shown']
+    assert _field('allottee_is_promoter', 'false', 'The Bank does not have any promoters. Allottees are QIBs')['shown']
+    assert _field('allottee_is_promoter', 'true', 'allotted to the promoter')['shown']
+
+
+def test_share_capital_is_not_a_deal_size_and_a_dollar_face_value_is_not_a_price():
+    q = 'the paid up share capital of the company stands at Rs. 55,10,47,175'
+    assert not _field('amount', '55,10,47,175', q)['shown']
+    q = 'At the face value of $ 1 (₹ 95 Approx)'
+    assert not _field('price_per_share', '1', q)['shown']
+
+
+def test_the_terms_of_a_withdrawn_deal_are_not_shown_as_its_fields():
+    doc = 'The Board approved to withdraw the proposed issue of 21,57,000 Warrants of Rs.151/- each aggregating to Rs.3257.07 Lakhs.'
+    out = {'category': 'preferential', 'headline': {'text': 'Board approved withdrawal of the proposed warrant issue',
+           'quote': 'approved to withdraw the proposed issue of 21,57,000 Warrants'},
+           'fields': [{'name': 'shares', 'value': '2157000', 'quote': '21,57,000 Warrants'}]}
+    res = ar.result_of(out, doc, 'm', 1.0, 'lane')
+    assert res['headline'] and not res['fields'][0]['shown'] and 'withdraws' in res['fields'][0]['reason']

@@ -425,3 +425,56 @@ steps. Subscribe to PR #56 and keep CI green."
 5. Sorter for `to_sort` filings from the subject plus the first ~1,500 characters (with the regulation
    cited there), so routine board outcomes are not read in full.
 6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.
+
+### Headline format (16 Oct, owner's rule)
+
+A reader should know the news from the title alone. The headline is the company's short trading name, a plain verb and the one
+figure that matters, in rupees ("Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr",
+"Onward Technologies raises FY27 growth outlook"), at most 70 characters; ₹ and Cr from one crore up, Lakh below, rounded to three
+significant digits and never more than 0.4% from the filing's figure; a foreign currency as the filing writes it. A subtitle
+(one line, "Up to 6.32 crore equity shares") carries the second fact. The subtitle is stored inside the headline (`headline.subtitle`),
+is checked like the headline (its quote in the filing, its figures in its own quote) and shows under it only when the headline shows.
+Prompt `live-10`; earlier reads are read again once.
+
+### Context on the card (16 Oct, owner's request; design, not built)
+
+The card should tell what the event means for this company, not only what the filing says. Rules:
+
+1. **Our code computes every context figure from our own tables; the model writes none.** A figure carries its
+   source and date ("TTM revenue, 4 quarters to 30 Jun 2026, NSE XBRL"). A block shows only when every input it
+   needs exists; otherwise it is left out, never estimated (CLAUDE.md rules 2 and 7).
+2. **Each category gets its own blocks.** Promoter holding belongs to insider trades and to fundraising where
+   promoters take part; it is not shown on a deal or an order.
+3. **A condition the filing states is kept** (subject to approval, up to, proposed); a change is shown as the
+   filing's two numbers and our difference (59.67% to 58.23% is -1.44 percentage points; a stake still above 50%
+   is "remains a subsidiary", never a loss of control).
+
+| Category | Blocks (inputs) | Have today | To collect |
+|---|---|---|---|
+| Order or contract win | Order size against TTM revenue; order book before and after; orders this FY | Order size (card); market cap | TTM revenue (quarterly results XBRL, `insiders_clean/results.py`, in progress); order book from our earlier cards for the company ("as stated on date") |
+| Preferential, rights, QIP, warrants | Price against last close and against the SEBI ICDR reference price (needs the relevant date from the filing and our volume and value for a VWAP); issue size against market cap; dilution (new shares / shares outstanding); promoter participation; warrants converted, outstanding | Last close, market cap, issue price and shares (card) | Shares outstanding and outstanding convertibles (shareholding XBRL, partly there) |
+| Debt repaid or raised | Borrowings before; after = before - or + amount, marked as pro forma | Amount (card) | Borrowings from the results XBRL balance sheet |
+| Quarterly results | Quarter against year-ago quarter and previous quarter: revenue, EBITDA, margins, PAT, exceptional items; growth accelerating or not; PAT with and without exceptional items | Card metrics from the press release | Results XBRL for 8 quarters back; EBITDA is derived (profit before tax + finance costs + depreciation - other income), labelled as ours |
+| Acquisition, divestment, stake change | Value against acquirer's market cap and TTM revenue; stake before, after, change in percentage points; cash or shares; funding source; expected completion | Fields from the filing | Acquirer size from the tables above |
+| Capacity and capex | Existing, new, increase %; project cost; spent and remaining; commissioning date; phase (Jindal Paradip: 12.5 MTPA entering operation, 25 MTPA across two phases) | Card fields (capacity_to) | Earlier capacity cards for the company; phase needs a field of its own in the prompt |
+
+Shape (owner's proposal, 16 Oct): a reusable **context engine** between the stored facts and the card, not more
+model prose. `insiders_clean/context.py`: pure functions `context_for(event, tables)` returning blocks; each block has
+`kind`, `label`, `value`, `unit`, `inputs` (name, value, as-of date, source table) and `status` (`ok` or
+`unavailable` with the reason). Computed in the precompute step and stored beside the card, so the site only renders
+and a rule change needs no re-read. Three layers on the card, always labelled apart:
+
+- **Reported fact**: from the filing, with its quote (an order of Rs 500 Cr).
+- **Calculation**: ours, from dated inputs (order / TTM revenue = 50%; debt after = before - repaid, pro forma).
+- **Interpretation**: only from a written rule with its threshold (an order of 25% or more of TTM revenue is "large
+  for the company"), never a model's guess. The model writes no "why it matters" (13 Oct decision stands: it would
+  be invented without concalls and annual reports). A fixed "Unknowns" line lists, from the code, which inputs were
+  missing.
+
+Rules: missing is never zero (no baseline, no comparison: "not available: no debt figure since 31 Mar 2026"); every
+comparison shows both dates (a March debt figure is labelled March, with its age); facts, calculations and
+interpretations are never mixed in one sentence.
+
+Build order, each step behind its own tests and a sample on real cards: (1) fundraising blocks (all inputs in
+hand but shares outstanding); (2) quarterly results XBRL for the last 8 quarters, then results and order blocks;
+(3) debt; (4) capacity and M&A blocks that need only the filing and earlier cards.
