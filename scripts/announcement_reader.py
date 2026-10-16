@@ -68,7 +68,8 @@ MIN_MCAP = 100 * 1e7          # Rs 100 Cr: smaller companies' PDFs never go to a
 SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
-SLOW_STRIKES = 2              # timeouts in a row before a model is left out for the run
+COOLDOWN_SECONDS = 600        # a model that timed out, errored (5xx) or hit a per-minute limit rests this long; a
+                              # provider whose models fail one after another rests as a whole (see Lane.failed)
 # Free calls a day (as listed 13 Oct), by provider:model or provider; a lane stops a model at 95% of it,
 # counting the provider's day so far (usage ledger, every run) and this run. NVIDIA's ~10K a day "may vary";
 # Z.ai lists none.
@@ -143,14 +144,33 @@ def lanes_of(text: str) -> dict[str, list[str]]:
     return out
 
 
-class Lane:
-    """One lane's models, each provider's in turn; slow models are left out after SLOW_STRIKES timeouts."""
+def is_outage_error(message: str) -> bool:
+    """A model that did not answer (timeout, connection, HTTP 5xx): it is resting, not refusing."""
+    return bool(re.search(r'Timeout|ConnectionError|ChunkedEncoding|SSLError|HTTP\s*5\d\d', str(message or '')))
 
-    def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None):
+
+def is_daily_limit_error(message: str) -> bool:
+    """A quota that does not come back before tomorrow, unlike a per-minute limit."""
+    return bool(re.search(r'per day|tokens per day|requests per day|daily|quota exceeded|resource exhausted',
+                          str(message or ''), re.IGNORECASE))
+
+
+class Lane:
+    """One lane's models, each provider's in turn. A model that fails to answer rests COOLDOWN_SECONDS and the
+    lane moves to its next model; when two models of one provider fail within that time the whole provider rests
+    (for every lane), and the lane's filings go to the other providers' lanes. A daily quota stops a model for
+    the day."""
+
+    def __init__(self, name: str, entries: list[str], clients: dict, used_today: dict | None = None,
+                 health: dict | None = None, clock=time.monotonic):
         self.name, self.entries, self.clients = name, list(entries), clients
-        self.strikes, self.dropped = {}, []
+        self.dropped = []                  # stopped for the day (daily quota)
         self.rate_limited, self.on_rate_limit = [], None
         self.used_today = used_today or {}   # calls by provider:model in today's earlier runs
+        self.clock = clock
+        self.cool_until = {}               # entry -> clock time it may be tried again
+        self.health = health if health is not None else {}   # provider -> {'failed': {entry: time}, 'until': time}
+        self.rested = []                   # every entry that rested, for the run report
 
     def calls_today(self, key: str) -> int:
         """Calls today under a DAILY_CALLS key (provider:model or provider), earlier runs and this one."""
@@ -164,16 +184,43 @@ class Lane:
         keys = [k for k in (entry, entry.split(':', 1)[0]) if k in DAILY_CALLS]
         return any(self.calls_today(k) >= DAILY_SHARE * DAILY_CALLS[k] for k in keys)
 
+    def resting(self, entry: str) -> bool:
+        now = self.clock()
+        prov = entry.split(':', 1)[0]
+        return self.cool_until.get(entry, -1) > now or self.health.get(prov, {}).get('until', -1) > now
+
     def models(self) -> list[tuple[str, str]]:
-        return [tuple(e.split(':', 1)) for e in self.entries if e not in self.dropped and not self.at_daily_limit(e)]
+        return [tuple(e.split(':', 1)) for e in self.entries
+                if e not in self.dropped and not self.at_daily_limit(e) and not self.resting(e)]
+
+    def cooling(self) -> bool:
+        """Some model is only resting: it will be tried again, so the lane should wait, not stop."""
+        return any(self.resting(e) for e in self.entries if e not in self.dropped and not self.at_daily_limit(e))
 
     def providers(self) -> set[str]:
         return {e.split(':', 1)[0] for e in self.entries}
+
+    def failed(self, entry: str, why: str) -> None:
+        """`entry` did not answer: rest it, and the whole provider when a second model of it failed just before."""
+        now, prov = self.clock(), entry.split(':', 1)[0]
+        self.cool_until[entry] = now + COOLDOWN_SECONDS
+        self.rested.append(entry)
+        log(f'{self.name}: {entry} did not answer ({why[:80]}); resting {COOLDOWN_SECONDS // 60} minutes')
+        h = self.health.setdefault(prov, {'failed': {}, 'until': -1})
+        h['failed'] = {e: t for e, t in h['failed'].items() if now - t < COOLDOWN_SECONDS}
+        h['failed'][entry] = now
+        if len(h['failed']) >= 2 and h['until'] <= now:
+            h['until'] = now + COOLDOWN_SECONDS
+            log(f'{self.name}: {prov} failed on {len(h["failed"])} models; the provider rests '
+                f'{COOLDOWN_SECONDS // 60} minutes and its filings go to the other providers')
 
     def read(self, prompt: str) -> tuple[str, str, float]:
         """(reply text, entry that answered, seconds). RuntimeError when every model failed."""
         t0, errors = time.monotonic(), []
         for prov, model in self.models():
+            entry = f'{prov}:{model}'
+            if self.resting(entry):          # the provider began resting during this very read
+                continue
             client = self.clients.get(prov)
             if client is None:
                 continue
@@ -183,25 +230,23 @@ class Lane:
                 continue
             try:
                 text, _, used = client.generate([model], prompt, 'read', json_mode=True)
-                self.strikes[f'{prov}:{model}'] = 0
                 return text, f'{prov}:{used}', round(time.monotonic() - t0, 1)
             except RuntimeError as exc:
-                entry = f'{prov}:{model}'
                 errors.append(f'{entry}: {exc}'[:200])
                 if is_rate_limit_error(str(exc)):
-                    if entry not in self.dropped:
-                        self.dropped.append(entry)
-                    if entry not in self.rate_limited:
-                        self.rate_limited.append(entry)
-                        log(f'{self.name}: {entry} rate-limited; circuit open for the rest of today')
-                        if self.on_rate_limit:
-                            self.on_rate_limit(entry, str(exc)[:500])
-                if 'Timeout' in str(exc):
-                    self.strikes[entry] = self.strikes.get(entry, 0) + 1
-                    if self.strikes[entry] >= SLOW_STRIKES and entry not in self.dropped:
-                        self.dropped.append(entry)
-                        log(f'{self.name}: {entry} timed out {SLOW_STRIKES} times running; left out this run')
-        raise RuntimeError('; '.join(errors) or f'{self.name}: no model available (slow, or at its daily limit)')
+                    if is_daily_limit_error(str(exc)):
+                        if entry not in self.dropped:
+                            self.dropped.append(entry)
+                        if entry not in self.rate_limited:
+                            self.rate_limited.append(entry)
+                            log(f'{self.name}: {entry} rate-limited; circuit open for the rest of today')
+                            if self.on_rate_limit:
+                                self.on_rate_limit(entry, str(exc)[:500])
+                    else:
+                        self.failed(entry, 'per-minute rate limit')
+                elif is_outage_error(str(exc)):
+                    self.failed(entry, str(exc))
+        raise RuntimeError('; '.join(errors) or f'{self.name}: no model available (resting, or at its daily limit)')
 
 
 RATE_LIMIT_PREFIX = 'clean/reports/announcement_reader/rate-limits/'
@@ -959,8 +1004,13 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def take(lane: Lane):
         """('read', job) / ('fail', job) / ('check', rec) / ('wait', None) / ('stop', None), under the lock."""
         nonlocal taken
-        if now() - started > budget_seconds or not lane.models():   # time up, or every model slow or at its limit
+        if now() - started > budget_seconds:
             alive.discard(lane.name)
+            return 'stop', None
+        if not lane.models():
+            if lane.cooling():       # only resting: try again in a moment, the other lanes read meanwhile
+                return 'wait', None
+            alive.discard(lane.name)  # every model at its daily limit
             return 'stop', None
         for job in retry:
             if lane.name not in job['tried']:
@@ -1279,8 +1329,7 @@ def usage(clients: dict, lanes: dict[str, Lane], since: dict[str, int] | None = 
         secs = sorted(e.pop('seconds'))
         e['median_seconds_ok'] = secs[len(secs) // 2] if secs else None
     return {'models': out,
-            'left_out_as_slow': {n: [e for e in lane.dropped if e not in lane.rate_limited]
-                                 for n, lane in lanes.items() if any(e not in lane.rate_limited for e in lane.dropped)},
+            'left_out_as_slow': {n: sorted(set(lane.rested)) for n, lane in lanes.items() if lane.rested},
             'left_out_as_rate_limited': {n: lane.rate_limited for n, lane in lanes.items() if lane.rate_limited}}
 
 
@@ -1508,7 +1557,8 @@ def main(argv=None):
     entries = [e for es in lane_spec.values() for e in es]
     clients, notes = clients_for(entries)
     setup += notes
-    lanes = {n: Lane(n, [e for e in usable(es) if e.split(':', 1)[0] in clients], clients)
+    health = {}   # shared by the lanes: which providers are resting
+    lanes = {n: Lane(n, [e for e in usable(es) if e.split(':', 1)[0] in clients], clients, health=health)
              for n, es in lane_spec.items()}
     lanes = {n: lane for n, lane in lanes.items() if lane.entries}
     if not lanes:

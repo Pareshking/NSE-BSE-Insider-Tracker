@@ -339,18 +339,71 @@ QIP = json.dumps({'category': 'qip', 'fields': [
     {'name': 'price_per_share', 'value': '165.65', 'quote': 'at the issue price of Rs. 165.65 per Equity Share'}]})
 
 
-def test_lane_falls_back_and_leaves_out_a_model_that_keeps_timing_out():
-    slow = RuntimeError('all nvidia read models busy or refused (moonshotai/kimi-k3: ReadTimeout)')
-    c = FakeClient([slow, QIP, slow, QIP, QIP])
-    lane = ar.Lane('main', ['nvidia:moonshotai/kimi-k3', 'nvidia:google/gemma-4-31b-it'], {'nvidia': c})
-    assert lane.read('p')[1] == 'nvidia:google/gemma-4-31b-it'
-    lane.read('p')
-    assert lane.dropped == ['nvidia:moonshotai/kimi-k3']
-    lane.read('p')
-    assert c.asked == ['moonshotai/kimi-k3', 'google/gemma-4-31b-it'] * 2 + ['google/gemma-4-31b-it']
+@pytest.fixture(autouse=True)
+def short_rest(monkeypatch):
+    """A resting model comes back after a blink in the run-level tests; the lane tests below set 600 s again."""
+    monkeypatch.setattr(ar, 'COOLDOWN_SECONDS', 0.05)
+
+
+class Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def test_a_model_that_times_out_rests_ten_minutes_and_the_lane_uses_its_next_model(monkeypatch):
+    monkeypatch.setattr(ar, 'COOLDOWN_SECONDS', 600)
+    slow = RuntimeError('all nvidia read models busy or refused (a: ReadTimeout)')
+    c = FakeClient([slow, QIP, QIP, QIP])
+    clock = Clock()
+    lane = ar.Lane('main', ['nvidia:a', 'nvidia:b'], {'nvidia': c}, clock=clock)
+    assert lane.read('p')[1] == 'nvidia:b'                   # a timed out, b answered the same read
+    assert lane.read('p')[1] == 'nvidia:b' and c.asked == ['a', 'b', 'b']   # a is not asked again
+    clock.t += 601                                           # ten minutes on: a is tried first again
+    assert lane.read('p')[1] == 'nvidia:a' and c.asked[-1] == 'a'
     use = ar.usage({'nvidia': c}, {'main': lane})
-    assert use['models']['nvidia:google/gemma-4-31b-it'] == {'calls': 3, 'by_status': {'200': 3}, 'median_seconds_ok': 12.5}
-    assert use['left_out_as_slow'] == {'main': ['nvidia:moonshotai/kimi-k3']}
+    assert use['left_out_as_slow'] == {'main': ['nvidia:a']}
+
+
+def test_two_models_of_one_provider_failing_rest_the_provider_for_every_lane(monkeypatch):
+    monkeypatch.setattr(ar, 'COOLDOWN_SECONDS', 600)
+    down = RuntimeError('all nvidia read models busy or refused (x: HTTP 503)')
+    health, clock = {}, Clock()
+    nv = FakeClient([down, down])
+    lane = ar.Lane('nvidia', ['nvidia:a', 'nvidia:b'], {'nvidia': nv}, health=health, clock=clock)
+    other = ar.Lane('nvidia2', ['nvidia:c'], {'nvidia': nv}, health=health, clock=clock)
+    with pytest.raises(RuntimeError):
+        lane.read('p')
+    assert lane.models() == [] and lane.cooling()            # the whole provider rests, the lane waits, not stops
+    assert other.models() == [] and other.cooling()          # and so does another lane of that provider
+    clock.t += 601
+    assert lane.models() == [('nvidia', 'a'), ('nvidia', 'b')] and other.models() == [('nvidia', 'c')]
+
+
+def test_a_per_minute_limit_rests_the_model_but_a_daily_quota_stops_it_for_the_day(monkeypatch):
+    monkeypatch.setattr(ar, 'COOLDOWN_SECONDS', 600)
+    minute = RuntimeError('groq:m: HTTP 429: Rate limit reached for model, tokens per minute (TPM): Limit 8000')
+    lane = ar.Lane('groq', ['groq:m'], {'groq': FakeClient([minute])}, clock=Clock())
+    with pytest.raises(RuntimeError):
+        lane.read('p')
+    assert lane.dropped == [] and lane.rate_limited == [] and lane.cooling() and lane.models() == []
+    day = RuntimeError('groq:m: HTTP 429: rate limit reached for tokens per day (TPD)')
+    lane2 = ar.Lane('groq', ['groq:m'], {'groq': FakeClient([day])}, clock=Clock())
+    with pytest.raises(RuntimeError):
+        lane2.read('p')
+    assert lane2.dropped == ['groq:m'] and lane2.rate_limited == ['groq:m'] and not lane2.cooling()
+
+
+def test_a_whole_provider_down_sends_every_filing_to_the_other_providers_and_the_run_still_ends(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    down = RuntimeError('all nvidia read models busy or refused (x: ReadTimeout)')
+    health = {}
+    lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:a', 'nvidia:b'], {'nvidia': FakeClient([down] * 50)}, health=health),
+             'zai': ar.Lane('zai', ['zai:m'], {'zai': FakeClient([QIP] * 50)}, health=health)}
+    rows, notes = ar.run(_qips(4), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(rows) == 4 and all(r['status'] == 'read' and r['reader_lane'] == 'zai' for r in rows)
 
 
 def test_rate_limited_model_is_circuit_broken_and_fallback_continues():
@@ -1097,3 +1150,24 @@ def test_a_cached_empty_file_is_no_text_without_a_download():
     lanes = {'nvidia': ar.Lane('nvidia', ['nvidia:m'], {'nvidia': FakeClient([])})}
     rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda u: 1 / 0, idle_wait=0.01, text_cache=cache, max_filings=1)
     assert rows[0]['status'] == 'no_text' and 'no text layer' in rows[0]['reason']
+
+
+def test_a_chat_model_that_times_out_is_not_asked_twice_so_the_lane_can_move_on():
+    import requests
+
+    class Session:
+        headers = {}
+
+        def __init__(self):
+            self.posts = 0
+
+        def post(self, *a, **k):
+            self.posts += 1
+            raise requests.ReadTimeout('slow')
+
+    sess = Session()
+    client = sample.OpenAICompat('nvidia', 'https://x', 'k', session=sess, sleep=lambda _: None)
+    assert client.call_seconds == 90
+    with pytest.raises(RuntimeError, match='ReadTimeout'):
+        client.generate(['a'], 'p', 'read', json_mode=True)
+    assert sess.posts == 1   # no second round after 45 s
