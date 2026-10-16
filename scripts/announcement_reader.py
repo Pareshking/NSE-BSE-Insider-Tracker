@@ -1010,7 +1010,7 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 
 
-FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)[\s|(]*from\b[\s|]*(?:\w+[\s|]*){0,6}?(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
 LOOP_PATTERNS = (
     ('approval_pending', re.compile(r'subject\s+to\b[^.;]{0,90}(?:approval|consent|sanction|no[- ]objection|clearance|due\s+diligence|definitive|conditions?\s+precedent)', re.IGNORECASE)),
