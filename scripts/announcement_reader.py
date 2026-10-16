@@ -29,6 +29,7 @@ Only public filing text goes in a prompt.
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import hashlib
 import json
 import os
@@ -1492,6 +1493,9 @@ def collect(r2, today: date, dry_run: bool, notes: list):
 
 
 def main(argv=None):
+    # A run that goes silent (16 Oct: 28 minutes without a log line until the job timeout) must say where it is
+    # stuck: every 10 minutes the stack of every thread goes to the log.
+    faulthandler.dump_traceback_later(600, repeat=True, file=sys.stderr)
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--dry-run', action='store_true', help='fetch today\'s lists, read, print; write nothing')
     ap.add_argument('--max', type=int, default=None, help='read at most this many filings')
