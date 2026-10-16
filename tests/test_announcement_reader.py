@@ -1440,3 +1440,44 @@ def test_an_evoting_cutoff_date_is_not_a_record_date_and_a_field_can_be_held_aft
     res, n = ar.apply_holds(df, ar.holds_of('e1 | field:record_date | e-voting cut-off'))
     fs = json.loads(res.at[0, 'fields'])
     assert n == 1 and not fs[0]['shown'] and fs[1]['shown']
+
+
+def test_a_scan_with_a_mangled_text_layer_shows_no_figures():
+    good = 'Revenue from operations 68,505.45 57,675.02 55,918.02 Net profit 4,306.19 2,239.94 11,226.45 ' * 40
+    bad = ' '.join(['2J9,51o', '5A23st', '1r,Es599', '3r63Es', 't,61,9U', '4s964', '8,6l6', 'I,160'] * 6)
+    assert not ar.text_is_garbled(good) and ar.text_is_garbled(good + ' ' + bad * 2)
+    assert not ar.text_is_garbled('Q2FY27 FY26 AY2024 INE220B08100 L24230TG1987PLC008016 1st 5th 28.06.2019 ' * 20)
+    doc = good + ' ' + bad * 2 + ' Operating Profit 71,248'
+    out = {'metrics': [{'label': 'Operating Profit', 'period': 'Q2', 'value': '71,248', 'unit': 'lakh', 'quote': 'Operating Profit 71,248'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert not metrics[0]['shown'] and 'mangled scan' in metrics[0]['reason']
+    item = ar.check_words({'text': 'Operating profit 71,248 lakh', 'quote': 'Operating Profit 71,248'}, doc)
+    assert not item['shown'] and 'mangled scan' in item['reason']
+
+
+def test_a_face_value_is_not_a_price_and_a_turnover_is_not_the_size_of_a_deal():
+    doc = ('Allotment of 7,467 Equity Shares of face value of Rs. 10/- each. Turnover as on March 31, 2026 - Rs.0.02 crores. '
+           'Equity shares of face value Rs 10 each at a price of Rs 45.65 per share.')
+    out = {'fields': [{'name': 'price_per_share', 'value': 'Rs. 10/-', 'quote': 'allotment of 7,467 Equity Shares of face value of Rs. 10/- each'},
+                      {'name': 'amount', 'value': '0.02', 'quote': 'Turnover as on March 31, 2026 - Rs.0.02 crores'},
+                      {'name': 'amount_unit', 'value': 'crore', 'quote': None},
+                      {'name': 'price_per_share', 'value': '45.65', 'quote': 'face value Rs 10 each at a price of Rs 45.65 per share'}]}
+    _, fields, _ = ar.validate(out, doc)
+    by = {(f['name'], str(f['value'])): f for f in fields}
+    assert not by[('price_per_share', 'Rs. 10/-')]['shown'] and 'face value' in by[('price_per_share', 'Rs. 10/-')]['reason']
+    assert not by[('amount', '0.02')]['shown'] and 'turnover' in by[('amount', '0.02')]['reason']
+
+
+def test_an_identifier_in_a_claim_must_be_written_in_its_quote():
+    claim = "Company's CIN changed from L24230TG1987PLC008016 to L21001TG1987PLC008016"
+    assert not ar.numbers_backed(claim, ['The Corporate Identification Number ("CIN") of the Company stands changed'])
+    assert ar.numbers_backed(claim, ['CIN changed from L24230TG1987PLC008016 to L21001TG1987PLC008016'])
+    assert ar.numbers_backed('Rating withdrawn for NCDs under ISIN INE220B08100', ['withdrawn the rating for NCDs under ISIN INE220B08100'])
+    assert not ar.numbers_backed('Rating withdrawn for NCDs under ISIN INE220B08100', ['withdrawn the rating for NCDs under ISIN INE220B08200'])
+
+
+def test_all_metrics_of_a_card_can_be_held_after_review():
+    df = pd.DataFrame([{'event_id': 'e1', 'headline': None, 'points': '[]',
+                        'metrics': json.dumps([{'label': 'A', 'shown': True}, {'label': 'B', 'shown': True}])}])
+    out, n = ar.apply_holds(df, ar.holds_of('e1 | metrics:all | scan'))
+    assert n == 2 and not any(m['shown'] for m in json.loads(out.at[0, 'metrics']))

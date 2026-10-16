@@ -9,3 +9,8 @@ nse:106819268 | headline | adds the Company Secretary appointment, which its quo
 bse:8ce579b9-caba-44db-80fc-3ebc3d84d2b6 | point:4 | adds that the company envisages no adverse impact; its quote states only the tax effect of INR 1.72 crores
 nse:106819283 | words | says he was appointed Company Secretary; the filing lists him as the authorised person under Regulation 30(5) and does not say he was appointed
 nse:106819746 | field:record_date | the date is the cut-off date for e-voting at the AGM (5 Nov 2026), not a record date for an entitlement
+bse:1fc3350a-5d77-4bfa-83de-b657bdf3cdd9 | headline | gives the old and new CIN, which its quote ("CIN stands changed") does not state
+nse:106819730 | field:price_per_share | Rs 10 is the face value of the shares, not the price they were allotted at
+nse:106819295 | field:amount | Rs 0.02 crore is the turnover of the company being liquidated, not the size of a deal
+nse:106819273 | metrics:all | the filing is a scan with a mangled text layer (183 mangled number tokens), so its figures cannot be trusted
+bse:9ac94bb8-eed8-4efb-af82-6a3535fd0252 | point:3 | adds compliance with FSSAI regulations and international culinary standards, which its quote does not state
