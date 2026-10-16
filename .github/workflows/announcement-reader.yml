@@ -75,7 +75,7 @@ concurrency:
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON(inputs.minutes || '11') + 20 }}
+    timeout-minutes: 110   # the reader stops starting reads after `minutes` (11 by default; 80 for a supervised 100)
     outputs:
       started: ${{ steps.start.outputs.at }}
     steps:
