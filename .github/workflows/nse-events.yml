@@ -129,8 +129,15 @@ jobs:
           fi
           echo "round $ROUND: pending $PENDING, parsed $FETCHED, refused $BLOCKED"
           if [ "$PENDING" -gt 0 ] && [ "$FETCHED" -gt 0 ] && [ "$BLOCKED" -eq 0 ] && [ "$ROUND" -lt "$LIMIT" ]; then
-            $NEXT
-            echo "started round $((ROUND + 1))"
+            # A queued run (the nightly collection) must not be replaced by the next round: GitHub keeps only the newest
+            # waiting run (15 Oct 2026: the nightly was cancelled that way). Pause; the resume line below restarts it.
+            WAITING=$(gh run list --workflow nse-events.yml --status queued --json databaseId --jq length 2>/dev/null || echo 0)
+            if [ "${WAITING:-0}" -gt 0 ]; then
+              echo "another run is waiting; the catch-up pauses. Resume with: $NEXT"
+            else
+              $NEXT
+              echo "started round $((ROUND + 1))"
+            fi
           else
             echo "catch-up finished or stopped"
           fi
