@@ -625,7 +625,8 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
     out = {'category': 'rights', 'fields': [{'name': 'price_per_share', 'value': '12', 'quote': 'Issue Price ₹ 12 per Equity Share'}],
            'metrics': [{'label': 'Sales', 'period': 'Sep 2026', 'value': '1071', 'unit': 'units', 'quote': 'FY 2027 1071',
                         'previous': '812', 'previous_period': 'Sep 2025', 'previous_quote': 'FY 2026 812'}],
-           'headline': {'text': 'Company sets ₹120 Cr rights issue at ₹12', 'quote': 'Issue Size up to ₹ 12,000 Lakhs'},
+           'headline': {'text': 'Company sets ₹120 Cr rights issue at ₹12',
+                        'quote': 'Issue Size up to ₹ 12,000 Lakhs. Issue Price ₹ 12 per Equity Share'},
            'points': [{'text': 'Up to 10 Cr shares will be issued.', 'quote': 'up to 10,00,00,000 Right Equity Shares'},
                       {'text': 'Raising ₹500 Cr.', 'quote': 'Issue Size up to ₹ 12,000 Lakhs'},
                       {'text': 'Words the filing does not have.', 'quote': 'nowhere in it'}]}
@@ -1242,3 +1243,70 @@ def test_candidates_stay_fast_with_a_month_of_filings():
     out = ar.candidates(pd.DataFrame(rows), pd.DataFrame(), None).set_index('event_id')
     assert time.monotonic() - t0 < 30
     assert len(out) == 12001 and out.loc['xbrl:1', 'group'] == 'routine'
+
+
+def test_a_number_never_changes_unit_on_the_way_from_quote_to_claim():
+    assert not ar.numbers_backed('Order of Rs 5 crore', ['Order of Rs 5 lakh'])        # crore is not lakh
+    assert not ar.numbers_backed('Rs 250 for the plant', ['Rs 250 crores for the plant'])   # a dropped unit
+    assert not ar.numbers_backed('Order of Rs 50 crore', ['Order of Rs 50 million'])
+    assert ar.numbers_backed('Raises Rs 120 crore', ['Rs 12,000 lakhs'])                # converted, same amount
+    assert ar.numbers_backed('allotted 5,30,000 shares at Rs 45.65', ['allotted 5,30,000 Equity Shares at Rs. 45.65/-'])
+
+
+def test_a_headline_or_point_is_backed_by_its_own_quote_not_by_another_quote_of_the_card():
+    doc = ('Initial capacity of 5000 vehicles/shift/year. It is the first phase of EIM 1000 crore investment in '
+           'Maharashtra.')
+    out = {'category': 'operations_start',
+           'fields': [{'name': 'capacity_to', 'value': '5000', 'quote': 'Initial capacity of 5000 vehicles/shift/year.'}],
+           'headline': {'text': 'First phase of Rs 1000 crore investment starts with 5000 vehicles capacity',
+                        'quote': 'It is the first phase of EIM 1000 crore investment in Maharashtra.'},
+           'points': [{'text': 'Initial capacity is 5000 vehicles a year.', 'quote': 'Initial capacity of 5000 vehicles/shift/year.'}]}
+    cat, fields, metrics = ar.validate(out, doc)
+    headline, points = ar.card_words(out, doc, fields, metrics)
+    assert not headline['shown'] and 'a number not in its quote' in headline['reason']   # 5000 is in another quote
+    assert points[0]['shown']
+
+
+def test_an_invented_capacity_before_is_held_back_and_a_real_one_is_kept():
+    doc = 'initial capacity of 5000 vehicles/shift/year. Capacity rises from 2,000 tpa to 8,000 tpa.'
+    out = {'fields': [{'name': 'capacity_from', 'value': '0 vehicles/shift/year', 'quote': 'initial capacity of 5000 vehicles/shift/year.'},
+                      {'name': 'capacity_to', 'value': '5000 vehicles/shift/year', 'quote': 'initial capacity of 5000 vehicles/shift/year.'}]}
+    _, fields, _ = ar.validate(out, doc)
+    by = {f['name']: f for f in fields}
+    assert not by['capacity_from']['shown'] and 'number not in its quote' in by['capacity_from']['reason']
+    assert by['capacity_to']['shown']
+
+
+def test_a_record_date_needs_the_words_record_date_in_its_quote():
+    doc = 'the Income Tax Department conducted a survey on 14th October 2026. The record date is 20 October 2026.'
+    out = {'fields': [{'name': 'record_date', 'value': '2026-10-14', 'quote': 'conducted a survey on 14th October 2026'},
+                      {'name': 'record_date', 'value': '2026-10-20', 'quote': 'The record date is 20 October 2026'}]}
+    _, fields, _ = ar.validate({'fields': out['fields'][:1]}, doc)
+    assert not fields[0]['shown'] and 'record date' in fields[0]['reason']
+    _, fields, _ = ar.validate({'fields': out['fields'][1:]}, doc)
+    assert fields[0]['shown']
+
+
+def test_approved_is_not_shown_where_the_quote_says_recommended():
+    quote = 'has, inter alia, considered the following and approved / recommended the same'
+    assert ar.status_upgraded('Board approved related party transactions', quote)
+    assert ar.status_upgraded('Board approved the scheme', 'The Board recommended the scheme')
+    assert not ar.status_upgraded('Board approved the results', 'Considered and approved the results, as recommended by the Audit Committee')
+    doc = quote
+    item = ar.check_words({'text': 'Board approved related party transactions', 'quote': quote}, doc)
+    assert not item['shown'] and 'recommended' in item['reason']
+
+
+def test_a_table_quote_keeps_its_unit_only_when_the_table_heading_has_it():
+    doc = '\n'.join(['Rs. Crore | Quarter ended | Quarter ended', 'September 30, 2026 | June 30, 2026',
+                     'Income | 86.5 | 88.4', 'Profit before tax | 9.5 | 15.5'])
+    out = {'metrics': [{'label': 'Profit before tax', 'period': 'Q2', 'value': '9.5', 'unit': 'crore',
+                        'quote': 'Quarter ended September 30, 2026 Profit before tax 9.5'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert metrics[0]['evidence'] == 'table' and metrics[0]['shown']
+    no_unit = doc.replace('Rs. Crore | ', 'Particulars | ')
+    _, _, metrics = ar.validate(out, no_unit)
+    assert not metrics[0]['shown'] and 'unit not backed' in metrics[0]['reason']
+    lakh = doc.replace('Rs. Crore', 'Rs. in Lakhs')
+    _, _, metrics = ar.validate(out, lakh)
+    assert not metrics[0]['shown']                       # the heading says lakh, the card says crore
