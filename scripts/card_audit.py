@@ -101,6 +101,20 @@ def unit_problems(claim: str, quote: str) -> list[str]:
     return out
 
 
+def table_header(doc: str, quote, above: int = 7) -> list[str]:
+    """The non-empty lines above the table row a quote is taken from (a line of three or more numbers that contains the
+    quote, whole or cut short), where the period and unit headings sit."""
+    q = re.sub(r'\s+', ' ', str(quote or '')).strip().casefold()
+    if not q or not NUMBER.search(q):
+        return []
+    lines = doc.splitlines()
+    for i, ln in enumerate(lines):
+        flat = re.sub(r'\s+', ' ', ln).strip().casefold()
+        if q in flat and len(NUMBER.findall(flat)) >= 3:
+            return [re.sub(r'\s{2,}', '  ', x).strip()[:170] for x in lines[max(0, i - above):i] if x.strip()]
+    return []
+
+
 def revalidate(r: dict, doc: str) -> list[str]:
     """Run today's rules over the stored card and say which shown items they would now hold back."""
     fields = [{'name': f.get('name'), 'value': f.get('value'), 'quote': f.get('quote')} for f in load(r.get('fields'), [])]
@@ -172,6 +186,11 @@ def main() -> int:
                 print(f"- METRIC {m.get('label')} [{m.get('period')}] = {m.get('value')} {m.get('unit')}\n  - quote: \"{m.get('quote')}\"")
                 if not s.quote_found(m.get('quote'), doc):
                     flags.append(f"metric {m.get('label')}: QUOTE NOT IN TEXT")
+                header = table_header(doc, m.get('quote'))
+                if header:
+                    print('  - TABLE HEADING above the row (check period and unit):')
+                    for h in header:
+                        print(f'    | {h}')
                 if m.get('previous') not in (None, ''):
                     print(f"  - PREVIOUS [{m.get('previous_period')}] = {m.get('previous')} (change {m.get('change_pct')}%)\n"
                           f"    - previous quote: \"{m.get('previous_quote')}\"")
