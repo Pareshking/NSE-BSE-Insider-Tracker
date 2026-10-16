@@ -786,6 +786,10 @@ def strip_periods(text) -> str:
     return _PERIOD.sub(' ', str(text or ''))
 
 
+NUMBER_WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+                'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20, 'thirty': 30, 'sixty': 60}
+
+
 def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
@@ -794,6 +798,8 @@ def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
     quotes = [strip_periods(q) for q in quotes]
     text = strip_periods(text)
     have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
+    have += [pair for q in quotes for pair in numbers_in(' '.join(str(NUMBER_WORDS[w.lower()]) for w in re.findall(
+        r'\b(?:' + '|'.join(NUMBER_WORDS) + r')\b', str(q), re.IGNORECASE)))]    # "vest over three years" backs "3 years" (Sedemac)
     have += [(float(x), float(x)) for x in extra if isinstance(x, (int, float)) and x == x]   # figures already checked on this card
     have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
     have_days = {d for _, _, d in have_dates}   # "from November 3 to November 5, 2026" gives the first date no year
@@ -1203,6 +1209,26 @@ def full_person_name(text: str, doc: str, names=()) -> str:
     return text
 
 
+_SAST_PARTY = re.compile(r'Name\(s\)\s+of\s+the\s+(acquirer|seller)[^|\n]*\|\s*([^\n|]+)', re.IGNORECASE)
+_PARTY_STOP = {'private', 'limited', 'ltd', 'pvt', 'the', 'and', 'company', 'trustee', 'india', 'a/c', 'fund'}
+
+
+def sast_party_reason(headline_text: str, doc, names=()) -> str | None:
+    """A stake or pledge headline names the acquirer or seller the filing names ("Name(s) of the acquirer / seller"), not the listed
+    company that is the target (DCM Shriram "transfers" its own stake, Centrum "stake rises": the party was JBCG / Urvashi Tilakdhar)."""
+    m = _SAST_PARTY.search(str(doc))
+    if not m:
+        return None
+    party = re.sub(r'\(.*?\)|[:.;]+$', '', m.group(2)).strip()
+    words = [w for w in re.findall(r'[A-Za-z0-9&]{3,}', party.lower()) if w not in _PARTY_STOP]
+    if not words:
+        return None
+    head = str(headline_text).lower()
+    if words[0] in head:
+        return None
+    return f'the headline does not name the {m.group(1).lower()} the filing names ({party[:40]})'
+
+
 def promote_point(headline, points, names=(), extra=(), category=''):
     """No headline survived the checks: the first point that did survive (each is proved by its own quote) leads the card,
     in the company's short name, rather than a card with nothing on it (golden set 1: Aegis, Regency, Kabra, ITH)."""
@@ -1359,6 +1385,11 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         if fc:
             headline = fc
     headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
+    if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') in ('stake_change', 'pledge'):
+        why = sast_party_reason(headline.get('text'), doc, names)
+        if why:
+            headline = {**headline, 'shown': False, 'reason': '; '.join(x for x in (headline.get('reason'), why) if x)}
+            headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
     if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') == 'management_change':
         headline['text'] = full_person_name(headline['text'], doc, names)
     return headline, drop_repeats(headline, points)

@@ -2018,3 +2018,18 @@ def test_changes_from_the_filings_row_when_the_quote_has_one_column():
     ch = ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}, doc)
     assert ch['change_pct'] == 13.6 and ch['qoq_pct'] == 1.7
     assert ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}) == {}
+
+
+def test_stake_headline_must_name_the_party_the_filing_names():
+    seller = 'Name of the Target Company (TC) | DCM Shriram Fine Chemicals Limited\nName(s) of the seller and Persons | Urvashi Tilakdhar\nActing in Concert'
+    assert ar.sast_party_reason('DCM Shriram transfers 30.94% stake to Alok B Shriram', seller) is not None
+    assert ar.sast_party_reason('Urvashi Tilakdhar sells 30.94% of DCM Shriram', seller) is None
+    buyer = 'Name(s) of the acquirer and Persons | JBCG ADVISORY SERVICES PRIVATE LIMITED\nActing in concert'
+    assert ar.sast_party_reason('Centrum Capital stake rises 2.40% to 13.88%', buyer) is not None
+    assert ar.sast_party_reason('JBCG Advisory buys 2.40% of Centrum', buyer) is None
+    assert ar.sast_party_reason('anything', 'no party line here') is None
+
+
+def test_number_words_back_digits():
+    assert ar.numbers_backed('Options vest over 3 years', ['The options shall vest over three years from the grant date'])
+    assert not ar.numbers_backed('Options vest over 4 years', ['The options shall vest over three years from the grant date'])
