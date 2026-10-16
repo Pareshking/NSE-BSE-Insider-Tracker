@@ -497,3 +497,39 @@ hand but shares outstanding); (2) quarterly results XBRL for the last 8 quarters
   quote. A wrong hold of mine (D&H and Afcons amounts, which were right) came from an audit that hid the unit.
 - **Open**: `docs/BLUEPRINT_TODO.md` 12.4 (no headline on about 12 of 77 cards, wrong categories, duplicate
   events, instalment amounts, dropped hedges).
+
+### Headline patterns by category (16 Oct; drafted by Claude on the owner's delegation, owner may veto any)
+
+Company is the short trading name; one verb that keeps the filing's status word (approves, proposes, completes; a
+hedge or condition such as "up to", "subject to approval", "appears to be" stays); one figure in rupees as in the
+owner's rule; at most 70 characters. The subtitle holds the second most useful fact.
+
+| Category | Headline | Subtitle |
+|---|---|---|
+| Preferential issue | Ujjivan SFB approves ₹409 Cr preferential issue | Up to 6.32 crore shares at ₹64.73 |
+| Rights issue | Shivam Autotech sets ₹120 Cr rights issue | ₹12 a share; record date 23 Oct |
+| Order win | Admach Systems wins ₹7.9 Cr steel-plant order | Order book now ₹76.25 Cr |
+| Results | Aurum PropTech Q2 income rises 57% to ₹137 Cr | PBT margin 4.8% against a loss a year ago |
+| Dividend | Garuda Construction declares ₹0.03 interim dividend | Record date 23 Oct; paid by 14 Nov |
+| Buyback | {Co} proposes buyback of up to ₹X Cr at ₹Y a share | Record date; tender or open market |
+| Acquisition | Mankind Pharma to buy 70% of ACTx for EUR 48 Mn | Through Mankind Netherlands, in instalments |
+| Stake change | Trident Lifeline's stake in Trident Mediquip falls to 58.23% | Down from 59.67% after a private placement |
+| Management change | Jyoti Structures names Deepak Salunke CFO | Abdul Hameed Khan stays Whole-time Director |
+| Resignation | EPW India's CFO resigns, effective 12 Jan 2027 | Personal reasons |
+| Credit rating | CARE upgrades {Co} to A1+ | Commercial paper of ₹25 Cr |
+| Debt | Sammaan Capital pays ₹18.6 Cr NCD interest | Due 16 Oct, paid 15 Oct |
+| Warrants | Viji Finance lists 1 crore shares from warrant conversion | Issued at ₹2.80, to non-promoters |
+| Withdrawal | D&H India withdraws ₹32.6 Cr warrant issue | Price rise and approval delay cited |
+| Legal or tax | Afcons: GST appeal order confirms ₹38.82 Cr demand | Company will appeal to GSTAT |
+| Regulatory fine | Arvee Labs fined ₹10,000 by NSE | Late XBRL filing |
+| Capacity | Aegis commissions 35,000 MT LPG plant at JNPA | To move to Aegis Vopak Terminals |
+| Capex | Jindal Paradip port starts 12.5 MTPA of 25 MTPA | Phase I; project cost ₹3,393 Cr |
+| Board meeting date | {Co} board meets 5 Nov for Q2 results | |
+| Routine | No headline; the card is one line | |
+
+### Decisions on the three offers (16 Oct; owner delegated)
+
+1. **Held items' text is not shown on the site**: it is unverified (CLAUDE.md rules 1 and 4); counts and reasons stay.
+2. **A card with nothing shown collapses to one line** (company, subject, link, reason); nothing is deleted or hidden.
+3. **Stored cards are re-checked against new deterministic rules without re-reading**, as a clean-step pass (no AI),
+   built after run 5's audit.
