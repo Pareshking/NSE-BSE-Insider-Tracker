@@ -385,6 +385,7 @@ def text_is_garbled(doc: str) -> bool:
     return bad >= 25 and bad >= 0.04 * max(1, len(toks))
 
 
+PROJECTION = re.compile(r'\b(?:project(?:ed|s|ion)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
 FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*[\d,.]+(?:\s*/-)?'
                         r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
 NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets', re.IGNORECASE)
@@ -460,6 +461,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('not one number')
         if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
             reasons.append('unit not backed by its quote')
+        if PROJECTION.search(str(quote or '')):
+            reasons.append('its quote is a projection or estimate, not a reported figure')
         metrics.append({'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
@@ -1073,6 +1076,8 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str) -> dict:
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words(out, doc, fields, metrics)
+    if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
+        return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
             'headline': headline, 'points': points}
 

@@ -1551,3 +1551,19 @@ def test_a_share_described_as_rupees_n_each_is_face_value_not_a_price():
     assert ar.FACE_VALUE.search('allotted 1,000 equity shares of Rs.5/- each')
     assert ar.FACE_VALUE.search('equity shares of Rs. 10 each')
     assert not ar.FACE_VALUE.search('at a price of Rs 45.65 per share')
+
+
+def test_a_projected_figure_is_not_shown_as_a_metric():
+    doc = 'The solution is projected to deliver an approximately 50% improvement in customer experience. Revenue was 50% higher.'
+    out = {'metrics': [{'label': 'improvement', 'period': None, 'value': '50', 'unit': 'percent',
+                        'quote': 'projected to deliver an approximately 50% improvement in customer experience'},
+                       {'label': 'growth', 'period': None, 'value': '50', 'unit': 'percent', 'quote': 'Revenue was 50% higher'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert not metrics[0]['shown'] and 'projection' in metrics[0]['reason']
+    assert metrics[1]['shown']
+
+
+def test_an_answer_with_nothing_in_it_is_a_failed_read_so_another_lane_tries():
+    res = ar.result_of({}, 'Some filing text.', 'model', 1.0, 'gemini')
+    assert res['ok'] is False and 'nothing to show' in res['error']
+    assert ar.result_of({'category': 'routine'}, 'Some filing text.', 'model', 1.0, 'gemini')['ok'] is True
