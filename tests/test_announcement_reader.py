@@ -436,7 +436,7 @@ def test_rate_limit_circuit_breaker_persists_for_day(monkeypatch):
 
 def test_lanes_file_and_free_only_rule():
     spec = ar.lanes_of(ar.LANES_FILE.read_text(encoding='utf-8'))
-    assert list(spec) == ['nvidia', 'zai', 'groq', 'gemini'] and all(spec.values())
+    assert list(spec) == ['zai', 'groq', 'gemini']   # NVIDIA paused 16 Oct 2026, back at 02:05 IST 17 Oct and all(spec.values())
     assert all({e.split(':', 1)[0] for e in es} == {name} for name, es in spec.items())   # one provider a lane
     assert ar.usable(['zai:glm-4.5-flash', 'zai:glm-5.3', 'nvidia:moonshotai/kimi-k3']) == [
         'zai:glm-4.5-flash', 'nvidia:moonshotai/kimi-k3']
@@ -1732,3 +1732,23 @@ def test_target_capital_is_not_a_deal_amount_and_units_are_not_doubled():
     f, why = ar.fill_tokens('Urban Company plans {amount} Cr raise', [{'name': 'amount', 'shown': True, 'number': 25e9, 'currency': 'INR'}], [])
     assert f == 'Urban Company plans ₹2,500 Cr raise' and why is None
     assert ar.money_text(2325000, 'INR') == '₹23.3 Lakh'
+
+
+def test_core_types_of_the_triage_are_read_not_routine():
+    from collectors.nse_events import announcements as nann
+    from collectors.bse import announcements as bann
+    for subject in ('Bagging/Receiving of orders/contracts', 'Credit Rating', 'Change in Management', 'Investor Presentation'):
+        assert nann.group_of(subject) == 'core'
+    assert nann.group_of('Trading Window') == 'routine' and nann.group_of('Copy of Newspaper Publication') == 'routine'
+    assert bann.group_of('Award of Order / Receipt of Order') == 'core' and bann.group_of('Closure of Trading Window') == 'routine'
+
+
+def test_headline_uses_the_deal_amount_not_a_metric_figure():
+    fields = [{'name': 'amount', 'shown': True, 'number': 1.495e9, 'currency': 'INR'}]
+    metrics = [{'shown': True, 'number': 1.364e10, 'currency': 'INR'}]
+    _, why = ar.fill_tokens('GPT Infra subsidiary wins {m1} order', fields, metrics)
+    assert why and 'amount' in why
+    text, why = ar.fill_tokens('GPT Infra subsidiary wins {amount} order', fields, metrics)
+    assert why is None and '₹149.5 Cr' in text or '₹150 Cr' in text
+    _, why = ar.fill_tokens('Tejas Q2 revenue {m1}', [], metrics)   # no amount field: a results headline is fine
+    assert why is None

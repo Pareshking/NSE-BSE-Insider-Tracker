@@ -848,6 +848,13 @@ def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str
             return m.group(0)
         return out
     tokens = TOKEN.findall(text)
+    amount_f = by_name.get('amount')
+    if amount_f and isinstance(amount_f.get('number'), (int, float)) and '{amount}' not in text:
+        for t in tokens:   # GPT Infra (16 Oct): "wins ₹1,364 Cr order" was the year's inflow; the order is the amount field
+            km = re.fullmatch(r'm(\d+)', t)
+            met = metrics[int(km.group(1)) - 1] if km and 0 < int(km.group(1)) <= len(metrics) else None
+            if met and isinstance(met.get('number'), (int, float)) and abs(met['number'] - amount_f['number']) > 1e-6 * max(1, abs(amount_f['number'])):
+                return text, 'the headline gives a metric figure where the deal has its own amount: use the amount'
     if len(tokens) != len(set(tokens)):
         return text, 'a token is used twice in the headline: one value cannot be both the amount and the growth'
     filled = TOKEN.sub(value, text)

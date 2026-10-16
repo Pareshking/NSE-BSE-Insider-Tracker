@@ -9,7 +9,9 @@
 # twice (5 min each) in the dry run. z-ai/glm-5.3-flash answered in 7.7 s; nemotron-3-ultra answered HTTP 503 (overloaded)
 # at the time, so it is the second model of the lane.
 # Z.ai: free models only. Groq: filings under ~20,000 characters only (8K tokens a minute).
-nvidia: nvidia:z-ai/glm-5.3-flash, nvidia:nvidia/nemotron-3-ultra-550b-a55b
+# 16 Oct 2026 (owner, 18:05 IST): NVIDIA paused for 8 hours (run 7 lost time to two 10-minute rests after read timeouts).
+# Put the line back at 02:05 IST on 17 Oct after a small probe read.
+# nvidia: nvidia:z-ai/glm-5.3-flash, nvidia:nvidia/nemotron-3-ultra-550b-a55b
 zai: zai:glm-4.5-flash
 groq: groq:qwen/qwen3.8-27b
 gemini: gemini:gemini-3.5-flash-lite, gemini:gemini-3.1-flash-lite

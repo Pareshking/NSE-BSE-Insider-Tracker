@@ -68,6 +68,8 @@ READING_GROUPS = {
     # Exploratory, as on NSE: possible trouble, labelled as such wherever shown.
     'warning': ('Credit Rating', 'Resignation of Director', 'Resignation of Company Secretary / Compliance Officer',
                 'Resignation of Chief Financial Officer (CFO)'),
+    # Core types of the owner's triage (16 Oct) that were routine: orders and management or director changes.
+    'core': ('Award of Order / Receipt of Order', 'Change in Management', 'Change in Directorate'),
     # Broad subcategories whose PDF may hold any of the above ('Others' with no subcategory too).
     'to_sort': ('General', 'Outcome of Board Meeting', 'Press Release / Media Release',
                 'Press Release / Media Release (Revised)', 'Outcome without intimation', 'Acquisition',
