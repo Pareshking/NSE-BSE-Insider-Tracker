@@ -393,10 +393,13 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                 reasons.append('not one number')
             if name == 'amount':
                 rec['unit'] = unit
-                if s.unit_backed(value, unit, quote, qf) is False:
+                if s.unit_backed(value, unit, quote, qf, doc) is False:
                     reasons.append('unit not backed by its quote')
         if name in MONEY_FIELDS:   # the site writes the currency only when the filing does
             rec['currency'] = currency_in_quote(value, quote) or filing_currency
+        if name == 'record_date' and not re.search(r'record\s+date|book\s+closure|cut-?\s?off\s+date|entitlement\s+date',
+                                                    str(quote or ''), re.IGNORECASE):
+            reasons.append('its quote does not say record date')   # a survey, a certificate or a meeting is not one
         if name.endswith('_date'):
             rec['date'] = s.as_date(value)
             if rec['date'] is None:
@@ -422,7 +425,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         number = s.in_units(value, unit_m) if money else s._num(value)
         if number is None:
             reasons.append('not one number')
-        if money and s.unit_backed(value, unit_m, quote, qf) is False:
+        if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
             reasons.append('unit not backed by its quote')
         metrics.append({'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
@@ -503,10 +506,21 @@ def numbers_in(text) -> list[tuple[float, float]]:
 
 
 def numbers_backed(text, quotes) -> bool:
-    """Every number of `text` is one of the quotes' numbers, as written or with its unit applied (within 0.5%):
-    the model may write 12,000 lakh as 120 crore, never a number of its own."""
-    have = {v for q in quotes for pair in numbers_in(q) for v in pair}
-    return all(any(abs(v - h) <= 0.005 * max(1.0, abs(h)) for h in have for v in pair) for pair in numbers_in(text))
+    """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
+    word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
+    lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
+    backed by 250 crore (a dropped unit)."""
+    have = [pair for q in quotes for pair in numbers_in(q)]
+
+    def backed(n, c):
+        for n2, c2 in have:
+            if abs(n - n2) <= 1e-9 * max(1.0, abs(n)) and abs(c - c2) <= 0.005 * max(1.0, abs(c)):
+                return True            # as written, same unit
+            if c != n and abs(c - c2) <= 0.005 * max(1.0, abs(c2)):
+                return True            # a unit was given: the same amount, converted
+        return False
+
+    return all(backed(n, c) for n, c in numbers_in(text))
 
 
 def headline_quality_reason(text: str) -> str | None:
@@ -525,26 +539,39 @@ def headline_quality_reason(text: str) -> str | None:
     return None
 
 
+AMBIGUOUS_STATUS = re.compile(r'approved?\s*(?:/|or|and/or)\s*recommend|recommended?\s*(?:/|or)\s*approv', re.IGNORECASE)
+
+
+def status_upgraded(text: str, quote: str) -> bool:
+    """The text says approved where the quote says only recommended (or 'approved / recommended')."""
+    if not re.search(r'\bapprov', str(text or ''), re.IGNORECASE):
+        return False
+    q = str(quote or '')
+    return bool(AMBIGUOUS_STATUS.search(q) or (re.search(r'recommend', q, re.IGNORECASE)
+                                                and not re.search(r'approv', q, re.IGNORECASE)))
+
+
 def check_words(item, doc: str, more_quotes=()) -> dict | None:
-    """A headline or point: shown only when its quote is in the filing and every number in it is in that quote
-    (it may also use the quotes of values already checked, and a headline those of the shown points)."""
+    """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
+    (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
+    does not say approved where its quote says recommended. `more_quotes` is no longer used."""
     if not isinstance(item, dict) or not str(item.get('text') or '').strip():
         return None
     text, quote = str(item['text']).strip(), item.get('quote')
     qf = s.quote_found(quote, doc)
     reasons = [] if qf else ['quote not found in the filing']
-    if not numbers_backed(text, [quote, *more_quotes]):
+    if not numbers_backed(text, [quote]):
         reasons.append('a number not in its quote')
+    if status_upgraded(text, quote):
+        reasons.append('says approved where its quote says recommended')
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
             'reason': '; '.join(reasons) or None}
 
 
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
-    values = [f['quote'] for f in fields + metrics if f.get('shown')]   # quotes already checked in the filing
-    points = [p for p in (check_words(x, doc, values) for x in (out.get('points') or [])[:4]) if p]
-    backed = [p['quote'] for p in points if p['shown']] + values
-    headline = check_words(out.get('headline'), doc, backed)
+    points = [p for p in (check_words(x, doc) for x in (out.get('points') or [])[:4]) if p]
+    headline = check_words(out.get('headline'), doc)
     if headline:
         quality_reason = headline_quality_reason(headline['text'])
         if quality_reason:

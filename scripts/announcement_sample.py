@@ -97,8 +97,9 @@ FIELDS = {
 # Operating figures go in "metrics": [{"label", "period", "value", "unit", "quote"}] (business updates, orders).
 UNIT = {'rupees': 1, 'rs': 1, 'units': 1, 'thousand': 1e3, 'lakh': 1e5, 'lakhs': 1e5, 'crore': 1e7, 'crores': 1e7,
         'cr': 1e7, 'million': 1e6, 'mn': 1e6, 'billion': 1e9, 'bn': 1e9}
-NUMERIC = ('price_per_share', 'max_price_per_share', 'shares', 'amount', 'discount_pct', 'offer_pct')
-DIGITS_IN_QUOTE = ('price_per_share', 'max_price_per_share', 'shares', 'amount')
+NUMERIC = ('price_per_share', 'max_price_per_share', 'shares', 'amount', 'discount_pct', 'offer_pct', 'capacity_from',
+           'capacity_to')   # 16 Oct: capacity_from was shown as 0 for "initial capacity of 5000": a number must be in its quote
+DIGITS_IN_QUOTE = ('price_per_share', 'max_price_per_share', 'shares', 'amount', 'capacity_from', 'capacity_to')
 
 
 def sort_prompt(row: dict) -> str:
@@ -499,7 +500,7 @@ def digits_in_quote(value, quote) -> bool:
 UNIT_WORDS = {1e3: r'thousand', 1e5: r'lakhs?|lacs?', 1e7: r'crores?|crs?\.?', 1e6: r'million|mn', 1e9: r'billion|bn'}
 
 
-def unit_backed(value, unit, quote, found) -> bool | None:
+def unit_backed(value, unit, quote, found, doc: str | None = None) -> bool | None:
     """A lakh, crore, million or billion is backed by its quote (None when the unit multiplies nothing).
     Not backed when the number is already written in full (7 or more digits before the point: '95,00,00,000'
     crore would be 9.5e16), or, in an exact quote, when the unit's word does not follow the number: a
@@ -522,11 +523,28 @@ def unit_backed(value, unit, quote, found) -> bool | None:
     if len(str(int(abs(v)))) >= 7:
         return False
     if found != 'exact':
-        return True
+        return table_unit(quote, mult, doc) if doc is not None else True
     for m in re.finditer(NUMBER, str(quote or '')):
         if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)) and re.match(
                 r'\s*(?:' + UNIT_WORDS[mult] + r')(?![a-z])', quote[m.end():], re.IGNORECASE):
             return True
+    return False
+
+
+_UNIT_WORDS_ANY = {m: re.compile(r'(?<![a-z])(?:' + w + r')(?![a-z])', re.IGNORECASE) for m, w in UNIT_WORDS.items()}
+
+
+def table_unit(quote, mult, doc: str) -> bool:
+    """A table quote keeps its unit in the heading ('Rs. Crore | Quarter ended ...'): the unit word must be in the
+    table block of the number's line (8 lines above, 2 below), and no other unit word of a different size beside it."""
+    numbers = {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}
+    lines = str(doc).splitlines()
+    for i, ln in enumerate(lines):
+        if numbers & {n.replace(',', '') for n in re.findall(NUMBER, ln)}:
+            block = ' '.join(lines[max(0, i - 8):i + 3])
+            if _UNIT_WORDS_ANY[mult].search(block) and not any(
+                    rx.search(block) for m, rx in _UNIT_WORDS_ANY.items() if m != mult):
+                return True
     return False
 
 
