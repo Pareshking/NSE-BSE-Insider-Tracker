@@ -1954,3 +1954,11 @@ def test_a_dividend_is_not_a_price_a_share():
            'headline': {'text': 'LTM declares interim dividend of ₹25 per share', 'quote': 'interim dividend of INR 25/- per equity share of Re. 1 each'}}
     res = ar.result_of(out, doc, 'm', 1.0, 'lane', ('LTM', 'LTM Limited'), 'Outcome of Board Meeting')
     assert [f['name'] for f in res['fields']] == ['dividend_per_share']
+
+
+def test_quote_found_through_lost_ligatures():
+    from scripts import announcement_sample as sm
+    doc = 'approved:\n1. | Capital investment proposal for addi onal facili es for manufacturing of\nUnit at an es mated cost of Rs. 500\nCrore approx.'
+    q = 'Capital investment proposal for additional facilities for manufacturing of Unit at an estimated cost of Rs. 500 Crore approx.'
+    assert sm.quote_found(q, doc) == 'exact'
+    assert not sm.quote_found(q.replace('500', '600'), doc)

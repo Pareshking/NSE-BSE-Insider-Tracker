@@ -476,6 +476,11 @@ def _ocr(text: str) -> str:
     """Letters a scan confuses with digits or each other, folded together (applied to both texts, so it only widens
     what counts as the same string by those look-alikes; the quote still has to be long)."""
     return str(text).translate(_OCR)
+_LIGS = re.compile(r'ffi|ffl|ti|tt|ft|fi|fl|ff')
+
+
+def _unlig(text: str) -> str:
+    return _LIGS.sub('', text)
 _TOKEN = re.compile(r'[a-z]+|\d+(?:[.,]\d+)*')
 
 
@@ -539,6 +544,10 @@ def quote_found(quote, doc: str) -> str | bool:
     # A scan's misread characters ("3Qth" for 30th, "Sccond"): the same text once the look-alikes are one character,
     # on both sides, for a quote long enough that two different sentences cannot meet by chance.
     if len(lq) >= 24 and _ocr(lq) in _ocr(_loose(doc)):
+        return 'exact'
+    # A PDF font's ligature lost in the text layer ("addi onal", "es mated", "Mee ng": ti, tt, ft, fi, fl, ff are missing):
+    # the same text once those letter pairs are dropped on both sides.
+    if len(lq) >= 24 and _unlig(lq) in _unlig(_loose(doc)):
         return 'exact'
     if _spread_run(quote, doc):   # a table's text with another column interleaved line by line (Minda Corp, Om Galaxy, TFCI)
         return 'table'
