@@ -584,3 +584,25 @@ percentage is not a count of shares; "subject to approval" in the quote must sta
 matching reads ligatures (NFKC) and joined table cells; the prompt names the company and asks for the sentence that
 holds every number, the total row, the exercise price row, the fiscal year of the period, and the acting party of a
 shareholder filing. 29 more stored cards got lines in `scripts/card_holds.txt`. Prompt `live-11`.
+
+### Run 7 audit and the fixes (16 Oct, IST; live-11 read, live-13 prompt after)
+
+Run 7 (16:27 to 17:01 IST): 71 filings read, 1 failed; it stopped after 34 of 80 minutes because nvidia timed out
+twice (10-minute rests) and the cards left over were not reached (326 candidates not reached). 43 of the 71 cards were
+new to the audit; five independent reviewers checked every one: **13 OK, 30 with problems** (run 5 and 6 numbers are
+above). Fixed in code, each with a test: a short table row quote ("PAT 110") now matches on whole tokens (it never
+matched before: quotes under 8 characters were always "not found"); two different values for one measure take their
+standalone or consolidated basis from the heading above the quote instead of being held; text that did not extract
+(more than a fifth replacement characters) is not read (J.A. Finance: the model wrote a headline from the subject
+line); the exchange-symbol check no longer fires when the symbol is the first word of the legal name (KEC, BASF, CCL);
+a target's total voting or equity share capital is never a deal amount (Nirlon); a unit the model types after a figure
+token is not doubled ("Cr Cr"); rounding is half up (23.25 lakh). Prompt `live-13` adds: tokens only for listed
+metrics, the rating agency is the actor in a rating, name acquirer and seller, the person is the subject of a
+resignation, "not exceeding" and "up to" stay, duty plus penalty is called both, number words are numbers. 13 stored
+cards got lines in `scripts/card_holds.txt`. **Not fixed yet (checked against the code, or not verifiable here):**
+OCR typos in quotes ("Sccond", "Redecmable") and two-column interleaving; accounting negatives "₹(144) Cr";
+a sum of quoted parts for a headline; categories (press release read as preferential, a new subsidiary as
+acquisition, SAST Reg 29 attachment, results deck as business update); "consolidated" missing from metric labels;
+approximate ("nearly") and ceiling flags on fields; point quotes joined with "..." across paragraphs; rated facility
+amounts shown as period figures; "FY24-25" style in headlines; whether the pipe-table claims of the reviewers hold on
+the full text (the audit shows a truncated text; the loose matcher already ignores pipes).
