@@ -1223,3 +1223,22 @@ def test_batching_is_off_by_default_and_other_providers_are_never_batched(monkey
     lanes = {'zai': ar.Lane('zai', ['zai:m'], {'zai': FakeClient([QIP] * 3)})}
     ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
     assert len(lanes['zai'].clients['zai'].asked) == 3
+
+
+def test_candidates_stay_fast_with_a_month_of_filings():
+    """16 Oct: candidates() compared every row with every row and parsed a date each time: 20 minutes, no end,
+    on a month of filings. Many issuers, many days, a few XBRL companions: a few seconds at most."""
+    import time
+    rows = []
+    for i in range(12000):
+        day = f'2026-10-{1 + i % 15:02d}'
+        rows.append({'event_id': f'pdf:{i}', 'symbol': f'S{i % 3000}', 'isin': f'INE{i % 3000:06d}A01000',
+                     'company': 'Co', 'subject': 'General Updates', 'file_type': 'pdf', 'has_xbrl': False,
+                     'file_url': f'https://nsearchives.nseindia.com/corporate/S{i}.pdf', 'exchange': 'NSE',
+                     'broadcast_at': f'{day}T10:00:00+05:30', 'broadcast_date': day, 'market': 'equities'})
+    rows.append(dict(rows[0], event_id='xbrl:1', subject='General Updates-XBRL', file_type='xml',
+                     file_url='https://nsearchives.nseindia.com/corporate/xbrl/S0.xml'))
+    t0 = time.monotonic()
+    out = ar.candidates(pd.DataFrame(rows), pd.DataFrame(), None).set_index('event_id')
+    assert time.monotonic() - t0 < 30
+    assert len(out) == 12001 and out.loc['xbrl:1', 'group'] == 'routine'

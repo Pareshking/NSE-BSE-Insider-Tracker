@@ -711,9 +711,16 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         value = re.sub(r'\s*\(xbrl\)\s*$', '', value)
         return re.sub(r'[^a-z0-9]+', ' ', value).strip()
 
+    days = {}
+
     def day(value):
-        parsed = pd.to_datetime(value, errors='coerce')
-        return None if pd.isna(parsed) else parsed.date()
+        # parsed once per distinct value: this ran for every pair of rows, and with a month of filings (tens of
+        # thousands) that was billions of date parses (16 Oct: 20 minutes without finishing)
+        key = str(value)
+        if key not in days:
+            parsed = pd.to_datetime(value, errors='coerce')
+            days[key] = None if pd.isna(parsed) else parsed.date()
+        return days[key]
 
     records = df.to_dict('records')
     structured_rows = []
@@ -728,6 +735,18 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         if row.get('exchange') == 'NSE' and is_xbrl_payload and row.get('file_url'):
             structured_rows.append((idx, row))
     used_xbrl = set()
+    # the companions and the other PDFs of one issuer, found by its identifier instead of by scanning every row
+    structured_by_ident, pdfs_by_ident = {}, {}
+    for xidx, xrow in structured_rows:
+        structured_by_ident.setdefault(
+            str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper(), []).append((xidx, xrow))
+    for pidx, prow in enumerate(records):
+        if prow.get('exchange') != 'NSE':
+            continue
+        if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
+            continue
+        pdfs_by_ident.setdefault(
+            str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper(), []).append(pidx)
     for idx, row in enumerate(records):
         if row.get('exchange') != 'NSE':
             continue
@@ -739,12 +758,11 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         if not identifier or not subject or broadcast_day is None:
             continue
         matches, nearby_structured = [], []
-        for xidx, xrow in structured_rows:
+        for xidx, xrow in structured_by_ident.get(identifier, ()):
             if xidx in used_xbrl or xidx == idx:
                 continue
-            xidentifier = str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper()
             xday = day(xrow.get('broadcast_date'))
-            if xidentifier != identifier or xday is None or abs((xday - broadcast_day).days) > 1:
+            if xday is None or abs((xday - broadcast_day).days) > 1:
                 continue
             candidate = (abs((xday - broadcast_day).days), str(xrow.get('broadcast_at') or ''), xidx, xrow)
             nearby_structured.append(candidate)
@@ -754,14 +772,12 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # XBRL payload. Repeated generic subjects are common for separate KMP filings;
         # choosing the first exact-subject match can cross-wire distinct disclosures.
         other_pdfs, other_same_subject_pdfs = [], []
-        for pidx, prow in enumerate(records):
-            if pidx == idx or prow.get('exchange') != 'NSE':
+        for pidx in pdfs_by_ident.get(identifier, ()):
+            prow = records[pidx]
+            if pidx == idx:
                 continue
-            if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
-                continue
-            pidentifier = str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper()
             pday = day(prow.get('broadcast_date'))
-            if pidentifier == identifier and pday is not None and abs((pday - broadcast_day).days) <= 1:
+            if pday is not None and abs((pday - broadcast_day).days) <= 1:
                 other_pdfs.append(pidx)
                 # An unrelated disclosure by the same issuer/date is not ambiguity by itself.
                 # Another PDF with the same normalized subject is ambiguous, because generic
