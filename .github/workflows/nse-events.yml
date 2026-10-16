@@ -92,8 +92,9 @@ jobs:
           print(r.get('pending_results', 0), r.get('results_xbrl_fetched', 0), int(bool(r.get('results_xbrl_blocked'))))
           PY
           )
+            # later rounds list only the last 10 days: filings still pending are retried from the archive whatever the window
             LIMIT=80
-            NEXT="gh workflow run nse-events.yml -f days=$DAYS -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS"
+            NEXT="gh workflow run nse-events.yml -f days=10 -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS"
           else
             read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
           import json
