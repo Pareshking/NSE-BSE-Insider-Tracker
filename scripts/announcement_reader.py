@@ -994,6 +994,42 @@ def card_numbers(fields, metrics) -> list[float]:
     return out
 
 
+def _words3(text) -> set[str]:
+    return {w[:6] for w in re.findall(r'[a-z0-9]{3,}', str(text or '').lower())}   # crude stem: resigns, resigned, resignation
+
+
+def drop_repeats(headline, points):
+    """A point that only says again what the headline or an earlier point says is not shown (Polycab, ROX, Ashika, Kernex:
+    two points that repeat the headline word for word); one that carries a number the others lack stays."""
+    seen = [_words3(headline.get('text'))] if isinstance(headline, dict) and headline.get('shown') else []
+    nums = lambda t: set(re.findall(r'\d[\d,.]*', str(t or '')))
+    shown_text = [str(headline.get('text'))] if isinstance(headline, dict) and headline.get('shown') else []
+    for pt in points:
+        if not pt.get('shown'):
+            continue
+        w = _words3(pt.get('text'))
+        if w and any(len(w & x) / len(w) >= 0.8 for x in seen) and not (nums(pt['text']) - set().union(*(nums(t) for t in shown_text))):
+            pt['shown'], pt['reason'] = False, 'repeats the headline or an earlier point'
+            continue
+        seen.append(w)
+        shown_text.append(str(pt.get('text')))
+    return points
+
+
+def promote_point(headline, points, names=()):
+    """No headline survived the checks: the first point that did survive (each is proved by its own quote) leads the card,
+    in the company's short name, rather than a card with nothing on it (golden set 1: Aegis, Regency, Kabra, ITH)."""
+    if isinstance(headline, dict) and headline.get('shown'):
+        return headline, points
+    for i, pt in enumerate(points):
+        text = str(pt.get('text') or '').strip()
+        if pt.get('shown') and text and '{' not in text and len(text) <= 160:
+            lead = {**pt, 'text': rewrite_name(text.rstrip('.'), names), 'promoted_from_point': True,
+                    'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) else None}
+            return lead, points[:i] + points[i + 1:]
+    return headline, points
+
+
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
                                    r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
@@ -1036,7 +1072,8 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
-    return headline, points
+    headline, points = promote_point(headline, points, names)
+    return headline, drop_repeats(headline, points)
 
 
 COMPARISON_WORDS = re.compile(

@@ -638,8 +638,8 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
     boilerplate, _ = ar.card_words({**out, 'headline': {
         'text': 'Madhav Infra Projects Ltd: Submission of Board Meeting Outcome for Board Meeting held today',
         'quote': 'Issue Size up to ₹ 12,000 Lakhs'}}, doc, fields, metrics)
-    assert boilerplate is not None and not boilerplate['shown']
-    assert 'filing-label boilerplate' in boilerplate['reason']
+    assert boilerplate is not None and boilerplate.get('promoted_from_point')   # the boilerplate headline is not shown; a checked point leads
+    assert 'boilerplate' not in str(boilerplate.get('text')).lower()
     assert 'a number not in its quote' in points[1]['reason'] and points[2]['reason'] == 'quote not found in the filing'
     assert metrics[0]['previous_number'] == 812 and metrics[0]['change_pct'] == 31.9   # our sum, not the model's
     assert 'headline' in ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, doc).split('=== DOCUMENT ===')[0]
@@ -1264,8 +1264,8 @@ def test_a_headline_or_point_is_backed_by_its_own_quote_not_by_another_quote_of_
            'points': [{'text': 'Initial capacity is 5000 vehicles a year.', 'quote': 'Initial capacity of 5000 vehicles/shift/year.'}]}
     cat, fields, metrics = ar.validate(out, doc)
     headline, points = ar.card_words(out, doc, fields, metrics)
-    assert not headline['shown'] and 'a number not in its quote' in headline['reason']   # 5000 is in another quote
-    assert points[0]['shown']
+    assert 'Rs 1000 crore' not in headline['text']   # the claim backed only by another quote is not shown as written
+    assert headline.get('promoted_from_point') and headline['text'].startswith('Initial capacity is 5000')
 
 
 def test_an_invented_capacity_before_is_held_back_and_a_real_one_is_kept():
@@ -1822,3 +1822,15 @@ def test_subject_line_settles_stake_change_pledge_and_routine():
     assert ar.category_override('rating_upgrade', 'General', 'ERAIL has assigned an ESG rating of 71') == 'routine'
     assert ar.category_override('rating_upgrade', 'Credit Rating', 'CRISIL ESG not relevant, Crisil has upgraded the credit rating') == 'rating_upgrade'
     assert 'stake_change' in ar.CATEGORIES and 'pledge' in ar.CATEGORIES
+
+
+def test_repeated_points_are_dropped_and_a_surviving_point_leads_when_the_headline_is_held():
+    doc = 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026 due to personal reasons.'
+    out = {'category': 'management_change',
+           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+                      {'text': 'The reason given is personal reasons', 'quote': 'due to personal reasons'}]}
+    cat, fields, metrics = ar.validate(out, doc)
+    head, points = ar.card_words(out, doc, fields, metrics)
+    assert head['shown'] and [p['shown'] for p in points] == [False, True]
+    assert 'repeats' in points[0]['reason']
