@@ -533,3 +533,26 @@ owner's rule; at most 70 characters. The subtitle holds the second most useful f
 2. **A card with nothing shown collapses to one line** (company, subject, link, reason); nothing is deleted or hidden.
 3. **Stored cards are re-checked against new deterministic rules without re-reading**, as a clean-step pass (no AI),
    built after run 5's audit.
+
+### More context specs from the owner (16 Oct, second message; design, not built)
+
+- **Lifecycle state on every event**: announced, approved, signed, completed, operational (commenced). Stored as a
+  field with the quote that shows it; a proposal is never shown as a completed deal. Later filings are **linked to
+  the first event** of the same company, instrument or project (the Jindal Paradip plan, then its commissioning),
+  so the card can show the progression and the dates of each step. Needs an event key (company, kind, counterparty
+  or ISIN, project name) and a link table; the reader's company memory is the first source.
+- **More event types and what each must show**: operational disruption (affected capacity, duration, revenue
+  contribution, cause, remediation, restart status); new customer or supplier (concentration, contract size,
+  dependency, terms, termination risk); management guidance (previous against revised guidance, actual against
+  earlier guidance, remaining period); insolvency or default (amount overdue, creditor, days overdue, resolution
+  status, legal proceedings, recovery implications); debt, rating, order, results, fundraising, M&A, capacity and
+  management/promoter events as in the earlier section.
+- **Earnings quality** on results: PAT growth against operating profit growth, other income share, receivables and
+  inventory against sales, operating cash flow against PAT, organic against acquired growth; several periods, the
+  same quarter of the year before first for seasonal companies.
+- **Sector playbooks** (banks and NBFCs by capital adequacy, asset quality, cost of funds; EPC and capital goods by
+  executable order book; pharma by regulatory status and product mix; and so on) chosen by the company's industry
+  profile; industrial debt tests never applied to lenders.
+- **Order firmness** kept apart: firm order, letter of intent, preferred bidder, framework agreement; never added up
+  as one order book.
+- **Last reported is not current**: a balance sheet item carries its date and age on the card.
