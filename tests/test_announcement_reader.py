@@ -1872,3 +1872,25 @@ def test_a_cover_letter_on_a_large_file_is_not_read_as_if_it_were_the_filing():
     assert ar.enclosure_unread_reason(letter, 5_700_000) and 'not read' in ar.enclosure_unread_reason(letter, 5_700_000)
     assert ar.enclosure_unread_reason(letter, 40_000) is None            # a small file: the letter is the filing
     assert ar.enclosure_unread_reason('x ' * 3000 + ' enclosed', 5_700_000) is None   # a long text is a real document
+
+
+def test_a_resignation_filed_as_xbrl_facts_gets_the_person_as_subject_and_a_checked_headline():
+    import announcement_sample as sm
+    doc = ('XBRL FACTS (exchange-provided structured data; use exact values and contexts):\n'
+           'TypeOfChange = Cessation [context: startDate=2026-10-16, endDate=2026-10-16]\n'
+           'CategoryOfCessation = Resignation [context: startDate=2026-10-16, endDate=2026-10-16]\n'
+           'DesignationOfDesignatedPerson = Company Secretary and Compliance Officer [context: x]\n'
+           'NameOfDesignatedPerson = Sridevi Dasari [context: instant=2026-10-16]\n'
+           'EffectiveDateOfReasonOfChange = 2026-11-14 [context: instant=2026-10-16]\n'
+           'TypeOfChange = Appointment [context: x]\n'
+           'DesignationOfDesignatedPerson = Company Secretary and Compliance Officer [context: x]\n'
+           'NameOfDesignatedPerson = Kallepally Bharath Kumar [context: instant=2026-10-16]\n'
+           'EffectiveDateOfReasonOfChange = 2026-11-15 [context: instant=2026-10-16]\n')
+    head, points = ar.people_change(doc, ('CCL', 'CCL Products (India) Limited'))
+    assert head['text'] == ('CCL Products (India): Company Secretary and Compliance Officer Sridevi Dasari resigns, effective 14 Nov 2026; '
+                            'Kallepally Bharath Kumar appointed from 15 Nov 2026')
+    assert sm.quote_found(head['quote'], doc) == 'exact'
+    res = ar.result_of({'category': 'management_change', 'headline': {'text': 'CCL Products resigns Company Secretary', 'quote': 'TypeOfChange = Cessation'}},
+                       doc, 'm', 1.0, 'lane', ('CCL', 'CCL Products (India) Limited'), 'Resignation of Director/KMP/SMP')
+    assert res['headline']['from_facts'] and 'Sridevi Dasari resigns' in res['headline']['text']
+    assert ar.people_change('plain text', ('X', 'Y Ltd')) == (None, [])

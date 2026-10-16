@@ -1576,6 +1576,79 @@ def category_override(cat, subject, doc: str):
     return cat
 
 
+_FACT = re.compile(r'^([A-Za-z0-9]+) = (.*?)(?: \[context:.*)?$')
+_VERB = {'resignation': 'resigns', 'retirement': 'retires', 'removal': 'is removed', 'death': 'dies', 'completion of tenure': 'completes tenure',
+         'cessation': 'steps down'}
+
+
+def _nice_date(iso) -> str:
+    try:
+        return datetime.strptime(str(iso)[:10], '%Y-%m-%d').strftime('%-d %b %Y')
+    except ValueError:
+        return str(iso)
+
+
+def people_change(doc: str, names=()) -> tuple[dict | None, list[dict]]:
+    """A resignation or appointment filed as XBRL facts (NSE's 'Resignation of Director/KMP/SMP'): the headline and points are
+    built from the facts, with the person as the subject and each fact line as its own quote. CCL Products' headline made
+    the company resign its own secretary; NIIT's CEO change carried quotes the text never had. The facts are the filing."""
+    if not str(doc).startswith('XBRL FACTS') or 'TypeOfChange' not in doc:
+        return None, []
+    events, cur = [], None
+    for line in str(doc).splitlines():
+        m = _FACT.match(line.strip())
+        if not m:
+            continue
+        key, val = m.group(1), m.group(2).strip()
+        if key == 'TypeOfChange':
+            cur = {'type': val, 'lines': {}}
+            events.append(cur)
+        elif cur is not None and key in ('CategoryOfCessation', 'DesignationOfDesignatedPerson', 'SalutationOfDesignatedPerson',
+                                        'NameOfDesignatedPerson', 'EffectiveDateOfReasonOfChange', 'BriefProfile',
+                                        'CategoryForChange', 'DateOnWhichTheResignationLetterWasReceived') \
+                or (cur is not None and re.search(r'Reason(?:Of|For)', key) and key != 'EffectiveDateOfReasonOfChange' and len(val) > 8):
+            cur['lines'].setdefault(key, (val, line.strip()))
+    events = [e for e in events if 'NameOfDesignatedPerson' in e['lines']]
+    if not events:
+        return None, []
+    short = short_name(names[1]) if len(names) > 1 and names[1] else ''
+    left = [e for e in events if str(e['type']).lower().startswith('cessation')]
+    joined = [e for e in events if str(e['type']).lower().startswith('appointment')]
+
+    def who(e):
+        l = e['lines']
+        return l['NameOfDesignatedPerson'][0], (l.get('DesignationOfDesignatedPerson') or ('',))[0]
+    parts, quotes = [], []
+    for e in left:
+        n, d = who(e)
+        verb = _VERB.get(str(e['lines'].get('CategoryOfCessation', ('',))[0]).lower(), 'steps down')
+        dt = e['lines'].get('EffectiveDateOfReasonOfChange', (None,))[0]
+        parts.append(f"{d} {n} {verb}" + (f", effective {_nice_date(dt)}" if dt else ''))
+        quotes += [e['lines']['NameOfDesignatedPerson'][1], e['lines'].get('CategoryOfCessation', (0, ''))[1]]
+    for e in joined:
+        n, d = who(e)
+        dt = e['lines'].get('EffectiveDateOfReasonOfChange', (None,))[0]
+        same = left and who(left[0])[1] == d
+        parts.append((f"{n} appointed" if same else f"{d} {n} appointed") + (f" from {_nice_date(dt)}" if dt else ''))
+        quotes += [e['lines']['NameOfDesignatedPerson'][1]]
+    text = (short + ': ' if short else '') + '; '.join(parts)
+    quotes = [q for q in quotes if q]
+    head = {'text': text, 'quote': ' ... '.join(quotes), 'evidence': 'exact', 'shown': True, 'reason': None, 'from_facts': True}
+    points = []
+    for e in left + joined:
+        for key, label in (('DateOnWhichTheResignationLetterWasReceived', 'Resignation letter received on'),):
+            if key in e['lines']:
+                points.append({'text': f"{label} {_nice_date(e['lines'][key][0])}", 'quote': e['lines'][key][1], 'evidence': 'exact', 'shown': True, 'reason': None})
+        for key, (val, raw) in e['lines'].items():
+            if re.search(r'Reason(?:Of|For)', key) and key != 'EffectiveDateOfReasonOfChange':
+                points.append({'text': f"Reason given: {val[:140]}", 'quote': raw[:300], 'evidence': 'exact', 'shown': True, 'reason': None})
+        prof = e['lines'].get('BriefProfile')
+        if prof and e in joined:
+            first = re.split(r'(?<=[.])\s', prof[0])[0]
+            points.append({'text': f"Appointee: {first[:180]}", 'quote': f"BriefProfile = {first}"[:300], 'evidence': 'exact', 'shown': True, 'reason': None})
+    return head, points[:4]
+
+
 def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
@@ -1587,6 +1660,9 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
+    facts_head, facts_points = people_change(doc, names)
+    if facts_head and cat in ('management_change', 'auditor_resignation', None):
+        headline, points = facts_head, facts_points + [p for p in points if p.get('shown') and not any(p.get('text') == q.get('text') for q in facts_points)][:1]
     withdrawn = headline and WITHDRAWN.search(str((headline or {}).get('text') or ''))
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
