@@ -250,6 +250,7 @@ Each needs data we may not have yet. "Needs" says what.
 | 12.8 | **Confirm the nightly collection at about 02:30 IST** ran and the day is complete | Not confirmed yet | a nightly report read |
 | 12.9 | **Three offers: decided 16 Oct (owner delegated)**: held text not shown on the site; cards with nothing shown collapse to one line; stored cards re-checked against new rules without re-reading (clean-step pass, after run 5's audit). Headline patterns per category drafted in `ANNOUNCEMENT_READER.md`; owner may veto | **Decided; to build** | collapsed card on the site; re-check pass in the clean step with a count of cards changed |
 | 12.10 | **Reports to the owner are in IST** and say what was checked and how | Standing | always |
+| 12.11 | **Lifecycle states and event links** (owner, 16 Oct): announced, approved, signed, completed, operational as separate states with their quotes; later filings linked to the first event of the same company, instrument or project. Also the extra event types (disruption, new customer or supplier, guidance, insolvency or default), earnings-quality checks, sector playbooks and order firmness (`ANNOUNCEMENT_READER.md`, "More context specs") | **Design recorded; not built** | a lifecycle field on cards with its quote; a link table; two linked filings shown as one progression on a real company |
 
 ## Suggested order, if you approve
 

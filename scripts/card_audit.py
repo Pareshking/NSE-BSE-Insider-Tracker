@@ -202,6 +202,12 @@ def main() -> int:
         if head and head.get('shown'):
             print(f"- HEADLINE: {head.get('text')}\n  - quote: \"{head.get('quote')}\"")
             flags += problems(doc, head.get('text'), head.get('quote'))
+        if head and not head.get('shown'):
+            print(f"- HELD HEADLINE ({head.get('reason')}): {head.get('text')}\n  - quote: \"{head.get('quote')}\"")
+            sub = head.get('subtitle') or {}
+        elif head and (head.get('subtitle') or {}).get('text'):
+            sub = head['subtitle']
+            print(f"- SUBTITLE{'' if sub.get('shown') else ' (held: ' + str(sub.get('reason')) + ')'}: {sub.get('text')}\n  - quote: \"{sub.get('quote')}\"")
         for p in load(r.get('points'), []):
             if p.get('shown'):
                 print(f"- POINT: {p.get('text')}\n  - quote: \"{p.get('quote')}\"")

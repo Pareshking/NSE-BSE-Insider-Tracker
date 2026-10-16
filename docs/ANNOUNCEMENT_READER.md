@@ -533,3 +533,54 @@ owner's rule; at most 70 characters. The subtitle holds the second most useful f
 2. **A card with nothing shown collapses to one line** (company, subject, link, reason); nothing is deleted or hidden.
 3. **Stored cards are re-checked against new deterministic rules without re-reading**, as a clean-step pass (no AI),
    built after run 5's audit.
+
+### More context specs from the owner (16 Oct, second message; design, not built)
+
+- **Lifecycle state on every event**: announced, approved, signed, completed, operational (commenced). Stored as a
+  field with the quote that shows it; a proposal is never shown as a completed deal. Later filings are **linked to
+  the first event** of the same company, instrument or project (the Jindal Paradip plan, then its commissioning),
+  so the card can show the progression and the dates of each step. Needs an event key (company, kind, counterparty
+  or ISIN, project name) and a link table; the reader's company memory is the first source.
+- **More event types and what each must show**: operational disruption (affected capacity, duration, revenue
+  contribution, cause, remediation, restart status); new customer or supplier (concentration, contract size,
+  dependency, terms, termination risk); management guidance (previous against revised guidance, actual against
+  earlier guidance, remaining period); insolvency or default (amount overdue, creditor, days overdue, resolution
+  status, legal proceedings, recovery implications); debt, rating, order, results, fundraising, M&A, capacity and
+  management/promoter events as in the earlier section.
+- **Earnings quality** on results: PAT growth against operating profit growth, other income share, receivables and
+  inventory against sales, operating cash flow against PAT, organic against acquired growth; several periods, the
+  same quarter of the year before first for seasonal companies.
+- **Sector playbooks** (banks and NBFCs by capital adequacy, asset quality, cost of funds; EPC and capital goods by
+  executable order book; pharma by regulatory status and product mix; and so on) chosen by the company's industry
+  profile; industrial debt tests never applied to lenders.
+- **Order firmness** kept apart: firm order, letter of intent, preferred bidder, framework agreement; never added up
+  as one order book.
+- **Last reported is not current**: a balance sheet item carries its date and age on the card.
+
+### Build order of the context work (owner, 16 Oct, third message)
+
+Three foundations first, in this order, before sector playbooks and adaptive headlines: (1) a **reliable historical
+company profile** (results over 12 quarters, balance sheet lines, share count and ownership, each value with
+source, period, publication date, unit, basis and whether reported, calculated or estimated); (2) a
+**deterministic context engine** for before and after comparisons and materiality; (3) an **event-linked memory**
+of transactions, projects and financial changes over time. The rule for every material announcement: what
+happened, what changed, how significant it is for this company, and what evidence is still needed to understand
+its consequences. Sector analysis and adaptive headlines come only once these work, so that they cannot produce
+confident but unsupported conclusions.
+
+### Run 5 audit and the fixes (16 Oct, live-11)
+
+Run 5 (live-10, 14:04 IST): 80 read, 67 cards audited by ten reviewers. 20 of 67 had no shown headline; in 18 the
+headline was held for "a number not in its quote", and the holds were right: the model put the wrong figure in the
+new ₹ Cr format (Benares H1 profit "₹148.1 Cr" for 1,480.59 lakh = ₹14.8 Cr, Federal Bank "₹1,35 Cr", Amal
+"₹401 Cr" for 401 lakh, a growth rate it worked out itself). Fix, **the model no longer types a money amount, a share
+count or a growth percentage**: it writes a token ({amount}, {price}, {shares}, {m1}, {m1_pct}) and our code
+(`fill_tokens`, `money_text`) puts in the value already checked in the right unit (₹ Cr from a crore, ₹ Lakh below,
+a foreign currency as filed); the growth percentage is our own calculation from the metric's previous value and a
+rise word against a fall (or the reverse) holds the headline. Also: a metric's label must be the row of its quote
+(profit before tax is not EBITDA); two values for one measure and period are both held (basis not stated); a
+percentage is not a count of shares; "subject to approval" in the quote must stay in the headline or point, and
+"up to" in a point; the mangled-scan hold is judged where the quote stands, not for the whole filing; quote
+matching reads ligatures (NFKC) and joined table cells; the prompt names the company and asks for the sentence that
+holds every number, the total row, the exercise price row, the fiscal year of the period, and the acting party of a
+shareholder filing. 29 more stored cards got lines in `scripts/card_holds.txt`. Prompt `live-11`.

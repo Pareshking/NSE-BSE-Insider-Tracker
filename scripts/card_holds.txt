@@ -43,3 +43,32 @@ nse:106819066 | headline | drops "a maximum of" from the shares approved for lis
 bse:d028f7ff-e0ff-4541-a901-f352b057749b | headline | the directors are additional directors, effective on the EGM date and subject to member approval
 bse:7768eed1-27e2-43de-af5c-a1cc51ccdd97 | headline | the filing says the price movement "appears to be" market driven
 nse:106819018 | point:2 | adds "immediate"; the filing says the MoU does not by itself create a commitment
+nse:106820004 | metrics:all | the period labels say FY26 where the columns are the quarter and half year ended 30 September 2026 (FY27)
+nse:106819940 | headline | ₹361.06 Cr is total income, not revenue from operations (₹360.40 Cr)
+bse:2c0f5ddd-ac99-4727-9fed-508bfd1c3897 | metrics:all | the "EBITDA" rows are the profit before tax rows
+bse:1574cdf1-3182-4aea-8fc6-426cb54f4266 | headline | Nirlon is the target; the fund InRe Fund II transferred the shares to BSREP IV
+bse:1574cdf1-3182-4aea-8fc6-426cb54f4266 | field:amount | the figure is Nirlon's share capital, not a deal size
+bse:d575a28a-0eb0-4385-adc7-7405a3ae10f6 | headline | the company sold nothing: a shareholder sold the shares
+bse:d575a28a-0eb0-4385-adc7-7405a3ae10f6 | field:offer_pct | there is no open offer: 7.59% is the share of capital disposed of
+bse:f1395e40-e394-4142-a9fe-63d448bf6c55 | headline | the filing is a notice of a newspaper advertisement, not results
+bse:de5ffabe-fc84-4793-be84-865415b28c14 | headline | the filing is a note on an earnings-call recording, not results
+bse:218c45e2-c65e-486c-ab5b-aaad710eefb9 | metrics:all | the filing says these are management estimates subject to final audit adjustments
+bse:3cf00749-3541-4b02-8734-bdda15dacf20 | field:shares | 2,15,00,000 is the total encumbered after the event; this pledge is 15,00,000 shares
+bse:454a59f3-b9ff-40bf-89a7-0d50ca48bbd4 | field:shares | 20% is a stake, not a count of shares
+bse:db51c1b7-1333-4991-a4ac-ffee905f0f44 | field:capacity_from | 130+ hotels is the group's existing portfolio, not this MoU's capacity
+bse:db51c1b7-1333-4991-a4ac-ffee905f0f44 | field:capacity_to | nearly 16,000 keys is the group's total pipeline, the MoU is for about 4,000 keys
+nse:106820000 | field:amount | Rs 4,000 crore is an estimated investment of Omaxe, not the value of the MoU
+nse:106819931 | metrics:all | the Mexico tender belongs to a customer, not Wanbury, and "approximately" is dropped
+nse:106819742 | field:amount | up to Rs 8,000 crore NCDs is one of two instruments (commercial paper of up to Rs 1,000 crore is ignored)
+nse:106819548 | metrics:all | the 14.0% Tier 1 ratio is pro forma, shown as reported
+bse:bdfa9da6-f33e-4448-b1b5-5671aa59d5c6 | metrics:all | these are the combined financials of the Mont Group, not of the company
+bse:5d5fea1c-ad9b-4512-8590-87f6147a195f | field:shares | 1,99,05,290 is one holder's undertaking; the disclosure covers 2,25,64,398 shares
+nse:106819932 | headline | drops "subject to approval of members, NSE or other authorities"
+nse:106819989 | headline | the bonus shares were allotted on 16 Oct; members approved the issue on 10 Oct
+bse:7f05c561-71da-4215-8aee-46e1b2d8f964 | headline | the filing corrects an earlier intimation; nothing new was granted
+bse:ee5d2a7b-a328-4d1f-ac84-6aab01c2f861 | headline | the filing adds details omitted from the project's ToR notice; nothing was added to the project
+nse:106819599 | headline | the filing does not say who appealed
+bse:9144f669-055b-47a5-8fb1-55ce0c86a9e9 | headline | names the subsidiary Sterling, not the listed company Thomas Cook
+bse:147c1a3d-fc92-4219-afc7-59052f89a5bb | metrics:all | standalone and consolidated figures are mixed with no label
+bse:ec2a5539-be53-44da-a599-fcf2eeabb793 | headline | "discloses" with no figure: the news is a pledge of 5.14 lakh shares and a release of 5.16 lakh
+bse:a758b681-9376-4fe9-aeb1-0bdaf375d381 | headline | names the promoter, not the listed company, with "discloses" and no figure
