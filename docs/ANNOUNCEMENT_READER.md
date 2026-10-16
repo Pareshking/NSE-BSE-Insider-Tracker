@@ -259,7 +259,7 @@ so it ends before the next starts; what it does not reach waits for the next run
   headlines and 5 of 9 points shown before this, the rest held back for joining numbers of two quotes. A metric's year-earlier value
   (`previous`, with its own quote) is checked the same way; the % change is ours. No "impact" label (13
   Oct decision); "why it matters" waits for our own history ("before this", a next step): equisense's
-  draws on concalls and annual reports, which we do not collect, so it would be invented here. Reads
+  draws on concalls and annual reports; concall filings are archived since 15 Oct but not yet read, annual reports are not collected, so it would be invented here. Reads
   before `live-2` show a plain headline (company: category, size). The site's CSS hides every `footer`
   element (Streamlit's), so the card's foot is a `div`; the first cards' link and reader never showed.
 - "Before this" on the card (our own tables, every figure computed by us): the issue price against the last
@@ -468,7 +468,7 @@ and a rule change needs no re-read. Three layers on the card, always labelled ap
 - **Calculation**: ours, from dated inputs (order / TTM revenue = 50%; debt after = before - repaid, pro forma).
 - **Interpretation**: only from a written rule with its threshold (an order of 25% or more of TTM revenue is "large
   for the company"), never a model's guess. The model writes no "why it matters" (13 Oct decision stands: it would
-  be invented without concalls and annual reports). A fixed "Unknowns" line lists, from the code, which inputs were
+  be invented without concalls and annual reports; owner, 16 Oct: collect them, and management's own words may then enter the card as reported facts with their quote and date, never as our opinion). A fixed "Unknowns" line lists, from the code, which inputs were
   missing.
 
 Rules: missing is never zero (no baseline, no comparison: "not available: no debt figure since 31 Mar 2026"); every
