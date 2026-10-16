@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from ui import kit
+from insiders_clean import context
 
 CATEGORY = {
     'buyback_open_market': 'Buyback, open market', 'buyback_tender': 'Buyback, tender offer', 'qip': 'QIP',
@@ -395,11 +396,12 @@ def _before_html(lines) -> str:
 
 
 EARLIER_DAYS, INSIDER_DAYS = 90, 30
+SIZE_VS_YEAR = ('order_win', 'acquisition', 'divestment', 'capex', 'preferential', 'qip', 'rights', 'debt_issue', 'agreement', 'merger_demerger')
 OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_open_market', 'buyback_tender', 'open_offer')
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
-                insiders: pd.DataFrame | None) -> list[str]:
+                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None) -> list[str]:
     """Context from our own tables, every figure computed here, never by a model: the company's earlier
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
@@ -423,6 +425,11 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     if amt and amt.get('currency') == 'INR' and amt.get('number') and cap and cap == cap:
         out.append(f'The size is <b>{esc(kit.pct(amt["number"] / cap * 100, 1))}</b> of the company\'s market cap '
                    f'({esc(kit.rupees(cap))}).')
+    if amt and amt.get('currency') == 'INR' and amt.get('number') and r.get('category') in SIZE_VS_YEAR and results is not None:
+        year = context.last_year(results, isin, r.get('broadcast_at'))
+        if year:
+            out.append(f'The size is <b>{esc(kit.pct(amt["number"] / year["revenue"] * 100, 1))}</b> of {esc(year["fy"])} revenue '
+                       f'({esc(kit.rupees(year["revenue"]))}, {esc(year["basis"])}).')
     if holding:
         pct, pledge = holding.get('promoter_holding_pct'), holding.get('promoter_pledge_pct')
         if pct is not None and pct == pct:
@@ -466,10 +473,11 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     holdings = ({} if sh is None or sh.empty or 'isin' not in sh else
                 sh.sort_values('quarter_end').drop_duplicates('isin', keep='last').set_index('isin').to_dict('index'))
     insiders = getattr(ctx, 'eligible', None)
+    results = getattr(ctx, 'results', None)
 
     def card(x):
         p = by_isin.get(x.get('isin'))
-        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders))
+        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results))
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 

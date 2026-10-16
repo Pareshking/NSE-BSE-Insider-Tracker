@@ -19,6 +19,7 @@ TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings'
           'buybacks', 'bse_sast', 'bse_actions')
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
+TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
 TABLES += ('announcement_reads',)   # filings read by scripts/announcement_reader.py, values checked
 
 
@@ -47,7 +48,8 @@ def configured() -> bool:
 # Kept in R2 for the clean layer and audits; no page reads them, and as Python strings they were a large
 # share of the site's memory (meetings' raw_json alone 22 MB of 35): scripts/site_memory_report.py.
 UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
-ONLY = {'promoter_group': ('symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
+ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at'),
+        'promoter_group': ('symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
 
 FRESH = ('announcement_reads',)   # rewritten through the day as filings are read: kept for 3 minutes, not 10

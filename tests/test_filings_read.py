@@ -281,3 +281,15 @@ def test_a_checked_subtitle_sits_under_the_headline_and_a_held_one_is_not_shown(
     assert '<h4 class="rc-h">Ujjivan SFB approves ₹409 Cr preferential issue</h4><p class="rc-sub">Up to 6.32 crore equity shares</p>' in html
     held = dict(headline, subtitle=dict(sub, shown=False, reason='a number not in its quote'))
     assert 'rc-sub' not in fr.card_html(row(headline=json.dumps(held), points='[]')).split('<details')[0]
+
+
+def test_before_this_sets_the_size_against_the_last_full_year_from_the_results_table():
+    import pandas as pd
+    results = pd.DataFrame([{'isin': 'INE1', 'period_end': '2026-03-31', 'consolidated': 'Consolidated', 'ytd_revenue': 5.0e9,
+                             'ytd_total_income': 5.1e9, 'ytd_profit': 1e8, 'broadcast_at': '2026-05-10'}])
+    r = {'isin': 'INE1', 'symbol': 'X', 'category': 'order_win', 'broadcast_at': '2026-10-16T10:00:00+05:30',
+         'fields': '[{"name": "amount", "shown": true, "number": 1.495e9, "currency": "INR"}]'}
+    lines = fr.before_this(r, None, None, None, None, results)
+    assert any('FY26 revenue' in x and '29.9%' in x and 'consolidated' in x for x in lines)
+    assert not any('FY26' in x for x in fr.before_this({**r, 'category': 'management_change'}, None, None, None, None, results))
+    assert not any('FY26' in x for x in fr.before_this(r, None, None, None, None, None))
