@@ -515,12 +515,43 @@ def numbers_in(text) -> list[tuple[float, float]]:
     return out
 
 
+_MONTHS = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+_MONTH_RX = r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?'
+_DATE_RXS = (
+    (re.compile(r'(?<![\d.])(\d{1,2})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{4})(?![\d])'), lambda g: (g[2], g[1], g[0])),
+    (re.compile(r'(?<![\d.])(\d{1,2})(?:st|nd|rd|th)?[\s,-]*(?:of\s+)?' + _MONTH_RX + r'[\s,.-]*(\d{4})', re.IGNORECASE),
+     lambda g: (g[2], _MONTHS[g[1].lower()], g[0])),
+    (re.compile(_MONTH_RX + r'[\s,.-]*(\d{1,2})(?:st|nd|rd|th)?[\s,.-]+(\d{4})', re.IGNORECASE),
+     lambda g: (g[2], _MONTHS[g[0].lower()], g[1])),
+)
+
+
+def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
+    """The calendar dates of a text ('22.10.2026', '22nd October 2026', 'October 22, 2026' are one date) and the
+    text with them cut out, so that a date's day, month and year are not read as loose numbers."""
+    found, rest = set(), str(text or '')
+    for rx, build in _DATE_RXS:
+        def take(m, build=build):
+            y, mo, d = (int(x) for x in build(m.groups()))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                found.add((y, mo, d))
+                return ' '
+            return m.group(0)
+        rest = rx.sub(take, rest)
+    return found, rest
+
+
 def numbers_backed(text, quotes) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
     lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
     backed by 250 crore (a dropped unit)."""
-    have = [pair for q in quotes for pair in numbers_in(q)]
+    quotes = list(quotes)
+    have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
+    have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
+    claim_dates, text = dates_in(text)
+    if not claim_dates <= have_dates:
+        return False
 
     def backed(n, c):
         for n2, c2 in have:

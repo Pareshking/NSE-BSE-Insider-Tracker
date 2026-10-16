@@ -1318,3 +1318,25 @@ def test_prompt_separates_terminations_and_esg_scores_and_asks_for_the_main_news
         assert 'main news' in p and 'Add no word that the quote does not contain' in p
     assert 'terminated is not an order win' in ar.CATEGORIES['order_win']
     assert 'ESG' in ar.CATEGORIES['rating_upgrade'] and 'terminated' in ar.CATEGORIES['agreement']
+
+
+def test_an_exact_table_row_keeps_its_unit_from_the_heading_above_it():
+    row = 'Revenues               2,210       1,346        64.2%'
+    doc = 'Financial Performance\n(₹ in Million)  Q2 FY27  Q2 FY26  YoY\n' + row + '\nEBITDA   194   90   116.0%\n'
+    out = {'metrics': [{'label': 'Revenues', 'period': 'Q2 FY27', 'value': '2,210', 'unit': 'million', 'quote': row}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert metrics[0]['shown']
+    _, _, metrics = ar.validate(out, doc.replace('Million', 'Crore'))
+    assert not metrics[0]['shown']                       # the heading says crore, the card says million
+    _, _, metrics = ar.validate(out, doc.replace('(₹ in Million)', 'Particulars'))
+    assert not metrics[0]['shown']                       # no unit anywhere near the row
+
+
+def test_a_date_is_one_date_however_it_is_written_and_a_wrong_date_is_not_backed():
+    quote = 'the Board in the aforesaid meeting dt. 22.10.2026 (Thursday) may consider declaration of interim dividend for the financial year 2026-27.'
+    assert ar.numbers_backed('Board meets on 22nd October 2026 to consider an interim dividend for the financial year 2026-27', [quote])
+    assert ar.numbers_backed('Meeting on October 22, 2026', [quote])
+    assert not ar.numbers_backed('Meeting on 23rd October 2026', [quote])
+    assert not ar.numbers_backed('Meeting on 22nd November 2026', [quote])
+    assert not ar.numbers_backed('as on September 30, 2026', ['Sub: Asset Liability Management (ALM) — Reporting'])
+    assert ar.numbers_backed('record date 20th October, 2026 at Rs 5', ['Record Date: 20-10-2026, price Rs 5 per share'])
