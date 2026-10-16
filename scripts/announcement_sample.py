@@ -26,6 +26,7 @@ import io
 import json
 import os
 import re
+import unicodedata
 import signal
 import subprocess
 import sys
@@ -456,7 +457,7 @@ def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]
 # --- checks ------------------------------------------------------------------------
 
 def _norm(s: str) -> str:
-    s = str(s).lower().translate(str.maketrans({'’': "'", '‘': "'", '“': '"', '”': '"',
+    s = unicodedata.normalize('NFKC', str(s)).lower().translate(str.maketrans({'’': "'", '‘': "'", '“': '"', '”': '"',
                                                 '–': '-', '—': '-', ' ': ' '}))
     return re.sub(r'\s+', '', s)
 
@@ -483,7 +484,7 @@ def quote_found(quote, doc: str) -> str | bool:
         return 'exact'
     # A quote the model joined with "..." (two or more passages of the document): every passage must be in it.
     parts = [x for x in re.split(r'\.{3,}|…', str(quote)) if len(_norm(x)) >= 8]
-    if len(parts) >= 2 and all(_norm(x) in flat_doc for x in parts):
+    if len(parts) >= 2 and all(_norm(x) in flat_doc or (len(_loose(x)) >= 8 and _loose(x) in _loose(doc)) for x in parts):
         return 'exact'
     # The same words with other punctuation (a "|" between table cells, curly quotes, a colon for "=", commas):
     # numbers keep their commas and points, so 4.5 is never read as 45.

@@ -567,3 +567,20 @@ of transactions, projects and financial changes over time. The rule for every ma
 happened, what changed, how significant it is for this company, and what evidence is still needed to understand
 its consequences. Sector analysis and adaptive headlines come only once these work, so that they cannot produce
 confident but unsupported conclusions.
+
+### Run 5 audit and the fixes (16 Oct, live-11)
+
+Run 5 (live-10, 14:04 IST): 80 read, 67 cards audited by ten reviewers. 20 of 67 had no shown headline; in 18 the
+headline was held for "a number not in its quote", and the holds were right: the model put the wrong figure in the
+new ₹ Cr format (Benares H1 profit "₹148.1 Cr" for 1,480.59 lakh = ₹14.8 Cr, Federal Bank "₹1,35 Cr", Amal
+"₹401 Cr" for 401 lakh, a growth rate it worked out itself). Fix, **the model no longer types a money amount, a share
+count or a growth percentage**: it writes a token ({amount}, {price}, {shares}, {m1}, {m1_pct}) and our code
+(`fill_tokens`, `money_text`) puts in the value already checked in the right unit (₹ Cr from a crore, ₹ Lakh below,
+a foreign currency as filed); the growth percentage is our own calculation from the metric's previous value and a
+rise word against a fall (or the reverse) holds the headline. Also: a metric's label must be the row of its quote
+(profit before tax is not EBITDA); two values for one measure and period are both held (basis not stated); a
+percentage is not a count of shares; "subject to approval" in the quote must stay in the headline or point, and
+"up to" in a point; the mangled-scan hold is judged where the quote stands, not for the whole filing; quote
+matching reads ligatures (NFKC) and joined table cells; the prompt names the company and asks for the sentence that
+holds every number, the total row, the exercise price row, the fiscal year of the period, and the acting party of a
+shareholder filing. 29 more stored cards got lines in `scripts/card_holds.txt`. Prompt `live-11`.

@@ -56,7 +56,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-10' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-11' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -388,12 +388,47 @@ def text_is_garbled(doc: str) -> bool:
 PROJECTION = re.compile(r'\b(?:project(?:ed|s|ion)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
 FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)?\s*[\d,.]+(?:\s*/-)?'
                         r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
-NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets|(?:paid[- ]?up|authori[sz]ed|issued)\s+(?:equity\s+)?(?:share\s+)?capital|share\s+capital', re.IGNORECASE)
+NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets|(?:paid[- ]?up|authori[sz]ed|issued)\s+(?:equity\s+)?(?:share\s+)?capital|share\s+capital|voting\s+(?:share\s+)?capital', re.IGNORECASE)
 WITHDRAWN = re.compile(r'\b(?:withdr[ae]w\w*|cancel\w*|terminat\w*|not\s+to\s+proceed|abandon\w*|lapse\w*|rescind\w*)\b', re.IGNORECASE)
 DEAL_FIELDS = ('price_per_share', 'max_price_per_share', 'amount', 'shares', 'offer_pct', 'allottee_is_promoter')
 PROMOTERS = re.compile(r'\bpromoters?\b', re.IGNORECASE)
 NON_PROMOTER = re.compile(r'\bnon[- ]?promoters?\b|\bno\s+promoters?\b|\b(?:does|do)\s+not\s+have\s+any\s+promoters?\b|\bnot\s+(?:a\s+)?promoters?\b|\bpublic\b', re.IGNORECASE)
 DEAL_WORDS = re.compile(r'consideration|invest|aggregat|issue\s+size|\bamount\b|subscri|price|raise|worth|valu(?:e|ation)', re.IGNORECASE)
+
+
+MEASURE_ROWS = (   # a metric's label must be the row its quote shows (Benares: "EBITDA" was the profit before tax row)
+    (re.compile(r'ebitda|pbdit|operating profit', re.I), re.compile(r'ebitda|pbdit|operating\s+profit', re.I), 'EBITDA'),
+    (re.compile(r'\bpbt\b|profit before tax|before tax', re.I), re.compile(r'\bpbt\b|before\s+tax', re.I), 'profit before tax'),
+    (re.compile(r'\bpat\b|profit after tax|net profit|net income|net loss', re.I),
+     re.compile(r'\bpat\b|after\s+tax|net\s+(?:profit|income|loss)|profit.{0,30}for the (?:period|quarter|year)|profit\s*/?\s*\(?loss\)?.{0,40}(?:period|year)', re.I), 'profit after tax'),
+    (re.compile(r'revenue|sales|turnover', re.I), re.compile(r'revenue|sales|turnover|income', re.I), 'revenue'),
+)
+CONDITION = re.compile(r'subject\s+to\s+(?:the\s+)?(?:approval|consent|receipt|obtaining|shareholders?|members?|regulatory|statutory|requisite)', re.I)
+CONDITION_KEPT = re.compile(r'subject|propos|pending|seek|conditional|if approved|subject to|awaiting|upon approval', re.I)
+UPTO_QUOTE = re.compile(r'\b(?:up\s*to|upto|maximum\s+of)\s+(?:Rs\.?\s*|INR\s*|₹\s*|USD\s*)?\d', re.I)
+UPTO_KEPT = re.compile(r'\b(?:up\s*to|upto|maximum|max|capped|ceiling)\b', re.I)
+
+
+def measure_reason(label, quote) -> str | None:
+    for name_re, row_re, what in MEASURE_ROWS:
+        if name_re.search(str(label or '')) and not row_re.search(str(quote or '')):
+            return f'its quote is not the {what} row'
+    return None
+
+
+def garbled_near(doc: str, quote) -> bool:
+    """The scan is mangled where the quote stands, not only somewhere in the filing (a clean cover letter of a
+    filing whose tables are garbled can still be trusted): the 1,500 characters round the quote must be mangled too."""
+    if not text_is_garbled(doc):
+        return False
+    flat = re.sub(r'\s+', ' ', str(doc))
+    key = re.sub(r'\s+', ' ', str(quote or '')).strip()[:40]
+    at = flat.lower().find(key.lower()) if len(key) >= 12 else -1
+    if at < 0:
+        return True
+    toks = [x for x in flat[max(0, at - 750): at + 750].split() if re.search(r'\d', x)]
+    bad = sum(1 for x in toks if _GARBLED_TOKEN.search(x))
+    return bad >= 4 and bad >= 0.08 * max(1, len(toks))
 
 
 def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
@@ -403,7 +438,6 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
     for f in out.get('fields') or []:
         if isinstance(f, dict) and f.get('name') in s.FIELDS and f['name'] not in named:
             named[f['name']] = f
-    garbled = text_is_garbled(doc)
     unit = (named.get('amount_unit') or {}).get('value')
     cur = named.get('currency') or {}
     filing_currency = str(cur.get('value')).strip().upper() if cur.get('value') and s.quote_found(cur.get('quote'), doc)         else None
@@ -415,12 +449,14 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         qf = s.quote_found(quote, doc)
         rec = {'name': name, 'value': value, 'quote': quote, 'evidence': qf or None, 'reason': None}
         reasons = [] if qf else ['quote not found in the filing']
-        if name in s.NUMERIC and garbled:
+        if name in s.NUMERIC and garbled_near(doc, quote):
             reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
         if name in ('price_per_share', 'max_price_per_share') and quote and not s.digits_in_quote(value, FACE_VALUE.sub(' ', str(quote))):
             reasons.append('its quote gives the face value, not a price')
         if name == 'amount' and NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')):
             reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
+        if name == 'shares' and '%' in str(value):
+            reasons.append('a percentage, not a count of shares')
         if name in s.NUMERIC:
             if not s.digits_in_quote(value, quote):
                 reasons.append('number not in its quote')
@@ -459,10 +495,13 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         value, quote, unit_m = m.get('value'), m.get('quote'), m.get('unit')
         qf = s.quote_found(quote, doc)
         reasons = [] if qf else ['quote not found in the filing']
-        if garbled:
+        if garbled_near(doc, quote):
             reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
         if not s.digits_in_quote(value, quote):
             reasons.append('number not in its quote')
+        reason_row = measure_reason(m.get('label'), quote)
+        if reason_row:
+            reasons.append(reason_row)
         money = str(unit_m or '').strip().lower().rstrip('.') in s.UNIT
         number = s.in_units(value, unit_m) if money else s._num(value)
         if number is None:
@@ -475,6 +514,14 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
+    seen: dict = {}
+    for m in metrics:
+        if m['shown']:
+            seen.setdefault((str(m.get('label') or '').strip().lower(), str(m.get('period') or '').strip().lower()), []).append(m)
+    for group in seen.values():
+        if len(group) > 1 and len({round(x['number'], 4) for x in group if isinstance(x.get('number'), (int, float))}) > 1:
+            for m in group:
+                m['shown'], m['reason'] = False, 'two different values for the same measure and period: standalone or consolidated is not stated'
     cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None
     return cat, fields, metrics
 
@@ -493,7 +540,7 @@ CARD_ASK = (
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters, in rupees: "Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr", "Onward Technologies raises FY27 growth outlook". At most 70 characters. Write an amount as ₹ and Cr from 1 crore up (₹409 Cr, ₹171.2 Cr) and as Lakh below that (₹92 Lakh); round to three significant digits, never more than 0.4% away from the filing\'s figure (₹409.04 crore is ₹409 Cr); write a foreign currency as the filing does (USD 2,000); never convert a currency. No "announces", "informs", "submits" or "intimates". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to 6.32 crore equity shares" or "Q2 revenue up 22.2% to ₹171.2 Cr; EBITDA rises 33.7% to ₹26.6 Cr", "quote": the exact words of the document that state it}; the figures of the subtitle must be in its own quote like those of the headline. \n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"). Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). \n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, '
@@ -517,7 +564,7 @@ CARD_ASK_V2 = (
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters, in rupees: "Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr", "Onward Technologies raises FY27 growth outlook". At most 70 characters. Write an amount as ₹ and Cr from 1 crore up (₹409 Cr, ₹171.2 Cr) and as Lakh below that (₹92 Lakh); round to three significant digits, never more than 0.4% away from the filing\'s figure (₹409.04 crore is ₹409 Cr); write a foreign currency as the filing does (USD 2,000); never convert a currency. No "announces", "informs", "submits" or "intimates". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to 6.32 crore equity shares" or "Q2 revenue up 22.2% to ₹171.2 Cr; EBITDA rises 33.7% to ₹26.6 Cr", "quote": the exact words of the document that state it}; the figures of the subtitle must be in its own quote like those of the headline. Return the existing JSON schema only.\n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"). Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -539,7 +586,15 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
     memory = str(row.get('_company_memory') or '').strip()
     context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
                'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
-    return p.replace('=== DOCUMENT ===', ask + context + '=== DOCUMENT ===', 1)
+    name = str(row.get('company') or '').strip()
+    who = (f'The listed company is {name} (exchange symbol {row.get("symbol")}): the headline uses its short name, never the symbol. '
+           if name else '')
+    rules = (who + 'A metric\'s label is the row of its quote ("Profit before tax" is not EBITDA; "Total income" is not revenue from operations); '
+             'put "standalone" or "consolidated" in the label when the filing states it; the fiscal year of a period is the year in which it ends '
+             '(the quarter ended 30 September 2026 is Q2 FY27). When one filing lists several instruments or ISINs, a status claim quotes the row that holds the identifier. '
+             'Where a table gives the total of several rows, use the total. Quote the sentence that holds every number of the claim; a quote may join up to three passages with "...". '
+             'For an ESOP or warrant the price is the "exercise price" or "issue price" row, not the face value.\n\n')
+    return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
     """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
@@ -641,7 +696,7 @@ def status_upgraded(text: str, quote: str) -> bool:
                                                 and not re.search(r'approv', q, re.IGNORECASE)))
 
 
-def check_words(item, doc: str, more_quotes=()) -> dict | None:
+def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dict | None:
     """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
     (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
     does not say approved where its quote says recommended. `more_quotes` is no longer used."""
@@ -650,8 +705,12 @@ def check_words(item, doc: str, more_quotes=()) -> dict | None:
     text, quote = str(item['text']).strip(), item.get('quote')
     qf = s.quote_found(quote, doc)
     reasons = [] if qf else ['quote not found in the filing']
-    if re.search(r'\d', text) and text_is_garbled(doc):
+    if re.search(r'\d', text) and garbled_near(doc, quote):
         reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
+    if CONDITION.search(str(quote or '')) and not CONDITION_KEPT.search(text):
+        reasons.append('drops the condition its quote states (subject to approval)')
+    if keep_up_to and UPTO_QUOTE.search(str(quote or '')) and not UPTO_KEPT.search(text):
+        reasons.append('drops "up to" that its quote states')
     if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
@@ -660,17 +719,109 @@ def check_words(item, doc: str, more_quotes=()) -> dict | None:
             'reason': '; '.join(reasons) or None}
 
 
+# --- headline figures are put in by our code, from values already checked ------------------------------------------
+TOKEN = re.compile(r'\{(amount|price|shares|m\d+(?:_pct)?)\}')
+RISE_WORDS = re.compile(r'\b(?:rise[sd]?|rising|up|grow[s]?|grew|jump[s]?(?:ed)?|surge[sd]?|gain[s]?(?:ed)?|increase[sd]?|improve[sd]?)\b', re.IGNORECASE)
+FALL_WORDS = re.compile(r'\b(?:fall[s]?|fell|down|declin\w+|drop[s]?(?:ped)?|slump\w*|shrink\w*|decrease[sd]?|narrow\w*)\b', re.IGNORECASE)
+
+
+def _sig(v: float) -> str:
+    """Three significant digits, thousands with commas: 409.04 -> 409, 171.234 -> 171, 26.61 -> 26.6, 4.567 -> 4.57."""
+    if v >= 1000:
+        return f'{v:,.0f}'
+    if v >= 100:
+        return f'{v:.0f}'
+    text = f'{v:.1f}' if v >= 10 else f'{v:.2f}'
+    return text.rstrip('0').rstrip('.') if '.' in text else text
+
+
+def money_text(n, currency) -> str | None:
+    """Rupees as the owner writes them (₹409 Cr from a crore up, ₹92 Lakh below, ₹74,670 below a lakh); a foreign
+    currency as the filing gives it, never converted; None when the currency is not known."""
+    cur = str(currency or '').strip().upper()
+    if not isinstance(n, (int, float)) or n != n:
+        return None
+    if cur in ('INR', 'RS', 'RS.', '₹'):
+        if n >= 1e7:
+            return f'₹{_sig(n / 1e7)} Cr'
+        if n >= 1e5:
+            return f'₹{_sig(n / 1e5)} Lakh'
+        return f'₹{n:,.0f}' if n == int(n) else f'₹{n:,.2f}'
+    if cur:
+        if n >= 1e9:
+            return f'{cur} {_sig(n / 1e9)} Bn'
+        if n >= 1e6:
+            return f'{cur} {_sig(n / 1e6)} Mn'
+        return f'{cur} {n:,.0f}' if n == int(n) else f'{cur} {n:,.2f}'
+    return None
+
+
+def count_text(n) -> str | None:
+    if not isinstance(n, (int, float)) or n != n:
+        return None
+    if n >= 1e7:
+        return f'{_sig(n / 1e7)} crore'
+    if n >= 1e5:
+        return f'{_sig(n / 1e5)} lakh'
+    return f'{n:,.0f}'
+
+
+def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str, str | None]:
+    """The headline or subtitle with every {token} replaced by a checked value of the card; (text, reason it cannot be)."""
+    by_name = {f.get('name'): f for f in fields if f.get('shown')}
+    bad = []
+
+    def value(m):
+        key = m.group(1)
+        if key == 'amount':
+            f = by_name.get('amount')
+            out = money_text(f.get('number'), f.get('currency')) if f else None
+        elif key == 'price':
+            f = by_name.get('price_per_share') or by_name.get('max_price_per_share')
+            out = money_text(f.get('number'), f.get('currency')) if f else None
+        elif key == 'shares':
+            f = by_name.get('shares')
+            out = count_text(f.get('number')) if f else None
+        else:
+            k = int(re.match(r'm(\d+)', key).group(1)) - 1
+            met = metrics[k] if 0 <= k < len(metrics) else None
+            if met is None or not met.get('shown'):
+                out = None
+            elif key.endswith('_pct'):
+                pct = met.get('change_pct')
+                out = f'{abs(pct):.1f}%'.replace('.0%', '%') if isinstance(pct, (int, float)) else None
+                if out is not None:
+                    before = text[:m.start()]
+                    if (pct < 0 and RISE_WORDS.search(before[-25:])) or (pct > 0 and FALL_WORDS.search(before[-25:])):
+                        out = None      # the words say up where the numbers say down (or the reverse)
+            else:
+                out = money_text(met.get('number'), met.get('currency'))
+        if out is None:
+            bad.append(m.group(0))
+            return m.group(0)
+        return out
+    filled = TOKEN.sub(value, text)
+    return filled, ('a figure of the headline is not among the checked values: ' + ', '.join(bad)) if bad else None
+
+
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
-    points = [p for p in (check_words(x, doc) for x in (out.get('points') or [])[:4]) if p]
+    points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
     headline = check_words(out.get('headline'), doc)
     if headline:
+        headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
+        if token_reason:
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
         quality_reason = headline_quality_reason(headline['text'])
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
         sub = check_words(out.get('subtitle'), doc)       # the line under the headline, checked as the headline is
         if sub:
+            sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
+            if sub_reason:
+                sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), sub_reason) if x)
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub

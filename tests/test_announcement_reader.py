@@ -624,7 +624,7 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
     doc = ('the Board approved a Rights Issue of up to 10,00,00,000 Right Equity Shares. Issue Size up to ₹ 12,000 '
            'Lakhs. Issue Price ₹ 12 per Equity Share. Sales FY 2026 812 FY 2027 1071')
     out = {'category': 'rights', 'fields': [{'name': 'price_per_share', 'value': '12', 'quote': 'Issue Price ₹ 12 per Equity Share'}],
-           'metrics': [{'label': 'Sales', 'period': 'Sep 2026', 'value': '1071', 'unit': 'units', 'quote': 'FY 2027 1071',
+           'metrics': [{'label': 'Sales', 'period': 'Sep 2026', 'value': '1071', 'unit': 'units', 'quote': 'Sales FY 2027 1071',
                         'previous': '812', 'previous_period': 'Sep 2025', 'previous_quote': 'FY 2026 812'}],
            'headline': {'text': 'Company sets ₹120 Cr rights issue at ₹12',
                         'quote': 'Issue Size up to ₹ 12,000 Lakhs. Issue Price ₹ 12 per Equity Share'},
@@ -640,7 +640,7 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
         'quote': 'Issue Size up to ₹ 12,000 Lakhs'}}, doc, fields, metrics)
     assert boilerplate is not None and not boilerplate['shown']
     assert 'filing-label boilerplate' in boilerplate['reason']
-    assert points[1]['reason'] == 'a number not in its quote' and points[2]['reason'] == 'quote not found in the filing'
+    assert 'a number not in its quote' in points[1]['reason'] and points[2]['reason'] == 'quote not found in the filing'
     assert metrics[0]['previous_number'] == 812 and metrics[0]['change_pct'] == 31.9   # our sum, not the model's
     assert 'headline' in ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, doc).split('=== DOCUMENT ===')[0]
 
@@ -1544,7 +1544,7 @@ def test_the_headline_has_a_subtitle_checked_like_the_headline():
 
 def test_the_prompt_asks_for_the_owners_headline_format():
     for ask in (ar.CARD_ASK, ar.CARD_ASK_V2):
-        assert 'HEADLINE FORMAT' in ask and 'Ujjivan SFB approves ₹409 Cr preferential issue' in ask and '"subtitle"' in ask
+        assert 'HEADLINE FORMAT' in ask and 'Ujjivan SFB approves {amount} preferential issue' in ask and '"subtitle"' in ask and 'NEVER type a money amount' in ask
 
 
 def test_a_share_described_as_rupees_n_each_is_face_value_not_a_price():
@@ -1595,3 +1595,77 @@ def test_the_terms_of_a_withdrawn_deal_are_not_shown_as_its_fields():
            'fields': [{'name': 'shares', 'value': '2157000', 'quote': '21,57,000 Warrants'}]}
     res = ar.result_of(out, doc, 'm', 1.0, 'lane')
     assert res['headline'] and not res['fields'][0]['shown'] and 'withdraws' in res['fields'][0]['reason']
+
+
+def test_quote_matching_reads_ligatures_and_joined_table_cells():
+    doc = 'access to ﬁve safari gates\nHolding | 47,00,092 | 16.10%\nafter | 57,00,092 | 18.55%'
+    assert ar.s.quote_found('access to five safari gates', doc)
+    assert ar.s.quote_found('Holding 47,00,092 16.10% ... after 57,00,092 18.55%', doc)
+
+
+def test_headline_figures_are_put_in_by_our_code_from_checked_values():
+    doc = 'The Board approved a preferential issue aggregating Rs. 409.04 crores. Revenue from operations 22,376.43 4,380.49 (Rs. in Lakhs)'
+    out = {'category': 'preferential',
+           'headline': {'text': 'Ujjivan SFB approves {amount} preferential issue', 'quote': 'approved a preferential issue aggregating Rs. 409.04 crores'},
+           'subtitle': {'text': 'Revenue {m1} against {m1_pct} up', 'quote': 'Revenue from operations 22,376.43 4,380.49 (Rs. in Lakhs)'},
+           'fields': [{'name': 'amount', 'value': '409.04', 'quote': 'aggregating Rs. 409.04 crores'},
+                      {'name': 'amount_unit', 'value': 'crore', 'quote': 'aggregating Rs. 409.04 crores'},
+                      {'name': 'currency', 'value': 'INR', 'quote': 'Rs. 409.04 crores'}]}
+    res = ar.result_of(out, doc, 'm', 1.0, 'lane')
+    assert res['headline']['shown'] and res['headline']['text'] == 'Ujjivan SFB approves ₹409 Cr preferential issue'
+
+
+def test_a_headline_token_without_a_checked_value_holds_the_headline():
+    doc = 'The Board approved a preferential issue aggregating Rs. 409.04 crores.'
+    out = {'category': 'preferential',
+           'headline': {'text': 'X approves {amount} issue at {price}', 'quote': 'approved a preferential issue aggregating Rs. 409.04 crores'},
+           'fields': [{'name': 'amount', 'value': '409.04', 'quote': 'aggregating Rs. 409.04 crores'},
+                      {'name': 'amount_unit', 'value': 'crore', 'quote': 'aggregating Rs. 409.04 crores'},
+                      {'name': 'currency', 'value': 'INR', 'quote': 'Rs. 409.04 crores'}]}
+    res = ar.result_of(out, doc, 'm', 1.0, 'lane')
+    assert not res['headline']['shown'] and '{price}' in res['headline']['reason']
+
+
+def test_money_is_written_as_the_owner_writes_it_and_a_foreign_currency_is_not_converted():
+    assert ar.money_text(4090400000, 'INR') == '₹409 Cr'
+    assert ar.money_text(1.7123e9, 'INR') == '₹171 Cr'
+    assert ar.money_text(9.2e6, 'INR') == '₹92 Lakh'
+    assert ar.money_text(74670, 'INR') == '₹74,670'
+    assert ar.money_text(2000, 'USD') == 'USD 2,000'
+    assert ar.money_text(2000, None) is None
+    assert ar.count_text(63191619) == '6.32 crore'
+
+
+def test_a_growth_token_must_agree_with_the_direction_of_the_words():
+    metrics = [{'shown': True, 'change_pct': -12.0, 'number': 1e9, 'currency': 'INR'}]
+    text, reason = ar.fill_tokens('Revenue rises {m1_pct}', [], metrics)
+    assert reason
+    text, reason = ar.fill_tokens('Revenue falls {m1_pct}', [], metrics)
+    assert text == 'Revenue falls 12%' and reason is None
+
+
+def test_a_metric_label_must_be_the_row_of_its_quote():
+    doc = 'Figures in Rs Lakhs\nProfit/ (Loss) before tax 874.47 1,107.36\nIncome from Operations 3,152.14 3,388.92'
+    out = {'metrics': [{'label': 'EBITDA', 'period': 'Q2 FY27', 'value': '874.47', 'unit': 'lakh', 'quote': 'Profit/ (Loss) before tax 874.47 1,107.36'},
+                       {'label': 'Revenue', 'period': 'Q2 FY27', 'value': '3,152.14', 'unit': 'lakh', 'quote': 'Income from Operations 3,152.14 3,388.92'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert not metrics[0]['shown'] and 'EBITDA' in metrics[0]['reason']
+    assert metrics[1]['shown']
+
+
+def test_shares_must_be_a_count_and_two_values_for_one_measure_are_held():
+    q = 'to acquire 20% shareholding in FLARRE.AI'
+    _, fields, _ = ar.validate({'fields': [{'name': 'shares', 'value': '20%', 'quote': q}]}, q)
+    assert not fields[0]['shown'] and 'percentage' in fields[0]['reason']
+    doc = 'Standalone Revenue 4,565.08 lakh. Consolidated Revenue 13,122.62 lakh.'
+    out = {'metrics': [{'label': 'Revenue', 'period': 'Q2 FY27', 'value': '4,565.08', 'unit': 'lakh', 'quote': 'Standalone Revenue 4,565.08 lakh'},
+                       {'label': 'Revenue', 'period': 'Q2 FY27', 'value': '13,122.62', 'unit': 'lakh', 'quote': 'Consolidated Revenue 13,122.62 lakh'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert not any(m['shown'] for m in metrics) and 'standalone or consolidated' in metrics[0]['reason']
+
+
+def test_a_condition_the_filing_states_must_stay_in_the_words():
+    doc = 'The Board approved the appointment, subject to the approval of the members of the Company.'
+    q = 'approved the appointment, subject to the approval of the members of the Company'
+    assert not ar.check_words({'text': 'Board approves the appointment', 'quote': q}, doc)['shown']
+    assert ar.check_words({'text': 'Board approves the appointment, subject to member approval', 'quote': q}, doc)['shown']
