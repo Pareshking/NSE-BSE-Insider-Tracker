@@ -56,8 +56,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-8' if PROMPT_VARIANT == 'v2' else
-                  'live-7-ab' if PROMPT_COMPARE else 'live-7')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-9' if PROMPT_VARIANT == 'v2' else
+                  'live-8-ab' if PROMPT_COMPARE else 'live-8')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -404,7 +404,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                     reasons.append('unit not backed by its quote')
         if name in MONEY_FIELDS:   # the site writes the currency only when the filing does
             rec['currency'] = currency_in_quote(value, quote) or filing_currency
-        if name == 'record_date' and not re.search(r'record\s+date|book\s+closure|cut-?\s?off\s+date|entitlement\s+date',
+        if name == 'record_date' and not re.search(r'record\s+date|book\s+closure|entitlement\s+date',
                                                     str(quote or ''), re.IGNORECASE):
             reasons.append('its quote does not say record date')   # a survey, a certificate or a meeting is not one
         if name.endswith('_date'):
@@ -451,7 +451,7 @@ CARD_ASK = (
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
     'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
     'the price; for a legal or regulatory matter, who acted, against whom, and the amount. Never use boilerplate such as "Submission of", "Outcome of Board Meeting", "Outcome of Meeting", "Intimation of", or "Pursuant to", and never copy the exchange subject as the headline. Lead with the approved or announced action and its key terms; if the board approved multiple actions, distinguish them in the points. In a metric of a monthly, quarterly or half-year update, also give "previous": the '
-    'same measure for the year-earlier period as written, "previous_period" and "previous_quote". In the '
+    'same measure for the year-earlier period as written, "previous_period" and "previous_quote" (only when the document\'s words put it as the year-earlier value, such as "vs", "compared with", "from" or "year-ago"; never pick a column of a table for it). In the '
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
@@ -473,7 +473,7 @@ CARD_ASK_V2 = (
     'the event with a generic phrase such as "company announces update". If multiple decisions appear, put the '
     'most material supported decision in the headline and keep distinct decisions in separate points. In a metric '
     'of a monthly, quarterly or half-year update, also give "previous": the same measure for the year-earlier period '
-    'as written, "previous_period" and "previous_quote". Every factual claim must be supported by its quote; every '
+    'as written, "previous_period" and "previous_quote" (only when the document\'s words put it as the year-earlier value, such as "vs", "compared with", "from" or "year-ago"; never pick a column of a table for it). Every factual claim must be supported by its quote; every '
     'number must occur in that quote or be an allowed exact unit conversion (12,000 lakh = 120 crore). No opinion, '
     'forecast, impact claim, independently calculated growth rate, inferred consequence or unsupported completion '
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
@@ -621,11 +621,26 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[
     return headline, points
 
 
+COMPARISON_WORDS = re.compile(
+    r'\b(?:vs\.?|versus|compared\s+(?:with|to)|against|from)\W{0,3}(?:(?:Rs\.?|INR|USD|EUR|US\$|[₹$€¥])\s*)?\d'
+    r'|\b(?:previous|corresponding|year[- ]ago|last year|YoY|Y-o-Y)\b', re.IGNORECASE)
+
+
+def table_row_without_comparison(quote) -> bool:
+    """A row of numbers from a results table (three or more, no word that says one of them is the earlier period). 16 Oct,
+    Ambani Orgochem: of "6 months ended 30.09.2026 | 31.03.2026 | 30.09.2025 | year" the card took the second column as the
+    year before and showed +29.2% where the year-ago column gives +55.7%. Which column is which is not for us to guess."""
+    q = str(quote or '')
+    return len(numbers_in(q)) >= 3 and not COMPARISON_WORDS.search(q)
+
+
 def with_previous(m: dict, raw: dict, doc: str) -> dict:
     """A metric's year-earlier value, checked as the metric is; our own change in % when both are shown."""
     prev, q = raw.get('previous'), raw.get('previous_quote')
     if prev in (None, '') or not m.get('shown'):
         return m
+    if table_row_without_comparison(q):
+        return {**m, 'previous_held': 'its quote is a table row: which column is the year before is not stated'}
     unit = m.get('unit')
     money = str(unit or '').strip().lower().rstrip('.') in s.UNIT
     n = s.in_units(prev, unit) if money else s._num(prev)
@@ -1443,7 +1458,8 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
 # --- cards held after review ------------------------------------------------------------------------------
 # A headline or point that every check passed and a person found wrong (16 Oct: "Supreme Court upholds AT1 Bonds
 # write-down order", "approved unearned ... results") is listed in scripts/card_holds.txt as
-# `event_id | headline | reason` (what: headline, point:N counting from 1, or words for the headline and all points).
+# `event_id | headline | reason` (what: headline, point:N counting from 1, words for the headline and all points, or
+# previous:all / previous:N for the year-earlier values of the metrics, shown without them, or field:NAME).
 # The clean table shows it as held back with that reason; the reads archive keeps the read as it was made (rule 5).
 HOLDS_FILE = HERE / 'card_holds.txt'
 
@@ -1455,7 +1471,7 @@ def holds_of(text: str) -> dict[str, list[tuple[str, str]]]:
         if not line:
             continue
         parts = [p.strip() for p in line.split('|', 2)]
-        if len(parts) != 3 or not parts[0] or not re.fullmatch(r'headline|words|point:[1-9]\d*', parts[1]) or not parts[2]:
+        if len(parts) != 3 or not parts[0] or not re.fullmatch(r'headline|words|point:[1-9]\d*|previous:(?:all|[1-9]\d*)|field:[a-z_]+', parts[1]) or not parts[2]:
             raise ValueError(f'card_holds.txt: expected "event_id | headline, point:N or words | reason", got {line!r}')
         out.setdefault(parts[0], []).append((parts[1], parts[2]))
     return out
@@ -1476,7 +1492,22 @@ def apply_holds(df: pd.DataFrame, holds: dict[str, list[tuple[str, str]]]) -> tu
     for idx in df.index[df['event_id'].isin(holds)]:
         head = load_json(df.at[idx, 'headline'], None)
         points = load_json(df.at[idx, 'points'], [])
+        metrics = load_json(df.at[idx, 'metrics'], []) if 'metrics' in df else []
+        fields = load_json(df.at[idx, 'fields'], []) if 'fields' in df else []
         for what, reason in holds[df.at[idx, 'event_id']]:
+            if what.startswith('field:'):
+                for f in fields:
+                    if f.get('name') == what[6:]:
+                        hold(f, reason)
+                continue
+            if what.startswith('previous:'):
+                for k, m in enumerate(metrics, 1):
+                    if what[9:] in ('all', str(k)) and m.get('previous') not in (None, ''):
+                        n += 1
+                        for f in ('previous', 'previous_period', 'previous_quote', 'previous_number', 'change_pct'):
+                            m.pop(f, None)
+                        m['previous_held'] = f'held after review: {reason}'
+                continue
             if what in ('headline', 'words') and isinstance(head, dict):
                 hold(head, reason)
             if what == 'words':
@@ -1486,6 +1517,10 @@ def apply_holds(df: pd.DataFrame, holds: dict[str, list[tuple[str, str]]]) -> tu
                 hold(points[int(what[6:]) - 1], reason)
         df.at[idx, 'headline'] = json.dumps(head, ensure_ascii=False, default=str) if head else df.at[idx, 'headline']
         df.at[idx, 'points'] = json.dumps(points, ensure_ascii=False, default=str)
+        if 'metrics' in df:
+            df.at[idx, 'metrics'] = json.dumps(metrics, ensure_ascii=False, default=str)
+        if 'fields' in df:
+            df.at[idx, 'fields'] = json.dumps(fields, ensure_ascii=False, default=str)
     return df, n
 
 

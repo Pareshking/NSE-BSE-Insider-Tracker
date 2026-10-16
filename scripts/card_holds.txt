@@ -3,3 +3,9 @@
 # Remove a line when the filing has been read again and the new card is right.
 nse:106819548 | headline | the filing says the Supreme Court upheld the Bombay High Court judgment of 20 Jan 2023 and dismissed the appeals of the Bank, RBI and Union of India; it does not say the Court upheld the write-down, which the headline states
 bse:17e02497-9619-49ea-979e-2bd7dd9d6f5e | headline | says "unearned" where the filing says "Unaudited" results
+nse:106819207 | previous:all | the year-ago values were taken from the wrong column of the results table (13,158.71 is the six months to 31.03.2026; the six months to 30.09.2025 are 10,915.18, EPS 0.27, net profit 20.34), so the changes shown are wrong
+nse:106819268 | point:1 | says standalone and consolidated results; its quote states the standalone results only
+nse:106819268 | headline | adds the Company Secretary appointment, which its quote (the standalone results) does not state
+bse:8ce579b9-caba-44db-80fc-3ebc3d84d2b6 | point:4 | adds that the company envisages no adverse impact; its quote states only the tax effect of INR 1.72 crores
+nse:106819283 | words | says he was appointed Company Secretary; the filing lists him as the authorised person under Regulation 30(5) and does not say he was appointed
+nse:106819746 | field:record_date | the date is the cut-off date for e-voting at the AGM (5 Nov 2026), not a record date for an entitlement

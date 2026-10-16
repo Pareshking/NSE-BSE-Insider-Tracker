@@ -172,6 +172,9 @@ def main() -> int:
                 print(f"- METRIC {m.get('label')} [{m.get('period')}] = {m.get('value')} {m.get('unit')}\n  - quote: \"{m.get('quote')}\"")
                 if not s.quote_found(m.get('quote'), doc):
                     flags.append(f"metric {m.get('label')}: QUOTE NOT IN TEXT")
+                if m.get('previous') not in (None, ''):
+                    print(f"  - PREVIOUS [{m.get('previous_period')}] = {m.get('previous')} (change {m.get('change_pct')}%)\n"
+                          f"    - previous quote: \"{m.get('previous_quote')}\"")
                 mu = str(m.get('unit') or '').lower()
                 qa = amounts(m.get('quote'))
                 if mu in UNITS and mu and UNITS[mu] not in {u for _, u in qa}:
