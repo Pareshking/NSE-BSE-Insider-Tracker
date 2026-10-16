@@ -6,7 +6,7 @@ import io
 import json
 import threading
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import announcement_reader as ar
 import announcement_sample as sample
@@ -967,7 +967,8 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     store = _ledger_store(monkeypatch)
     c = FakeClient(['{}', '{}', '{}'])
     lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': c})}
-    ledger = ar.UsageLedger(object(), '2026-10-15', {'nvidia': c}, lanes, 'live')
+    today = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime('%Y-%m-%d')   # the reader's folders are IST days
+    ledger = ar.UsageLedger(object(), today, {'nvidia': c}, lanes, 'live')
     c.generate(['m'], 'p', 'read', True)
     assert ledger.write()
     c.generate(['m'], 'p', 'read', True)
