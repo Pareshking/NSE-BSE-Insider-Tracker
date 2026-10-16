@@ -1787,3 +1787,15 @@ def test_rating_headline_must_carry_a_change_in_the_facility_size():
     out['headline']['text'] = 'Crisil reaffirms Skipper at A+/Stable; facilities enhanced to Rs 5,106 Cr'
     head, _ = ar.card_words(out, doc, [], [])
     assert 'enhanced from' not in (head.get('reason') or '')
+
+
+def test_results_row_gives_qoq_yoy_and_half_year_changes_from_its_own_columns():
+    row = 'Revenue from operations 3,823.80 3,721.44 3,371.85 7,545.24 6,672.22 14,620.13'
+    q = ar.results_changes({'quote': row, 'value': '3,823.80'})
+    assert q['qoq_pct'] == 2.7 or q['qoq_pct'] == 2.8
+    assert q['change_pct'] == 13.4
+    h = ar.results_changes({'quote': row, 'value': '7,545.24'})
+    assert h['change_pct'] == 13.1 and 'qoq_pct' not in h
+    assert ar.results_changes({'quote': 'Revenue 7119.36 6,250.67 5,721.45 7,119.36 15,302.65', 'value': '7,119.36'}) == {}   # 5 columns: not the layout
+    assert ar.results_changes({'quote': 'Revenue 100 90 80 500 400 900', 'value': '100'}) == {}   # the six-month figure is not the sum
+    assert ar.results_row('Profit (494.90) 10 20 30 40 50') is None

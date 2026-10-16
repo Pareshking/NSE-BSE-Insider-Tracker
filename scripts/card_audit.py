@@ -229,6 +229,8 @@ def main() -> int:
                     print('  - TABLE HEADING above the row (check period and unit):')
                     for h in header:
                         print(f'    | {h}')
+                if m.get('changes_from'):
+                    print(f"  - CHANGES worked out by us from {m['changes_from']}: QoQ {m.get('qoq_pct')}%, YoY {m.get('change_pct')}% (check against the row)")
                 if m.get('previous') not in (None, ''):
                     print(f"  - PREVIOUS [{m.get('previous_period')}] = {m.get('previous')} (change {m.get('change_pct')}%)\n"
                           f"    - previous quote: \"{m.get('previous_quote')}\"")
