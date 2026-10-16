@@ -1526,3 +1526,22 @@ def s_found(quote, doc):
 def test_a_row_that_names_its_own_unit_is_backed_by_it():
     assert ar.s.unit_backed('88', 'crore', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x')
     assert ar.s.unit_backed('88', 'lakh', 'Total Income (₹ Cr)                          88                       137                     +57%', 'exact', 'x') is False
+
+
+def test_the_headline_has_a_subtitle_checked_like_the_headline():
+    doc = ('Issue of up to 6,32,00,000 equity shares at Rs 64.70 each aggregating up to ~Rs. 409.04 crores on a preferential basis.')
+    out = {'headline': {'text': 'Ujjivan SFB approves ₹409 Cr preferential issue',
+                        'quote': 'aggregating up to ~Rs. 409.04 crores on a preferential basis'},
+           'subtitle': {'text': 'Up to 6.32 crore equity shares', 'quote': 'Issue of up to 6,32,00,000 equity shares at Rs 64.70 each'}}
+    headline, _ = ar.card_words(out, doc, [], [])
+    assert headline['shown'] and headline['subtitle']['shown']
+    out['subtitle'] = {'text': 'Up to 7.32 crore equity shares', 'quote': 'Issue of up to 6,32,00,000 equity shares at Rs 64.70 each'}
+    headline, _ = ar.card_words(out, doc, [], [])
+    assert headline['shown'] and not headline['subtitle']['shown'] and 'number' in headline['subtitle']['reason']
+    out['headline']['text'] = 'Ujjivan SFB approves ₹490 Cr preferential issue'
+    assert not ar.card_words(out, doc, [], [])[0]['shown']                    # ₹490 Cr is not ₹409.04 crore
+
+
+def test_the_prompt_asks_for_the_owners_headline_format():
+    for ask in (ar.CARD_ASK, ar.CARD_ASK_V2):
+        assert 'HEADLINE FORMAT' in ask and 'Ujjivan SFB approves ₹409 Cr preferential issue' in ask and '"subtitle"' in ask

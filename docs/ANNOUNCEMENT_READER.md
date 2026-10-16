@@ -425,3 +425,13 @@ steps. Subscribe to PR #56 and keep CI green."
 5. Sorter for `to_sort` filings from the subject plus the first ~1,500 characters (with the regulation
    cited there), so routine board outcomes are not read in full.
 6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.
+
+### Headline format (16 Oct, owner's rule)
+
+A reader should know the news from the title alone. The headline is the company's short trading name, a plain verb and the one
+figure that matters, in rupees ("Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr",
+"Onward Technologies raises FY27 growth outlook"), at most 70 characters; ₹ and Cr from one crore up, Lakh below, rounded to three
+significant digits and never more than 0.4% from the filing's figure; a foreign currency as the filing writes it. A subtitle
+(one line, "Up to 6.32 crore equity shares") carries the second fact. The subtitle is stored inside the headline (`headline.subtitle`),
+is checked like the headline (its quote in the filing, its figures in its own quote) and shows under it only when the headline shows.
+Prompt `live-10`; earlier reads are read again once.

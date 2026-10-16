@@ -56,8 +56,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-9' if PROMPT_VARIANT == 'v2' else
-                  'live-8-ab' if PROMPT_COMPARE else 'live-8')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-10' if PROMPT_VARIANT == 'v2' else
+                  'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -470,8 +470,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
 # --- the card's words: a headline and a few points, every number in them found in their quote --------------
 
 CARD_ASK = (
-    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, not the exchange filing label, '
-    'with its key figure (e.g. "Shivam Autotech sets Rs 120 Cr rights issue at Rs 12 a share"), "quote": the words of '
+    'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, not the exchange filing label, '
+    'with its key figure (e.g. "Shivam Autotech sets ₹120 Cr rights issue at ₹12 a share"), "quote": the words of '
     'the document that state it}, and "points": 2 to 4 of {"text": one sentence on a fact of the filing a '
     'shareholder needs (what, how much, at what price, to whom, when, on what condition), "quote": the exact '
     'words that state it}. For an acquisition, sale or merger, name the company bought or sold, the stake and '
@@ -480,10 +480,11 @@ CARD_ASK = (
     'headline and points use only facts and numbers that their quote states, each number as written or '
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
-    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out.\n\n')
+    'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters, in rupees: "Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr", "Onward Technologies raises FY27 growth outlook". At most 70 characters. Write an amount as ₹ and Cr from 1 crore up (₹409 Cr, ₹171.2 Cr) and as Lakh below that (₹92 Lakh); round to three significant digits, never more than 0.4% away from the filing\'s figure (₹409.04 crore is ₹409 Cr); write a foreign currency as the filing does (USD 2,000); never convert a currency. No "announces", "informs", "submits" or "intimates". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to 6.32 crore equity shares" or "Q2 revenue up 22.2% to ₹171.2 Cr; EBITDA rises 33.7% to ₹26.6 Cr", "quote": the exact words of the document that state it}; the figures of the subtitle must be in its own quote like those of the headline. \n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
-    'Also return "headline": {"text": one line of at most 90 characters describing the actual corporate action, '
+    'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, '
     'not the exchange filing label, "quote": the exact words of the document that establish it}, and "points": '
     '2 to 4 of {"text": one concise sentence stating a material fact a shareholder needs, "quote": the exact words '
     'that support it}. First establish the event from the filing text; do not infer it from the exchange subject. '
@@ -504,7 +505,7 @@ CARD_ASK_V2 = (
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'Return the existing JSON schema only.\n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters, in rupees: "Ujjivan SFB approves ₹409 Cr preferential issue", "Aurum PropTech Q2 income rises 57% to ₹137 Cr", "Onward Technologies raises FY27 growth outlook". At most 70 characters. Write an amount as ₹ and Cr from 1 crore up (₹409 Cr, ₹171.2 Cr) and as Lakh below that (₹92 Lakh); round to three significant digits, never more than 0.4% away from the filing\'s figure (₹409.04 crore is ₹409 Cr); write a foreign currency as the filing does (USD 2,000); never convert a currency. No "announces", "informs", "submits" or "intimates". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to 6.32 crore equity shares" or "Q2 revenue up 22.2% to ₹171.2 Cr; EBITDA rises 33.7% to ₹26.6 Cr", "quote": the exact words of the document that state it}; the figures of the subtitle must be in its own quote like those of the headline. Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -656,6 +657,11 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict]) -> tuple[
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
+        sub = check_words(out.get('subtitle'), doc)       # the line under the headline, checked as the headline is
+        if sub:
+            if len(sub['text']) > 120:
+                sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
+            headline['subtitle'] = sub
     return headline, points
 
 
