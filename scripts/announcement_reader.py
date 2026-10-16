@@ -374,6 +374,22 @@ def _bool(v):
     return True if t in ('true', 'yes') else False if t in ('false', 'no') else None
 
 
+_GARBLED_TOKEN = re.compile(r'(?<=[\d,.])[A-Za-z](?=[\d,.])|(?<=\d)[A-Za-z](?=[,.]?\d)')
+
+
+def text_is_garbled(doc: str) -> bool:
+    """A scan whose text layer is mangled ("2J9,51o", "5A23st"): of the filings read on 16 Oct, South Indian Bank's had 183 such
+    number tokens in 1,736 (every other filing under 10), so a figure that still looks clean there cannot be trusted either."""
+    toks = [x for x in str(doc or '').split() if re.search(r'\d', x)]
+    bad = sum(1 for x in toks if _GARBLED_TOKEN.search(x))
+    return bad >= 25 and bad >= 0.04 * max(1, len(toks))
+
+
+FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*[\d,.]+(?:\s*/-)?', re.IGNORECASE)
+NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets', re.IGNORECASE)
+DEAL_WORDS = re.compile(r'consideration|invest|aggregat|issue\s+size|\bamount\b|subscri|price|raise|worth|valu(?:e|ation)', re.IGNORECASE)
+
+
 def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
     """(category, fields, metrics), each value with its checks, `shown` and, when held back, `reason`."""
     out = out if isinstance(out, dict) else {}
@@ -381,6 +397,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
     for f in out.get('fields') or []:
         if isinstance(f, dict) and f.get('name') in s.FIELDS and f['name'] not in named:
             named[f['name']] = f
+    garbled = text_is_garbled(doc)
     unit = (named.get('amount_unit') or {}).get('value')
     cur = named.get('currency') or {}
     filing_currency = str(cur.get('value')).strip().upper() if cur.get('value') and s.quote_found(cur.get('quote'), doc)         else None
@@ -392,6 +409,12 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         qf = s.quote_found(quote, doc)
         rec = {'name': name, 'value': value, 'quote': quote, 'evidence': qf or None, 'reason': None}
         reasons = [] if qf else ['quote not found in the filing']
+        if name in s.NUMERIC and garbled:
+            reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
+        if name in ('price_per_share', 'max_price_per_share') and quote and not s.digits_in_quote(value, FACE_VALUE.sub(' ', str(quote))):
+            reasons.append('its quote gives the face value, not a price')
+        if name == 'amount' and NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')):
+            reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
         if name in s.NUMERIC:
             if not s.digits_in_quote(value, quote):
                 reasons.append('number not in its quote')
@@ -426,6 +449,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         value, quote, unit_m = m.get('value'), m.get('quote'), m.get('unit')
         qf = s.quote_found(quote, doc)
         reasons = [] if qf else ['quote not found in the filing']
+        if garbled:
+            reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
         if not s.digits_in_quote(value, quote):
             reasons.append('number not in its quote')
         money = str(unit_m or '').strip().lower().rstrip('.') in s.UNIT
@@ -552,6 +577,10 @@ def numbers_backed(text, quotes) -> bool:
     claim_dates, text = dates_in(text)
     if not claim_dates <= have_dates:
         return False
+    flat_quotes = ' '.join(re.sub(r'\s+', '', str(q or '')).upper() for q in quotes)
+    for tok in re.findall(r'\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{8,}\b', text):
+        if tok.upper() not in flat_quotes:      # a CIN, ISIN, DIN or circular number must be written in the quote
+            return False
 
     def backed(n, c):
         for n2, c2 in have:
@@ -601,6 +630,8 @@ def check_words(item, doc: str, more_quotes=()) -> dict | None:
     text, quote = str(item['text']).strip(), item.get('quote')
     qf = s.quote_found(quote, doc)
     reasons = [] if qf else ['quote not found in the filing']
+    if re.search(r'\d', text) and text_is_garbled(doc):
+        reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
     if not numbers_backed(text, [quote]):
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
@@ -1471,7 +1502,7 @@ def holds_of(text: str) -> dict[str, list[tuple[str, str]]]:
         if not line:
             continue
         parts = [p.strip() for p in line.split('|', 2)]
-        if len(parts) != 3 or not parts[0] or not re.fullmatch(r'headline|words|point:[1-9]\d*|previous:(?:all|[1-9]\d*)|field:[a-z_]+', parts[1]) or not parts[2]:
+        if len(parts) != 3 or not parts[0] or not re.fullmatch(r'headline|words|point:[1-9]\d*|previous:(?:all|[1-9]\d*)|field:[a-z_]+|metrics:all', parts[1]) or not parts[2]:
             raise ValueError(f'card_holds.txt: expected "event_id | headline, point:N or words | reason", got {line!r}')
         out.setdefault(parts[0], []).append((parts[1], parts[2]))
     return out
@@ -1495,6 +1526,10 @@ def apply_holds(df: pd.DataFrame, holds: dict[str, list[tuple[str, str]]]) -> tu
         metrics = load_json(df.at[idx, 'metrics'], []) if 'metrics' in df else []
         fields = load_json(df.at[idx, 'fields'], []) if 'fields' in df else []
         for what, reason in holds[df.at[idx, 'event_id']]:
+            if what == 'metrics:all':
+                for m in metrics:
+                    hold(m, reason)
+                continue
             if what.startswith('field:'):
                 for f in fields:
                     if f.get('name') == what[6:]:
