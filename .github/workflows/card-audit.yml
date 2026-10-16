@@ -1,0 +1,40 @@
+name: Card audit (read-only)
+
+# Prints every card the reader wrote in the last N hours next to the filing's own text, and re-checks quotes and
+# numbers independently of the reader (scripts/card_audit.py). Reads R2 and the exchanges' PDFs; writes nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Cards read in the last this many hours'
+        required: false
+        default: '6'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - name: Audit
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          HOURS: ${{ inputs.hours || '6' }}
+        run: python -u scripts/card_audit.py | tee card_audit.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: card-audit
+          path: card_audit.md
+          if-no-files-found: ignore
