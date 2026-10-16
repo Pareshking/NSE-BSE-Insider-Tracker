@@ -646,12 +646,16 @@ def table_unit(quote, mult, doc: str) -> bool:
     return False
 
 
-def nearest_unit(quote, doc: str) -> float | None:
+def nearest_unit(quote, doc: str, value=None) -> float | None:
     """The size of the unit word nearest before the quote's number in the document, within 2,500 characters (the table's
     own heading: "tin million" in LTM, where the model said lakh), or None when there is none or the numbers are not found."""
     text = str(doc)
     best = None
-    for n in {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}:
+    v = _num(value)
+    nums = {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}
+    if v is not None:      # the metric's own number, not the column numbers and note numbers beside it in the quote
+        nums = {n for n in nums if abs(float(n) - abs(v)) < 1e-6 * max(1, abs(v))}
+    for n in nums:
         for m in re.finditer(r'(?<![\d,.])' + ',?'.join(re.escape(c) for c in n) + r'(?![\d])', text):
             before = text[max(0, m.start() - 2500):m.start()]
             near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]

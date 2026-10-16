@@ -605,7 +605,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
             # A results table's unit is in its heading: when the model named another unit than the one printed nearest
             # before the figure (LTM: lakh for "tin million"), the printed one is used, never the model's.
-            alt = s.nearest_unit(quote, doc) if str(out.get('category') or '') == 'financial_results' else None
+            alt = s.nearest_unit(quote, doc, value) if str(out.get('category') or '') == 'financial_results' else None
             alt_name = {v: k for k, v in (('thousand', 1e3), ('lakh', 1e5), ('crore', 1e7), ('million', 1e6), ('billion', 1e9))}.get(alt)
             mult0 = s.UNIT.get(str(unit_m or 'rupees').strip().lower().rstrip('.'), 1)
             if alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
@@ -1139,7 +1139,7 @@ def facility_change_headline(doc: str, names=()) -> dict | None:
     verb = {'enh': 'enhanced', 'inc': 'enhanced', 'red': 'reduced', 'dec': 'reduced', 'rev': 'revised'}[span[:3].lower()]
     unit = (num.group(2) or '').lower()
     unit = 'Cr' if unit.startswith('cr') else 'lakh' if unit.startswith('lakh') else unit
-    amount = f"₹{num.group(1)}{' ' + unit if unit else ''}"
+    amount = f"₹{float(num.group(1).replace(',', '')):{',.2f' if '.' in num.group(1) else ',.0f'}}{' ' + unit if unit else ''}"
     quote = span[:num.end()]
     if not s.quote_found(quote, doc):
         return None
@@ -1148,7 +1148,22 @@ def facility_change_headline(doc: str, names=()) -> dict | None:
             'shown': True, 'reason': None, 'subtitle': None}
 
 
-def promote_point(headline, points, names=(), extra=()):
+_PERSON = re.compile(r'\b(?:Mr|Ms|Mrs|Dr|Shri|Smt|Prof)\.?\s+((?:[A-Z][a-z]+\s+){1,3}[A-Z][a-z]+)')
+
+
+def full_person_name(text: str, doc: str, names=()) -> str:
+    """A headline that cuts a person to the last word of the name ("Oracle Financial Services Yuan resigns", OFSS) gets the name as the
+    filing writes it ("Nian Nian Yuan"), when the last word is not a word of the company's own name."""
+    company = ' '.join(str(n) for n in names).lower()
+    for full in dict.fromkeys(m.group(1) for m in _PERSON.finditer(str(doc))):
+        last = full.split()[-1]
+        if full in text or len(full.split()) < 3 or last.lower() in company:
+            continue
+        text = re.sub(rf'(?<![A-Za-z]){re.escape(last)}(?![A-Za-z])', full, text, count=1) if re.search(rf'(?<![A-Za-z]){re.escape(last)}(?![A-Za-z])', text) else text
+    return text
+
+
+def promote_point(headline, points, names=(), extra=(), category=''):
     """No headline survived the checks: the first point that did survive (each is proved by its own quote) leads the card,
     in the company's short name, rather than a card with nothing on it (golden set 1: Aegis, Regency, Kabra, ITH)."""
     if isinstance(headline, dict) and headline.get('shown'):
@@ -1159,7 +1174,9 @@ def promote_point(headline, points, names=(), extra=()):
         if pt.get('shown') and text and '{' not in text and len(text) <= 160:
             nums = numbers_in(dates_in(text)[1])
             score = 3 * any(abs(c - x) <= 0.005 * max(1, abs(x)) for _, c in nums for x in extra) + (1 if nums else 0) \
-                - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0)
+                - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0) \
+                - (1 if re.match(r'the\s+(?:transaction|company|promoter|filing)\b', text, re.IGNORECASE) else 0) \
+                + (4 if str(category).startswith('rating_') and re.search(r'upgrad|downgrad|reaffirm|assign|outlook|enhanc|rated|rating', text, re.IGNORECASE) else 0)
             if score > best_score:
                 best, best_score = i, score
     if best is not None:
@@ -1295,7 +1312,9 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         fc = facility_change_headline(doc, names)
         if fc:
             headline = fc
-    headline, points = promote_point(headline, points, names, extra)
+    headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
+    if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') == 'management_change':
+        headline['text'] = full_person_name(headline['text'], doc, names)
     return headline, drop_repeats(headline, points)
 
 

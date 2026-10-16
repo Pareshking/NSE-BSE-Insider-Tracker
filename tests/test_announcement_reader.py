@@ -1987,5 +1987,15 @@ def test_facility_change_headline_from_split_table_cells():
     from scripts import announcement_reader as r
     doc = 'Facilities | Amount | Rating | Rating Action\nLong Term | Bank Rs.5106 | Crore | Crisil A+/Stable | Reaffirmed\nFacilities | (Enhanced | from\nShort Term | Bank Rs.4621 Crore) | Crisil A1 | Reaffirmed\n'
     h = r.facility_change_headline(doc, ('Skipper', 'Skipper Ltd'))
-    assert h and 'enhanced from ₹4,621' not in h['text'] and '4621 Cr' in h['text'] and h['text'].startswith('Skipper')
+    assert h and 'enhanced from ₹4,621 Cr' in h['text'] and h['text'].startswith('Skipper')
     assert r.facility_change_headline('Rating reaffirmed. Facilities unchanged.', ('A',)) is None
+
+
+def test_person_name_restored_and_unit_from_the_metrics_own_number():
+    from scripts import announcement_reader as r, announcement_sample as sm
+    doc = 'Mr. Nian Nian Yuan (DIN 1), Non-Executive Director, has tendered his resignation'
+    assert r.full_person_name('Oracle Financial Services Yuan resigns as director', doc, ('OFSS', 'Oracle Financial Services Software Ltd')) \
+        == 'Oracle Financial Services Nian Nian Yuan resigns as director'
+    assert r.full_person_name('Yuan resigns', doc, ('Yuan Industries',)) == 'Yuan resigns'
+    d = 'in million\nNet profit after tax (5-6) 13,799 12,000\n'
+    assert sm.nearest_unit('Net profit after tax (5-6) 13,799', d, '13,799') == 1e6
