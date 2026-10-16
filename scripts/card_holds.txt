@@ -85,3 +85,17 @@ bse:9d3fa507-cb53-4ec0-abb8-46604deae148 | headline | the 16 Oct meeting approve
 bse:9d3fa507-cb53-4ec0-abb8-46604deae148 | field:amount | Rs 4,113.93 lakh is one of two totals (item 3 has another)
 nse:106820074 | headline | the amount shown is not a checked field (the amount field was held) and "approx." is dropped
 bse:ad97159b-a888-483a-b47e-56055c8f0a9f | headline | the filing replies to a BSE volume-movement query, which the headline leaves out
+bse:86bf219c-53f1-4e65-8740-94f1b05ffd59 | headline | the filing's text did not extract (replacement characters): the headline was written from the exchange's subject line, not from the filing
+bse:86bf219c-53f1-4e65-8740-94f1b05ffd59 | words | the filing's text did not extract: nothing can be read from it
+bse:23dffb7d-e42d-470f-9587-988474068394 | headline | Crisil reaffirmed the rating, not Skipper, and the enhancement of the long-term facilities is left out
+bse:23dffb7d-e42d-470f-9587-988474068394 | point:2 | the short-term amount is not legible in the filing: Rs 4,621 Cr is the long-term "enhanced from" figure
+bse:23dffb7d-e42d-470f-9587-988474068394 | metrics:all | the short-term 4,621 is the long-term "enhanced from" amount; rated facility amounts are not figures of a fiscal period
+nse:106820143 | point:1 | the address in its quote is not in the filing's text
+nse:106820139 | field:amount | no currency (INR million, approx.) and conditional on the USD conversion
+nse:106820115 | headline | Rs 13.17 Cr is customs duty plus penalty (interest excluded), not the duty alone
+bse:06341344-07cb-4406-a166-5261389589ec | headline | Nirlon is not the acting party (the acquirer is BSREP IV FPI Two Holdings, buying from InRe Fund II) and 23,25,000 shares is 23.25 lakh, not 23.2
+bse:06341344-07cb-4406-a166-5261389589ec | field:amount | the amount is the target's equity share capital, not the value of the transfer
+nse:106820141 | field:amount | worked out (685 shares x Rs 1); the filing states no amount for this allotment
+bse:dd0212d4-7c6e-4a85-9474-b017cdd24cbc | field:amount | the Rs 312.15 Cr rows are all "Upto" and the column is "Tentative Amounts"; neither is carried
+bse:28a17587-b38d-4597-b2af-7733445943a6 | point:2 | puts the withdrawal under Regulation 31A, which governs the original application
+nse:106820190 | field:shares | 7,100 is only the ESOS 2010 tranche; the filing's total is 99,954

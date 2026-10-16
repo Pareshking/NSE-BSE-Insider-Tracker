@@ -469,6 +469,22 @@ def _loose(s) -> str:
 
 
 NUMBER = r'\d[\d,]*(?:\.\d+)?'
+_TOKEN = re.compile(r'[a-z]+|\d+(?:[.,]\d+)*')
+
+
+def _tokens(text) -> list[str]:
+    return _TOKEN.findall(unicodedata.normalize('NFKC', str(text or '')).lower())
+
+
+def _token_run(quote, doc) -> bool:
+    """The quote's words and numbers as one unbroken run of the document's tokens (a "|" or spaces between cells
+    do not matter; 110 is not 11070). Needs two tokens, one of them a number."""
+    q = _tokens(quote)
+    if len(q) < 2 or not any(t[0].isdigit() for t in q):
+        return False
+    d = _tokens(doc)
+    n = len(q)
+    return any(d[i:i + n] == q for i, t in enumerate(d) if t == q[0])
 
 
 def quote_found(quote, doc: str) -> str | bool:
@@ -477,8 +493,8 @@ def quote_found(quote, doc: str) -> str | bool:
     word of the quote is within that line's table block (6 lines above, 2 below), as when a model joins a row
     to its column headings. False otherwise."""
     q = _norm(quote or '')
-    if len(q) < 8:
-        return False
+    if len(q) < 8:   # a short table row ("PAT 110") is found on whole tokens, so 110 is never found inside 11070
+        return 'exact' if _token_run(quote, doc) else False
     flat_doc = _norm(doc)
     if q in flat_doc:
         return 'exact'

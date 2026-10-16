@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+from decimal import Decimal, ROUND_HALF_UP
 import sys
 import threading
 import time
@@ -56,7 +57,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-12' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-13' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -393,6 +394,7 @@ WITHDRAWN = re.compile(r'\b(?:withdr[ae]w\w*|cancel\w*|terminat\w*|not\s+to\s+pr
 DEAL_FIELDS = ('price_per_share', 'max_price_per_share', 'amount', 'shares', 'offer_pct', 'allottee_is_promoter')
 PROMOTERS = re.compile(r'\bpromoters?\b', re.IGNORECASE)
 NON_PROMOTER = re.compile(r'\bnon[- ]?promoters?\b|\bno\s+promoters?\b|\b(?:does|do)\s+not\s+have\s+any\s+promoters?\b|\bnot\s+(?:a\s+)?promoters?\b|\bpublic\b', re.IGNORECASE)
+TARGET_CAPITAL = re.compile(r'total\s+voting\s+(?:share\s+)?capital|equity\s+share\s+capital\s*/', re.IGNORECASE)   # Nirlon: the target's capital, not the deal
 DEAL_WORDS = re.compile(r'consideration|invest|aggregat|issue\s+size|\bamount\b|subscri|price|raise|worth|valu(?:e|ation)', re.IGNORECASE)
 
 
@@ -414,6 +416,33 @@ def measure_reason(label, quote) -> str | None:
         if name_re.search(str(label or '')) and not row_re.search(str(quote or '')):
             return f'its quote is not the {what} row'
     return None
+
+
+def unreadable_reason(doc: str) -> str | None:
+    """J.A. Finance's open offer (16 Oct): 12,238 characters of U+FFFD, the PDF's fonts did not extract, and the model
+    still wrote a headline from the subject line. More than a fifth of the characters being replacement marks
+    means the text is not read."""
+    chars = [c for c in str(doc or '') if not c.isspace()]
+    if len(chars) >= 200 and sum(c == '\ufffd' for c in chars) > 0.2 * len(chars):
+        return 'the text did not extract from the PDF (replacement characters); needs OCR, not read'
+    return None
+
+
+_BASIS = re.compile(r'\b(standalone|consolidated)\b', re.IGNORECASE)
+
+
+def basis_near(doc: str, quote) -> str | None:
+    """'standalone' or 'consolidated' from the last such word in the 1,500 characters before the quote in the filing
+    (a heading such as "Consolidated Financials:" or "Q2 FY27 Financial (Consolidated) Highlights"); None when the
+    quote cannot be placed or the quote itself says it."""
+    toks = s._tokens(quote)
+    if len(toks) < 2:
+        return None
+    m = re.search(r'[^a-z0-9]+'.join(map(re.escape, toks)), str(doc), re.IGNORECASE)
+    if not m:
+        return None
+    found = _BASIS.findall(str(doc)[max(0, m.start() - 1500):m.start() + len(m.group())])
+    return found[-1].lower() if found else None
 
 
 def garbled_near(doc: str, quote) -> bool:
@@ -453,7 +482,8 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('the filing\'s text is a mangled scan: its figures cannot be trusted')
         if name in ('price_per_share', 'max_price_per_share') and quote and not s.digits_in_quote(value, FACE_VALUE.sub(' ', str(quote))):
             reasons.append('its quote gives the face value, not a price')
-        if name == 'amount' and NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')):
+        if name == 'amount' and (TARGET_CAPITAL.search(str(quote or '')) or (
+                NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')))):
             reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
         if name == 'shares' and '%' in str(value):
             reasons.append('a percentage, not a count of shares')
@@ -520,6 +550,11 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             seen.setdefault((str(m.get('label') or '').strip().lower(), str(m.get('period') or '').strip().lower()), []).append(m)
     for group in seen.values():
         if len(group) > 1 and len({round(x['number'], 4) for x in group if isinstance(x.get('number'), (int, float))}) > 1:
+            bases = [basis_near(doc, m.get('quote')) for m in group]
+            if all(bases) and len(set(bases)) == len(bases):   # the filing's own headings tell which is which
+                for m, b in zip(group, bases):
+                    m['label'] = f"{m.get('label')} ({b})"
+                continue
             for m in group:
                 m['shown'], m['reason'] = False, 'two different values for the same measure and period: standalone or consolidated is not stated'
     cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None
@@ -594,7 +629,11 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'put "standalone" or "consolidated" in the label when the filing states it; the fiscal year of a period is the year in which it ends '
              '(the quarter ended 30 September 2026 is Q2 FY27). When one filing lists several instruments or ISINs, a status claim quotes the row that holds the identifier. '
              'Where a table gives the total of several rows, use the total. Quote the sentence that holds every number of the claim; a quote may join up to three passages with "...". '
-             'For an ESOP or warrant the price is the "exercise price" or "issue price" row, not the face value.\n\n')
+             'For an ESOP or warrant the price is the "exercise price" or "issue price" row, not the face value. '
+             'Use a {m1}-style token only for a metric you list (none listed, no token). For a credit rating the rating agency acts (Crisil reaffirms X), not the company; '
+             'for a shareholding disclosure name the acquirer and the seller; when a person resigns or is appointed the person is the subject; '
+             'an amount the filing calls "not exceeding" or "up to" keeps those words; a demand of duty plus penalty is called both; '
+             'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number.\n\n')
     return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
@@ -738,7 +777,8 @@ def _sig(v: float) -> str:
         return f'{v:,.0f}'
     if v >= 100:
         return f'{v:.0f}'
-    text = f'{v:.1f}' if v >= 10 else f'{v:.2f}'
+    places = '0.1' if v >= 10 else '0.01'   # half up on the decimal text (23.25 is 23.3, not float's 23.2)
+    text = str(Decimal(repr(v)).quantize(Decimal(places), rounding=ROUND_HALF_UP))
     return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
@@ -811,6 +851,7 @@ def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str
     if len(tokens) != len(set(tokens)):
         return text, 'a token is used twice in the headline: one value cannot be both the amount and the growth'
     filled = TOKEN.sub(value, text)
+    filled = re.sub(r'(₹[\d.,]+ (?:Cr|Lakh)|\b[A-Z]{3} [\d.,]+ (?:Bn|Mn))\s+(?:crores?|cr|lakhs?|bn|mn|million|billion)\b\.?', r'\1', filled, flags=re.IGNORECASE)   # the model's own unit after a token
     return filled, ('a figure of the headline is not among the checked values: ' + ', '.join(bad)) if bad else None
 
 
@@ -819,7 +860,9 @@ def headline_name_reason(text: str, names=()) -> str | None:
     full legal name with "Ltd" or "Limited"."""
     first = re.split(r'[\s,:]', str(text or '').strip(), 1)[0]
     symbol = str(names[0] or '').strip() if len(names) > 0 else ''
-    if symbol and len(symbol) >= 3 and first == symbol and symbol.isupper() and len(first) > 1:
+    legal_first = re.split(r'\W+', str(names[1] or '').strip(), maxsplit=1)[0] if len(names) > 1 else ''
+    if symbol and len(symbol) >= 3 and first == symbol and symbol.isupper() and len(first) > 1 \
+            and legal_first.upper() != symbol:   # KEC International, BASF India: the symbol is the name's first word
         return 'starts with the exchange symbol, not the company\'s short name'
     if re.search(r'\b(?:Ltd\.?|Limited|Pvt\.?|Private)\b', str(text or ''), re.IGNORECASE):
         return 'uses the full legal name (Ltd, Limited) instead of the short name'
@@ -1483,6 +1526,9 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
+        bad_text = unreadable_reason(doc)
+        if bad_text:   # rule 8: a filing whose text did not come out is marked not read, not guessed from its subject
+            return finish({**base, 'status': 'not_read', 'reason': bad_text})
         cut = next((n for n in doc_notes if str(n).startswith('cut to ')), None)
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',
