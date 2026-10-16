@@ -601,7 +601,8 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
         raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN,
-        now: datetime | None = None, max_results_xbrl: int = MAX_RESULTS_XBRL_PER_RUN, results_workers: int = 1) -> dict:
+        now: datetime | None = None, max_results_xbrl: int = MAX_RESULTS_XBRL_PER_RUN, results_workers: int = 1,
+        results_window: tuple | None = None) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -631,7 +632,8 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 elif stream == RESULTS:
                     known = merge_into_archive(r2, stream, None, run_date)[0]
                     rraw = raw if raw is not None else RawStore(r2, BUCKET, collector='collectors.nse_events.run_daily')
-                    new = fetch_results_xbrl(nse, rraw, results_filings(nse, rraw, start, today, report), known, report,
+                    lo, hi = results_window or (start, today)
+                    new = fetch_results_xbrl(nse, rraw, results_filings(nse, rraw, lo, hi, report), known, report,
                                              max_results_xbrl, results_workers)
                     blocked = bool(report.get('results_xbrl_blocked'))
                 elif stream == 'meetings':
@@ -705,6 +707,9 @@ def main(argv=None):
                     help='further-issue XBRL files to fetch this run')
     ap.add_argument('--max-results-xbrl', type=int, default=MAX_RESULTS_XBRL_PER_RUN,
                     help='financial-results XBRL files to fetch this run')
+    ap.add_argument('--results-from', type=date.fromisoformat, default=None,
+                    help='results only: list this window [from, to] instead of the last --days (a backfill, window by window)')
+    ap.add_argument('--results-to', type=date.fromisoformat, default=None)
     ap.add_argument('--results-workers', type=int, default=1,
                     help='results XBRL files fetched at once (a backfill of years); 1 = one at a time with NSE\'s pause')
     args = ap.parse_args(argv)
@@ -716,7 +721,8 @@ def main(argv=None):
     report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
                  raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from,
                  max_issue_xbrl=args.max_issue_xbrl, max_results_xbrl=args.max_results_xbrl,
-                 results_workers=args.results_workers)
+                 results_workers=args.results_workers,
+                 results_window=(args.results_from, args.results_to or today) if args.results_from else None)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')

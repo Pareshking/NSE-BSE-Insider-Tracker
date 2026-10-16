@@ -144,3 +144,15 @@ def test_a_long_span_is_listed_in_windows_of_31_days():
     windows = sorted(set(seen))
     assert windows[0] == (date(2026, 1, 1), date(2026, 1, 31)) and windows[-1][1] == date(2026, 3, 15) and len(windows) == 3
     assert len(rows) == 1
+
+
+def test_a_window_is_listed_instead_of_the_last_days():
+    from datetime import date
+    seen = []
+
+    class Windows(FakeNSE):
+        def integrated_results_url(self, start, end, page=1, size=100):
+            seen.append((start, end))
+            return f'list?page={page}'
+    run_daily.results_filings(Windows([{'data': [ROW], 'totalCount': 1}]), None, date(2025, 1, 1), date(2025, 1, 20), {'notes': []})
+    assert set(seen) == {(date(2025, 1, 1), date(2025, 1, 20))}

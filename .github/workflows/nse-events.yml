@@ -37,6 +37,14 @@ on:
         description: 'dataset=results: files fetched at once (nightly 1 with NSE pause; a backfill 4)'
         required: false
         default: '1'
+      results_from:
+        description: 'dataset=results backfill: first day of the window to list, YYYY-MM-DD (empty = the last `days`)'
+        required: false
+        default: ''
+      results_to:
+        description: 'dataset=results backfill: last day of the window (empty = today)'
+        required: false
+        default: ''
   schedule:
     - cron: '0 16 * * 1-6'  # 21:30 IST, Monday-Saturday
 
@@ -66,7 +74,9 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           FROM: ${{ inputs.from || '' }}
-        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" --max-results-xbrl "${{ inputs.max_results_xbrl || '500' }}" --results-workers "${{ inputs.results_workers || '1' }}" ${FROM:+--from "$FROM"}
+          RFROM: ${{ inputs.results_from || '' }}
+          RTO: ${{ inputs.results_to || '' }}
+        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" --max-results-xbrl "${{ inputs.max_results_xbrl || '500' }}" --results-workers "${{ inputs.results_workers || '1' }}" ${RFROM:+--results-from "$RFROM"} ${RTO:+--results-to "$RTO"} ${FROM:+--from "$FROM"}
       # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
       # rate-limits by IP); with chain=1 the next run starts by itself while
       # files are pending, up to 15 rounds, and stops if NSE refused a file
@@ -82,6 +92,8 @@ jobs:
           DATASET: ${{ inputs.dataset || 'all' }}
           MAXRES: ${{ inputs.max_results_xbrl || '500' }}
           WORKERS: ${{ inputs.results_workers || '1' }}
+          RFROM: ${{ inputs.results_from || '' }}
+          RTO: ${{ inputs.results_to || '' }}
         run: |
           [ -f nse_events_report.json ] || { echo "no report written; stopping"; exit 0; }
           if [ "$DATASET" = "results" ]; then
@@ -93,8 +105,18 @@ jobs:
           PY
           )
             # later rounds list only the last 10 days: filings still pending are retried from the archive whatever the window
-            LIMIT=80
-            NEXT="gh workflow run nse-events.yml -f days=10 -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS"
+            LIMIT=120
+            # Same window again while filings are pending; when none are, the next older window of 90 days,
+            # down to HORIZON (about 12 quarters back). Pending filings are retried from the archive whatever the window.
+            HORIZON=2023-10-01
+            if [ -n "$RFROM" ] && [ "$PENDING" -eq 0 ] && [ "$BLOCKED" -eq 0 ] && [[ "$RFROM" > "$HORIZON" ]]; then
+              NTO=$(date -d "$RFROM - 1 day" +%F); NFROM=$(date -d "$RFROM - 90 days" +%F)
+              [[ "$NFROM" < "$HORIZON" ]] && NFROM=$HORIZON
+              NEXT="gh workflow run nse-events.yml -f days=10 -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS -f results_from=$NFROM -f results_to=$NTO"
+              PENDING=1; FETCHED=1
+            else
+              NEXT="gh workflow run nse-events.yml -f days=10 -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS${RFROM:+ -f results_from=$RFROM -f results_to=$RTO}"
+            fi
           else
             read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
           import json
