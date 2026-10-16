@@ -1921,3 +1921,15 @@ def test_the_fiscal_label_follows_the_quarter_end_date_the_filing_gives():
     assert ar.fiscal_label('Revenue up 10% over Q2 FY26 to Q2 FY27', doc) == 'Revenue up 10% over Q2 FY26 to Q2 FY27'   # FY26 here may be the year-ago quarter... only the matching quarter is corrected
     assert ar.fiscal_label('Q1 FY26 results', doc) == 'Q1 FY26 results'
     assert ar.fiscal_label('Q2 FY26 results', 'no date here') == 'Q2 FY26 results'
+
+
+def test_a_number_inside_a_name_is_not_a_figure():
+    assert ar.numbers_backed('Atyant Capital ACIF-1 sells 5.815% in Ponni', ['ACIF-1 sold 5.8150% of the equity'])
+
+
+def test_company_memory_keeps_the_open_loops_of_a_read():
+    import announcement_backfill as bf
+    row = {'status': 'read', 'event_id': 'nse:1', 'broadcast_date': '2026-10-16', 'symbol': 'X', 'category': 'preferential',
+           'headline': '{"text": "X approves preferential issue", "shown": true}', 'points': '[]', 'fields': '[]', 'metrics': '[]',
+           'open_loops': '[{"type": "approval_pending", "text": "Subject to shareholders\' approval.", "date": null}]'}
+    assert bf.verified_event(row)['open_loops'][0]['type'] == 'approval_pending'

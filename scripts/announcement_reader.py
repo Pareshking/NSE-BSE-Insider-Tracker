@@ -751,7 +751,7 @@ def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
 
 
 _PERIOD = re.compile(r'(?<![\w.])(?:FY\s?\d{2,4}\s*[-–/]\s*\d{2,4}|(?:FY|F\.Y\.?|financial\s+year|year)\s*\d{2,4}\s*[-–/]\s*\d{2,4}'
-                     r'|FY\s?\d{2,4}|[1-4]Q\s?(?:FY)?\s?\d{0,4}|Q[1-4]|H[12]|\d{1,2}M(?=\s*(?:FY|ended|period|\d{2,4}))|\d{1,2}M(?=[\s,.;)]|$))', re.IGNORECASE)
+                     r'|FY\s?\d{2,4}|[1-4]Q\s?(?:FY)?\s?\d{0,4}|Q[1-4]|H[12]|\d{1,2}M(?=\s*(?:FY|ended|period|\d{2,4}))|\d{1,2}M(?=[\s,.;)]|$)|[A-Za-z]{2,}-\d{1,2}(?![\d.,]))', re.IGNORECASE)   # last: a name with a number (ACIF-1)
 
 
 def strip_periods(text) -> str:
@@ -1127,8 +1127,14 @@ def results_headline(metrics, names=()) -> dict | None:
     """A results card with no headline left: revenue and profit of the quarter, each with the change we worked out from the
     table's own columns, in the company's short name (LTM, Paushak, Jindal Saw, Kabra, ITH: the card had boilerplate or nothing)."""
     shown = [m for m in metrics if m.get('shown') and isinstance(m.get('number'), (int, float)) and m.get('currency')]
-    rev = next((m for m in shown if re.search(r'revenue|total\s+income|net\s+interest\s+income|operating\s+income|sales', str(m.get('label')), re.IGNORECASE)), None)
-    pat = next((m for m in shown if re.search(r'profit\s+after\s+tax|\bPAT\b|net\s+profit|profit\s+for\s+the', str(m.get('label')), re.IGNORECASE)), None)
+    def best(rx):
+        found = [m for m in shown if re.search(rx, str(m.get('label')), re.IGNORECASE)]
+        # consolidated before standalone, a quarter before a half year, a figure with its change before one without
+        return min(found, key=lambda m: (not re.search('consolidated', str(m.get('label')), re.IGNORECASE),
+                                         bool(re.search(r'H[12]|half|six|nine|9M|year', str(m.get('period')), re.IGNORECASE)),
+                                         m.get('change_pct') is None), default=None)
+    rev = best(r'revenue|total\s+income|net\s+interest\s+income|operating\s+income|sales')
+    pat = best(r'profit\s+after\s+tax|\bPAT\b|net\s+profit|profit\s+for\s+the')
     if not (rev or pat):
         return None
     name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
@@ -1140,6 +1146,9 @@ def results_headline(metrics, names=()) -> dict | None:
         return txt + (f" ({', '.join(ch)})" if ch else '')
     period = next((str(m.get('period')) for m in (rev, pat) if m and m.get('period') and str(m.get('period')).lower() not in NO_PERIOD_WORDS), '')
     body = '; '.join(part(m, w) for m, w in ((rev, 'revenue'), (pat, 'profit after tax')) if m)
+    basis = next((b for m in (rev, pat) if m for b in ('consolidated', 'standalone') if re.search(b, str(m.get('label')), re.IGNORECASE)), '')
+    if basis:
+        body = f'{basis} ' + body
     quotes = ' ... '.join(str(m.get('quote')) for m in (rev, pat) if m and m.get('quote'))
     return {'text': f"{name} {period} results: {body}".replace('  ', ' ').strip(), 'quote': quotes, 'evidence': 'table', 'shown': True,
             'reason': None, 'from_table': True}
@@ -1214,8 +1223,10 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
-    if results_filing and not (isinstance(headline, dict) and headline.get('shown') and re.search(r'\d', str(headline.get('text')))):
-        headline = results_headline(metrics, names) or headline   # no figure in the headline of a results filing: ours, from the table
+    if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
+        ours = results_headline(metrics, names)
+        if ours and (' profit after tax' in ours['text'] and ' revenue' in ours['text'] or not (isinstance(headline, dict) and headline.get('shown') and re.search(r'\d', str(headline.get('text'))))):
+            headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
     if isinstance(headline, dict) and headline.get('shown'):
         headline['text'] = fiscal_label(headline['text'], doc)
     headline, points = promote_point(headline, points, names)
