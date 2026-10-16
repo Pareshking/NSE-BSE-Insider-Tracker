@@ -630,6 +630,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                 unit_m, number = alt_name, s.in_units(value, alt_name)
             else:
                 reasons.append('unit not backed by its quote')
+                log(f'DEBUG unit not backed: label={m.get("label")!r} value={value!r} unit={unit_m!r} quote={str(quote)[:90]!r} found={qf!r} '
+                    f'doc_chars={len(str(doc))} alt={alt} heading_unit={s.heading_unit(doc)} table_unit={[s.table_unit(quote, k, doc) for k in (1e5, 1e6, 1e7)]} '
+                    f'doc_head={str(doc)[:80]!r}')
         if PROJECTION.search(str(quote or '')):
             reasons.append('its quote is a projection or estimate, not a reported figure')
         metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
