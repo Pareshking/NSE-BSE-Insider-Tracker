@@ -28,7 +28,7 @@ CATEGORY = {
     'operations_start': 'Operations started', 'financial_results': 'Financial results', 'default': 'Default',
     'restructuring': 'Debt settlement', 'insolvency': 'Insolvency', 'legal_regulatory': 'Legal or regulatory',
     'fraud': 'Fraud or forensic audit', 'disruption': 'Disruption', 'management_change': 'Management change',
-    'corporate_change': 'Corporate change',
+    'corporate_change': 'Corporate change', 'stake_change': 'Stake change', 'pledge': 'Promoter pledge',
     'deal_or_dispute': 'Deal or legal matter',   # reads before live-3, when deals and legal matters were one
 }
 FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',

@@ -96,6 +96,8 @@ PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemin
 # test harness keeps its shorter list (its "deal_or_dispute" is split here, as an acquisition filed under
 # "dispute" read as trouble), so the 24-filing test stays comparable. Reads before live-3 keep their category.
 ADDED = {
+    'stake_change': 'a shareholder buys or sells shares and discloses it under SEBI takeover Reg 29 (not an open offer): who, shares, before and after %',
+    'pledge': 'promoter shares pledged, released or invoked (SEBI Reg 31): who, shares, lender, % of capital encumbered',
     'esop': 'shares allotted or options granted to employees (ESOP, ESPS)',
     'dividend': 'dividend declared or recommended, or its record date',
     'bonus_split': 'bonus issue, stock split or consolidation of shares',
@@ -727,13 +729,25 @@ def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
     return found, rest
 
 
-def numbers_backed(text, quotes, unit_ok=None) -> bool:
+_PERIOD = re.compile(r'(?<![\w.])(?:FY\s?\d{2,4}\s*[-–/]\s*\d{2,4}|(?:FY|F\.Y\.?|financial\s+year|year)\s*\d{2,4}\s*[-–/]\s*\d{2,4}'
+                     r'|FY\s?\d{2,4}|[1-4]Q\s?(?:FY)?\s?\d{0,4}|Q[1-4]|H[12]|\d{1,2}M(?=\s*(?:FY|ended|period|\d{2,4}))|\d{1,2}M(?=[\s,.;)]|$))', re.IGNORECASE)
+
+
+def strip_periods(text) -> str:
+    """Period labels (FY25-26, FY 2025-26, Q2, H1, 9M) are not figures of the claim: out before numbers are compared,
+    on both sides (ROX, Gujarat Energy, E2E, Sacheerome: 'FY 25-26' against '2025-26', 'Q2' as the number 2)."""
+    return _PERIOD.sub(' ', str(text or ''))
+
+
+def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
     lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
     backed by 250 crore (a dropped unit)."""
-    quotes = list(quotes)
+    quotes = [strip_periods(q) for q in quotes]
+    text = strip_periods(text)
     have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
+    have += [(float(x), float(x)) for x in extra if isinstance(x, (int, float)) and x == x]   # figures already checked on this card
     have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
     have_days = {d for _, _, d in have_dates}   # "from November 3 to November 5, 2026" gives the first date no year
     claim_dates, text = dates_in(text)
@@ -788,7 +802,7 @@ def status_upgraded(text: str, quote: str) -> bool:
                                                 and not re.search(r'approv', q, re.IGNORECASE)))
 
 
-def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dict | None:
+def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
     (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
     does not say approved where its quote says recommended. `more_quotes` is no longer used."""
@@ -809,7 +823,7 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dic
         reasons.append('drops the condition its quote states (subject to approval)')
     if keep_up_to and UPTO_QUOTE.search(str(quote or '')) and not UPTO_KEPT.search(text):
         reasons.append('drops "up to" that its quote states')
-    if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
+    if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc), extra=extra_numbers):
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
         reasons.append('says approved where its quote says recommended')
@@ -914,6 +928,30 @@ def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str
     return filled, ('a figure of the headline is not among the checked values: ' + ', '.join(bad)) if bad else None
 
 
+_LEGAL_SUFFIX = re.compile(r'\s*\b(?:Limited|Ltd\.?|Pvt\.?|Private)\b\.?', re.IGNORECASE)
+
+
+def short_name(company) -> str:
+    return re.sub(r'\s+', ' ', _LEGAL_SUFFIX.sub('', str(company or ''))).strip(' ,.')
+
+
+def rewrite_name(text: str, names=()) -> str:
+    """The short company name instead of the legal name or the exchange symbol: 'Prime Fresh Limited wins' -> 'Prime Fresh
+    wins'; 'MFSL gets' -> 'Max Financial Services gets'. A headline that is right in every fact is not held for its style."""
+    text = str(text or '')
+    symbol = str(names[0] or '').strip() if len(names) > 0 else ''
+    company = str(names[1] or '').strip() if len(names) > 1 else ''
+    short = short_name(company)
+    if short:
+        text = re.sub(re.escape(short) + r'\s*(?:Limited|Ltd\.?|Pvt\.?|Private)\b\.?', short, text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+', ' ', _LEGAL_SUFFIX.sub('', text)).strip() if re.search(r'\b(?:Limited|Ltd\.?)\b', text, re.IGNORECASE) else text
+    first = re.split(r'[\s,:]', text.strip(), maxsplit=1)[0]
+    if short and symbol and len(symbol) >= 3 and first == symbol and symbol.isupper() \
+            and re.split(r'\W+', short, maxsplit=1)[0].upper() != symbol:
+        text = short + text.strip()[len(symbol):]
+    return text
+
+
 def headline_name_reason(text: str, names=()) -> str | None:
     """A headline names the company by its short name: not by the exchange symbol (ONEGLOBAL, MGEL, RPEL) and not by the
     full legal name with "Ltd" or "Limited"."""
@@ -942,6 +980,20 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+def card_numbers(fields, metrics) -> list[float]:
+    """The numbers of the card's shown deal fields (size, price, shares) and metrics (already checked against their own quotes), in base units: a
+    headline or point may state one of them without repeating it in its own quote (Kabra: the revenue is in the
+    table row, the headline quote is the title)."""
+    out = []
+    deal = ('amount', 'price_per_share', 'max_price_per_share', 'shares', 'offer_pct', 'discount_pct')
+    for f in [f for f in (fields or []) if isinstance(f, dict) and f.get('name') in deal] + list(metrics or []):
+        if isinstance(f, dict) and f.get('shown'):
+            for k in ('number', 'previous_number'):
+                if isinstance(f.get(k), (int, float)) and f[k] == f[k]:
+                    out.append(float(f[k]))
+    return out
+
+
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
                                    r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
@@ -950,13 +1002,14 @@ ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommen
 
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
-    points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
+    extra = card_numbers(fields, metrics)
+    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra) for x in (out.get('points') or [])[:4]) if p]
     results_filing = str(out.get('category') or '') == 'financial_results'
     if results_filing:   # Paushak (16 Oct): the card showed "reviewed by the auditors" and "one segment" and no profit
         for pt in points:
             if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
                 pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
-    headline = check_words(out.get('headline'), doc)
+    headline = check_words(out.get('headline'), doc, extra_numbers=extra)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
         if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
@@ -969,12 +1022,13 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         if token_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
+        headline['text'] = rewrite_name(headline['text'], names)   # ROX, J.A. Finance, Prime Fresh, Admach: rewrite, never blank the card
         quality_reason = headline_quality_reason(headline['text']) or headline_name_reason(headline['text'], names) \
             or correction_reason(headline['text'], doc)
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
-        sub = check_words(out.get('subtitle'), doc)       # the line under the headline, checked as the headline is
+        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra)       # the line under the headline, checked as the headline is
         if sub:
             sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
             if sub_reason:
@@ -1382,16 +1436,42 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
 
 # --- reading ---------------------------------------------------------------------------
 
-def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=()) -> dict:
+REG29 = re.compile(r'Reg(?:ulation|\.)?\s*29\s*\(\s*[12]\s*\)|substantial\s+acquisition|\(SAST\)\s+Regulations', re.IGNORECASE)
+REG31 = re.compile(r'Reg(?:ulation|\.)?\s*31\s*\(\s*1\s*\)|(?:creation|release|invocation)\s+of\s+(?:pledge|encumbrance)|pledge', re.IGNORECASE)
+CALL_OR_AD = re.compile(r'audio\s+recording|conference\s+call|earnings\s+call|transcript|newspaper|advertisement|publication', re.IGNORECASE)
+ESG_WORDS = re.compile(r'\bESG\b|sustainab|environmental,\s+social', re.IGNORECASE)
+
+
+def category_override(cat, subject, doc: str):
+    """Categories the exchange's own subject line settles, without a model (golden-set audit, 16 Oct): a Reg 29 disclosure
+    is a stake change (Nirlon, Mphasis, DCM Shriram, Ponni), a Reg 31 filing a pledge (Lloyds Engineering twice), a call
+    recording or a newspaper copy is routine whatever it mentions (Karur Vysya, Tips Music), an ESG score is not a credit
+    rating (KEI)."""
+    subject = str(subject or '')
+    if cat != 'open_offer' or not re.search(r'open\s+offer|public\s+announcement|detailed\s+public', subject, re.IGNORECASE):
+        if re.search(r'Reg(?:ulation|\.)?\s*29\s*\(\s*[12]\s*\)', subject, re.IGNORECASE):
+            return 'stake_change'
+    if re.search(r'Reg(?:ulation|\.)?\s*31\s*\(\s*[12]\s*\)', subject, re.IGNORECASE) and 'SAST' in subject.upper():
+        return 'pledge'
+    if cat == 'financial_results' and CALL_OR_AD.search(subject):
+        return 'routine'
+    if str(cat or '').startswith('rating_') and ESG_WORDS.search(subject + ' ' + str(doc)[:1500]) \
+            and not re.search(r'CRISIL|ICRA|CARE\s+Ratings|India\s+Ratings|Acuit|Infomerics|Brickwork|credit\s+rating', str(doc)[:1500], re.IGNORECASE):
+        return 'routine'
+    return cat
+
+
+def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
         return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
     cat, fields, metrics = validate(out, doc)
+    cat = category_override(cat, subject, doc)
     raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
-    headline, points = card_words(out, doc, fields, metrics, names)
+    headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
     withdrawn = headline and WITHDRAWN.search(str((headline or {}).get('text') or ''))
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
@@ -1410,7 +1490,7 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
-    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')))
+    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
 
 
 # Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
@@ -1454,7 +1534,7 @@ def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
     for k, job in enumerate(jobs, 1):
         item = by_id.get(str(k))
         res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name,
-                             (job['row'].get('symbol'), job['row'].get('company'))) if item is not None else None)
+                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '') if item is not None else None)
     return res
 
 

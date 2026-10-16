@@ -1799,3 +1799,26 @@ def test_results_row_gives_qoq_yoy_and_half_year_changes_from_its_own_columns():
     assert ar.results_changes({'quote': 'Revenue 7119.36 6,250.67 5,721.45 7,119.36 15,302.65', 'value': '7,119.36'}) == {}   # 5 columns: not the layout
     assert ar.results_changes({'quote': 'Revenue 100 90 80 500 400 900', 'value': '100'}) == {}   # the six-month figure is not the sum
     assert ar.results_row('Profit (494.90) 10 20 30 40 50') is None
+
+
+def test_period_labels_are_not_figures_and_checked_card_numbers_back_a_headline():
+    assert ar.numbers_backed('Gujarat Energy FY 2025-26 dividend', ['declared dividend for FY 25-26'])
+    assert ar.numbers_backed('Q2 FY27 9M revenue', ['revenue grew'])
+    assert ar.numbers_backed('Kabra revenue ₹2,210 Mn', ['Consolidated revenues grew 64.2%'], extra=[2.21e9])
+    assert not ar.numbers_backed('Kabra revenue ₹2,210 Mn', ['Consolidated revenues grew 64.2%'])
+
+
+def test_legal_name_and_symbol_are_rewritten_not_held():
+    assert ar.rewrite_name('Prime Fresh Limited wins NHB project', ('PRIMEFRESH', 'Prime Fresh Limited')) == 'Prime Fresh wins NHB project'
+    assert ar.rewrite_name('MFSL receives ESG rating of 61', ('MFSL', 'Max Financial Services Limited')).startswith('Max Financial Services receives')
+    assert ar.rewrite_name('KEC International gets rating', ('KEC', 'KEC International Limited')) == 'KEC International gets rating'
+
+
+def test_subject_line_settles_stake_change_pledge_and_routine():
+    assert ar.category_override('open_offer', 'Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 2011', '') == 'stake_change'
+    assert ar.category_override('open_offer', 'Open Offer', '') == 'open_offer'
+    assert ar.category_override('routine', 'Disclosures under Reg. 31(1) and 31(2) of SEBI (SAST) Regulations, 2011', '') == 'pledge'
+    assert ar.category_override('financial_results', 'Audio Recording of Conference Call', '') == 'routine'
+    assert ar.category_override('rating_upgrade', 'General', 'ERAIL has assigned an ESG rating of 71') == 'routine'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', 'CRISIL ESG not relevant, Crisil has upgraded the credit rating') == 'rating_upgrade'
+    assert 'stake_change' in ar.CATEGORIES and 'pledge' in ar.CATEGORIES
