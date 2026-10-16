@@ -171,14 +171,22 @@ def excerpt(text: str, quotes, head: int = None, around: int = 700) -> str:
 
 def main() -> int:
     r2 = r2_client()
-    df = read_parquet(r2, 'clean/current/announcement_reads.parquet')
+    replay = os.environ.get('REPLAY_JSON', '').strip()
+    if replay:   # the cards of a golden-set replay (dry run), next to the filing text, for the reviewers
+        df = pd.DataFrame(json.loads(Path(replay).read_text(encoding='utf-8')))
+        df['read_at'] = df.get('read_at', pd.Timestamp.now(tz='UTC').isoformat())
+    else:
+        df = read_parquet(r2, 'clean/current/announcement_reads.parquet')
     if df is None or df.empty:
         print('no reads table')
         return 1
     df = df[df['status'] == 'read'].copy()
     df['_t'] = pd.to_datetime(df['read_at'], utc=True, errors='coerce')
     ids_file = os.environ.get('IDS_FILE', '').strip()
-    if ids_file:   # the golden set: these filings whenever they were read
+    if replay and not ids_file:
+        df = df.assign(_o=range(len(df)))
+        print(f'## Card audit: the {len(df)} cards of a replay\n')
+    elif ids_file:   # the golden set: these filings whenever they were read
         ids = [ln.split('#')[0].strip() for ln in Path(ids_file).read_text().splitlines() if ln.split('#')[0].strip()]
         df = df[df['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
         df = df.assign(_o=df['event_id'].map({e: i for i, e in enumerate(ids)})).sort_values('_o')
