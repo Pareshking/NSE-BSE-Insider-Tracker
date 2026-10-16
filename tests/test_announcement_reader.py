@@ -1669,3 +1669,23 @@ def test_a_condition_the_filing_states_must_stay_in_the_words():
     q = 'approved the appointment, subject to the approval of the members of the Company'
     assert not ar.check_words({'text': 'Board approves the appointment', 'quote': q}, doc)['shown']
     assert ar.check_words({'text': 'Board approves the appointment, subject to member approval', 'quote': q}, doc)['shown']
+
+
+def test_headlines_that_name_the_symbol_or_the_legal_name_or_hide_a_correction_are_held():
+    assert ar.headline_name_reason('ONEGLOBAL approves 7.06 lakh shares', ('ONEGLOBAL', 'One Global Ltd'))
+    assert ar.headline_name_reason('Ratnamani Metals & Tubes Ltd gets ESG rating 69', ('RATNAMANI', 'Ratnamani'))
+    assert ar.headline_name_reason('One Global gets BSE nod for 7.06 lakh shares', ('ONEGLOBAL', 'One Global Ltd')) is None
+    doc = 'Corrigendum to the Notice of the EGM: the objects of the issue are changed.'
+    assert ar.correction_reason('Trident approves preferential issue', doc)
+    assert ar.correction_reason('Trident issues corrigendum to EGM notice', doc) is None
+
+
+def test_one_token_cannot_stand_for_both_the_amount_and_the_growth():
+    _, reason = ar.fill_tokens('Crompton Q2 net profit {m1} to {m1}', [], [{'shown': True, 'number': 1.2e9, 'currency': 'INR'}])
+    assert reason and 'twice' in reason
+
+
+def test_promoter_words_over_a_mixed_allottee_quote_are_held():
+    doc = 'allotted to Promoter/Promoter Group & Non-Promoter/Public shareholders 5,00,400 warrants'
+    item = {'text': '5,00,400 warrants to promoters', 'quote': 'allotted to Promoter/Promoter Group & Non-Promoter/Public shareholders 5,00,400 warrants'}
+    assert not ar.check_words(item, doc)['shown']
