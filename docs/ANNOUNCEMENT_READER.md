@@ -478,3 +478,22 @@ interpretations are never mixed in one sentence.
 Build order, each step behind its own tests and a sample on real cards: (1) fundraising blocks (all inputs in
 hand but shares outstanding); (2) quarterly results XBRL for the last 8 quarters, then results and order blocks;
 (3) debt; (4) capacity and M&A blocks that need only the filing and earlier cards.
+
+### Supervised batches and the audit (16 Oct)
+
+- **Runs 1 to 4** (100 filings each; run 4: 77 cards, 66 read plus copies) and **run 5** (live-10, 14:04 IST). After each,
+  every card is audited: `card-audit.yml` (hours=N), then ten independent reviewers each check about eight cards
+  against the filing (every headline, point, field, metric and year-ago value; units, period, standalone or
+  consolidated, status words, held claims that were right). My own pass found 4 to 5 problems in run 4; the
+  reviewers found about 60. Never audit alone.
+- **Rules added from the run-4 audit (#131, #132)**: a face value ("shares of Rs N each", also in dollars) is not a
+  price; share capital is not a deal size; a projection or estimate is not a metric; the promoter flag must agree
+  with its quote (promoters named: not "non-promoter"; non-promoters named: not "promoter"); a withdrawn deal's
+  terms are not shown as live fields; an answer with no category and nothing to show is a failed read so another
+  lane reads the filing; amounts keep their unit and currency in the audit. 26 stored cards got lines in
+  `scripts/card_holds.txt` (claims beyond their quote, dropped conditions, wrong-entity fields).
+- **Lesson**: the audit dump cut filing text at 2,200 characters and re-downloaded files (some came back empty), so
+  reviewers could not verify items. It now reads the same cached text as the reader and shows a window round every
+  quote. A wrong hold of mine (D&H and Afcons amounts, which were right) came from an audit that hid the unit.
+- **Open**: `docs/BLUEPRINT_TODO.md` 12.4 (no headline on about 12 of 77 cards, wrong categories, duplicate
+  events, instalment amounts, dropped hedges).
