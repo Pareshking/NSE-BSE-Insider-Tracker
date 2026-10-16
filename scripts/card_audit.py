@@ -150,6 +150,7 @@ def main() -> int:
             doc, notes = '', [f'download failed: {type(exc).__name__}: {exc}']
         flags = []
         print(f"### {r['exchange']} {r.get('symbol')} | {r.get('subject')} | {r.get('company')}")
+        print(f"- event_id `{r.get('event_id')}`")
         print(f"- category **{r.get('category')}**; read by {r.get('reader')}; cross-check {r.get('second_reader')} "
               f"said **{r.get('second_category')}**; agreed {r.get('agreed')}; shown {r.get('shown')}, held {r.get('held')}")
         print(f"- filing: {r.get('file_url')} ({len(doc):,} characters; {'; '.join(notes)[:120]})")
