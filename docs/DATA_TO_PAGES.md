@@ -126,3 +126,15 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
   (offer price, allotment and trading-approval dates) is already collected.
 - Shareholding coverage (TODO 5) moves up: % of float and pledge appear on
   four pages.
+
+## Data the card context needs (16 Oct; design in `docs/ANNOUNCEMENT_READER.md`)
+
+| Context | Data | Source | State |
+|---|---|---|---|
+| Size against revenue, growth, margins | Quarterly results, 12 quarters | NSE integrated-filing XBRL (Ind AS); banks, NBFCs, insurers and BSE-only companies still to do | Partial (one year) |
+| Debt before and after, net worth, cash | Balance sheet lines with their dates | The same XBRL | Not extracted |
+| Dilution, warrants | Shares outstanding, outstanding warrants and convertibles | Shareholding XBRL; preferential in-principle XBRL | Shares yes; convertibles not checked |
+| Discount or premium to market | Price, market cap, volume-weighted reference price | Our price layer | Have (BSE-only names have no market cap) |
+| Order book, capacity, ratings over time | Ledger of earlier cards | The reader's own cards | Not built |
+| Management commentary, guidance | Concall transcripts, presentations | Exchange filings (archived since 15 Oct, text cached) | Collected, not read |
+| Subsidiaries, segments, risks | Annual reports | Source not probed | Not collected |

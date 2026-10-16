@@ -34,6 +34,17 @@ same day something is promised, started or finished. Pages follow the data:
 
 | P | ~~Prices every night~~ **Fixed 12 Oct**: no workflow appended prices after the manual backfill, so the site's prices stopped at 08 Oct. Price backfill run on 12 Oct from 01 Oct; the nightly now fetches the last 10 days (NSE, BSE, NSE market cap, NSE indices) before Precompute | `slim: ... last session` in the Precompute log is the latest trading day |
 
+## Added 16 Oct 2026 (owner's messages; the numbered detail is in `docs/BLUEPRINT_TODO.md`, section 12)
+
+| # | Item | Done when |
+|---|---|---|
+| Q | **Supervised reader batches of 100 until at least 1,000 cards are audited**, every card checked against its filing by ten independent reviewers, findings fixed before the next batch (12.1, 12.2). Run 5 (live-10) dispatched 14:04 IST | 1,000 cards audited; schedule, chain and history stay off until a batch audits clean or close to it |
+| R | **Headline and subtitle format** merged (#132, live-10); kicker line and more owner examples per category open (12.3) | run 5 headlines read; kicker restyled |
+| S | **Run-4 findings without a rule yet**: cards with no headline, wrong categories, duplicate events, instalment amounts, dropped hedges (12.4) | each has a rule or hold and a test |
+| T | **Context engine** (12.5): results backfill of 12 quarters, other XBRL layouts, BSE results, balance sheet, shares and convertibles, then fundraising, results, debt, acquisition and capacity blocks, then ledgers of orders, capacity and ratings | blocks on real cards with dated inputs; "not available" where an input is missing |
+| U | **Concalls and annual reports** (12.6): read transcripts by section; probe the annual-report source; management's words only as quoted, dated facts | a transcript read with quotes; source probed |
+| V | **Text cache fill 1 Jan to 15 Oct** (run 38848258817) and the **nightly collection at 02:30 IST**: report counts and sizes (12.7, 12.8) | reported to the owner |
+
 ## Later
 
 | # | Item | Done when |

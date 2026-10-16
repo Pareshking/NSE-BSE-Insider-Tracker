@@ -160,3 +160,16 @@ signal lab matters most.
 - Practical: about 0.25% per round trip in costs at a zero-brokerage
   broker; exclude ASM/GSM and 5%-band stocks; spread across many small
   positions held 3-12 months.
+
+## Decisions of 16 Oct 2026 (owner)
+
+- **A card tells what the event means for this company**, not only what the filing says: relative size, before
+  and after, growth, dilution, price against the market. Built by a context engine from our own tables
+  (`docs/ANNOUNCEMENT_READER.md`, "Context on the card"); facts, calculations and interpretations are shown apart;
+  missing data is never shown as zero; every comparison shows its dates; promoter holding appears only where it
+  belongs (insider trades, fundraising where promoters take part), not on a deal or an order.
+- **Collect concalls and annual reports**, and let management's own words enter the card as quoted, dated facts,
+  never as our opinion. The model writes no "why it matters" or risks of its own.
+- **Titles are short and carry the news**: "Ujjivan SFB approves ₹409 Cr preferential issue" with a subtitle.
+- **The reader runs in supervised batches of 100, each card audited against its filing, until at least 1,000
+  cards**; it is not left on a schedule before a batch audits clean or close to it.
