@@ -1946,3 +1946,11 @@ def test_the_point_that_carries_the_checked_figure_leads_and_an_unstated_upgrade
     assert head['promoted_from_point'] and '500 Cr' in head['text']
     held = ar.check_words({'text': 'KEI ESG rating upgraded to Excellent', 'quote': 'assigned a rating of 71 (Excellent)'}, 'assigned a rating of 71 (Excellent)')
     assert not held['shown'] and 'upgraded' in held['reason']
+
+
+def test_a_dividend_is_not_a_price_a_share():
+    doc = 'The Board declared an interim dividend of INR 25/- per equity share of Re. 1 each. Revenue from operations 118,076.'
+    out = {'category': 'financial_results', 'fields': [{'name': 'price_per_share', 'value': '25', 'quote': 'interim dividend of INR 25/- per equity share of Re. 1 each'}],
+           'headline': {'text': 'LTM declares interim dividend of ₹25 per share', 'quote': 'interim dividend of INR 25/- per equity share of Re. 1 each'}}
+    res = ar.result_of(out, doc, 'm', 1.0, 'lane', ('LTM', 'LTM Limited'), 'Outcome of Board Meeting')
+    assert [f['name'] for f in res['fields']] == ['dividend_per_share']

@@ -32,7 +32,7 @@ CATEGORY = {
     'corporate_change': 'Corporate change', 'stake_change': 'Stake change', 'pledge': 'Promoter pledge',
     'deal_or_dispute': 'Deal or legal matter',   # reads before live-3, when deals and legal matters were one
 }
-FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
+FIELD = {'dividend_per_share': 'Dividend a share', 'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
          'amount': 'Size', 'discount_pct': 'Discount', 'allottee_is_promoter': 'To promoters', 'ratio': 'Ratio',
          'record_date': 'Record date', 'offer_pct': 'Offer size', 'capacity_from': 'Capacity before',
          'capacity_to': 'Capacity after'}
@@ -82,7 +82,7 @@ def value_text(f: dict) -> str:
     currency only when the filing writes one (the reader reads it from the quote or the filing's currency);
     otherwise it is written as the filing writes it, never with Rs assumed."""
     name, n, cur = f.get('name'), f.get('number'), f.get('currency')
-    if name in ('price_per_share', 'max_price_per_share') and n is not None:
+    if name in ('price_per_share', 'max_price_per_share', 'dividend_per_share') and n is not None:
         return kit.price(n) if cur == 'INR' else _money(n, cur) if cur else _as_written(f)
     if name == 'shares' and n is not None:
         return kit.shares(n)

@@ -1762,6 +1762,9 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
         return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
     cat, fields, metrics = validate(out, doc)
     cat = category_override(cat, subject, doc)
+    for f in fields:   # a dividend is not a price (LTM: 'Price a share 25' on a results card)
+        if f.get('name') in ('price_per_share', 'max_price_per_share') and re.search(r'dividend', str(f.get('quote') or ''), re.IGNORECASE):
+            f['name'] = 'dividend_per_share'
     raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
