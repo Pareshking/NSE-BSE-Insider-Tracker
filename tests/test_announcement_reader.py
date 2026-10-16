@@ -1894,3 +1894,22 @@ def test_a_resignation_filed_as_xbrl_facts_gets_the_person_as_subject_and_a_chec
                        doc, 'm', 1.0, 'lane', ('CCL', 'CCL Products (India) Limited'), 'Resignation of Director/KMP/SMP')
     assert res['headline']['from_facts'] and 'Sridevi Dasari resigns' in res['headline']['text']
     assert ar.people_change('plain text', ('X', 'Y Ltd')) == (None, [])
+
+
+def test_a_gap_is_said_when_the_category_expects_an_amount_and_the_filing_has_none():
+    assert ar.gaps_of('order_win', [], 'Aurionpro has won a contract with Matkahuolto under an MSA.')[0]['type'] == 'not_disclosed'
+    assert ar.gaps_of('order_win', [], 'The order is worth Rs. 69 crore.') == []
+    assert ar.gaps_of('order_win', [{'name': 'amount', 'shown': True}], 'x') == []
+    assert ar.gaps_of('management_change', [], 'x') == []
+
+
+def test_a_results_card_without_a_headline_gets_one_from_its_own_checked_figures():
+    metrics = [{'label': 'Revenue from operations', 'period': 'Q2 FY27', 'number': 3.8238e10, 'currency': 'INR', 'shown': True,
+                'change_pct': 13.4, 'qoq_pct': 2.8, 'quote': 'Revenue from operations 3,823.80 3,721.44 3,371.85 7,545.24 6,672.22 14,620.13'},
+               {'label': 'Profit after tax', 'period': 'Q2 FY27', 'number': 7.069e8, 'currency': 'INR', 'shown': True, 'change_pct': -49.0,
+                'quote': 'Profit after tax 70.69 x'}]
+    h = ar.results_headline(metrics, ('JINDALSAW', 'Jindal Saw Limited'))
+    assert h['text'] == 'Jindal Saw Q2 FY27 results: revenue ₹3,824 Cr (+13.4% YoY, +2.8% QoQ); profit after tax ₹70.7 Cr (-49.0% YoY)'
+    assert ar.results_headline([], ('X', 'Y Ltd')) is None
+    assert ar.indian_currency('lakh', 'Revenue 8,932') == 'INR' and ar.indian_currency('million', 'Revenue 8,932') is None
+    assert ar.indian_currency('crore', 'US$ 5 crore') is None

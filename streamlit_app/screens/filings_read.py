@@ -175,6 +175,13 @@ def _name(r: dict) -> str:
     return str(r.get('company') or sym) if not sym or sym.isdigit() else sym
 
 
+def _nice_day(iso) -> str:
+    try:
+        return pd.Timestamp(str(iso)).strftime('%-d %b %Y')
+    except (ValueError, TypeError):
+        return str(iso)
+
+
 def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
     """One filing as a card: what happened (headline and points, every number in them found in the filing),
     its key terms, the figures of a periodic update with the change we compute, the filing's own words, and
@@ -242,6 +249,13 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     src = (f'<details class="rc-src"><summary>The filing\'s own words</summary><ul>{src}</ul>{held_html}</details>'
            if src or held_html else '')
 
+    loops = [l for l in _json(r.get('open_loops'), []) if isinstance(l, dict) and l.get('text')]
+    todo = ''.join(f'<li>{esc(str(l["text"])[:200])}{" <b>(" + esc(_nice_day(l["date"])) + ")</b>" if l.get("date") else ""}</li>'
+                   for l in loops if l.get('type') != 'not_disclosed')[:1800]
+    gaps = ''.join(f'<li>{esc(str(l["text"]))}</li>' for l in loops if l.get('type') == 'not_disclosed')
+    loops_html = ((f'<div class="rc-box"><p class="rc-lbl">Still to come, as the filing says</p><ul class="rc-pts">{todo}</ul></div>' if todo else '')
+                  + (f'<div class="rc-box"><p class="rc-lbl">Not in this filing</p><ul class="rc-pts">{gaps}</ul></div>' if gaps else ''))
+
     also = list(r.get('also_filed') if r.get('also_filed') is not None else [])
 
     def _also(a) -> str:
@@ -259,7 +273,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{loops_html}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'

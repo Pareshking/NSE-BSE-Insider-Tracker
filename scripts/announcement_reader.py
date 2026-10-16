@@ -608,7 +608,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('its quote is a projection or estimate, not a reported figure')
         metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
-                        'currency': currency_in_quote(value, quote) if money else None,
+                        'currency': (currency_in_quote(value, quote) or indian_currency(unit_m, quote)) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
     for m in metrics:
         if m['shown'] and m.get('number') is not None:
@@ -1032,6 +1032,15 @@ PHYSICAL_UNIT = re.compile(r'\s{0,2}(MMSCMD|MMBTU|MTPA|MTPD|TPD|TPA|GWh|MWh|kWh|
 QUALIFIER = re.compile(r'(more\s+than|over|approximately|approx\.?|about|nearly|around|up\s*to|upto|at\s+least|~)\s*$', re.IGNORECASE)
 
 
+def indian_currency(unit, quote) -> str | None:
+    """Lakh and crore are rupee words: a figure in either with no other currency in its quote is in rupees (LTM, Paushak, Jindal Saw:
+    'Rs in lacs' sits in the heading, the row has the bare figure). Million and billion are not: no currency, no guess."""
+    if str(unit or '').strip().lower().rstrip('.') in ('lakh', 'lakhs', 'lac', 'lacs', 'crore', 'crores', 'cr', 'crs') \
+            and not re.search(r'US\$|USD|\$|EUR|€|GBP|£|AED|SGD|CAD|JPY', str(quote or '')):
+        return 'INR'
+    return None
+
+
 def physical_unit(quote, value) -> str | None:
     """The unit printed right after the metric's number in its quote when it is a physical one ('69,617.424 MT',
     'more than 3,000 employees'), so the card never says 'units' for tonnes, megawatts or people (Steel Exchange, BHEL, Persistent)."""
@@ -1108,6 +1117,29 @@ def promote_point(headline, points, names=()):
     return headline, points
 
 
+def results_headline(metrics, names=()) -> dict | None:
+    """A results card with no headline left: revenue and profit of the quarter, each with the change we worked out from the
+    table's own columns, in the company's short name (LTM, Paushak, Jindal Saw, Kabra, ITH: the card had boilerplate or nothing)."""
+    shown = [m for m in metrics if m.get('shown') and isinstance(m.get('number'), (int, float)) and m.get('currency')]
+    rev = next((m for m in shown if re.search(r'revenue|total\s+income|net\s+interest\s+income|operating\s+income|sales', str(m.get('label')), re.IGNORECASE)), None)
+    pat = next((m for m in shown if re.search(r'profit\s+after\s+tax|\bPAT\b|net\s+profit|profit\s+for\s+the', str(m.get('label')), re.IGNORECASE)), None)
+    if not (rev or pat):
+        return None
+    name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
+
+    def part(m, word):
+        txt = f"{word} {money_text(m['number'], m['currency'])}"
+        ch = [f"{m['change_pct']:+.1f}% YoY"] if isinstance(m.get('change_pct'), (int, float)) else []
+        ch += [f"{m['qoq_pct']:+.1f}% QoQ"] if isinstance(m.get('qoq_pct'), (int, float)) else []
+        return txt + (f" ({', '.join(ch)})" if ch else '')
+    period = next((str(m.get('period')) for m in (rev, pat) if m and m.get('period') and str(m.get('period')).lower() not in NO_PERIOD_WORDS), '')
+    body = '; '.join(part(m, w) for m, w in ((rev, 'revenue'), (pat, 'profit after tax')) if m)
+    quotes = ' ... '.join(str(m.get('quote')) for m in (rev, pat) if m and m.get('quote'))
+    return {'text': f"{name} {period} results: {body}".replace('  ', ' ').strip(), 'quote': quotes, 'evidence': 'table', 'shown': True,
+            'reason': None, 'from_table': True}
+
+
+NO_PERIOD_WORDS = ('', 'n/a', 'na', '-', 'none', 'not stated')
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
                                    r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
@@ -1150,6 +1182,8 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
+    if results_filing and not (isinstance(headline, dict) and headline.get('shown')):
+        headline = results_headline(metrics, names) or headline
     headline, points = promote_point(headline, points, names)
     return headline, drop_repeats(headline, points)
 
@@ -1649,6 +1683,22 @@ def people_change(doc: str, names=()) -> tuple[dict | None, list[dict]]:
     return head, points[:4]
 
 
+SIZE_CATEGORIES = {'order_win': 'the value of the order', 'acquisition': 'the price paid', 'divestment': 'the sale price',
+                   'agreement': 'any financial terms', 'capex': 'the cost of the investment', 'preferential': 'the size of the issue',
+                   'merger_demerger': 'the exchange ratio or consideration', 'open_offer': 'the offer price'}
+
+
+def gaps_of(cat, fields, doc: str) -> list[dict]:
+    """What the category normally gives and this filing does not (the amount of an order, the price of a purchase): said on the card
+    as a gap, never filled in (CLAUDE.md rule 7). Only when no amount or price field survived and the text has none either."""
+    what = SIZE_CATEGORIES.get(cat)
+    if not what or any(f.get('shown') and f.get('name') in ('amount', 'price_per_share', 'ratio', 'offer_pct') for f in fields or []):
+        return []
+    if re.search(r'(?:Rs\.?|INR|₹|US\$|USD|\$)\s*[\d,]+', str(doc)):
+        return []     # the text has an amount somewhere: not a gap, a check that held it
+    return [{'type': 'not_disclosed', 'text': f'This filing does not state {what}.', 'date': None}]
+
+
 def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
@@ -1670,7 +1720,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc)}
+            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
 
 
 def read_one(lane: Lane, row: dict, doc: str) -> dict:
