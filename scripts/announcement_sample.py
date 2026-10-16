@@ -649,7 +649,7 @@ def table_unit(quote, mult, doc: str) -> bool:
             near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
             if near and max(near)[1] == mult:
                 return True
-    return False
+    return heading_unit(doc) == mult      # wide pdf columns: the table's heading is far from its rows, but it is the filing's one unit
 
 
 def nearest_unit(quote, doc: str, value=None) -> float | None:

@@ -626,7 +626,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             alt = s.nearest_unit(quote, doc, value) if (str(out.get('category') or '') == 'financial_results' or RESULTS_LABEL.search(str(m.get('label') or ''))) else None
             alt_name = {v: k for k, v in (('thousand', 1e3), ('lakh', 1e5), ('crore', 1e7), ('million', 1e6), ('billion', 1e9))}.get(alt)
             mult0 = s.UNIT.get(str(unit_m or 'rupees').strip().lower().rstrip('.'), 1)
-            if alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
+            if alt is not None and alt == mult0 and qf:
+                pass      # the filing's heading names the very unit the model gave (Paushak "Rs in lacs", Jindal Saw "(₹ crores)": wide pdf columns)
+            elif alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
                 unit_m, number = alt_name, s.in_units(value, alt_name)
             else:
                 reasons.append('unit not backed by its quote')
@@ -653,6 +655,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                 for m, b in zip(group, bases):
                     m['label'] = f"{m.get('label')} ({b})"
                 continue
+            log(f'DEBUG two values: label={group[0].get("label")!r} bases={bases} quotes={[str(m.get("quote"))[:60] for m in group]} doc_chars={len(str(doc))}')
             for m in group:
                 m['shown'], m['reason'] = False, 'two different values for the same measure and period: standalone or consolidated is not stated'
     cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None

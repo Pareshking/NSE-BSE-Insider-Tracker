@@ -2075,3 +2075,11 @@ def test_call_recording_filed_as_results_does_not_headline_results():
     res = ar.result_of(out, doc, 'zai:x', 1.0, 'zai', ('KARURVYSYA', 'Karur Vysya Bank Ltd'), 'Updates')
     assert res['category'] == 'routine'
     assert not (res['headline'] and res['headline'].get('shown') and 'posts' in res['headline']['text'])
+
+
+def test_heading_unit_backs_the_models_unit_when_the_row_is_wide():
+    pad = ' ' * 60
+    doc = 'Statement of results\nRs in lacs\n' + ('\n' * 30) + f'Profit after tax{pad}1,351{pad}1,510{pad}861\n'
+    out = {'category': 'financial_results', 'metrics': [{'label': 'Profit after tax', 'period': 'Q2 FY27', 'value': '1,351', 'unit': 'lakh', 'quote': 'Profit after tax 1,351'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert metrics[0]['shown'], metrics[0]
