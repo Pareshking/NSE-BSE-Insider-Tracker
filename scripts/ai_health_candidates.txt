@@ -2,4 +2,4 @@
 # Same format as announcement_readers.txt. The spares of the 24-filing test (docs/ANNOUNCEMENT_READER.md):
 # nemotron-3-ultra 87 of 91 but slow, glm-5.3-flash on NVIDIA 80 of 82 but slow. 15 Oct: kimi-k3,
 # deepseek-v4-flash, qwen3.5-122b-a10b and gpt-oss-120b answer 410 (end of life), kimi-k2.6 404.
-candidates: nvidia:nvidia/nemotron-3-ultra-550b-a55b, nvidia:z-ai/glm-5.3-flash
+candidates: nvidia:nvidia/nemotron-3-ultra-550b-a55b, nvidia:z-ai/glm-5.3-flash, nvidia:nvidia/nemotron-3.5-lightning-30b-a3b, nvidia:nvidia/nemotron-3.5-super-vl-120b-a12b

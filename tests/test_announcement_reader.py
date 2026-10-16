@@ -1171,3 +1171,74 @@ def test_a_chat_model_that_times_out_is_not_asked_twice_so_the_lane_can_move_on(
     with pytest.raises(RuntimeError, match='ReadTimeout'):
         client.generate(['a'], 'p', 'read', json_mode=True)
     assert sess.posts == 1   # no second round after 45 s
+
+
+def _batch_answer(*items):
+    return json.dumps({'results': [dict(json.loads(QIP), id=k) if x is None else dict(x, id=k)
+                                   for k, x in enumerate(items, 1)]})
+
+
+def _gemini_lane(replies):
+    c = FakeClient(replies)
+    return {'gemini': ar.Lane('gemini', ['gemini:m'], {'gemini': c})}, c
+
+
+def test_short_filings_go_to_a_call_limited_provider_in_one_request(monkeypatch):
+    monkeypatch.setattr(ar, 'BATCH_ON', True)
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    lanes, c = _gemini_lane([_batch_answer(None, None, None)])
+    rows, _ = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(c.asked) == 1                                  # three filings, one call
+    assert sorted(r['status'] for r in rows) == ['read'] * 3
+    assert all(r['shown'] == 1 and r['reader_lane'] == 'gemini' for r in rows)
+
+
+def test_a_batch_answer_that_borrows_from_another_filing_is_held_back_for_that_filing(monkeypatch):
+    monkeypatch.setattr(ar, 'BATCH_ON', True)
+    texts = {'https://f/nse:1.pdf': DOC, 'https://f/nse:2.pdf': 'Board meeting held. No other information.'}
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (data.decode(), []))
+    lanes, c = _gemini_lane([_batch_answer(None, None)])     # filing 2 gets filing 1's price and quote
+    rows, _ = ar.run(_qips(2), lanes, None, 600, fetch=lambda u: texts[u].encode(), idle_wait=0.01)
+    by = {r['event_id']: r for r in rows}
+    assert by['nse:1']['shown'] == 1 and by['nse:2']['shown'] == 0 and by['nse:2']['held'] >= 1
+    assert len(c.asked) == 1
+
+
+def test_a_filing_the_batch_answer_misses_is_read_on_its_own_and_long_filings_never_join(monkeypatch):
+    monkeypatch.setattr(ar, 'BATCH_ON', True)
+    long_doc = DOC + 'x' * (ar.BATCH_DOC_CHARS + 10)
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (long_doc if data == b'nse:3' else DOC + data.decode(), []))
+    # filings 1-2 short, 3 long; the batch answer has only id 1; so 2 and 3 are read one by one
+    lanes, c = _gemini_lane([_batch_answer(None), QIP, QIP])
+    rows, _ = ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.split('/')[-1][:-4].encode(), idle_wait=0.01)
+    assert sorted(r['status'] for r in rows) == ['read'] * 3 and len(c.asked) == 3   # 1 batch + 2 singles
+
+
+def test_batching_is_off_by_default_and_other_providers_are_never_batched(monkeypatch):
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC + data.decode(), []))
+    lanes, c = _gemini_lane([QIP] * 3)                       # BATCH_ON is False
+    ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(c.asked) == 3
+    monkeypatch.setattr(ar, 'BATCH_ON', True)
+    lanes = {'zai': ar.Lane('zai', ['zai:m'], {'zai': FakeClient([QIP] * 3)})}
+    ar.run(_qips(3), lanes, None, 600, fetch=lambda u: u.encode(), idle_wait=0.01)
+    assert len(lanes['zai'].clients['zai'].asked) == 3
+
+
+def test_candidates_stay_fast_with_a_month_of_filings():
+    """16 Oct: candidates() compared every row with every row and parsed a date each time: 20 minutes, no end,
+    on a month of filings. Many issuers, many days, a few XBRL companions: a few seconds at most."""
+    import time
+    rows = []
+    for i in range(12000):
+        day = f'2026-10-{1 + i % 15:02d}'
+        rows.append({'event_id': f'pdf:{i}', 'symbol': f'S{i % 3000}', 'isin': f'INE{i % 3000:06d}A01000',
+                     'company': 'Co', 'subject': 'General Updates', 'file_type': 'pdf', 'has_xbrl': False,
+                     'file_url': f'https://nsearchives.nseindia.com/corporate/S{i}.pdf', 'exchange': 'NSE',
+                     'broadcast_at': f'{day}T10:00:00+05:30', 'broadcast_date': day, 'market': 'equities'})
+    rows.append(dict(rows[0], event_id='xbrl:1', subject='General Updates-XBRL', file_type='xml',
+                     file_url='https://nsearchives.nseindia.com/corporate/xbrl/S0.xml'))
+    t0 = time.monotonic()
+    out = ar.candidates(pd.DataFrame(rows), pd.DataFrame(), None).set_index('event_id')
+    assert time.monotonic() - t0 < 30
+    assert len(out) == 12001 and out.loc['xbrl:1', 'group'] == 'routine'
