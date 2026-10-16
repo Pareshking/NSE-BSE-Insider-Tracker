@@ -1,0 +1,32 @@
+name: Results context probe (read-only)
+
+# Sample of clean/current/results.parquet before the context engine sums four quarters (scripts/results_context_probe.py).
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-0caa4ce9-bh3n2s]
+    paths:
+      - 'scripts/results_context_probe.py'
+      - '.github/workflows/results-context-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/results_context_probe.py | tee probe.md >> "$GITHUB_STEP_SUMMARY"
