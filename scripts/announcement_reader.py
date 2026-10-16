@@ -57,7 +57,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-16' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-17' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -96,6 +96,7 @@ PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemin
 # test harness keeps its shorter list (its "deal_or_dispute" is split here, as an acquisition filed under
 # "dispute" read as trouble), so the 24-filing test stays comparable. Reads before live-3 keep their category.
 ADDED = {
+    'rating_assigned': 'a first credit rating assigned to a company or its debt (the rating action says "Assigned", with no earlier rating to upgrade or reaffirm)',
     'stake_change': 'a shareholder buys or sells shares and discloses it under SEBI takeover Reg 29 (not an open offer): who, shares, before and after %',
     'pledge': 'promoter shares pledged, released or invoked (SEBI Reg 31): who, shares, lender, % of capital encumbered',
     'esop': 'shares allotted or options granted to employees (ESOP, ESPS)',
@@ -442,10 +443,24 @@ def _pct(now, before) -> float | None:
     return round((now - before) / before * 100, 1) if before and before > 0 and now >= 0 else None
 
 
-def results_changes(m: dict) -> dict:
+def row_in_doc(m: dict, doc) -> str | None:
+    """The one line of the filing that holds the metric's label and its figure with six amounts (the model's quote had only the
+    first column: LTM, Jindal Saw), so that the changes come from the filing's own columns."""
+    value = str(m.get('value') or '').strip()
+    words = [w for w in re.findall(r'[a-z]{4,}', str(m.get('label') or '').lower())][:2]
+    if not value or not words:
+        return None
+    hits = [ln for ln in str(doc).splitlines() if value in ln and all(w in ln.lower() for w in words) and results_row(ln)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def results_changes(m: dict, doc=None) -> dict:
     """QoQ and YoY (and six months against six months) for a metric taken from a verified results-table row, worked
     out by us from the row's own columns; {} when the row is not in the layout or the figure is not in it once."""
     row = results_row(m.get('quote'))
+    if row is None and doc is not None:
+        found = row_in_doc(m, doc)
+        row = results_row(found) if found else None
     n = s._num(m.get('value'))
     if row is None or n is None:
         return {}
@@ -549,6 +564,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if name == 'amount' and (TARGET_CAPITAL.search(str(quote or '')) or (
                 NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')))):
             reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
+        if name == 'amount' and re.search(r'\d\s*%|%\s*\)?\s*$|\(\s*[\d.]+\s*%', str(value)) or (
+                name == 'amount' and re.search(re.escape(str(value).strip()) + r'\s*%', str(quote or ''))):
+            reasons.append('a percentage, not a money amount')
         if name == 'shares' and '%' in str(value):
             reasons.append('a percentage, not a count of shares')
         if name in s.NUMERIC:
@@ -605,7 +623,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
             # A results table's unit is in its heading: when the model named another unit than the one printed nearest
             # before the figure (LTM: lakh for "tin million"), the printed one is used, never the model's.
-            alt = s.nearest_unit(quote, doc, value) if str(out.get('category') or '') == 'financial_results' else None
+            alt = s.nearest_unit(quote, doc, value) if (str(out.get('category') or '') == 'financial_results' or RESULTS_LABEL.search(str(m.get('label') or ''))) else None
             alt_name = {v: k for k, v in (('thousand', 1e3), ('lakh', 1e5), ('crore', 1e7), ('million', 1e6), ('billion', 1e9))}.get(alt)
             mult0 = s.UNIT.get(str(unit_m or 'rupees').strip().lower().rstrip('.'), 1)
             if alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
@@ -620,7 +638,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
     for m in metrics:
         if m['shown'] and m.get('number') is not None:
-            m.update(results_changes(m))
+            m.update(results_changes(m, doc))
     seen: dict = {}
     for m in metrics:
         if m['shown']:
@@ -652,7 +670,7 @@ CARD_ASK = (
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). \n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). WHAT LEADS (investor audit, 16 Oct): a results filing leads with revenue from operations and profit after tax of the quarter (not total income, not a segment, not the half year first), with the change the filing states; an event of today leads over a running total ("remitted USD 34.99 million today", not "USD 64.49 million to date"); a filing with several instruments or items (equity and warrants, two tranches, several schemes) names each and gives the filing\'s own total; a legal or tax filing leads with the demand or the net effect on the company and says who pays (a payment made by someone else under an indemnity is not the company\'s outflow), never with an adjournment or the company\'s own view; a stake or pledge filing names the seller or acquirer as the filing does, says promoter or not, and gives the holding before and after; a rating filing gives the action, the rating, the outlook and, when the limits changed, the old and new size; when the filing states a percentage, use that one, not your own arithmetic; keep up to, approximately and subject to; a procedural line, a restated earlier approval or boilerplate never leads. \n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, '
@@ -676,7 +694,7 @@ CARD_ASK_V2 = (
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). Return the existing JSON schema only.\n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). WHAT LEADS (investor audit, 16 Oct): a results filing leads with revenue from operations and profit after tax of the quarter (not total income, not a segment, not the half year first), with the change the filing states; an event of today leads over a running total ("remitted USD 34.99 million today", not "USD 64.49 million to date"); a filing with several instruments or items (equity and warrants, two tranches, several schemes) names each and gives the filing\'s own total; a legal or tax filing leads with the demand or the net effect on the company and says who pays (a payment made by someone else under an indemnity is not the company\'s outflow), never with an adjournment or the company\'s own view; a stake or pledge filing names the seller or acquirer as the filing does, says promoter or not, and gives the holding before and after; a rating filing gives the action, the rating, the outlook and, when the limits changed, the old and new size; when the filing states a percentage, use that one, not your own arithmetic; keep up to, approximately and subject to; a procedural line, a restated earlier approval or boilerplate never leads. Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -798,6 +816,10 @@ def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
                 return True            # as written, same unit
             if c != n and abs(c - c2) <= 0.005 * max(1.0, abs(c2)):
                 return True            # a unit was given: the same amount, converted
+            if unit_ok is not None and c != n and c2 == n2 and n2 != 0:
+                for mult in (1e3, 1e5, 1e6, 1e7, 1e9):   # 61.4 crore for 6,140.54 under a "Rs in lakh" heading (International Travel House)
+                    if abs(n2 * mult - c) <= 0.005 * max(1.0, abs(c)) and unit_ok(n2, mult):
+                        return True
         return False
 
     return all(backed(n, c) for n, c in numbers_in(text))
@@ -1031,11 +1053,18 @@ def extract_open_loops(doc, limit: int = 6) -> list[dict]:
     for sent in sentences:
         if not 25 <= len(sent) <= 400:
             continue
+        letters = sum(c.isalpha() for c in sent)
+        if re.search(r'not\s+applicable|\bN\.?A\.?\b|\bnil\b', sent, re.IGNORECASE) or letters < 0.45 * len(sent) or sent.count('|') >= 3:
+            continue      # an annexure row ("Not applicable"), or a table fragment, is not a step still to happen
         for kind, rx in LOOP_PATTERNS:
-            if rx.search(sent) and sent not in seen:
-                seen.add(sent)
+            key = re.sub(r'\W+', '', sent.lower())[:70]
+            if rx.search(sent) and key not in seen:
+                seen.add(key)
                 dates = dates_in(sent)[0]
-                out.append({'type': kind, 'text': sent.strip()[:260],
+                txt = sent.strip()
+                if len(txt) > 260:
+                    txt = txt[:260].rsplit(' ', 1)[0] + ' …'      # never cut inside a word
+                out.append({'type': kind, 'text': txt,
                             'date': (lambda d: f'{d[0]:04d}-{int(d[1]):02d}-{int(d[2]):02d}')(min(dates)) if dates else None})
                 break
         if len(out) >= limit:
@@ -1144,8 +1173,19 @@ def facility_change_headline(doc: str, names=()) -> dict | None:
     if not s.quote_found(quote, doc):
         return None
     name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
-    return {'text': f"{name} rated bank facilities {verb} from {amount}".strip(), 'quote': quote, 'evidence': 'exact',
-            'shown': True, 'reason': None, 'subtitle': None}
+    text = f"{name} rated bank facilities {verb} from {amount}".strip()
+    # the new size: the last "Rs.N" before the change words (Skipper: "Bank Rs.5106 | Crore ... (Enhanced | from ... Rs.4621 Crore)")
+    head = str(doc)[max(0, m.start() - 220):m.start()]
+    new = list(re.finditer(r'(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d+)?)', head, re.IGNORECASE))
+    if new and new[-1].group(1) != num.group(1):
+        start = max(0, m.start() - 220) + new[-1].start()
+        wide = re.sub(r'\s+', ' ', str(doc)[start:m.end() + 70])
+        wide = wide[:wide.index(num.group(0)) + len(num.group(0))] if num.group(0) in wide else ''
+        if wide and s.quote_found(wide, doc):
+            val = float(new[-1].group(1).replace(',', ''))
+            text = f"{name} rated bank facilities {verb} to ₹{val:,.2f}".replace('.00', '') + (f" {unit}" if unit else '') + f" from {amount}"
+            quote = wide
+    return {'text': text, 'quote': quote, 'evidence': 'exact', 'shown': True, 'reason': None, 'subtitle': None}
 
 
 _PERSON = re.compile(r'\b(?:Mr|Ms|Mrs|Dr|Shri|Smt|Prof)\.?\s+((?:[A-Z][a-z]+\s+){1,3}[A-Z][a-z]+)')
@@ -1255,6 +1295,7 @@ def fiscal_label(text: str, doc: str) -> str:
     return re.sub(r'Q([1-4])\s*FY\s?(\d{2,4})\b', fix, text)
 
 
+RESULTS_LABEL = re.compile(r'revenue|\bsales\b|income|profit|\bPAT\b|\bPBT\b|EBITDA|earnings|turnover', re.IGNORECASE)
 NO_PERIOD_WORDS = ('', 'n/a', 'na', '-', 'none', 'not stated')
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
@@ -1266,6 +1307,11 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
     out = out if isinstance(out, dict) else {}
     extra = card_numbers(fields, metrics)
     points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra) for x in (out.get('points') or [])[:4]) if p]
+    for pt in points:   # Megamont, Bench Mark, Lloyds: a point never shows an unfilled "{amount}"
+        if pt.get('shown') and '{' in str(pt.get('text') or ''):
+            pt['text'], tok_reason = fill_tokens(pt['text'], fields, metrics)
+            if tok_reason or '{' in pt['text']:
+                pt['shown'], pt['reason'] = False, tok_reason or 'a figure the card could not check'
     results_filing = str(out.get('category') or '') == 'financial_results'
     if results_filing:   # Paushak (16 Oct): the card showed "reviewed by the auditors" and "one segment" and no profit
         for pt in points:
@@ -1718,6 +1764,7 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
 REG29 = re.compile(r'Reg(?:ulation|\.)?\s*29\s*\(\s*[12]\s*\)|substantial\s+acquisition|\(SAST\)\s+Regulations', re.IGNORECASE)
 REG31 = re.compile(r'Reg(?:ulation|\.)?\s*31\s*\(\s*1\s*\)|(?:creation|release|invocation)\s+of\s+(?:pledge|encumbrance)|pledge', re.IGNORECASE)
 CALL_OR_AD = re.compile(r'audio\s+recording|conference\s+call|earnings\s+call|transcript|newspaper|advertisement|publication', re.IGNORECASE)
+CALL_WORDS_OPENING = re.compile(r'audio\s+recording|recording\s+of\s+the\s+(?:earnings|conference|analyst)|earnings\s+call|conference\s+call|newspaper\s+advertisement', re.IGNORECASE)
 ESG_WORDS = re.compile(r'\bESG\b|sustainab|environmental,\s+social', re.IGNORECASE)
 
 
@@ -1732,8 +1779,11 @@ def category_override(cat, subject, doc: str):
             return 'stake_change'
     if re.search(r'Reg(?:ulation|\.)?\s*31\s*\(\s*[12]\s*\)', subject, re.IGNORECASE) and 'SAST' in subject.upper():
         return 'pledge'
-    if cat == 'financial_results' and CALL_OR_AD.search(subject):
+    if cat == 'financial_results' and (CALL_OR_AD.search(subject) or CALL_WORDS_OPENING.search(str(doc)[:700])):
         return 'routine'
+    if str(cat or '') in ('rating_upgrade', 'rating_reaffirmed') and re.search(r'\bRating\s+Assigned\b|\bAssigned\b', str(doc)[:8000]) \
+            and not re.search(r'upgrad|downgrad|reaffirm|withdraw|revis', str(doc)[:8000], re.IGNORECASE):
+        return 'rating_assigned'      # Megamont: a first rating is neither an upgrade nor a reaffirmation
     if str(cat or '').startswith('rating_') and ESG_WORDS.search(subject + ' ' + str(doc)[:1500]) \
             and not re.search(r'CRISIL|ICRA|CARE\s+Ratings|India\s+Ratings|Acuit|Infomerics|Brickwork|credit\s+rating', str(doc)[:1500], re.IGNORECASE):
         return 'routine'

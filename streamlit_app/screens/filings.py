@@ -21,7 +21,7 @@ HEADINGS = {
     'Orders & business': ('order_win', 'product_launch', 'licence_approval', 'operations_start', 'business_update'),
     'Capex & capacity': ('capex',),
     'Results': ('financial_results',),
-    'Ratings': ('rating_upgrade', 'rating_downgrade', 'rating_reaffirmed'),
+    'Ratings': ('rating_upgrade', 'rating_downgrade', 'rating_reaffirmed', 'rating_assigned'),
     'Debt & distress': ('default', 'restructuring', 'insolvency'),
     'Legal & regulatory': ('legal_regulatory', 'fraud'),
     'Disruption': ('disruption',),

@@ -22,7 +22,7 @@ CATEGORY = {
     'preferential': 'Preferential issue', 'warrant_conversion': 'Warrants converted', 'rights': 'Rights issue',
     'open_offer': 'Open offer', 'debt_issue': 'Debt issue', 'capex': 'Capacity / investment',
     'product_launch': 'Product launch', 'order_win': 'Order win', 'business_update': 'Business update',
-    'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_downgrade': 'Rating lowered',
+    'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_assigned': 'Rating assigned', 'rating_downgrade': 'Rating lowered',
     'rating_reaffirmed': 'Rating kept', 'esop': 'ESOP allotment', 'dividend': 'Dividend', 'bonus_split': 'Bonus or split',
     'acquisition': 'Acquisition', 'divestment': 'Sale or divestment', 'merger_demerger': 'Merger or demerger',
     'agreement': 'Agreement or JV', 'delisting': 'Delisting', 'licence_approval': 'Licence or approval',

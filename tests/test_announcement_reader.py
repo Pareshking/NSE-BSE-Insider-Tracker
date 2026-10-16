@@ -1311,7 +1311,7 @@ def test_a_table_quote_keeps_its_unit_only_when_the_table_heading_has_it():
     assert not metrics[0]['shown'] and 'unit not backed' in metrics[0]['reason']
     lakh = doc.replace('Rs. Crore', 'Rs. in Lakhs')
     _, _, metrics = ar.validate(out, lakh)
-    assert not metrics[0]['shown']                       # the heading says lakh, the card says crore
+    assert metrics[0]['shown'] and metrics[0]['unit'] == 'lakh'     # the heading says lakh, the model said crore: the heading's unit is used
 
 
 def test_prompt_separates_terminations_and_esg_scores_and_asks_for_the_main_news():
@@ -1329,7 +1329,7 @@ def test_an_exact_table_row_keeps_its_unit_from_the_heading_above_it():
     _, _, metrics = ar.validate(out, doc)
     assert metrics[0]['shown']
     _, _, metrics = ar.validate(out, doc.replace('Million', 'Crore'))
-    assert not metrics[0]['shown']                       # the heading says crore, the card says million
+    assert metrics[0]['shown'] and metrics[0]['unit'] == 'crore'    # the heading says crore, the model said million: the heading's unit is used
     _, _, metrics = ar.validate(out, doc.replace('(₹ in Million)', 'Particulars'))
     assert not metrics[0]['shown']                       # no unit anywhere near the row
 
@@ -1784,7 +1784,7 @@ def test_rating_headline_must_carry_a_change_in_the_facility_size():
     out = {'category': 'rating_reaffirmed',
            'headline': {'text': 'Crisil reaffirms Skipper at A+/Stable', 'quote': 'Crisil Ratings has reaffirmed'}}
     head, _ = ar.card_words(out, doc, [], [])
-    assert head['shown'] and 'enhanced from' in head['text']      # the filing's own change leads, not the model's wording
+    assert head['shown'] and 'enhanced' in head['text'] and 'from ₹4,621' in head['text']      # the filing's own change leads, not the model's wording
     out['headline']['text'] = 'Crisil reaffirms Skipper at A+/Stable; facilities enhanced to Rs 5,106 Cr'
     head, _ = ar.card_words(out, doc, [], [])
     assert 'enhanced from' not in (head.get('reason') or '')
@@ -1987,7 +1987,7 @@ def test_facility_change_headline_from_split_table_cells():
     from scripts import announcement_reader as r
     doc = 'Facilities | Amount | Rating | Rating Action\nLong Term | Bank Rs.5106 | Crore | Crisil A+/Stable | Reaffirmed\nFacilities | (Enhanced | from\nShort Term | Bank Rs.4621 Crore) | Crisil A1 | Reaffirmed\n'
     h = r.facility_change_headline(doc, ('Skipper', 'Skipper Ltd'))
-    assert h and 'enhanced from ₹4,621 Cr' in h['text'] and h['text'].startswith('Skipper')
+    assert h and 'enhanced to ₹5,106 Cr from ₹4,621 Cr' in h['text'] and h['text'].startswith('Skipper')
     assert r.facility_change_headline('Rating reaffirmed. Facilities unchanged.', ('A',)) is None
 
 
@@ -1999,3 +1999,22 @@ def test_person_name_restored_and_unit_from_the_metrics_own_number():
     assert r.full_person_name('Yuan resigns', doc, ('Yuan Industries',)) == 'Yuan resigns'
     d = 'in million\nNet profit after tax (5-6) 13,799 12,000\n'
     assert sm.nearest_unit('Net profit after tax (5-6) 13,799', d, '13,799') == 1e6
+
+
+def test_first_rating_call_recording_and_unfilled_point_tokens():
+    doc = 'Facility Rated IVR BBB-/Stable (Rating Assigned) Infomerics Valuation and Rating'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', doc) == 'rating_assigned'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', doc + ' upgraded from IVR BB+') == 'rating_upgrade'
+    assert ar.category_override('financial_results', 'General', 'Sub: Audio recording of earnings call for Q2 FY27 results') == 'routine'
+    assert ar.category_override('financial_results', 'Results', 'Unaudited financial results for the quarter ended 30 September 2026. Revenue from operations rose.') == 'financial_results'
+    out = {'category': 'rating_assigned', 'headline': None,
+           'points': [{'text': 'Rated facilities amount to {amount} crore', 'quote': 'Rated facilities amount to Rs 400 crore'}]}
+    _, pts = ar.card_words(out, 'Rated facilities amount to Rs 400 crore', [], [])
+    assert not any(p['shown'] and '{' in p['text'] for p in pts)
+
+
+def test_changes_from_the_filings_row_when_the_quote_has_one_column():
+    doc = 'Particulars\nRevenue from operations | 118,076 | 116,080 | 103,943 | 234,156 | 202,349 | 423,076\nOther income | 915 | 2,554\n'
+    ch = ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}, doc)
+    assert ch['change_pct'] == 13.6 and ch['qoq_pct'] == 1.7
+    assert ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}) == {}
