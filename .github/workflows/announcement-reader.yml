@@ -42,6 +42,10 @@ on:
         required: true
         type: boolean
         default: false
+      replay:
+        description: 'Engineering loop: file of event_ids in the repo (scripts/golden_set.txt); read exactly these filings again, save nothing'
+        required: false
+        default: ''
       chain:
         description: 'Start the next run when this one ends (off in supervised mode)'
         required: true
@@ -133,15 +137,16 @@ jobs:
           READER_MINUTES: ${{ inputs.minutes || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || '0' }}
           READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
+          REPLAY: ${{ inputs.replay || '' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           MAX: ${{ github.event_name == 'pull_request' && '3' || inputs.max || '' }}
           CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'v2' }}
-          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.dry_run == true && '1' || '0') }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
-        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"} ${REPLAY:+--replay "$REPLAY"}
 
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))

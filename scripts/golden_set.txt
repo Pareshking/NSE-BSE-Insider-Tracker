@@ -1,0 +1,102 @@
+# Golden set (16 Oct 2026): 100 different announcement cards, stratified by category, with the owner's problem cards first.
+# Engineering loop: audit as an investor, fix the framework, replay exactly these filings (announcement-reader.yml replay=scripts/golden_set.txt), compare.
+bse:58158c81-ff59-414d-924a-b747b7191b44  # financial_results | BSE LTM | General | LTM Ltd
+bse:e0983f88-a4d2-4e20-a0a0-372f8600fffa  # financial_results | BSE PAUSHAKLTD | Outcome of Board Meeting | Paushak Ltd
+bse:23dffb7d-e42d-470f-9587-988474068394  # rating_reaffirmed | BSE SKIPPER | Credit Rating | Skipper Ltd
+bse:ac81fc88-0310-4206-999d-e666394c260e  # financial_results | BSE JINDALSAW | Outcome of Board Meeting | Jindal Saw Ltd
+nse:106820217  # financial_results | NSE JINDALSAW | Updates | Jindal Saw Limited
+bse:06341344-07cb-4406-a166-5261389589ec  # agreement | BSE NIRLON | Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 
+nse:106820115  # legal_regulatory | NSE LENSKART | Action(s) taken or orders passed | Lenskart Solutions L
+bse:6226a017-a1f6-44f2-a3c8-704963a36b68  # acquisition | BSE ASOCSTONE | Acquisition | ASI Industries Ltd
+nse:106820139  # warrant_conversion | NSE AFFLE | Updates | Affle 3i Limited
+nse:106820136  # management_change | NSE CCL | Resignation of Director/KMP/SMP | CCL Products (India) Limit
+bse:dd0212d4-7c6e-4a85-9474-b017cdd24cbc  # corporate_change | BSE 540175 | General | Regency Fincorp Ltd
+nse:106820190  # esop | NSE FEDERALBNK | General Updates | The Federal Bank  Limited
+bse:732fc37c-c540-4ccf-9000-83209952431e  # acquisition | BSE BHARATFORG | Acquisition | Bharat Forge Ltd
+nse:106819335  # financial_results | NSE KABRAEXTRU | Press Release | Kabra Extrusion Technik Limited
+bse:f4aabee9-f692-47bd-ae30-c07bd88b5457  # financial_results | BSE EMMVEE | Press Release / Media Release | Emmvee Photovoltaic Power
+bse:dcda4721-70a9-4f40-bcfa-54ad378a1063  # financial_results | BSE LTF | Press Release / Media Release | L&T Finance Ltd
+bse:de5ffabe-fc84-4793-be84-865415b28c14  # financial_results | BSE KARURVYSYA | General | Karur Vysya Bank Ltd
+bse:ca893c0c-e247-4510-bd8b-f66ec00a9759  # financial_results | BSE TIPSMUSIC | General | Tips Music Ltd
+bse:9c1f5561-5a24-4ceb-8a66-e49a02e045ea  # financial_results | BSE 531841 | Outcome of Board Meeting | Indus Finance Ltd
+bse:054314b2-0baf-416f-8faf-3797a1fa153e  # financial_results | BSE CANBK | Press Release / Media Release | Canara Bank
+bse:3f7c75df-fff7-4c0b-9113-9b44a417f0f2  # financial_results | BSE BHEL | General | Bharat Heavy Electricals Ltd
+bse:a97c1181-f98e-4e6d-9bfd-31c833111f35  # financial_results | BSE INTLTRAVHS | Outcome of Board Meeting | International Travel House
+bse:a124975b-4d16-4fbc-b5b0-5a9366e0a06b  # financial_results | BSE E2E | Press Release / Media Release | E2E Networks Ltd
+bse:158d78d5-5a99-4b81-84a0-33392ee10a44  # order_win | BSE 544291 | Press Release / Media Release | Rajesh Power Services Ltd
+nse:106817143  # order_win | NSE BMISL | Press Release | Bench Mark Infotech Services Limited
+bse:6d954d64-7dc1-4c4e-a467-5ccbb83baaba  # order_win | BSE BLUECLOUDS | Press Release / Media Release | Blue Cloud Softech So
+bse:9c38c631-ba74-4ea2-9ca8-071629afe7c9  # order_win | BSE POWERGRID | General | Power Grid Corporation of India Ltd
+nse:106816851  # order_win | NSE AURIONPRO | Press Release | Aurionpro Solutions Limited
+nse:106817727  # order_win | NSE POSITRON | Updates | Positron Energy Limited
+bse:3a8fb16f-9120-4d78-ba18-044ff78868c7  # order_win | BSE 544669 | Press Release / Media Release | Admach Systems Ltd
+bse:b52cb13f-b068-4e4c-a988-c60f7f435fb9  # preferential | BSE HILINFRA | Acquisition | Highway Infrastructure Ltd
+bse:7fbf0d8f-c761-4b53-8ae4-e0f344f22b55  # preferential | BSE SETL | General | Standard Engineering Technology Ltd
+bse:c46b3070-e967-4ee4-89b2-284eaf3026fe  # preferential | BSE 534535 | Preferential Issue | String Metaverse Ltd
+nse:106817753  # preferential | NSE CGCL | General Updates | Capri Global Capital Limited
+bse:9d3fa507-cb53-4ec0-abb8-46604deae148  # preferential | BSE 543616 | Outcome without intimation | Trident Lifeline Ltd
+bse:9041e16e-6f01-42f2-9239-ff834c6fc9e9  # preferential | BSE 540175 | Preferential Issue | Regency Fincorp Ltd
+nse:106819297  # preferential | NSE TEXMOPIPES | Updates | Texmo Pipes and Products Limited
+bse:58c4e869-e998-425c-8c96-09e379e68597  # acquisition | BSE 543616 | Acquisition | Trident Lifeline Ltd
+bse:57b88264-5360-4c45-8088-4c028f4be45b  # acquisition | BSE AEGISLOG | Outcome without intimation | Aegis Logistics Ltd
+nse:106818038  # acquisition | NSE ACMESOLAR | General Updates | Acme Solar Holdings Limited
+bse:1b84fd5f-0028-481b-80b8-0f1504e7f730  # acquisition | BSE AXISCADES | Acquisition | Axiscades Technologies Ltd
+nse:106817451  # acquisition | NSE MINDACORP | General Updates | Minda Corporation Limited
+nse:106819237  # management_change | NSE MHRIL | Resignation of Director/KMP/SMP | Mahindra Holidays & Reso
+bse:fa1e11f9-b077-4ac1-9a35-928b12c42c3f  # management_change | BSE SADHNANIQ | Resignation of Chief Financial Officer (CFO) | Sadhana
+bse:3d50d4bc-59df-42ef-adcc-90763e1484e0  # management_change | BSE OFSS | Resignation of Director | Oracle Financial Services Softwar
+bse:0220cd1d-8dc8-40fe-a8f0-acbf53a3c387  # management_change | BSE TFCILTD | Resignation of Director | Tourism Finance Corporation of
+nse:106817360  # management_change | NSE NIITLTD | Resignation of Director/KMP/SMP | NIIT Limited
+nse:106819217  # management_change | NSE DHANUKA | Resignation of Director/KMP/SMP | Dhanuka Agritech Limit
+bse:bdfa9da6-f33e-4448-b1b5-5671aa59d5c6  # rating_reaffirmed | BSE 523888 | Press Release / Media Release | Megamont Ltd
+bse:1ee02557-fcb6-4ee8-936b-33e2a204f213  # rating_reaffirmed | BSE PNGJL | Credit Rating | P N Gadgil Jewellers Ltd
+nse:106815713  # rating_upgrade | NSE KERNEX | Credit Rating- Revision | Kernex Microsystems (India) Lim
+bse:a80e46bd-37c4-4876-8618-b21d82ce7b00  # rating_upgrade | BSE KEI | General | KEI Industries Ltd
+bse:835f5f87-2714-4c93-8a43-4e4ae5b3a667  # rating_upgrade | BSE PICCADIL | Credit Rating | Piccadily Agro Industries Ltd
+nse:106815485  # debt_issue | NSE MANBA | Allotment of Securities | Manba Finance Limited
+nse:106817736  # debt_issue | NSE CIFL | Updates | Capital India Finance Limited
+nse:106815749  # debt_issue | NSE CGCL | Allotment of Securities | Capri Global Capital Limited
+bse:9cbcf403-5173-40c6-a27f-b11939c9f9e8  # debt_issue | BSE LLOYDSME | Outcome of Board Meeting | Lloyds Metals and Energy Ltd
+nse:106816387  # debt_issue | NSE AFCONS | Issue of Securities | Afcons Infrastructure Limited
+bse:e29cfcab-fbcb-4b35-b8ab-5735e459ce6b  # legal_regulatory | BSE RAJESHEXPO | General | Rajesh Exports Ltd
+bse:d8d8207b-dbe3-493e-8254-71b6dbd97cdd  # legal_regulatory | BSE 544922 | General | Om Galaxy Ltd
+bse:2028a1dc-d270-489a-9026-bd071480e0e9  # legal_regulatory | BSE TEAMLEASE | General | TeamLease Services Ltd
+bse:bf78e0be-0c03-456a-9ee5-3ff8141c8835  # legal_regulatory | BSE SEPC | General | SEPC Ltd
+bse:91921c80-c915-45ed-8836-9a2c81a94ef1  # legal_regulatory | BSE BAJAJELEC | General | Bajaj Electricals Ltd-$
+bse:db707d44-250e-40c0-8bfc-34425f253312  # dividend | BSE GARUDA | Outcome of Board Meeting | Garuda Construction and Engine
+nse:106817405  # dividend | NSE ROXHITECH | Press Release | Rox Hi Tech Limited
+bse:12cf2462-a490-43cc-a121-f5a420031cf6  # dividend | BSE GUJENERGY | Press Release / Media Release | Gujarat Energy Ltd
+bse:ce55e709-b73e-4cf8-9c27-db6a411e8765  # dividend | BSE ASHIKAG | General | Ashika Global Securities Ltd
+bse:8b91b860-25f3-4c0a-8e5b-0e568c0cb0eb  # open_offer | BSE 508929 | Open Offer | Avishkar Infra Realty Ltd
+bse:96fdeddd-ed76-44dd-b4bb-ce9c6e06ee89  # open_offer | BSE 543860 | General | J.A. Finance Ltd
+bse:40c7b951-66b5-4be5-a155-57950601e092  # open_offer | BSE MPHASIS | Disclosures under Reg. 29(2) of SEBI (SAST) Regulations,
+bse:fb4bdb32-6415-4507-9f1c-88417f1201cc  # divestment | BSE DSFCL | Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 2
+bse:6689a800-b278-4bac-9779-8d80d5eb51f2  # divestment | BSE PONNIERODE | Disclosures under Reg. 29(2) of SEBI (SAST) Regulatio
+nse:106817832  # divestment | NSE IDBI | General Updates | IDBI Bank Limited
+bse:b0d61953-a4ff-4399-be8f-9d26b61b7ba8  # merger_demerger | BSE GFLLIMITED | Scheme of Arrangement | GFL Ltd
+bse:82c08cb3-a439-41ff-b488-fc369ebc0ec5  # merger_demerger | BSE 508993 | Allotment of Equity Shares | Kedia Construction Company L
+nse:106817913  # merger_demerger | NSE SMARTWORKS | General Updates | Smartworks Coworking Spaces Limited
+nse:106816875  # capex | NSE AEROFLEX | Outcome of Board Meeting | Aeroflex Industries Limited
+bse:05398844-2215-45a9-a6db-e67ca0eb4294  # capex | BSE GSFC | General | Gujarat State Fertilizers & Chemicals Ltd
+nse:106817124  # capex | NSE BHEL | Updates | Bharat Heavy Electricals Limited
+bse:68ba551e-48bc-48e6-962a-63261d49dae5  # operations_start | BSE THOMASCOOK | Press Release / Media Release | Thomas Cook (India) L
+bse:93b46e6a-3af0-46d4-807c-e36594fa13d8  # operations_start | BSE 544751 | General | Mehul Telecom Ltd
+bse:b548f8df-8f44-41bc-8f3b-89f5c59231fb  # operations_start | BSE PERSISTENT | Press Release / Media Release | Persistent Systems Lt
+nse:106819018  # agreement | NSE MADHAVBAUG | General Updates | Vaidya Sane Ayurved Laboratories Li
+bse:00cd64b7-0ec2-4ee1-96c9-4e5430843dc2  # agreement | BSE BIOCON | General | Biocon Ltd
+bse:6f3068a4-1398-4105-b109-b867ba4a6c53  # agreement | BSE 540404 | General | Prime Fresh Ltd
+bse:d12c4fff-916d-4076-aa42-bfbff46391de  # corporate_change | BSE GMRAIRPORT | Acquisition | GMR Airports Ltd
+bse:3371308d-adb2-4bfb-89a9-28d441d51f9c  # corporate_change | BSE FISCHER | Outcome without intimation | Fischer Medical Ventures Lt
+nse:106816443  # business_update | NSE SACHEEROME | General Updates | Sacheerome Limited
+bse:218c45e2-c65e-486c-ab5b-aaad710eefb9  # business_update | BSE 544667 | General | Dachepalli Publishers Ltd
+bse:80fc158f-5633-4a12-a9d1-054390d7628f  # business_update | BSE MWL | Press Release / Media Release | Mangalam Worldwide Ltd
+nse:106815476  # business_update | NSE STEELXIND | Press Release | STEEL EXCHANGE INDIA LIMITED
+nse:106816011  # insolvency | NSE HITECHGEAR | Corporate Insolvency Resolution Process | The Hi-Tech
+nse:106816873  # insolvency | NSE POLYCAB | Corporate Insolvency Resolution Process | Polycab India 
+bse:b999478d-6744-4458-adb0-47748dfe9134  # esop | BSE SEDEMAC | General | Sedemac Mechatronics Ltd
+bse:f3a73183-5419-4818-b6d4-5ba59aed847f  # routine | BSE LLOYDSENGG | Disclosures under Reg. 31(1) and 31(2) of SEBI (SAST)
+bse:8315f3db-0e8e-4ae2-8ea4-789c42bba0a3  # routine | BSE TCIEXP | General | TCI Express Ltd
+bse:4002545e-5222-4cc8-95b8-8bd44c28cf17  # routine | BSE LLOYDSENGG | Disclosures under Reg. 31(1) and 31(2) of SEBI (SAST)
+bse:8da195df-3338-4123-86ff-6eb424baf6df  # routine | BSE BALUFORGE | General | Balu Forge Industries Ltd
+bse:48a5bdb4-f60f-464c-a156-27591d59c1c2  # warrant_conversion | BSE CENTRUM | Disclosures under Reg. 29(2) of SEBI (SAST) Regulations,
+nse:106818945  # rights | NSE PARTYCRUS | General Updates | Party Cruisers Limited

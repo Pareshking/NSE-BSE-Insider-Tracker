@@ -2219,9 +2219,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--dry-run', action='store_true', help='fetch today\'s lists, read, print; write nothing')
     ap.add_argument('--max', type=int, default=None, help='read at most this many filings')
+    ap.add_argument('--replay', default=None, help='file of event_ids: read exactly these filings again, dry run, save nothing (the golden set)')
     ap.add_argument('--minutes', type=float, default=float(os.environ.get('READER_MINUTES', '22')),
                     help='stop taking new filings after this long')
     args = ap.parse_args(argv)
+    if args.replay:
+        args.dry_run = True   # a replay never saves
     today = datetime.now(IST).date()
     setup = []
     lane_spec = lanes_of(LANES_FILE.read_text(encoding='utf-8'))
@@ -2270,10 +2273,23 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
-    nse, bse = collect(r2, today, args.dry_run, setup)
-    done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
-    current_candidates = candidates(nse, bse, master)
-    to_read, status_rows, counts = choose(current_candidates, done, today)
+    if getattr(args, 'replay', None):
+        # Engineering loop: read the same filings again (a fixed golden set), save nothing, so a framework change is
+        # judged on the cards that were audited. Same text, same company memory (earlier events only), new rules.
+        ids = {ln.split('#')[0].strip() for ln in Path(args.replay).read_text().splitlines() if ln.split('#')[0].strip()}
+        old = load_archive(r2, READS_PREFIX, today)
+        old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
+        gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
+                            'seconds', 'read_at', 'headline', 'points') if c in old.columns]
+        to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
+        current_candidates = None
+        log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
+    else:
+        nse, bse = collect(r2, today, args.dry_run, setup)
+        done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
+        current_candidates = candidates(nse, bse, master)
+        to_read, status_rows, counts = choose(current_candidates, done, today)
 
     # Live-first: read and persist eligible current filings before spending any model capacity
     # on company-history enrichment. Historical work is gated again after the live results are saved.
@@ -2299,6 +2315,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     if args.dry_run:
         Path('announcement_reader_dry_run.json').write_text(json.dumps(rows, indent=1, ensure_ascii=False, default=str),
                                                             encoding='utf-8')
+        if current_candidates is None:   # a replay has no candidate list to audit
+            return 0
         xbrl_report = xbrl_audit(current_candidates)
         Path('announcement_reader_xbrl_audit.json').write_text(
             json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
