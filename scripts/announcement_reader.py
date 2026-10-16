@@ -831,6 +831,15 @@ def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
     return all(backed(n, c) for n, c in numbers_in(text))
 
 
+def basis_reason(text, quote) -> str | None:
+    """An annual charge or a monthly rent stated as if it were the size of the deal (POWERGRID: 'quoted Annual Transmission Charges of
+    Rs. 199.55 Crore' became 'wins project for Rs. 199.55 Crore')."""
+    if re.search(r'\bannual\b|per\s+annum|\bp\.a\.|per\s+month|monthly', str(quote or ''), re.IGNORECASE) and re.search(r'\d', str(text or '')) \
+            and not re.search(r'annual|per\s+(?:annum|year|month)|yearly|monthly|\bp\.a\.', str(text or ''), re.IGNORECASE):
+        return 'the figure is an annual or monthly amount in its quote and the headline states it as a total'
+    return None
+
+
 def headline_quality_reason(text: str) -> str | None:
     """Reject exchange-subject boilerplate as a headline even when its quote is real."""
     value = re.sub(r'\s+', ' ', str(text or '')).strip()
@@ -1242,6 +1251,7 @@ def promote_point(headline, points, names=(), extra=(), category=''):
             score = 3 * any(abs(c - x) <= 0.005 * max(1, abs(x)) for _, c in nums for x in extra) + (1 if nums else 0) \
                 - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0) \
                 - (1 if re.match(r'the\s+(?:transaction|company|promoter|filing)\b', text, re.IGNORECASE) else 0) \
+                - (3 if str(category) == 'financial_results' and not RESULTS_WORDS.search(text) else 0) \
                 + (4 if str(category).startswith('rating_') and re.search(r'upgrad|downgrad|reaffirm|assign|outlook|enhanc|rated|rating', text, re.IGNORECASE) else 0)
             if score > best_score:
                 best, best_score = i, score
@@ -1358,7 +1368,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
         headline['text'] = rewrite_name(headline['text'], names)   # ROX, J.A. Finance, Prime Fresh, Admach: rewrite, never blank the card
         quality_reason = headline_quality_reason(headline['text']) or headline_name_reason(headline['text'], names) \
-            or correction_reason(headline['text'], doc)
+            or correction_reason(headline['text'], doc) or basis_reason(headline['text'], headline.get('quote'))
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)

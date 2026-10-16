@@ -549,6 +549,12 @@ def quote_found(quote, doc: str) -> str | bool:
     # the same text once those letter pairs are dropped on both sides.
     if len(lq) >= 24 and _unlig(lq) in _unlig(_loose(doc)):
         return 'exact'
+    # A model that writes the unit and currency into the row ("Revenue from operations ₹118,076 Mn" for a row that has 118,076 under a
+    # "in million" heading, LTM): the same words and figures without the currency and unit words.
+    bare = re.sub(r'[₹$€£]|\b(?:Rs|INR|USD|EUR|US\$)\b\.?|\b(?:mn|million|crores?|cr|lakhs?|lacs?|bn|billion)\b\.?', ' ', str(quote), flags=re.IGNORECASE)
+    lb = _loose(bare)
+    if bare != str(quote) and len(lb) >= 14 and lb in _loose(doc):
+        return 'exact'
     if _spread_run(quote, doc):   # a table's text with another column interleaved line by line (Minda Corp, Om Galaxy, TFCI)
         return 'table'
     words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]

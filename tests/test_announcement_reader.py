@@ -2033,3 +2033,16 @@ def test_stake_headline_must_name_the_party_the_filing_names():
 def test_number_words_back_digits():
     assert ar.numbers_backed('Options vest over 3 years', ['The options shall vest over three years from the grant date'])
     assert not ar.numbers_backed('Options vest over 4 years', ['The options shall vest over three years from the grant date'])
+
+
+def test_quote_with_currency_and_unit_words_the_row_lacks_is_found():
+    from scripts import announcement_sample as sm
+    doc = 'in million\nRevenue from operations | 118,076 | 116,080 | 103,943\n'
+    assert sm.quote_found('Revenue from operations ₹118,076 Mn', doc) == 'exact'
+    assert not sm.quote_found('Revenue from operations ₹118,999 Mn', doc)
+
+
+def test_annual_charge_is_not_stated_as_a_total():
+    assert ar.basis_reason('Power Grid wins project for Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore')
+    assert ar.basis_reason('Power Grid wins project with annual charge of Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore') is None
+    assert ar.basis_reason('Wins order for Rs. 7 Cr', 'order worth Rs. 7 Cr') is None
