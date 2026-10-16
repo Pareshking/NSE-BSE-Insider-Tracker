@@ -233,6 +233,9 @@ class OpenAICompat:
                     self.attempts.append((model, type(exc).__name__, round(time.monotonic() - t0, 1)))
                     log(f'{kind} {self.name}:{model}: {type(exc).__name__}')
                     last = f'{model}: {type(exc).__name__}'
+                    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+                        # no second round for a model that did not answer: the reader rests it and moves on
+                        raise RuntimeError(f'all {self.name} {kind} models busy or refused ({last})') from exc
                     continue
                 self.attempts.append((model, r.status_code, round(time.monotonic() - t0, 1)))
                 if r.status_code == 400 and json_mode and 'response_format' in r.text:
@@ -269,7 +272,7 @@ class OpenAICompat:
 
 
 MAX_TOKENS = {'groq': 2048, 'nvidia': 16384, 'zai': 16384}   # Groq counts the reply in its 8K a minute; reasoning models need room
-CALL_SECONDS_OF = {'nvidia': 300, 'zai': 300}              # large free models queue
+CALL_SECONDS_OF = {'nvidia': 90, 'zai': 120}   # 16 Oct: Z.ai answers in 20-35 s; a slower call is a model in trouble
 
 PROVIDERS = {   # name: (base url, key secret, extra input limit in characters or None)
     'groq': ('https://api.groq.com/openai/v1', 'GROQ_API_KEY', 20_000),   # 8K tokens a minute on the free plan
