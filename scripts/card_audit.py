@@ -50,11 +50,53 @@ def numbers(t: str) -> set[str]:
 
 def problems(doc: str, claim: str, quote: str) -> list[str]:
     out = []
+    out += unit_problems(claim, quote)
     if norm(quote) not in norm(doc):
         out.append('QUOTE NOT IN TEXT')
     missing = numbers(claim) - numbers(quote)
     if missing:
         out.append(f'number(s) in the claim but not in its quote: {sorted(missing)}')
+    return out
+
+
+UNITS = {'crore': 'crore', 'crores': 'crore', 'cr': 'crore', 'lakh': 'lakh', 'lakhs': 'lakh', 'lac': 'lakh', 'lacs': 'lakh',
+         'million': 'million', 'millions': 'million', 'mn': 'million', 'billion': 'billion', 'bn': 'billion',
+         'thousand': 'thousand', 'thousands': 'thousand', 'trillion': 'trillion', 'tn': 'trillion',
+         'percent': 'percent', 'per cent': 'percent', '%': 'percent'}
+UNIT_RE = re.compile(r'(\d[\d,]*\.?\d*)\s*(crores?|cr\.?|lakhs?|lacs?|millions?|mn|billions?|bn|thousands?|trillion|tn|per cent|percent|%)(?![a-z])',
+                     re.IGNORECASE)
+CURRENCY = re.compile(r'(₹|\brs\.?|\binr\b|\busd\b|\bus\$|\$|\brupees?\b|\bdollars?\b)', re.IGNORECASE)
+
+
+def amounts(text: str) -> set[tuple[str, str]]:
+    """(number, unit) pairs written in `text`: 86.5 Crore -> ('86.5', 'crore'); lakh/crore/million kept apart."""
+    out = set()
+    for num, unit in UNIT_RE.findall(str(text or '')):
+        out.add((num.strip(',.').replace(',', ''), UNITS[unit.lower().rstrip('.')]))
+    return out
+
+
+def currencies(text: str) -> set[str]:
+    c = set()
+    for m in CURRENCY.findall(str(text or '')):
+        m = m.lower().rstrip('.')
+        c.add('inr' if m in ('₹', 'rs', 'inr', 'rupee', 'rupees') else 'usd')
+    return c
+
+
+def unit_problems(claim: str, quote: str) -> list[str]:
+    """A number must keep its unit and currency from the quote: 5 crore is not 50 lakh, Rs is not USD."""
+    out = []
+    q = amounts(quote)
+    for num, unit in amounts(claim):
+        if (num, unit) in q:
+            continue
+        same_num = sorted(u for n, u in q if n == num)
+        out.append(f'UNIT: claim says {num} {unit}; the quote has ' + (f'{num} {same_num}' if same_num else
+                   'that number with no unit beside it (unit may sit in a table header: check)'))
+    cc, qc = currencies(claim), currencies(quote)
+    if cc - qc and qc:
+        out.append(f'CURRENCY: claim says {sorted(cc)}, quote says {sorted(qc)}')
     return out
 
 
@@ -99,6 +141,13 @@ def main() -> int:
                 print(f"- METRIC {m.get('label')} [{m.get('period')}] = {m.get('value')} {m.get('unit')}\n  - quote: \"{m.get('quote')}\"")
                 if norm(m.get('quote')) not in norm(doc):
                     flags.append(f"metric {m.get('label')}: QUOTE NOT IN TEXT")
+                mu = str(m.get('unit') or '').lower()
+                qa = amounts(m.get('quote'))
+                if mu in UNITS and mu and UNITS[mu] not in {u for _, u in qa}:
+                    flags.append(f"metric {m.get('label')}: unit '{m.get('unit')}' is not beside a number in its quote: "
+                                 f"check the table header")
+                if mu in ('rupees', 'rs', '₹') and currencies(m.get('quote')) == {'usd'}:
+                    flags.append(f"metric {m.get('label')}: unit is rupees but the quote is in dollars")
         held = [x for k in ('points', 'fields', 'metrics') for x in load(r.get(k), []) if not x.get('shown')]
         for x in held:
             print(f"- held back ({x.get('reason')}): {str(x.get('text') or x.get('value') or x.get('label'))[:140]}")
