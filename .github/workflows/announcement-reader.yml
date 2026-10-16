@@ -33,6 +33,10 @@ on:
         required: true
         type: boolean
         default: false
+      minutes:
+        description: 'Stop starting new reads after this many minutes (default 11; a 100-filing supervised run needs about 80)'
+        required: false
+        default: '11'
       batch:
         description: 'Gemini lane: read short filings several to a request (saves calls; each filing still checked alone)'
         required: true
@@ -71,7 +75,7 @@ concurrency:
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ fromJSON(inputs.minutes || '11') + 20 }}
     outputs:
       started: ${{ steps.start.outputs.at }}
     steps:
@@ -126,7 +130,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          READER_MINUTES: '11'
+          READER_MINUTES: ${{ inputs.minutes || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || '0' }}
           READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
