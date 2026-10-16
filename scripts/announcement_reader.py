@@ -1145,6 +1145,32 @@ def results_headline(metrics, names=()) -> dict | None:
             'reason': None, 'from_table': True}
 
 
+_ENDED = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|year)\s+ended\s+(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(?:day\s+of\s+)?([A-Za-z]{3,9})\.?,?\s*(\d{4})', re.IGNORECASE)
+_MONTH_NO = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+
+
+def fiscal_label(text: str, doc: str) -> str:
+    """'Q2 FY26' for a quarter that ended 30 September 2026 is Q2 FY27 (Karur Vysya, Tips Music): the fiscal year is the year it
+    ends and the quarter follows the month of the date the filing gives. Rewritten from the filing's own date, only when the filing
+    states one quarter-end date."""
+    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(str(doc)[:6000])}
+    ends = {e for e in ends if e[1]}
+    if len(ends) != 1:
+        return text
+    _, mo, yr = next(iter(ends))
+    if mo not in (3, 6, 9, 12):
+        return text
+    fy = yr + 1 if mo >= 4 else yr
+    q = {6: 1, 9: 2, 12: 3, 3: 4}[mo]
+    if re.search(rf'Q{q}\s*FY\s?(?:20)?{fy % 100:02d}\b', text):
+        return text      # the right label is there: another one is a comparison
+
+    def fix(m):
+        # only a label that names the quarter this filing is about is corrected (a year-ago quarter in a comparison is not)
+        return f'Q{q} FY{fy % 100:02d}' if int(m.group(1)) == q and re.sub(r'\D', '', m.group(2))[-2:] != f'{fy % 100:02d}' else m.group(0)
+    return re.sub(r'Q([1-4])\s*FY\s?(\d{2,4})\b', fix, text)
+
+
 NO_PERIOD_WORDS = ('', 'n/a', 'na', '-', 'none', 'not stated')
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
@@ -1188,8 +1214,10 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
-    if results_filing and not (isinstance(headline, dict) and headline.get('shown')):
-        headline = results_headline(metrics, names) or headline
+    if results_filing and not (isinstance(headline, dict) and headline.get('shown') and re.search(r'\d', str(headline.get('text')))):
+        headline = results_headline(metrics, names) or headline   # no figure in the headline of a results filing: ours, from the table
+    if isinstance(headline, dict) and headline.get('shown'):
+        headline['text'] = fiscal_label(headline['text'], doc)
     headline, points = promote_point(headline, points, names)
     return headline, drop_repeats(headline, points)
 

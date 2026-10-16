@@ -1913,3 +1913,11 @@ def test_a_results_card_without_a_headline_gets_one_from_its_own_checked_figures
     assert ar.results_headline([], ('X', 'Y Ltd')) is None
     assert ar.indian_currency('lakh', 'Revenue 8,932') == 'INR' and ar.indian_currency('million', 'Revenue 8,932') is None
     assert ar.indian_currency('crore', 'US$ 5 crore') is None
+
+
+def test_the_fiscal_label_follows_the_quarter_end_date_the_filing_gives():
+    doc = 'The Board approved the results for the quarter ended 30th September, 2026.'
+    assert ar.fiscal_label('Karur Vysya Bank posts Q2 FY26 results', doc) == 'Karur Vysya Bank posts Q2 FY27 results'
+    assert ar.fiscal_label('Revenue up 10% over Q2 FY26 to Q2 FY27', doc) == 'Revenue up 10% over Q2 FY26 to Q2 FY27'   # FY26 here may be the year-ago quarter... only the matching quarter is corrected
+    assert ar.fiscal_label('Q1 FY26 results', doc) == 'Q1 FY26 results'
+    assert ar.fiscal_label('Q2 FY26 results', 'no date here') == 'Q2 FY26 results'
