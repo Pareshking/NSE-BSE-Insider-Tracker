@@ -32,8 +32,10 @@ on:
 permissions:
   contents: read
 
+# One run per date range: runs on different ranges go in parallel (each writes only its own days' files, so they
+# cannot meet); two runs on the same range wait for each other.
 concurrency:
-  group: filing-text
+  group: filing-text-${{ inputs.from || 'recent' }}-${{ inputs.to || 'recent' }}
   cancel-in-progress: false
 
 jobs:
