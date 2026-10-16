@@ -1340,3 +1340,47 @@ def test_a_date_is_one_date_however_it_is_written_and_a_wrong_date_is_not_backed
     assert not ar.numbers_backed('Meeting on 22nd November 2026', [quote])
     assert not ar.numbers_backed('as on September 30, 2026', ['Sub: Asset Liability Management (ALM) — Reporting'])
     assert ar.numbers_backed('record date 20th October, 2026 at Rs 5', ['Record Date: 20-10-2026, price Rs 5 per share'])
+
+
+def _card_row(event_id='e1'):
+    return {'event_id': event_id,
+            'headline': json.dumps({'text': 'Supreme Court upholds write-down order', 'quote': 'q', 'shown': True, 'reason': None}),
+            'points': json.dumps([{'text': 'a', 'quote': 'q', 'shown': True, 'reason': None},
+                                  {'text': 'b', 'quote': 'q', 'shown': True, 'reason': None}])}
+
+
+def test_a_card_held_after_review_shows_its_headline_or_points_as_held_back_with_the_reason():
+    df = pd.DataFrame([_card_row('e1'), _card_row('e2')])
+    holds = ar.holds_of('# a comment\ne1 | headline | states the opposite of the filing  # why\ne2 | point:2 | not in the filing\n')
+    out, n = ar.apply_holds(df, holds)
+    h1, p1 = json.loads(out.at[0, 'headline']), json.loads(out.at[0, 'points'])
+    assert n == 2 and not h1['shown'] and 'held after review: states the opposite of the filing' in h1['reason']
+    assert all(p['shown'] for p in p1)
+    h2, p2 = json.loads(out.at[1, 'headline']), json.loads(out.at[1, 'points'])
+    assert h2['shown'] and p2[0]['shown'] and not p2[1]['shown']
+    assert json.loads(df.at[0, 'headline'])['shown']                # the archive's row is not changed
+    out, n = ar.apply_holds(df, ar.holds_of('e1 | words | wrong filing'))
+    assert n == 3 and not any(p['shown'] for p in json.loads(out.at[0, 'points']))
+    assert ar.apply_holds(df, {})[1] == 0
+
+
+@pytest.mark.parametrize('line', ['e1 | headline', 'e1 | text | why', ' | headline | why', 'e1 | point:0 | why', 'e1 | headline | '])
+def test_a_malformed_hold_line_is_an_error_not_silently_ignored(line):
+    with pytest.raises(ValueError):
+        ar.holds_of(line)
+
+
+def test_the_holds_file_of_the_repo_parses():
+    ar.holds_of(ar.HOLDS_FILE.read_text(encoding='utf-8') if ar.HOLDS_FILE.exists() else '')
+
+
+def test_the_last_save_rebuilds_the_clean_table_when_there_are_holds_even_with_nothing_new(monkeypatch, tmp_path):
+    calls = []
+    saver = ar.Saver(None, '2026-10-16', date(2026, 10, 16), writer=lambda r2, rows, d, t: calls.append(rows) or 0)
+    monkeypatch.setattr(ar, 'HOLDS_FILE', tmp_path / 'none.txt')
+    saver.flush(final=True)
+    assert calls == []                                       # no file: nothing to write
+    (tmp_path / 'holds.txt').write_text('e1 | headline | wrong\n', encoding='utf-8')
+    monkeypatch.setattr(ar, 'HOLDS_FILE', tmp_path / 'holds.txt')
+    saver.flush(final=True)
+    assert calls == [[]]
