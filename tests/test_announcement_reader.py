@@ -1741,3 +1741,14 @@ def test_core_types_of_the_triage_are_read_not_routine():
         assert nann.group_of(subject) == 'core'
     assert nann.group_of('Trading Window') == 'routine' and nann.group_of('Copy of Newspaper Publication') == 'routine'
     assert bann.group_of('Award of Order / Receipt of Order') == 'core' and bann.group_of('Closure of Trading Window') == 'routine'
+
+
+def test_headline_uses_the_deal_amount_not_a_metric_figure():
+    fields = [{'name': 'amount', 'shown': True, 'number': 1.495e9, 'currency': 'INR'}]
+    metrics = [{'shown': True, 'number': 1.364e10, 'currency': 'INR'}]
+    _, why = ar.fill_tokens('GPT Infra subsidiary wins {m1} order', fields, metrics)
+    assert why and 'amount' in why
+    text, why = ar.fill_tokens('GPT Infra subsidiary wins {amount} order', fields, metrics)
+    assert why is None and '₹149.5 Cr' in text or '₹150 Cr' in text
+    _, why = ar.fill_tokens('Tejas Q2 revenue {m1}', [], metrics)   # no amount field: a results headline is fine
+    assert why is None
