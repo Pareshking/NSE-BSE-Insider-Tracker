@@ -207,6 +207,8 @@ def main() -> int:
         held = [x for k in ('points', 'fields', 'metrics') for x in load(r.get(k), []) if not x.get('shown')]
         for x in held:
             print(f"- held back ({x.get('reason')}): {str(x.get('text') or x.get('value') or x.get('label'))[:140]}")
+            if x.get('quote'):
+                print(f"  - held quote: \"{str(x.get('quote'))[:400]}\"")
         if flags:
             flagged += 1
             print('- **AUDIT FLAGS:** ' + '; '.join(flags))
