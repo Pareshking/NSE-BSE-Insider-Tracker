@@ -435,3 +435,29 @@ significant digits and never more than 0.4% from the filing's figure; a foreign 
 (one line, "Up to 6.32 crore equity shares") carries the second fact. The subtitle is stored inside the headline (`headline.subtitle`),
 is checked like the headline (its quote in the filing, its figures in its own quote) and shows under it only when the headline shows.
 Prompt `live-10`; earlier reads are read again once.
+
+### Context on the card (16 Oct, owner's request; design, not built)
+
+The card should tell what the event means for this company, not only what the filing says. Rules:
+
+1. **Our code computes every context figure from our own tables; the model writes none.** A figure carries its
+   source and date ("TTM revenue, 4 quarters to 30 Jun 2026, NSE XBRL"). A block shows only when every input it
+   needs exists; otherwise it is left out, never estimated (CLAUDE.md rules 2 and 7).
+2. **Each category gets its own blocks.** Promoter holding belongs to insider trades and to fundraising where
+   promoters take part; it is not shown on a deal or an order.
+3. **A condition the filing states is kept** (subject to approval, up to, proposed); a change is shown as the
+   filing's two numbers and our difference (59.67% to 58.23% is -1.44 percentage points; a stake still above 50%
+   is "remains a subsidiary", never a loss of control).
+
+| Category | Blocks (inputs) | Have today | To collect |
+|---|---|---|---|
+| Order or contract win | Order size against TTM revenue; order book before and after; orders this FY | Order size (card); market cap | TTM revenue (quarterly results XBRL, `insiders_clean/results.py`, in progress); order book from our earlier cards for the company ("as stated on date") |
+| Preferential, rights, QIP, warrants | Price against last close and against the SEBI ICDR reference price (needs the relevant date from the filing and our volume and value for a VWAP); issue size against market cap; dilution (new shares / shares outstanding); promoter participation; warrants converted, outstanding | Last close, market cap, issue price and shares (card) | Shares outstanding and outstanding convertibles (shareholding XBRL, partly there) |
+| Debt repaid or raised | Borrowings before; after = before - or + amount, marked as pro forma | Amount (card) | Borrowings from the results XBRL balance sheet |
+| Quarterly results | Quarter against year-ago quarter and previous quarter: revenue, EBITDA, margins, PAT, exceptional items; growth accelerating or not; PAT with and without exceptional items | Card metrics from the press release | Results XBRL for 8 quarters back; EBITDA is derived (profit before tax + finance costs + depreciation - other income), labelled as ours |
+| Acquisition, divestment, stake change | Value against acquirer's market cap and TTM revenue; stake before, after, change in percentage points; cash or shares; funding source; expected completion | Fields from the filing | Acquirer size from the tables above |
+| Capacity and capex | Existing, new, increase %; project cost; spent and remaining; commissioning date; phase (Jindal Paradip: 12.5 MTPA entering operation, 25 MTPA across two phases) | Card fields (capacity_to) | Earlier capacity cards for the company; phase needs a field of its own in the prompt |
+
+Build order, each step behind its own tests and a sample on real cards: (1) fundraising blocks (all inputs in
+hand but shares outstanding); (2) quarterly results XBRL for the last 8 quarters, then results and order blocks;
+(3) debt; (4) capacity and M&A blocks that need only the filing and earlier cards.
