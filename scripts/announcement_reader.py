@@ -1589,7 +1589,9 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
 
     done_after_live = load_archive(r2, READS_PREFIX, today)
     live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
-    if live_remaining.empty:
+    if os.environ.get('READER_HISTORY', '1') != '1':
+        log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
+    elif live_remaining.empty:
         current_isins = set()
         if not current_candidates.empty and 'isin' in current_candidates:
             dates = current_candidates.get('broadcast_date', pd.Series(index=current_candidates.index, dtype=str)).astype(str)
