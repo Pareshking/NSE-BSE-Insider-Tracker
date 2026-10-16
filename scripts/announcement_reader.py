@@ -386,9 +386,13 @@ def text_is_garbled(doc: str) -> bool:
 
 
 PROJECTION = re.compile(r'\b(?:project(?:ed|s|ion)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
-FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹)?\s*[\d,.]+(?:\s*/-)?'
+FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)?\s*[\d,.]+(?:\s*/-)?'
                         r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
-NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets', re.IGNORECASE)
+NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets|(?:paid[- ]?up|authori[sz]ed|issued)\s+(?:equity\s+)?(?:share\s+)?capital|share\s+capital', re.IGNORECASE)
+WITHDRAWN = re.compile(r'\b(?:withdr[ae]w\w*|cancel\w*|terminat\w*|not\s+to\s+proceed|abandon\w*|lapse\w*|rescind\w*)\b', re.IGNORECASE)
+DEAL_FIELDS = ('price_per_share', 'max_price_per_share', 'amount', 'shares', 'offer_pct', 'allottee_is_promoter')
+PROMOTERS = re.compile(r'\bpromoters?\b', re.IGNORECASE)
+NON_PROMOTER = re.compile(r'\bnon[- ]?promoters?\b|\bno\s+promoters?\b|\b(?:does|do)\s+not\s+have\s+any\s+promoters?\b|\bnot\s+(?:a\s+)?promoters?\b|\bpublic\b', re.IGNORECASE)
 DEAL_WORDS = re.compile(r'consideration|invest|aggregat|issue\s+size|\bamount\b|subscri|price|raise|worth|valu(?:e|ation)', re.IGNORECASE)
 
 
@@ -440,6 +444,10 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             rec['flag'] = _bool(value)
             if rec['flag'] is None:
                 reasons.append('not yes or no')
+            elif rec['flag'] is False and PROMOTERS.search(NON_PROMOTER.sub(' ', str(quote or ''))):
+                reasons.append('its quote names promoters among the allottees')
+            elif rec['flag'] is True and NON_PROMOTER.search(str(quote or '')):
+                reasons.append('its quote names non-promoters too: the allottees are a mix')
         if name == 'entity':
             reasons.append('entity labels not shown yet')
         rec['shown'], rec['reason'] = not reasons, '; '.join(reasons) or None
@@ -1076,6 +1084,10 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str) -> dict:
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words(out, doc, fields, metrics)
+    withdrawn = headline and WITHDRAWN.search(str((headline or {}).get('text') or ''))
+    for f in fields if withdrawn else []:
+        if f['name'] in DEAL_FIELDS and f.get('shown'):
+            f['shown'], f['reason'] = False, 'the filing withdraws this deal: these are the terms of the withdrawn proposal'
     if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
