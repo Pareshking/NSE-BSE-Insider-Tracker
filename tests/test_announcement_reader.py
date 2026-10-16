@@ -436,7 +436,7 @@ def test_rate_limit_circuit_breaker_persists_for_day(monkeypatch):
 
 def test_lanes_file_and_free_only_rule():
     spec = ar.lanes_of(ar.LANES_FILE.read_text(encoding='utf-8'))
-    assert list(spec) == ['nvidia', 'zai', 'groq', 'gemini'] and all(spec.values())
+    assert list(spec) == ['zai', 'groq', 'gemini']   # NVIDIA paused 16 Oct 2026, back at 02:05 IST 17 Oct and all(spec.values())
     assert all({e.split(':', 1)[0] for e in es} == {name} for name, es in spec.items())   # one provider a lane
     assert ar.usable(['zai:glm-4.5-flash', 'zai:glm-5.3', 'nvidia:moonshotai/kimi-k3']) == [
         'zai:glm-4.5-flash', 'nvidia:moonshotai/kimi-k3']
