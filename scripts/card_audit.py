@@ -178,7 +178,9 @@ def main() -> int:
                 flags += problems(doc, p.get('text'), p.get('quote'))
         for f in load(r.get('fields'), []):
             if f.get('shown'):
-                print(f"- FIELD {f.get('name')} = {f.get('value')}\n  - quote: \"{f.get('quote')}\"")
+                unit = f" {f.get('unit')}" if f.get('unit') else ''
+                cur = f" [{f.get('currency')}]" if f.get('currency') else ''
+                print(f"- FIELD {f.get('name')} = {f.get('value')}{unit}{cur}\n  - quote: \"{f.get('quote')}\"")
                 if not s.quote_found(f.get('quote'), doc):
                     flags.append(f"field {f.get('name')}: QUOTE NOT IN TEXT")
         for m in load(r.get('metrics'), []):

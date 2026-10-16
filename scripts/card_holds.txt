@@ -14,6 +14,3 @@ nse:106819730 | field:price_per_share | Rs 10 is the face value of the shares, n
 nse:106819295 | field:amount | Rs 0.02 crore is the turnover of the company being liquidated, not the size of a deal
 nse:106819273 | metrics:all | the filing is a scan with a mangled text layer (183 mangled number tokens), so its figures cannot be trusted
 bse:9ac94bb8-eed8-4efb-af82-6a3535fd0252 | point:3 | adds compliance with FSSAI regulations and international culinary standards, which its quote does not state
-bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:amount | the amount has no unit and does not match shares x price; the issue was withdrawn
-bse:33d032d6-7d62-41ab-9f3c-dae0cdf6cc41 | field:allottee_is_promoter | the issue was withdrawn, so there is no allottee
-nse:106818942 | field:amount | the amount is stored without its unit (the filing says crore)
