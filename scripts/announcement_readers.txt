@@ -5,8 +5,11 @@
 # is left to read, an idle lane reads again a filing another provider read ("2 readers agree").
 # Picked 13-14 Oct 2026 from the 24-filing test and the first live run (docs/ANNOUNCEMENT_READER.md).
 # 15 Oct 2026: moonshotai/kimi-k3 removed, NVIDIA answers HTTP 410 "reached its end of life" (AI health check).
+# 16 Oct 2026: google/gemma-4-31b-it replaced: it timed out (60 s) on a one-word request in the AI health check and
+# twice (5 min each) in the dry run. z-ai/glm-5.3-flash answered in 7.7 s; nemotron-3-ultra answered HTTP 503 (overloaded)
+# at the time, so it is the second model of the lane.
 # Z.ai: free models only. Groq: filings under ~20,000 characters only (8K tokens a minute).
-nvidia: nvidia:google/gemma-4-31b-it
+nvidia: nvidia:z-ai/glm-5.3-flash, nvidia:nvidia/nemotron-3-ultra-550b-a55b
 zai: zai:glm-4.5-flash
 groq: groq:qwen/qwen3.8-27b
 gemini: gemini:gemini-3.5-flash-lite, gemini:gemini-3.1-flash-lite
