@@ -175,11 +175,18 @@ def main() -> int:
     if df is None or df.empty:
         print('no reads table')
         return 1
-    since = datetime.now(timezone.utc) - timedelta(hours=HOURS)
     df = df[df['status'] == 'read'].copy()
     df['_t'] = pd.to_datetime(df['read_at'], utc=True, errors='coerce')
-    df = df[df['_t'] >= since].sort_values('_t')
-    print(f'## Card audit: {len(df)} filings read in the last {HOURS:g} hours\n')
+    ids_file = os.environ.get('IDS_FILE', '').strip()
+    if ids_file:   # the golden set: these filings whenever they were read
+        ids = [ln.split('#')[0].strip() for ln in Path(ids_file).read_text().splitlines() if ln.split('#')[0].strip()]
+        df = df[df['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
+        df = df.assign(_o=df['event_id'].map({e: i for i, e in enumerate(ids)})).sort_values('_o')
+        print(f'## Card audit: the {len(df)} filings of {ids_file}\n')
+    else:
+        since = datetime.now(timezone.utc) - timedelta(hours=HOURS)
+        df = df[df['_t'] >= since].sort_values('_t')
+        print(f'## Card audit: {len(df)} filings read in the last {HOURS:g} hours\n')
     flagged = 0
     text_cache = TextCache(r2)
     for r in df.to_dict('records'):
@@ -229,6 +236,8 @@ def main() -> int:
                     print('  - TABLE HEADING above the row (check period and unit):')
                     for h in header:
                         print(f'    | {h}')
+                if m.get('changes_from'):
+                    print(f"  - CHANGES worked out by us from {m['changes_from']}: QoQ {m.get('qoq_pct')}%, YoY {m.get('change_pct')}% (check against the row)")
                 if m.get('previous') not in (None, ''):
                     print(f"  - PREVIOUS [{m.get('previous_period')}] = {m.get('previous')} (change {m.get('change_pct')}%)\n"
                           f"    - previous quote: \"{m.get('previous_quote')}\"")

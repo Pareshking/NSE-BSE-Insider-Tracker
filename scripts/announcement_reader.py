@@ -57,7 +57,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-13' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-14' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -411,6 +411,55 @@ UPTO_QUOTE = re.compile(r'\b(?:up\s*to|upto|maximum\s+of)\s+(?:Rs\.?\s*|INR\s*|â
 UPTO_KEPT = re.compile(r'\b(?:up\s*to|upto|maximum|max|capped|ceiling)\b', re.I)
 
 
+_AMOUNT = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])-?\d[\d,]*(?:\.\d+)?(?![\w])')
+
+
+def results_row(quote) -> list[float] | None:
+    """The six amounts at the end of a results-table row in SEBI's standard layout (quarter, preceding quarter, same
+    quarter a year ago, year to date, year to date a year ago, previous year); (494.90) is negative. None when the
+    row has fewer than six amounts or the layout fails its own test: for the September quarter the six-month figure
+    is the quarter plus the preceding quarter (Jindal Saw: 3,823.80 + 3,721.44 = 7,545.24). A row that passes is
+    in the layout, whatever the heading says."""
+    vals = []
+    for tok in _AMOUNT.findall(str(quote or '')):
+        neg = tok.startswith('(') or tok.startswith('-')
+        try:
+            v = float(re.sub(r'[^\d.]', '', tok))
+        except ValueError:
+            continue
+        vals.append(-v if neg else v)
+    if len(vals) < 6:
+        return None
+    v = vals[-6:]
+    if abs(v[3] - (v[0] + v[1])) > max(2.0, 0.002 * abs(v[3])):
+        return None
+    return v
+
+
+def _pct(now, before) -> float | None:
+    return round((now - before) / before * 100, 1) if before and before > 0 and now >= 0 else None
+
+
+def results_changes(m: dict) -> dict:
+    """QoQ and YoY (and six months against six months) for a metric taken from a verified results-table row, worked
+    out by us from the row's own columns; {} when the row is not in the layout or the figure is not in it once."""
+    row = results_row(m.get('quote'))
+    n = s._num(m.get('value'))
+    if row is None or n is None:
+        return {}
+    hits = [i for i, x in enumerate(row) if abs(x - n) < 1e-6 * max(1, abs(n))]
+    if len(hits) != 1:
+        return {}
+    i = hits[0]
+    if i == 0:
+        out = {'qoq_pct': _pct(row[0], row[1]), 'change_pct': _pct(row[0], row[2])}
+    elif i == 3:
+        out = {'change_pct': _pct(row[3], row[4]), 'change_basis': 'six months against the same six months a year earlier'}
+    else:
+        return {}
+    return {k: v for k, v in out.items() if v is not None} | {'changes_from': 'the columns of the results table'}
+
+
 def measure_reason(label, quote) -> str | None:
     for name_re, row_re, what in MEASURE_ROWS:
         if name_re.search(str(label or '')) and not row_re.search(str(quote or '')):
@@ -544,6 +593,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                         'number': number, 'quote': quote, 'evidence': qf or None,
                         'currency': currency_in_quote(value, quote) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
+    for m in metrics:
+        if m['shown'] and m.get('number') is not None:
+            m.update(results_changes(m))
     seen: dict = {}
     for m in metrics:
         if m['shown']:
@@ -632,7 +684,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'For an ESOP or warrant the price is the "exercise price" or "issue price" row, not the face value. '
              'Use a {m1}-style token only for a metric you list (none listed, no token). For a credit rating the rating agency acts (Crisil reaffirms X), not the company; '
              'for a shareholding disclosure name the acquirer and the seller; when a person resigns or is appointed the person is the subject; '
-             'an amount the filing calls "not exceeding" or "up to" keeps those words; a demand of duty plus penalty is called both; '
+             'an amount the filing calls "not exceeding" or "up to" keeps those words; a rating headline gives the action, the rating and, when the filing says "enhanced from X" or "reduced from X", the change in the size of the facilities (a bigger limit is the news); a results headline is about the results, never a dividend or an appointment; a demand of duty plus penalty is called both; '
              'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number.\n\n')
     return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
@@ -888,12 +940,32 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 
 
+FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|â‚¹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
+ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
+                                   r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
+                                   r'figures for the previous (?:period|year) (?:have been|has been) regrouped', re.IGNORECASE)
+
+
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
+    results_filing = str(out.get('category') or '') == 'financial_results'
+    if results_filing:   # Paushak (16 Oct): the card showed "reviewed by the auditors" and "one segment" and no profit
+        for pt in points:
+            if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
+                pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
     headline = check_words(out.get('headline'), doc)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
+        if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
+                and not FACILITY_CHANGE_SAID.search(headline['text']):   # Skipper (16 Oct): the news was the bigger limit
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), 'the filing changes the size of the facilities (enhanced from / reduced from): that is the news, and the headline leaves it out') if x)
+        if results_filing and not RESULTS_WORDS.search(headline['text']):   # LTM (16 Oct): a dividend led a results filing
+            headline['shown'] = False
+            headline['reason'] = '; '.join(x for x in (headline.get('reason'), 'the headline of a results filing is about the results; the dividend or another decision comes after') if x)
         if token_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
@@ -2147,9 +2219,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--dry-run', action='store_true', help='fetch today\'s lists, read, print; write nothing')
     ap.add_argument('--max', type=int, default=None, help='read at most this many filings')
+    ap.add_argument('--replay', default=None, help='file of event_ids: read exactly these filings again, dry run, save nothing (the golden set)')
     ap.add_argument('--minutes', type=float, default=float(os.environ.get('READER_MINUTES', '22')),
                     help='stop taking new filings after this long')
     args = ap.parse_args(argv)
+    if args.replay:
+        args.dry_run = True   # a replay never saves
     today = datetime.now(IST).date()
     setup = []
     lane_spec = lanes_of(LANES_FILE.read_text(encoding='utf-8'))
@@ -2198,10 +2273,23 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
-    nse, bse = collect(r2, today, args.dry_run, setup)
-    done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
-    current_candidates = candidates(nse, bse, master)
-    to_read, status_rows, counts = choose(current_candidates, done, today)
+    if getattr(args, 'replay', None):
+        # Engineering loop: read the same filings again (a fixed golden set), save nothing, so a framework change is
+        # judged on the cards that were audited. Same text, same company memory (earlier events only), new rules.
+        ids = {ln.split('#')[0].strip() for ln in Path(args.replay).read_text().splitlines() if ln.split('#')[0].strip()}
+        old = load_archive(r2, READS_PREFIX, today)
+        old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
+        gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
+                            'seconds', 'read_at', 'headline', 'points') if c in old.columns]
+        to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
+        current_candidates = None
+        log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
+    else:
+        nse, bse = collect(r2, today, args.dry_run, setup)
+        done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
+        current_candidates = candidates(nse, bse, master)
+        to_read, status_rows, counts = choose(current_candidates, done, today)
 
     # Live-first: read and persist eligible current filings before spending any model capacity
     # on company-history enrichment. Historical work is gated again after the live results are saved.
@@ -2227,6 +2315,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     if args.dry_run:
         Path('announcement_reader_dry_run.json').write_text(json.dumps(rows, indent=1, ensure_ascii=False, default=str),
                                                             encoding='utf-8')
+        if current_candidates is None:   # a replay has no candidate list to audit
+            return 0
         xbrl_report = xbrl_audit(current_candidates)
         Path('announcement_reader_xbrl_audit.json').write_text(
             json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')

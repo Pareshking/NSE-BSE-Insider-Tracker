@@ -99,3 +99,6 @@ nse:106820141 | field:amount | worked out (685 shares x Rs 1); the filing states
 bse:dd0212d4-7c6e-4a85-9474-b017cdd24cbc | field:amount | the Rs 312.15 Cr rows are all "Upto" and the column is "Tentative Amounts"; neither is carried
 bse:28a17587-b38d-4597-b2af-7733445943a6 | point:2 | puts the withdrawal under Regulation 31A, which governs the original application
 nse:106820190 | field:shares | 7,100 is only the ESOS 2010 tranche; the filing's total is 99,954
+bse:58158c81-ff59-414d-924a-b747b7191b44 | headline | a results filing leads with the dividend; the results are the news (the unit check also held the results rows, fixed in live-14)
+bse:e0983f88-a4d2-4e20-a0a0-372f8600fffa | point:1 | a statement made in every results filing (reviewed by the auditors), not news
+bse:e0983f88-a4d2-4e20-a0a0-372f8600fffa | point:2 | a statement made in every results filing (one reportable segment), not news

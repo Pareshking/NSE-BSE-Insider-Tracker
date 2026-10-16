@@ -469,6 +469,13 @@ def _loose(s) -> str:
 
 
 NUMBER = r'\d[\d,]*(?:\.\d+)?'
+_OCR = str.maketrans({'o': '0', 'q': '0', 'd': '0', 'l': '1', 'i': '1', 's': '5', 'b': '8', 'z': '2', 'c': 'e'})
+
+
+def _ocr(text: str) -> str:
+    """Letters a scan confuses with digits or each other, folded together (applied to both texts, so it only widens
+    what counts as the same string by those look-alikes; the quote still has to be long)."""
+    return str(text).translate(_OCR)
 _TOKEN = re.compile(r'[a-z]+|\d+(?:[.,]\d+)*')
 
 
@@ -506,6 +513,10 @@ def quote_found(quote, doc: str) -> str | bool:
     # numbers keep their commas and points, so 4.5 is never read as 45.
     lq = _loose(quote)
     if len(lq) >= 12 and lq in _loose(doc):
+        return 'exact'
+    # A scan's misread characters ("3Qth" for 30th, "Sccond"): the same text once the look-alikes are one character,
+    # on both sides, for a quote long enough that two different sentences cannot meet by chance.
+    if len(lq) >= 24 and _ocr(lq) in _ocr(_loose(doc)):
         return 'exact'
     words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]
     numbers = {w.replace(',', '') for w in words if w[0].isdigit()}
@@ -589,6 +600,15 @@ def table_unit(quote, mult, doc: str) -> bool:
             block = ' '.join(lines[max(0, i - 14):i + 3])
             if _UNIT_WORDS_ANY[mult].search(block) and not any(
                     rx.search(block) for m, rx in _UNIT_WORDS_ANY.items() if m != mult):
+                return True
+    # A text with few line breaks (LTM, 16 Oct: 123,000 characters in a handful of lines) has no "block" of lines: the
+    # unit word nearest before the number, within 2,500 characters, is the table's unit.
+    text = str(doc)
+    for n in numbers:
+        for m in re.finditer(r'(?<![\d,.])' + re.escape(n).replace(r'\,', r',?') + r'(?![\d])', text):
+            before = text[max(0, m.start() - 2500):m.start()]
+            near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
+            if near and max(near)[1] == mult:
                 return True
     return False
 

@@ -121,6 +121,17 @@ _N = r'\d(?:[\d,]*\d)?(?:\.\d+)?'
 _FIGURE = re.compile(rf'{_CUR}{_N}(?:{_UNIT})?|{_N}{_UNIT}', re.IGNORECASE)
 
 
+def _changes_text(m) -> str:
+    """"+2.8% QoQ · +13.4% YoY" from the columns of the filing's results table (worked out by us, never by the model)."""
+    parts = []
+    q, y = m.get('qoq_pct'), m.get('change_pct')
+    if q is not None and kit._finite(q):
+        parts.append(f'{kit.pct(q, 1, signed=True)} QoQ')
+    if y is not None and kit._finite(y):
+        parts.append(f'{kit.pct(y, 1, signed=True)} YoY')
+    return ' · '.join(parts)
+
+
 def _bold_figures(text: str) -> str:
     return _FIGURE.sub(lambda m: f'<b>{m.group(0)}</b>', esc(text))
 
@@ -213,7 +224,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
         tone = '' if ch is None else ' up' if ch > 0 else ' down' if ch < 0 else ''
         both = ' ' + kit.tag('2 readers agree', 'buy') if agreed.get(f'metric:{m["_i"]}') is True else ''
         figs += (f'<tr><td>{esc(_metric_label(m))}{both}</td><td class="n">{esc(metric_text(m))}</td>'
-                 f'<td class="n rc-ch{tone}">{esc(kit.pct(ch, 1, signed=True) + " YoY") if ch is not None else ""}</td></tr>')
+                 f'<td class="n rc-ch{tone}">{esc(_changes_text(m))}</td></tr>')
     figs = f'<div class="rc-box"><p class="rc-lbl">The figures</p><table class="rc-figs">{figs}</table></div>' if figs else ''
 
     quotes = [(FIELD[f['name']], f) for f in fields] + [(_metric_label(m), m) for m in metrics[:6]] + \
