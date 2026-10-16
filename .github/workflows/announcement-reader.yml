@@ -33,6 +33,11 @@ on:
         required: true
         type: boolean
         default: false
+      batch:
+        description: 'Gemini lane: read short filings several to a request (saves calls; each filing still checked alone)'
+        required: true
+        type: boolean
+        default: false
       chain:
         description: 'Start the next run when this one ends (off in supervised mode)'
         required: true
@@ -123,6 +128,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           READER_MINUTES: '11'
           READER_HISTORY: ${{ inputs.history == true && '1' || '0' }}
+          READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -161,5 +167,5 @@ jobs:
           if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=true -f chain=true
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=true -f batch=false -f chain=true
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"

@@ -919,6 +919,20 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
 
 # --- reading ---------------------------------------------------------------------------
 
+def result_of(out, doc: str, used: str, secs: float, lane_name: str) -> dict:
+    """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
+    as read_one's, or {'ok': False, 'error'} when there is no answer."""
+    if out is None:
+        return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
+    cat, fields, metrics = validate(out, doc)
+    raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
+    if len(raw) == len(metrics):
+        metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
+    headline, points = card_words(out, doc, fields, metrics)
+    return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
+            'headline': headline, 'points': points}
+
+
 def read_one(lane: Lane, row: dict, doc: str) -> dict:
     """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
     checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
@@ -927,16 +941,51 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
+    return result_of(s.parse_json(text), doc, used, secs, lane.name)
+
+
+# Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
+# unless READER_BATCH=1; every filing is still checked against its own text, and one that the answer misses,
+# or that fails the check as a whole, is read again by itself.
+BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'
+BATCH_PROVIDERS = {'gemini'}      # Groq counts tokens a minute (8K), NVIDIA and Z.ai list no call limit
+BATCH_MAX = 4                     # filings in one request
+BATCH_DOC_CHARS = 6000            # a filing longer than this (about 1,500 tokens) is read on its own
+BATCH_TOTAL_CHARS = 18000
+
+
+def batch_prompt(jobs: list[dict]) -> str:
+    """One prompt for several filings: the single-filing instructions once, then each filing under its own number."""
+    head = card_prompt({'exchange': 'the exchange', 'symbol': 'the company', 'subject': 'given before each filing'},
+                       '').split('=== DOCUMENT ===', 1)[0]
+    blocks = []
+    for k, job in enumerate(jobs, 1):
+        row = job['row']
+        memory = str(row.get('_company_memory') or '').strip()
+        blocks.append(f'=== FILING {k}: {row["exchange"]} {row.get("symbol") or row.get("company")}, subject: '
+                      f'{row.get("subject")} ===\n' + (f'Earlier verified company history for this filing only (context, '
+                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job['doc']))
+    return (f'You will read {len(jobs)} separate filings, each starting with a line "=== FILING k: ... ===". Treat every '
+            'filing completely on its own: a word or number of one filing is never used for another, and each quote '
+            'must come from the filing it belongs to. Answer with only JSON: {"results": [{"id": k, followed by '
+            'the answer object described below for filing k}, ...]}, exactly one object for each filing.\n\n'
+            + head + '\n\n' + '\n\n'.join(blocks))
+
+
+def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
+    """One request for `jobs`; per job its checked result, or None where the answer has nothing usable for it."""
+    try:
+        text, used, secs = lane.read(batch_prompt(jobs))
+    except RuntimeError:
+        return [None] * len(jobs)
     out = s.parse_json(text)
-    if out is None:
-        return {'ok': False, 'error': f'{lane.name}: {used}: reply was not JSON'}
-    cat, fields, metrics = validate(out, doc)
-    raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
-    if len(raw) == len(metrics):
-        metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
-    headline, points = card_words(out, doc, fields, metrics)
-    return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points}
+    items = out.get('results') if isinstance(out, dict) else out
+    by_id = {str(it.get('id')): it for it in (items if isinstance(items, list) else []) if isinstance(it, dict)}
+    res = []
+    for k, job in enumerate(jobs, 1):
+        item = by_id.get(str(k))
+        res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name) if item is not None else None)
+    return res
 
 
 def _sha(b) -> str:
@@ -1104,6 +1153,56 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 by_text.setdefault(base['text_sha256'], rec)
             return waiting.pop(base['file_sha256'], []) + waiting.pop(base['text_sha256'], [])
 
+    def crash(item: dict, exc: Exception):
+        log(f'{type(exc).__name__}: {exc}')
+        add_row(finish({**item.get('base', {**item['row'], 'tries': int(item['row'].get('tries') or 0) + 1}),
+                        'status': 'failed', 'reason': f'reader error: {type(exc).__name__}: {exc}'[:300]}))
+
+    def read_batch_jobs(lane: Lane, first: dict):
+        """A fresh filing and up to BATCH_MAX - 1 more: the short ones go to the model in one request, the rest
+        (and any the answer misses) one by one."""
+        nonlocal taken
+        jobs = [first]
+        with lock:
+            while len(jobs) < BATCH_MAX and fresh and (max_filings is None or taken < max_filings):
+                taken += 1
+                jobs.append({'row': fresh.pop(0), 'tried': set(), 'errors': []})
+        short, rest, chars = [], [], 0
+        for job in jobs:
+            try:
+                out = prepare(job)
+            except Exception as exc:  # noqa: BLE001
+                crash(job, exc)
+                continue
+            if out == 'held':
+                continue
+            if out is not None:
+                add_row(out)
+                continue
+            n = len(str(job['doc']))
+            if n <= BATCH_DOC_CHARS and chars + n <= BATCH_TOTAL_CHARS:
+                short.append(job)
+                chars += n
+            else:
+                rest.append(job)
+        if len(short) >= 2:
+            log(f'{lane.name}: {len(short)} short filings in one request')
+            for job, res in zip(short, read_batch(lane, short)):
+                try:
+                    if res is not None and res['ok']:
+                        finish_read(lane, job, res)
+                    else:
+                        rest.append(job)
+                except Exception as exc:  # noqa: BLE001
+                    crash(job, exc)
+        else:
+            rest = short + rest
+        for job in rest:
+            try:
+                read_job(lane, job)
+            except Exception as exc:  # noqa: BLE001
+                crash(job, exc)
+
     def worker(lane: Lane):
         while True:
             with lock:
@@ -1120,6 +1219,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     cross_check(lane, item)
                 elif what == 'fail':
                     fail_job(item)
+                elif BATCH_ON and 'base' not in item and lane.providers() <= BATCH_PROVIDERS:
+                    read_batch_jobs(lane, item)
                 else:
                     read_job(lane, item)
             except Exception as exc:  # noqa: BLE001 -- a bug on one filing never stops the lane
@@ -1155,7 +1256,10 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        res = read_one(lane, job['row'], job['doc'])
+        finish_read(lane, job, read_one(lane, job['row'], job['doc']))
+
+    def finish_read(lane: Lane, job: dict, res: dict):
+        """Records the checked result of a read of `job`, or hands the filing on when there is none."""
         if not res['ok']:
             job['tried'].add(lane.name)
             job['errors'].append(res['error'])
