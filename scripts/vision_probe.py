@@ -30,6 +30,7 @@ from r2_writer import BUCKET, r2_client  # noqa: E402
 import announcement_sample as sample  # noqa: E402
 
 MAX_PAGES = int(os.environ.get('MAX_PAGES', '6'))
+COMPARE = os.environ.get('COMPARE', '') == '1'   # 1: every model reads every filing; else the first that answers
 DPI = int(os.environ.get('DPI', '130'))
 OUT_DIR = Path(os.environ.get('OUT_DIR', 'vision_out'))
 BASES = {'zai': 'https://api.z.ai/api/paas/v4', 'nvidia': 'https://integrate.api.nvidia.com/v1'}
@@ -108,14 +109,14 @@ def ask(entry: str, prompt: str, images: dict[int, bytes]) -> tuple[str, float, 
         if prov == 'gemini':
             parts = [{'text': prompt}] + [{'inlineData': {'mimeType': 'image/png', 'data': base64.b64encode(b).decode()}} for b in images.values()]
             r = requests.post(f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-                              headers={'x-goog-api-key': key}, timeout=240,
+                              headers={'x-goog-api-key': key}, timeout=120,
                               json={'contents': [{'role': 'user', 'parts': parts}], 'generationConfig': {'temperature': 0, 'responseMimeType': 'application/json'}})
             if r.status_code != 200:
                 return '', time.monotonic() - t0, f'HTTP {r.status_code}: {r.text[:200]}'
             j = r.json()
             return ''.join(p.get('text', '') for p in j['candidates'][0]['content']['parts']), time.monotonic() - t0, ''
         content = [{'type': 'text', 'text': prompt}] + [{'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(b).decode()}} for b in images.values()]
-        r = requests.post(f'{BASES[prov]}/chat/completions', headers={'Authorization': f'Bearer {key}'}, timeout=300,
+        r = requests.post(f'{BASES[prov]}/chat/completions', headers={'Authorization': f'Bearer {key}'}, timeout=150,
                           json={'model': model, 'temperature': 0, 'max_tokens': 3000, 'messages': [{'role': 'user', 'content': content}]})
         if r.status_code != 200:
             return '', time.monotonic() - t0, f'HTTP {r.status_code}: {r.text[:200]}'
@@ -176,12 +177,16 @@ def main() -> int:
             (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_p{p}.png').write_bytes(b)
         prompt = PROMPT.format(pages=', '.join(map(str, imgs)), total=len(pages))
         doc = '\n'.join(pages)
+        answered = False
         for entry in models:
-            for attempt in range(3):   # 429 / 503 'overloaded' answers came in the first run: wait and ask again
+            if answered and not COMPARE:
+                break   # models are a fallback list: the first that answers reads the filing (each model has its own quota)
+            for attempt in range(2):   # 429 / 503 'overloaded': one short wait, then the next model
                 ans, secs, err = ask(entry, prompt, imgs)
                 if not (err.startswith('HTTP 429') or err.startswith('HTTP 503')):
                     break
-                time.sleep(30 * (attempt + 1))
+                time.sleep(10)
+            answered = answered or bool(ans)
             found, n, j = check(ans, doc)
             (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_{entry.replace(":", "_").replace("/", "_")}.txt').write_text(ans or err)
             md += [f'**{entry}** ({secs:.0f} s): ' + (f'ERROR {err}' if err else f'quotes found in the PDF text {found}/{n}')]
@@ -192,6 +197,7 @@ def main() -> int:
             elif ans:
                 md += [f'- not valid JSON: {ans[:300]}']
             md += ['']
+        print('\n'.join(md[-40:]), flush=True)
     out = '\n'.join(md)
     print(out)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
