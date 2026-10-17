@@ -59,4 +59,6 @@ def pick(said_doc: dict | None, as_of, limit: int = 3, metrics: list[dict] | Non
         item = {'statement': f.get('statement'), 'quote': f.get('quote'), 'speaker': f.get('speaker'),
                 'call_date': call.get('call_date') or call.get('filed'), 'source_url': call.get('source_url'), 'metric': metric}
         (paired if metric else loose).append(item)
-    return (paired + loose)[:limit]
+    rank = {t: i for i, t in enumerate(('guidance', 'demand', 'margins', 'deals', 'pricing', 'people'))}
+    loose_sorted = sorted(loose, key=lambda i: rank.get(next((f.get('topic') for f in call.get('facts') or [] if f.get('statement') == i['statement']), ''), 9))
+    return (paired + loose_sorted)[:limit]
