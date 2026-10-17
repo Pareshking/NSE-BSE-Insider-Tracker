@@ -43,15 +43,19 @@ def main() -> int:
         print('\n'.join(out)); return 0
     arch['broadcast_date'] = arch['broadcast_date'].astype(str).str[:10]
     days = {}
-    for (ex, d) in set(zip(arch['exchange'], arch['broadcast_date'])):
-        days[(ex, d)] = {r['event_id']: r for r in filing_text.load_day(r2, ex, d).to_dict('records')}
+    import pyarrow.parquet as pq
+    for (ex, d) in set(zip(arch['exchange'], arch['broadcast_date'])):   # the cache's day files without their text column: sizes only
+        body = get(r2, filing_text.key(ex, d))
+        cols = [c for c in ('event_id', 'status', 'chars', 'pages') if body]
+        days[(ex, d)] = {r['event_id']: r for r in pq.read_table(io.BytesIO(body), columns=cols).to_pandas().to_dict('records')} if body else {}
     info = []
     for r in arch.to_dict('records'):
         rec = days[(r['exchange'], r['broadcast_date'])].get(r['event_id']) or {}
-        txt = str(rec.get('text') or '')
         info.append({'isin': r.get('isin'), 'company': r.get('company'), 'symbol': r.get('symbol'), 'date': r['broadcast_date'],
                      'exchange': r['exchange'], 'subject': str(r.get('subject'))[:60], 'chars': int(rec.get('chars') or 0),
-                     'status': rec.get('status'), 'transcript_like': bool(LOOKS.search(txt)), 'event_id': r['event_id']})
+                     'pages': rec.get('pages'), 'status': rec.get('status'),
+                     'transcript_like': bool(rec.get('chars') or 0) and int(rec.get('chars') or 0) > 15000 and bool(CALLISH.search(str(r.get('subject')))),
+                     'event_id': r['event_id']})
     t = pd.DataFrame(info)
     t = t[t['isin'].astype(str).str.len() > 5]
     body = get(r2, 'clean/current/results.parquet')
