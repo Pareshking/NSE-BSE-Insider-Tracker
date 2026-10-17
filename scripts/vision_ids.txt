@@ -1,0 +1,11 @@
+# 10 filings whose text conversion failed (golden set); vision test 17 Oct 2026
+nse:106820139  # Affle: warrants (garbled cell)
+bse:e0983f88-a4d2-4e20-a0a0-372f8600fffa  # Paushak: results units
+nse:106820217  # Jindal Saw NSE: two values
+nse:106820190  # Federal Bank: multi-item
+bse:dd0212d4-7c6e-4a85-9474-b017cdd24cbc  # Regency
+nse:106815713  # Kernex: rating table
+bse:9d3fa507-cb53-4ec0-abb8-46604deae148  # Trident
+bse:b52cb13f-b068-4e4c-a988-c60f7f435fb9  # Hilinfra
+nse:106815476  # Steel Exchange: production
+bse:40c7b951-66b5-4be5-a155-57950601e092  # Mphasis: SAST
