@@ -2148,3 +2148,14 @@ def test_person_name_broken_over_two_lines_is_not_repeated():
     doc = 'resignation of Mr. Jayprakash\n Labhshankar Raval as Chief Financial Officer'
     text = 'Trustedge Capital CFO Jayprakash Labhshankar Raval resigns'
     assert ar.full_person_name(text, doc, ('Trustedge Capital',)) == text
+
+
+def test_table_arithmetic_catches_a_misread_results_table():
+    good = ('I Revenue from operations 320.96 356.75 284.23\nII Other income 22.08 29.15 5.17\nIII Total income (I + II) 343.04 385.90 289.40\n'
+            'IX Profit / (loss) before tax 71.70 44.16 (3.96)\nX Tax expense / (credit):\nTotal tax expense / (credit) 8.28 9.92 (0.50)\n'
+            'XI Profit / (loss) for the period / year (IX-X) 63.42 34.24 (3.46)\n')
+    assert ar.table_arithmetic(good) == (2, [])
+    bad = good.replace('343.04', '843.04').replace('63.42', '68.42')
+    ok, failed = ar.table_arithmetic(bad)
+    assert ok == 0 and len(failed) == 2
+    assert ar.table_arithmetic('Revenue from operations 8,932 8,355\nProfit after tax 1,351 1,510\n') == (0, [])   # rows that cannot be checked are not failures
