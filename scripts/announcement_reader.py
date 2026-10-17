@@ -2177,11 +2177,35 @@ def gaps_of(cat, fields, doc: str) -> list[dict]:
     return [{'type': 'not_disclosed', 'text': f'This filing does not state {what}.', 'date': None}]
 
 
+_BARE_NUMBER = re.compile(r'[\s(]*[-\u2212]?\s*[\u20b9$]?\s*(?:Rs\.?\s*)?\d[\d,]*(?:\.\d+)?\s*\)?%?[\s]*', re.I)
+
+
+def widen_bare_quotes(out, doc) -> int:
+    """A quote that is only the number ("2,205.45", IDBI 17 Oct) proves nothing about the row: when the figure stands on exactly one line of the
+    filing and that line carries a word of the label, the line becomes the quote (still the filing's own words). Returns how many were widened."""
+    if not isinstance(out, dict):
+        return 0
+    lines = [ln.strip() for ln in str(doc).splitlines() if ln.strip()]
+    n = 0
+    for item in [x for key in ('fields', 'metrics') for x in (out.get(key) or []) if isinstance(x, dict)]:
+        quote = str(item.get('quote') or '')
+        if not quote or len(quote) > 16 or not _BARE_NUMBER.fullmatch(quote):
+            continue
+        value = quote.strip(' ()')
+        words = [w for w in re.findall(r'[a-z]{4,}', str(item.get('label') or item.get('name') or '').lower())]
+        hits = [ln for ln in lines if re.search(rf'(?<![\d.,]){re.escape(value)}(?![\d,]|\.\d)', ln) and len(ln) <= 400]
+        if len(hits) == 1 and (not words or any(w in hits[0].lower() for w in words)):
+            item['quote'] = hits[0][:300]
+            n += 1
+    return n
+
+
 def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
         return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
+    widen_bare_quotes(out, doc)
     cat, fields, metrics = validate(out, doc)
     cat_before = cat
     cat = category_override(cat, subject, doc)
@@ -2258,6 +2282,8 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
         if printed is None:     # no model could answer now (quota, overload): neither confirmed nor contradicted, so the filing is tried again later, not held for good
             log(row.get('symbol'), 'vision: could not ask the page now; the filing is deferred')
             return {'ok': False, 'error': 'vision models busy (HTTP 429): the second reading is deferred'}
+        log(row.get('symbol'), 'vision verify: asked', clash[:4], '| page says printed:', {k: str(v)[:80] for k, v in printed.items()},
+            '| quote found in the text:', {k: s.quote_found(v, doc) for k, v in printed.items()})
         clash = [n for n in clash if not (n in printed and s.quote_found(printed[n], doc))]
     if clash:   # the owner's rule: two independent readings must agree on the figures, or the card does not go on
         log(row.get('symbol'), f'vision: the readers disagree on {clash[:4]}; the text headline is held')

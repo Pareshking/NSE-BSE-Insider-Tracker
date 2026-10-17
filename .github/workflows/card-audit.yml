@@ -17,6 +17,10 @@ on:
         description: 'Run id of a golden-set replay (announcement-reader.yml dry run): audit ITS cards instead of the stored ones'
         required: false
         default: ''
+      companies:
+        description: 'Only these companies: comma-separated words of the symbol or company name (e.g. yes bank,kross)'
+        required: false
+        default: ''
       excerpt:
         description: 'Characters of filing text shown at the start and round each quote (default 3000; 40000 = the whole filing)'
         required: false
@@ -57,6 +61,7 @@ jobs:
           IDS_FILE: ${{ inputs.ids_file || '' }}
           REPLAY_JSON: ${{ inputs.replay_run != '' && 'replay/announcement_reader_dry_run.json' || '' }}
           EXCERPT: ${{ inputs.excerpt || '3000' }}
+          COMPANIES: ${{ inputs.companies || '' }}
         run: python -u scripts/card_audit.py | tee card_audit.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

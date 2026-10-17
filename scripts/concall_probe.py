@@ -29,12 +29,13 @@ def main() -> int:
     r2 = r2_client()
     rows = []
     for ex in ('nse', 'bse'):
-        for m in ('2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'):
-            df = read_parquet(r2, f'archive/announcements/{ex}/{m}.parquet')
+        for m in (5, 6, 7, 8, 9, 10):
+            df = read_parquet(r2, f'archive/announcements/{ex}/year=2026/month={m:02d}.parquet')
             if df is None or df.empty:
                 continue
             df = df.assign(exchange=ex)
-            hit = df[df['subject'].astype(str).str.contains(CALLISH) | df['text'].astype(str).str.contains(r'transcript', case=False)]
+            blank = pd.Series('', index=df.index)
+            hit = df[df.get('subject', blank).astype(str).str.contains(CALLISH) | df.get('text', blank).astype(str).str.contains('transcript', case=False)]
             rows.append(hit)
     arch = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
     out = ['## Concall filings in the archive, May to Oct 2026', '', f'{len(arch)} rows (subject or text mentions a call / transcript)', '']
