@@ -210,6 +210,11 @@ def main() -> int:
                                  columns=['event_id', 'file_url', 'subject'])
             rows.append(df[df['event_id'].isin(ids)])
     allr = pd.concat(rows).drop_duplicates('event_id') if rows else pd.DataFrame()
+    urls = Path(HERE / 'vision_urls.txt')   # filings too new for the archive: id <TAB> file_url <TAB> subject
+    if urls.exists():
+        extra = pd.DataFrame([dict(zip(('event_id', 'file_url', 'subject'), ln.split('\t'))) for ln in urls.read_text().splitlines() if ln.count('\t') >= 2])
+        if len(extra):
+            allr = pd.concat([allr, extra]).drop_duplicates('event_id') if len(allr) else extra
     OUT_DIR.mkdir(exist_ok=True)
     md = ['## Vision test (page triage + page images)', '', f'models: {", ".join(models)}; {DPI} dpi; at most {MAX_PAGES} pages a filing', '']
     for _, f in allr.iterrows():

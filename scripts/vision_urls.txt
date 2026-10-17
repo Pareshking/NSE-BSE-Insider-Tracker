@@ -1,0 +1,17 @@
+bse:c603fee4-d0f2-496e-941c-97b51788c713	https://www.bseindia.com/xml-data/corpfiling/AttachLive/7d85dce1-a1fe-486e-a83f-b41482f52e9a.pdf	Press Release / Media Release
+nse:106821001	https://nsearchives.nseindia.com/corporate/REFEX2002_17102026124640_RIL_order_Pond_Ash_Fly_Ash.pdf	Bagging/Receiving of orders/contracts
+bse:e59a257c-bc14-4bad-89cf-430dc57ecc20	https://www.bseindia.com/xml-data/corpfiling/AttachLive/a0183e8f-f66a-452d-a405-a81add7bccce.pdf	General
+bse:d7669d43-707f-4d4e-8434-7d2e033ac06b	https://www.bseindia.com/xml-data/corpfiling/AttachLive/93413e88-2542-4fe1-bc28-a66cb6c62b52.pdf	Acquisition
+nse:106820992	https://nsearchives.nseindia.com/corporate/AmitDodani_17102026123753_SE_Intimation_NDET_Dilution.pdf	General Updates
+nse:106820990	https://nsearchives.nseindia.com/corporate/SVLL_17102026123646_SVLL.pdf	Disclosure of material issue
+nse:106821000	https://nsearchives.nseindia.com/corporate/MAITHANALL_17102026124218_Sterlite1712026.pdf	Others
+bse:75d3a800-072a-4d72-ae06-21435d362409	https://www.bseindia.com/xml-data/corpfiling/AttachLive/8a81003e-9495-4fd1-899d-ec61de488906.pdf	General
+bse:8e8c4bad-32b8-4a33-a821-c38e12aa2148	https://www.bseindia.com/xml-data/corpfiling/AttachLive/7d8d7f1c-b858-4952-af4f-3ae7ad500f9a.pdf	General
+bse:263abe2e-c21f-4f5b-934b-f4f33dbd2e28	https://www.bseindia.com/xml-data/corpfiling/AttachLive/263ABE2E_C21F_4F5B_934B_F4F33DBD2E28_115042.pdf	Disclosures under Reg. 31(1) and 31(2) of SEBI (SAST) Regula
+bse:fe68aee3-b3b9-4bbe-bff0-62c26c69cc5d	https://www.bseindia.com/xml-data/corpfiling/AttachLive/ad39b68f-f807-4b57-a025-efff690a9a2a.pdf	Outcome of Board Meeting
+bse:edfd4c36-c7a9-4434-bc9b-e0039c9e6c6d	https://www.bseindia.com/xml-data/corpfiling/AttachLive/65d57235-6e5a-4771-b5c1-89cfcb552d15.pdf	General
+bse:110dd579-5e1a-4738-8447-5d5affdfef86	https://www.bseindia.com/xml-data/corpfiling/AttachLive/110DD579_5E1A_4738_8447_5D5AFFDFEF86_113315.pdf	Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 201
+bse:da7a2a15-176d-4bf5-9422-afaa53dd541f	https://www.bseindia.com/xml-data/corpfiling/AttachLive/DA7A2A15_176D_4BF5_9422_AFAA53DD541F_112827.pdf	Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 201
+bse:5e428690-a75a-46d8-b924-7ff0d265e9be	https://www.bseindia.com/xml-data/corpfiling/AttachLive/5E428690_A75A_46D8_B924_7FF0D265E9BE_113624.pdf	Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 201
+nse:106821005	https://nsearchives.nseindia.com/corporate/AXISBANK1_17102026125236_AxisBank_Q2FY27_results.pdf	Outcome of Board Meeting
+bse:bbef876e-ac28-4fea-9e46-962c66154172	https://www.bseindia.com/xml-data/corpfiling/AttachLive/aeb7fcc4-f512-465e-8bce-fc1bb8031a7d.pdf	General
