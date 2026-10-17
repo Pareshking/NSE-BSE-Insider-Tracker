@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -36,6 +37,21 @@ NUMBER = re.compile(r'\d[\d,]*(?:\.\d+)?')
 
 
 COOL: dict[str, float] = {}   # model -> time (monotonic) it may be tried again
+GAP_SECONDS = float(os.environ.get('READER_VISION_GAP', '12'))   # at least this long between two requests to one model (5 a minute)
+_LAST: dict[str, float] = {}
+_PACE_LOCK = threading.Lock()
+
+
+def pace(model: str, sleep=time.sleep, gap: float | None = None) -> float:
+    """Hold a request to `model` until its minimum gap since the last one has passed (requests a minute); returns the seconds waited.
+    Each model has its own limit, so the next model is not held by this one. Safe across the reader's lane threads."""
+    gap = GAP_SECONDS if gap is None else gap
+    with _PACE_LOCK:
+        wait = max(0.0, _LAST.get(model, -1e9) + gap - time.monotonic())
+        _LAST[model] = time.monotonic() + wait
+    if wait:
+        sleep(wait)
+    return wait
 
 
 def models() -> list[str]:
@@ -97,6 +113,7 @@ def ask_gemini(model: str, prompt: str, images: dict[int, bytes], session=reques
     key = os.environ.get('GEMINI_API_KEY', '').strip()
     parts = [{'text': prompt}] + [{'inlineData': {'mimeType': 'image/png', 'data': base64.b64encode(b).decode()}} for b in images.values()]
     for attempt in range(2):
+        pace(model, sleep)
         r = session.post(f'{API}/models/{model}:generateContent', headers={'x-goog-api-key': key}, timeout=150,
                          json={'contents': [{'role': 'user', 'parts': parts}],
                                'generationConfig': {'temperature': 0, 'responseMimeType': 'application/json'}})
