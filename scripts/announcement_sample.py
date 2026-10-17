@@ -342,6 +342,16 @@ def parse_json(text: str):
 # --- the document ------------------------------------------------------------------
 
 def pdf_text(data: bytes) -> str:
+    """PyMuPDF's text in reading order (get_text(sort=True): no layout padding, rows kept together; owner's choice 17 Oct 2026, tested
+    against pdftotext -layout on 13 table rows: equal on rows, shorter text). pdftotext -layout when PyMuPDF is missing or fails."""
+    try:
+        import pymupdf
+        with pymupdf.open(stream=data, filetype='pdf') as pdf:
+            text = '\f'.join(page.get_text('text', sort=True) for page in pdf)
+        if text.strip():
+            return text
+    except Exception:  # noqa: BLE001 -- a PDF PyMuPDF cannot open still goes to pdftotext
+        pass
     with tempfile.TemporaryDirectory() as d:
         src = Path(d) / 'f.pdf'
         src.write_bytes(data)
