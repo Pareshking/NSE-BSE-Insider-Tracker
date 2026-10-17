@@ -343,6 +343,7 @@ def parse_json(text: str):
 
 # --- the document ------------------------------------------------------------------
 
+OCR_BUDGET_SECONDS = 300      # OCR time one filing may take; pages not started by then stay without text (the filing is then marked not read in part)
 OCR_MAX_PAGES = 40            # a scan longer than this is not read in part (CLAUDE.md rule 8): the filing is marked not read
 _LOCAL = threading.local()   # per reader thread: (pages OCR'd, pages left without text) of its last pdf_text call, for the document notes
 
@@ -392,7 +393,8 @@ def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
         if png is None:
             return ''
         try:
-            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=420, check=False)
+            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=90, check=False,
+                                 env={**os.environ, 'OMP_THREAD_LIMIT': '1', 'OMP_NUM_THREADS': '1'})   # one thread each: several tesseracts on OpenMP timed out at 420 s a page (17 Oct live run)
         except (OSError, subprocess.SubprocessError) as exc:
             log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
             return ''
@@ -579,8 +581,9 @@ def pdf_text(data: bytes) -> str:
         OCR_LAST[2] = len(pages)
         need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
         todo = need[:OCR_MAX_PAGES]
+        t_ocr = time.monotonic()
         with ThreadPoolExecutor(max_workers=2 if (docling_enabled() or paddle_enabled()) else 4) as pool:     # a bank's 40-page scan in about a minute, not four
-            for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
+            for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n) if time.monotonic() - t_ocr < OCR_BUDGET_SECONDS else '', todo)):
                 if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES:   # any scanned or mangled page: the stronger readers read it too
                     got = best_page_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
                 if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):

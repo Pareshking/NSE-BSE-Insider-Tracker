@@ -108,3 +108,11 @@ def test_a_page_of_figures_without_any_label_word_needs_ocr():
     figures = ' '.join(f'{1000 + i}.{i % 100:02d}' for i in range(80))
     assert s._page_needs_ocr(figures)
     assert not s._page_needs_ocr('Total income ' + figures)
+
+
+def test_ocr_budget_leaves_later_pages_without_text(monkeypatch):
+    monkeypatch.setattr(s, 'OCR_BUDGET_SECONDS', -1)
+    called = []
+    monkeypatch.setattr(s, 'ocr_page', lambda *a, **k: called.append(1) or 'text ' * 40)
+    text, notes = s.text_of(pdf(LONG, '', '', ''))
+    assert not called and any(n.startswith('pages without text: 2, 3, 4') for n in notes)
