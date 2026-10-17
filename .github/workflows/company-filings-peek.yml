@@ -1,0 +1,39 @@
+name: Company filings peek (read-only)
+
+# Which companies have call transcripts in the text cache (scripts/company_filings_peek.py).
+# Reads R2 only; no model, no exchange call, no write.
+on:
+  workflow_dispatch:
+    inputs:
+      isins:
+        description: 'Comma-separated ISINs'
+        required: true
+        default: 'INE467B01029,INE860A01027,INE075A01022'
+  push:
+    branches: [ccr-0caa4ce9-bh3n2s]
+    paths:
+      - 'scripts/company_filings_peek.py'
+      - '.github/workflows/company-filings-peek.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt tabulate
+      - name: Report
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          ISINS: ${{ inputs.isins || 'INE467B01029,INE860A01027,INE075A01022' }}
+        run: python -u scripts/company_filings_peek.py
