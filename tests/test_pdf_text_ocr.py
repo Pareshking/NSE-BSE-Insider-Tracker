@@ -78,3 +78,11 @@ def test_best_of_several_readers_wins_only_when_clearly_fuller():
     assert s.better_table_text(ocr, docling, paddle) == paddle
     assert s.better_table_text(paddle, ocr, docling) == paddle
     assert s.better_table_text(ocr) == ocr
+
+
+def test_a_prose_page_goes_to_the_reader_whose_words_the_others_share():
+    tess = 'Regislered Ofiice ldeal Centre Kolkata disclosure under Regulation 30 acquisition of equity shares of a listed entity'
+    paddle = 'Registered Office Ideal Centre Kolkata disclosure under Regulation 30 acquisition of equity shares of a listed entity'
+    docling = 'Registered Office Ideal Centre Kolkata disclosure under Regulation acquisition of equity shares of a listed entity'
+    assert s.best_page_text(tess, paddle, docling) == paddle
+    assert s.best_page_text(paddle, tess, docling) == paddle      # tesseract's own page stays unless another is clearly better

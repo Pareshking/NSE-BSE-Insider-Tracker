@@ -455,13 +455,32 @@ def paddle_page(data: bytes, page: int, dpi: int = 200) -> str:
 _FIGURE = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])\d[\d,]*\.\d+(?![\w])|(?<![\w.])\d{1,3}(?:,\d{2,3})+(?![\w])')
 
 
-def better_table_text(ocr: str, *others: str) -> str:
-    """The page text that reads clearly more figures than tesseract did (a figure: a decimal, a comma-grouped number or a bracketed one;
-    at least 3 more and 20 % more), the fullest of the other readers', else tesseract's."""
-    n_ocr = len(_FIGURE.findall(ocr))
-    best = max(others, key=lambda t: len(_FIGURE.findall(t)), default='')
-    n = len(_FIGURE.findall(best))
-    return best if n >= n_ocr + 3 and n >= 1.2 * n_ocr else ocr
+_WORD = re.compile(r'[A-Za-z]{4,}')
+EXTRA_OCR_PAGES = 12          # pages of one filing the slower readers (PaddleOCR, Docling) read; the rest keep tesseract's text
+
+
+def _page_score(text: str, consensus: set[str]) -> float:
+    """3 a figure (a decimal, a comma-grouped number, a bracketed one), 1 a word that at least two readers produced, minus half a word only
+    this reader produced (a misread word is almost always unique to its reader)."""
+    words = {w.lower() for w in _WORD.findall(text)}
+    return 3 * len(_FIGURE.findall(text)) + len(words & consensus) - 0.5 * len(words - consensus)
+
+
+def best_page_text(ocr: str, *others: str) -> str:
+    """Tesseract's page text, or another reader's when it scores clearly higher (more than 3 points): figures and consensus words decide, for any page
+    of any filing: a scanned results table, a pledge form, a notice of prose."""
+    texts = [ocr, *others]
+    seen: dict[str, int] = {}
+    for t in texts:
+        for w in {w.lower() for w in _WORD.findall(t)}:
+            seen[w] = seen.get(w, 0) + 1
+    consensus = {w for w, n in seen.items() if n >= 2}
+    scores = [_page_score(t, consensus) for t in texts]
+    best = max(range(len(texts)), key=lambda i: (scores[i], -i))
+    return texts[best] if best and scores[best] > scores[0] + 3 else ocr
+
+
+better_table_text = best_page_text
 
 
 def pdf_text(data: bytes) -> str:
@@ -480,8 +499,8 @@ def pdf_text(data: bytes) -> str:
         todo = need[:OCR_MAX_PAGES]
         with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
             for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
-                if (docling_enabled() or paddle_enabled()) and len(_FIGURE.findall(got)) >= 8:   # a scanned page of figures: the stronger readers read it too
-                    got = better_table_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
+                if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES:   # any scanned or mangled page: the stronger readers read it too
+                    got = best_page_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
                 if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
                     pages[i - 1] = got
                     OCR_LAST[0].append(i)
