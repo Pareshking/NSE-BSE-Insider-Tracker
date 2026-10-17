@@ -2238,3 +2238,26 @@ def test_a_change_the_company_states_is_taken_as_stated():
     assert ar.stated_change('Profit rose 3% quarter-on-quarter') == (3.0, 'qoq')
     assert ar.stated_change('Profit after tax reached Rs 19.7 crores compared to Rs 8.1 crores in Q2 FY26') is None     # no % stated: not worked out by us here
     assert ar.stated_change('Order book is up 20% to Rs 100 crore') is None                                                 # no stated basis
+
+
+def test_history_window_is_overnight_ist():
+    from datetime import datetime, timezone
+    import announcement_reader as ar
+    utc = lambda h, m: datetime(2026, 10, 17, h, m, tzinfo=timezone.utc)
+    assert ar.in_history_window(utc(17, 0))       # 22:30 IST
+    assert ar.in_history_window(utc(2, 0))        # 07:30 IST
+    assert not ar.in_history_window(utc(3, 30))   # 09:00 IST
+    assert not ar.in_history_window(utc(10, 0))   # 15:30 IST
+    assert not ar.in_history_window(utc(16, 59))  # 22:29 IST
+
+
+def test_xbrl_context_line_for_prompt():
+    import pandas as pd
+    rows = []
+    for end, rev, prof, at in (('2025-06-30', 8e9, 1e9, '2025-08-01'), ('2026-06-30', 1e10, 1.31e9, '2026-08-01')):
+        rows.append({'isin': 'INE1', 'period_end': end, 'consolidated': 'Consolidated', 'quarter_revenue': rev,
+                     'quarter_total_income': rev, 'quarter_profit': prof, 'broadcast_at': at})
+    lines = ar.xbrl_context_lines(pd.DataFrame(rows), 'INE1', '2026-10-17')
+    assert len(lines) == 1 and 'Q1 FY27' in lines[0] and 'sales +25%' in lines[0] and 'profit +31%' in lines[0]
+    assert ar.xbrl_context_lines(pd.DataFrame(rows), 'INE9', '2026-10-17') == []
+    assert ar.xbrl_context_lines(None, 'INE1', '2026-10-17') == []
