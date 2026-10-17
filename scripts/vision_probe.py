@@ -72,9 +72,8 @@ def text_modes(data: bytes) -> dict[str, str]:
         try:
             import pymupdf as fitz  # PyMuPDF
             with fitz.open(str(src)) as pdf:
-                with fitz.open(str(src)) as pdf:   # PyMuPDF's own reading-order sort (the owner's hint: sort=True, no AI)
-                out['sorted'] = '\f'.join(pg.get_text('text', sort=True) for pg in pdf)
-            out['blocks'] = '\f'.join('\n'.join(b[4] for b in sorted(pg.get_text('blocks'), key=lambda b: (round(b[1] / 8), b[0]))
+                out['sorted'] = '\f'.join(pg.get_text('text', sort=True) for pg in pdf)   # PyMuPDF's own reading-order sort (owner's hint), no AI
+                out['blocks'] = '\f'.join('\n'.join(b[4] for b in sorted(pg.get_text('blocks'), key=lambda b: (round(b[1] / 8), b[0]))
                                                     if b[6] == 0) for pg in pdf)
         except Exception as exc:  # noqa: BLE001
             out['blocks'] = ''
