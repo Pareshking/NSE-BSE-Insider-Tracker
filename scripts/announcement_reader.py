@@ -2329,6 +2329,9 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         bad_text = unreadable_reason(doc) or enclosure_unread_reason(doc, size)
         if bad_text:   # rule 8: a filing whose text did not come out is marked not read, not guessed from its subject
             return finish({**base, 'status': 'not_read', 'reason': bad_text})
+        blank = next((n for n in doc_notes if str(n).startswith('pages without text:')), None)
+        if blank:   # rule 8: a scan some of whose pages gave no text is not read in part
+            return finish({**base, 'status': 'not_read', 'reason': f'{blank}; not read in part'})
         cut = next((n for n in doc_notes if str(n).startswith('cut to ')), None)
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',

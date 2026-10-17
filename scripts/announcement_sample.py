@@ -341,13 +341,54 @@ def parse_json(text: str):
 
 # --- the document ------------------------------------------------------------------
 
+OCR_MAX_PAGES = 12            # a scan longer than this is not read in part (CLAUDE.md rule 8): the filing is marked not read
+OCR_LAST: list = []           # (pages OCR'd, pages left without text) of the last pdf_text call, for the document notes
+
+
+def _page_needs_ocr(text: str) -> bool:
+    """A page with (almost) no text layer, or a text layer a scan has mangled ("2J9,51o", "5A23st")."""
+    t = re.sub(r'\s', '', text or '')
+    if len(t) < 80:
+        return True
+    toks = [x for x in str(text).split() if re.search(r'\d', x)]
+    bad = sum(1 for x in toks if re.search(r'(?<=[\d,.])[A-Za-z](?=[\d,.])', x))
+    return bad >= 8 and bad >= 0.08 * max(1, len(toks))
+
+
+def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
+    """Tesseract's text of one page (1-based); '' when tesseract is not installed or fails."""
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / 'f.pdf'
+        src.write_bytes(data)
+        try:
+            subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(Path(d) / 'p')],
+                           capture_output=True, timeout=180, check=False)
+            out = subprocess.run(['tesseract', str(Path(d) / 'p.png'), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return ''
+        return out.stdout.decode('utf-8', errors='replace')
+
+
 def pdf_text(data: bytes) -> str:
     """PyMuPDF's text in reading order (get_text(sort=True): no layout padding, rows kept together; owner's choice 17 Oct 2026, tested
-    against pdftotext -layout on 13 table rows: equal on rows, shorter text). pdftotext -layout when PyMuPDF is missing or fails."""
+    against pdftotext -layout on 13 table rows: equal on rows, shorter text). A page with no text layer or a mangled one is OCR'd with
+    tesseract (17 Oct sample: Unimech, SHK, Viyash scans and ixigo's results had no usable text; OCR gave clean text); pages OCR'd are
+    named in OCR_LAST. pdftotext -layout when PyMuPDF is missing or fails."""
+    OCR_LAST[:] = [[], []]
     try:
         import pymupdf
         with pymupdf.open(stream=data, filetype='pdf') as pdf:
-            text = '\f'.join(page.get_text('text', sort=True) for page in pdf)
+            pages = [page.get_text('text', sort=True) for page in pdf]
+        need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
+        for i in need[:OCR_MAX_PAGES]:
+            got = ocr_page(data, i)
+            if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
+                pages[i - 1] = got
+                OCR_LAST[0].append(i)
+            elif len(re.sub(r'\s', '', pages[i - 1])) < 80:
+                OCR_LAST[1].append(i)
+        OCR_LAST[1].extend(need[OCR_MAX_PAGES:])
+        text = '\f'.join(pages)
         if text.strip():
             return text
     except Exception:  # noqa: BLE001 -- a PDF PyMuPDF cannot open still goes to pdftotext
@@ -456,6 +497,10 @@ def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]
             notes.append(f'xbrl: standalone XML; {len(text.splitlines()) - 1} structured facts')
         else:
             text = pdf_text(data)
+            if OCR_LAST and OCR_LAST[0]:
+                notes.append(f'ocr: pages {", ".join(map(str, OCR_LAST[0]))} read with tesseract (no usable text layer)')
+            if OCR_LAST and OCR_LAST[1]:
+                notes.append(f'pages without text: {", ".join(map(str, OCR_LAST[1]))} could not be read (no text layer and OCR failed or the scan is over {OCR_MAX_PAGES} pages)')
     if not text.strip():
         notes.append('no text layer (scanned?)')
     if limit and len(text) > limit:

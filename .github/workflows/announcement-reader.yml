@@ -126,7 +126,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - if: steps.changed.outputs.go == '1'
-        run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+        run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
       - name: Guard experimental prompt
         if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
         run: |
