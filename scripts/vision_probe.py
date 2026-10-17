@@ -59,6 +59,31 @@ def pages_of(data: bytes) -> list[str]:
     return pages
 
 
+def text_modes(data: bytes) -> dict[str, str]:
+    """The same PDF as text in three ways: pdftotext -layout (what the reader sends now), pdftotext in reading order
+    (no layout padding), and PyMuPDF blocks sorted top-to-bottom, left-to-right."""
+    out = {}
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / 'f.pdf'
+        src.write_bytes(data)
+        for name, args in (('layout', ['-layout']), ('reading', [])):
+            r = subprocess.run(['pdftotext', *args, str(src), '-'], capture_output=True, timeout=180, check=False)
+            out[name] = r.stdout.decode('utf-8', errors='replace')
+        try:
+            import pymupdf as fitz  # PyMuPDF
+            with fitz.open(str(src)) as pdf:
+                out['blocks'] = '\f'.join('\n'.join(b[4] for b in sorted(pg.get_text('blocks'), key=lambda b: (round(b[1] / 8), b[0]))
+                                                    if b[6] == 0) for pg in pdf)
+        except Exception as exc:  # noqa: BLE001
+            out['blocks'] = ''
+            log_note(f'PyMuPDF unavailable: {exc}')
+    return out
+
+
+def log_note(msg: str) -> None:
+    print('NOTE', msg, flush=True)
+
+
 def triage(pages: list[str]) -> tuple[list[int], dict[int, str]]:
     """(pages to send, 1-based; why each page was sent or left out)."""
     why, score = {}, {}
@@ -98,6 +123,9 @@ def render(data: bytes, pages: list[int]) -> dict[int, bytes]:
     return out
 
 
+LAST_USAGE: dict = {}
+
+
 def ask(entry: str, prompt: str, images: dict[int, bytes]) -> tuple[str, float, str]:
     """(answer text, seconds, error). One request with all chosen pages."""
     prov, model = entry.split(':', 1)
@@ -114,12 +142,16 @@ def ask(entry: str, prompt: str, images: dict[int, bytes]) -> tuple[str, float, 
             if r.status_code != 200:
                 return '', time.monotonic() - t0, f'HTTP {r.status_code}: {r.text[:200]}'
             j = r.json()
+            u = j.get('usageMetadata') or {}
+            LAST_USAGE.update(prompt=u.get('promptTokenCount'), out=u.get('candidatesTokenCount'), images=len(images))
             return ''.join(p.get('text', '') for p in j['candidates'][0]['content']['parts']), time.monotonic() - t0, ''
         content = [{'type': 'text', 'text': prompt}] + [{'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' + base64.b64encode(b).decode()}} for b in images.values()]
         r = requests.post(f'{BASES[prov]}/chat/completions', headers={'Authorization': f'Bearer {key}'}, timeout=150,
                           json={'model': model, 'temperature': 0, 'max_tokens': 3000, 'messages': [{'role': 'user', 'content': content}]})
         if r.status_code != 200:
             return '', time.monotonic() - t0, f'HTTP {r.status_code}: {r.text[:200]}'
+        u = r.json().get('usage') or {}
+        LAST_USAGE.update(prompt=u.get('prompt_tokens'), out=u.get('completion_tokens'), images=len(images))
         return r.json()['choices'][0]['message']['content'] or '', time.monotonic() - t0, ''
     except Exception as exc:  # noqa: BLE001 -- a failing model is a finding
         return '', time.monotonic() - t0, f'{type(exc).__name__}: {exc}'[:200]
@@ -177,6 +209,9 @@ def main() -> int:
             (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_p{p}.png').write_bytes(b)
         prompt = PROMPT.format(pages=', '.join(map(str, imgs)), total=len(pages))
         doc = '\n'.join(pages)
+        tmodes = text_modes(data)
+        for mname, mtxt in tmodes.items():   # the table pages as each mode shows them, for reading by eye
+            (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_text_{mname}.txt').write_text('\n=====PAGE=====\n'.join(mtxt.split('\f')))
         answered = False
         for entry in models:
             if answered and not COMPARE:
@@ -188,8 +223,11 @@ def main() -> int:
                 time.sleep(10)
             answered = answered or bool(ans)
             found, n, j = check(ans, doc)
+            modes = {k: check(ans, v)[0] for k, v in tmodes.items()} if ans else {}
+            usage = dict(LAST_USAGE) if ans else {}
+            LAST_USAGE.clear()
             (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_{entry.replace(":", "_").replace("/", "_")}.txt').write_text(ans or err)
-            md += [f'**{entry}** ({secs:.0f} s): ' + (f'ERROR {err}' if err else f'quotes found in the PDF text {found}/{n}')]
+            md += [f'**{entry}** ({secs:.0f} s): ' + (f'ERROR {err}' if err else f'quotes found in the PDF text {found}/{n}; by text mode {modes}; tokens {usage}; 1 request, {len(imgs)} images')]
             if j:
                 md += [f'- headline: {j.get("headline")}', f'- category: {j.get("category")}',
                        *[f'- {x.get("name")}: {x.get("value")}' for x in j.get('facts', [])[:12] if isinstance(x, dict)],
