@@ -451,7 +451,8 @@ _ROWS = {'revenue': re.compile(r'^\W*(?:[IVX\d]+\W+)?(?:revenue\s+from\s+operati
 
 def _first_amount(line: str, start: int = 0):
     """The first amount after the row's label (the current quarter's column); negative when in brackets."""
-    m = _AMT.search(line, start)
+    tail = re.sub(r'\([^()]*[+\-–−][^()]*\)', lambda m: ' ' * len(m.group(0)), line[start:])   # "(1+2)", "(IX-X)": a row's formula, not an amount
+    m = _AMT.search(tail)
     if not m:
         return None
     tok = m.group(0)

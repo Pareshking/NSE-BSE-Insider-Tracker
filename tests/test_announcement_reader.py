@@ -2206,3 +2206,10 @@ def test_holdings_rows_must_add_up_to_each_total_and_one_capital_behind_the_perc
     row = 'Preetham | 48,71,194 | 9.57 Creation 29.09.2026 | Pledge Pledge of 1,87,500 | 0.37 360 One'
     assert ar.holdings_arithmetic(row) == []
     assert ar.holdings_arithmetic(row.replace('0.37', '0.87'))
+
+
+def test_a_rows_formula_in_brackets_is_not_its_first_amount():
+    doc = ('1  Revenue from Operations  1,142.03  1,019.42  1,117.05\n2  Other Income  3.42  2.10  4.00\n'
+           '3  Total Income (1+2)  1,145.45  1,021.52  1,121.05\n')
+    assert ar.table_arithmetic(doc) == (1, [])
+    assert ar.table_arithmetic(doc.replace('1,145.45', '1,195.45'))[1]

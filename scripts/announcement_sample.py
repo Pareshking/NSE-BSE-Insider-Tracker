@@ -411,15 +411,14 @@ def docling_page(data: bytes, page: int) -> str:
     """Docling's markdown of one page (tables as '|' rows); '' when Docling is not installed or fails. 17 Oct benchmark on 6 filing pages
     read by eye: Docling 63 of 68 figures against tesseract's 51 (the ixigo results scan: 21 of 24 against 9), about 20 s a page on a CPU."""
     try:
-        import pymupdf
         from docling.document_converter import DocumentConverter
         if 'c' not in _DOCLING:
             _DOCLING['c'] = DocumentConverter()
-        with tempfile.TemporaryDirectory() as d, pymupdf.open(stream=data, filetype='pdf') as a, pymupdf.open() as b:
-            b.insert_pdf(a, from_page=page - 1, to_page=page - 1)
-            one = Path(d) / 'one.pdf'
-            b.save(str(one))
-            return _DOCLING['c'].convert(str(one)).document.export_to_markdown()
+        with tempfile.TemporaryDirectory() as d:     # the page as an image: the page is one OCR was needed for (and a PDF whose page cannot be cut out, "source object number out of range", still draws)
+            png = render_page(data, page, Path(d))
+            if png is None:
+                return ''
+            return _DOCLING['c'].convert(str(png)).document.export_to_markdown()
     except Exception as exc:  # noqa: BLE001 -- Docling failing leaves tesseract's text
         log(f'docling page {page}: {type(exc).__name__}: {str(exc)[:100]}')
         return ''
