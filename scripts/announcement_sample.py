@@ -370,9 +370,13 @@ def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
             subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(Path(d) / 'p')],
                            capture_output=True, timeout=180, check=False)
             out = subprocess.run(['tesseract', str(Path(d) / 'p.png'), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
             return ''
-        return out.stdout.decode('utf-8', errors='replace')
+        text = out.stdout.decode('utf-8', errors='replace')
+        if not text.strip():
+            log(f'ocr page {page}: tesseract gave no text (rc={out.returncode}, png {(Path(d) / "p.png").exists()}): {out.stderr.decode("utf-8", errors="replace")[:160]}')
+        return text
 
 
 def pdf_text(data: bytes) -> str:

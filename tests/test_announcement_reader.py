@@ -2159,3 +2159,9 @@ def test_table_arithmetic_catches_a_misread_results_table():
     ok, failed = ar.table_arithmetic(bad)
     assert ok == 0 and len(failed) == 2
     assert ar.table_arithmetic('Revenue from operations 8,932 8,355\nProfit after tax 1,351 1,510\n') == (0, [])   # rows that cannot be checked are not failures
+
+
+def test_short_name_in_a_headline_is_replaced_whole_by_the_full_name():
+    doc = 'Mr. Rahul Jagdishbhai Adesara has resigned as Manager'
+    assert ar.full_person_name('Knack Packaging Rahul Adesara resigns as Manager', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns as Manager'
+    assert ar.full_person_name('Knack Packaging Adesara resigns', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns'

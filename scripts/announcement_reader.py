@@ -1379,7 +1379,9 @@ def full_person_name(text: str, doc: str, names=()) -> str:
         last = full.split()[-1]
         if full in text or len(full.split()) < 3 or last.lower() in company:
             continue
-        text = re.sub(rf'(?<![A-Za-z]){re.escape(last)}(?![A-Za-z])', full, text, count=1) if re.search(rf'(?<![A-Za-z]){re.escape(last)}(?![A-Za-z])', text) else text
+        first = re.escape(full.split()[0])
+        pat = rf'(?<![A-Za-z])(?:{first}\s+)?{re.escape(last)}(?![A-Za-z])'   # "Rahul Adesara" is replaced whole, not "Rahul " + the full name (Knack)
+        text = re.sub(pat, full, text, count=1) if re.search(pat, text) else text
     return text
 
 
