@@ -86,3 +86,9 @@ def test_a_prose_page_goes_to_the_reader_whose_words_the_others_share():
     docling = 'Registered Office Ideal Centre Kolkata disclosure under Regulation acquisition of equity shares of a listed entity'
     assert s.best_page_text(tess, paddle, docling) == paddle
     assert s.best_page_text(paddle, tess, docling) == paddle      # tesseract's own page stays unless another is clearly better
+
+
+def test_render_page_falls_back_to_pymupdf_when_pdftoppm_leaves_nothing(monkeypatch, tmp_path):
+    monkeypatch.setattr(s.subprocess, 'run', lambda *a, **k: None)       # pdftoppm "ran" and drew nothing
+    png = s.render_page(pdf(LONG), 1, tmp_path)
+    assert png is not None and png.exists() and png.stat().st_size > 1000

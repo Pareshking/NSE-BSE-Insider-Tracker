@@ -361,21 +361,42 @@ def _page_needs_ocr(text: str) -> bool:
     return bad >= 8 and bad >= 0.08 * max(1, len(toks))
 
 
+def render_page(data: bytes, page: int, out_dir: Path, dpi: int = 200) -> Path | None:
+    """The page as a PNG: pdftoppm first, PyMuPDF when pdftoppm leaves nothing (PARIN, 17 Oct: a 3.6 MB scan pdftoppm could not draw)."""
+    src = out_dir / 'f.pdf'
+    if not src.exists():
+        src.write_bytes(data)
+    png = out_dir / f'p{page}.png'
+    try:
+        subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(out_dir / f'p{page}')],
+                       capture_output=True, timeout=180, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if png.exists():
+        return png
+    try:
+        import pymupdf
+        with pymupdf.open(str(src)) as pdf:
+            pdf[page - 1].get_pixmap(dpi=dpi).save(str(png))
+    except Exception as exc:  # noqa: BLE001
+        log(f'render page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+    return png if png.exists() else None
+
+
 def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
     """Tesseract's text of one page (1-based); '' when tesseract is not installed or fails."""
     with tempfile.TemporaryDirectory() as d:
-        src = Path(d) / 'f.pdf'
-        src.write_bytes(data)
+        png = render_page(data, page, Path(d), dpi)
+        if png is None:
+            return ''
         try:
-            subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(Path(d) / 'p')],
-                           capture_output=True, timeout=180, check=False)
-            out = subprocess.run(['tesseract', str(Path(d) / 'p.png'), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
+            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
         except (OSError, subprocess.SubprocessError) as exc:
             log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
             return ''
         text = out.stdout.decode('utf-8', errors='replace')
         if not text.strip():
-            log(f'ocr page {page}: tesseract gave no text (rc={out.returncode}, png {(Path(d) / "p.png").exists()}): {out.stderr.decode("utf-8", errors="replace")[:160]}')
+            log(f'ocr page {page}: tesseract gave no text (rc={out.returncode}): {out.stderr.decode("utf-8", errors="replace")[:160]}')
         return text
 
 
@@ -422,11 +443,10 @@ def paddle_page(data: bytes, page: int, dpi: int = 200) -> str:
                                        text_recognition_model_name='PP-OCRv5_mobile_rec', use_doc_orientation_classify=False,
                                        use_doc_unwarping=False, use_textline_orientation=False)
         with tempfile.TemporaryDirectory() as d:
-            src = Path(d) / 'f.pdf'
-            src.write_bytes(data)
-            subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(Path(d) / 'p')],
-                           capture_output=True, timeout=180, check=False)
-            res = _PADDLE['ocr'].predict(str(Path(d) / 'p.png'))
+            png = render_page(data, page, Path(d), dpi)
+            if png is None:
+                return ''
+            res = _PADDLE['ocr'].predict(str(png))
         items = []
         for r in res:
             data_ = r if isinstance(r, dict) else getattr(r, 'json', {}) or {}
