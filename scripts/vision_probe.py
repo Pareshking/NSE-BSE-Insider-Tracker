@@ -197,7 +197,9 @@ def main() -> int:
     for line in list_models():
         print('MODELS', line, flush=True)
     ids = [ln.split('#')[0].strip() for ln in Path(sys.argv[1]).read_text().splitlines() if ln.split('#')[0].strip()]
-    models = [m.strip() for m in os.environ.get('VISION_MODELS', 'zai:glm-4.6v-flash,gemini:gemini-3.5-flash').split(',') if m.strip()]
+    if Path(sys.argv[1]).read_text().lstrip().startswith('# nomodel'):
+        os.environ['VISION_MODELS'] = ''   # pages only: draw and keep the images, call no model
+    models = [m.strip() for m in os.environ.get('VISION_MODELS', 'gemini:gemini-3.5-flash').split(',') if m.strip()]
     r2 = r2_client()
     rows = []
     for ex in ('nse', 'bse'):
