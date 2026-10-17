@@ -12,6 +12,7 @@ READER_VISION=1. Nothing here writes anywhere.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import subprocess
@@ -156,7 +157,8 @@ _NUM = re.compile(r'\d[\d,]*(?:\.\d+)?')
 def numbers_of(text) -> set[float]:
     """The figures a text states that matter: not a day, a month or a year (an integer up to 31, or 1990-2040 without a decimal)."""
     out = set()
-    for tok in _NUM.findall(str(text or '')):
+    text = re.sub(r'[+\-−]?\d[\d,]*(?:\.\d+)?\s*%', ' ', str(text or ''))   # a change in % is worked out by us from the table's columns, not read
+    for tok in _NUM.findall(text):
         try:
             v = float(tok.replace(',', ''))
         except ValueError:
@@ -185,7 +187,36 @@ def unsupported_numbers(text_res: dict, vision_res: dict) -> list[float]:
     return sorted(n for n in mine if not any(abs(n - t) <= 0.005 * max(abs(n), 1) for t in theirs))
 
 
-def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str] | None:
+def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemini) -> dict[float, str]:
+    """Ask the page images, claim by claim: is this figure printed on the pages? {figure: the printed words the model quotes} for those it
+    says are printed; the caller still checks each quote against the filing's text. Empty when no model answers."""
+    prompt = (f'These page images are one stock-exchange filing. A summary of it says: "{headline}". For each of these figures, say whether it is '
+              f'printed on the pages (exact digits; a rounded figure counts, a figure worked out by the reader does not) and copy the printed words '
+              f'around it exactly: {", ".join(f"{f:,.2f}".rstrip("0").rstrip(".") for f in figures)}. Answer only JSON: '
+              '{"checks": [{"figure": "...", "printed": true or false, "quote": "words copied exactly from the page"}]}.')
+    for entry in models():
+        model = entry.split(':', 1)[1]
+        if COOL.get(model, 0) > time.monotonic():
+            continue
+        try:
+            text, _ = ask(model, prompt, imgs)
+        except (RuntimeError, requests.RequestException):
+            continue
+        m = re.search(r'\{.*\}', text or '', re.S)
+        try:
+            checks = json.loads(m.group(0)).get('checks', []) if m else []
+        except ValueError:
+            checks = []
+        out = {}
+        for c in checks:
+            if isinstance(c, dict) and c.get('printed') is True and c.get('quote'):
+                for n in numbers_of(c.get('figure')):
+                    out[n] = str(c['quote'])
+        return out
+    return {}
+
+
+def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str, dict] | None:
     """(answer, model, seconds, usage, pages note) from the first model that answers; None when the PDF has no pages to draw or
     no model answers. `prompt_for(note)` builds the reader's prompt with the note in place of the document text."""
     pages = pages_of(data)
@@ -208,5 +239,5 @@ def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, floa
             # a model that is out of quota or overloaded rests, so the next filings go straight to the next model
             COOL[model] = time.monotonic() + (1800 if '429' in str(exc) else 300)
             continue
-        return text, model, round(time.monotonic() - t0, 1), usage, note
+        return text, model, round(time.monotonic() - t0, 1), usage, note, imgs
     return None

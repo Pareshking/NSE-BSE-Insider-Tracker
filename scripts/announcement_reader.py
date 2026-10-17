@@ -2189,9 +2189,14 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
     if not got:
         log(row.get('symbol'), 'vision: no page could be drawn or no model answered')
         return res
-    text, model, secs, usage, note = got
+    text, model, secs, usage, note, imgs = got
     vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
     clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
+    if clash and (res.get('headline') or {}).get('from_table'):
+        clash = []       # a headline we built from verified table rows (and checked by the table's own arithmetic) is not read twice
+    if clash:        # not stated by the image read: ask the page, figure by figure, and keep only what a quote from the filing's text backs
+        printed = vision.verify_figures(str((res.get('headline') or {}).get('text')), clash, imgs)
+        clash = [n for n in clash if not (n in printed and s.quote_found(printed[n], doc))]
     if clash:   # the owner's rule: two independent readings must agree on the figures, or the card does not go on
         log(row.get('symbol'), f'vision: the readers disagree on {clash[:4]}; the text headline is held')
         h = dict(res['headline'])
