@@ -23,7 +23,8 @@ import requests
 
 MAX_PAGES = int(os.environ.get('VISION_MAX_PAGES', '8'))
 DPI = int(os.environ.get('VISION_DPI', '130'))
-DEFAULT_MODELS = 'gemini:gemini-3.5-flash,gemini:gemini-3.1-flash-lite,gemini:gemini-3.5-flash-lite'
+DEFAULT_MODELS = ('gemini:gemini-3.5-flash,gemini:gemini-3.6-flash,gemini:gemini-3.7-flash,gemini:gemini-3.8-flash,'   # ids checked against the key's model list, 17 Oct
+                  'gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite')
 API = 'https://generativelanguage.googleapis.com/v1beta'
 
 KEY_TERMS = re.compile(r'\b(?:shares?|warrants?|%|per\s*cent|rs\.?|inr|₹|crore|cr\.?|lakh|million|revenue|sales|profit|income|rating|'
