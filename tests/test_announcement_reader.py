@@ -2249,3 +2249,15 @@ def test_history_window_is_overnight_ist():
     assert not ar.in_history_window(utc(3, 30))   # 09:00 IST
     assert not ar.in_history_window(utc(10, 0))   # 15:30 IST
     assert not ar.in_history_window(utc(16, 59))  # 22:29 IST
+
+
+def test_xbrl_context_line_for_prompt():
+    import pandas as pd
+    rows = []
+    for end, rev, prof, at in (('2025-06-30', 8e9, 1e9, '2025-08-01'), ('2026-06-30', 1e10, 1.31e9, '2026-08-01')):
+        rows.append({'isin': 'INE1', 'period_end': end, 'consolidated': 'Consolidated', 'quarter_revenue': rev,
+                     'quarter_total_income': rev, 'quarter_profit': prof, 'broadcast_at': at})
+    lines = ar.xbrl_context_lines(pd.DataFrame(rows), 'INE1', '2026-10-17')
+    assert len(lines) == 1 and 'Q1 FY27' in lines[0] and 'sales +25%' in lines[0] and 'profit +31%' in lines[0]
+    assert ar.xbrl_context_lines(pd.DataFrame(rows), 'INE9', '2026-10-17') == []
+    assert ar.xbrl_context_lines(None, 'INE1', '2026-10-17') == []

@@ -200,5 +200,5 @@ jobs:
           if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=false -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=false -f chain=true -f max=300 -f minutes=40 -f vision=true -f paddle=true -f docling=false
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"

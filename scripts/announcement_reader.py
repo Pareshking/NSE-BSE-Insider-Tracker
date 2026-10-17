@@ -2680,6 +2680,13 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
         return candidates
     out = candidates.copy()
     cache, contexts = {}, []
+    results = None
+    try:   # our own XBRL results history: the company's earlier quarters, as verified context for results cards
+        import io as _io
+        body = get(r2, 'clean/current/results.parquet')
+        results = pd.read_parquet(_io.BytesIO(body)) if body else None
+    except Exception as exc:  # noqa: BLE001 -- context is optional
+        log(f'XBRL results history not loaded for prompt context: {type(exc).__name__}')
     for row in out.to_dict('records'):
         isin = str(row.get('isin') or '').strip()
         memory = {}
@@ -2698,9 +2705,29 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
             summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
             if summary:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
+        lines = xbrl_context_lines(results, isin, row.get('broadcast_at') or current_date) + lines
         contexts.append('\n'.join(lines))
     out['_company_memory'] = contexts
     return out
+
+
+def xbrl_context_lines(results, isin, as_of) -> list[str]:
+    """The company's previous quarter from its exchange XBRL (verified table, not a model): one context line the card may use for a
+    clause such as "third quarter of profit growth". Numbers here are context only; every figure on the card still comes from the filing."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from insiders_clean import context
+        lq = context.last_quarter(results, isin, as_of) if isin else None
+    except Exception:  # noqa: BLE001
+        return []
+    if not lq or not lq.get('quarter'):
+        return []
+    bits = [f"sales {lq['revenue'] / 1e7:,.0f} Cr" if lq.get('revenue') else None,
+            f"profit {lq['profit'] / 1e7:,.0f} Cr" if lq.get('profit') is not None else None,
+            f"sales {lq['revenue_yoy']:+.0f}% on the year before" if lq.get('revenue_yoy') is not None else None,
+            f"profit {lq['profit_yoy']:+.0f}% on the year before" if lq.get('profit_yoy') is not None else None]
+    return [f"- exchange XBRL, {lq['quarter']} ({lq['basis']}, period ended {lq['period_end']}): " + ', '.join(b for b in bits if b)
+            + ' (context only: never a claim of the current filing)']
 
 
 # --- cards held after review ------------------------------------------------------------------------------
