@@ -72,3 +72,15 @@ def test_vision_repair_is_off_unless_enabled_and_keeps_text_when_not_better(monk
     monkeypatch.setattr(v, 'vision_text', lambda *a, **k: None)
     assert r.vision_repair(row, 'doc', b'%PDF', held) is held
     assert r.vision_repair(row, 'doc', None, held) is held
+
+
+def test_vision_repair_fetches_the_pdf_when_the_text_came_from_cache(monkeypatch):
+    held = {'ok': True, 'headline': {'shown': False}, 'fields': [], 'metrics': []}
+    row = {'symbol': 'X', 'exchange': 'NSE', 'subject': 's', 'file_url': 'http://x/f.pdf'}
+    monkeypatch.setenv('READER_VISION', '1')
+    monkeypatch.setenv('GEMINI_API_KEY', 'k')
+    seen = []
+    monkeypatch.setattr(v, 'vision_text', lambda prompt_for, data, **k: seen.append(data) or None)
+    assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'%PDF-1.4 x') is held
+    assert seen == [b'%PDF-1.4 x']
+    assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'PK zip') is held and len(seen) == 1

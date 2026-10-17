@@ -2066,13 +2066,19 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
     return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
 
 
-def vision_repair(row: dict, doc: str, data: bytes | None, res: dict) -> dict:
+def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.download) -> dict:
     """The text read `res` made no safe card (needs_vision): read the PDF's pages as images and run the answer through the same
     checks; the vision result replaces the text result only if it is better. Always returns a result; `res` when nothing improves."""
     why = vision.needs_vision(res)
     if not why or not vision.enabled():
         return res
-    if not data:
+    if not data:   # the text came from the text cache or an XBRL attachment: fetch the PDF itself
+        try:
+            data = fetch(row['file_url'])
+        except Exception as exc:  # noqa: BLE001
+            log(row.get('symbol'), f'vision: wanted ({why}) but the PDF could not be downloaded: {type(exc).__name__}')
+            return res
+    if data[:4] != b'%PDF':
         log(row.get('symbol'), f'vision: wanted ({why}) but the filing is not a PDF')
         return res
     if text_is_garbled(doc):
