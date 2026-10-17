@@ -28,64 +28,8 @@ from r2_writer import r2_client  # noqa: E402
 from clean_writer import get  # noqa: E402
 from insiders_clean import filing_text, context  # noqa: E402
 
-SECTION = 13_000
-TOPICS = 'guidance or outlook, demand, deal wins or order book, margins, headcount or attrition, pricing, capital allocation, risks'
-
-
-def fact_prompt(company: str, date: str, section: str, k: int, n: int) -> str:
-    return (f'This is part {k} of {n} of the transcript of {company}\'s earnings conference call, filed {date}. Extract up to 8 statements MADE BY '
-            f'THE COMPANY\'S MANAGEMENT that an investor will want to remember when the next quarter\'s results come out: {TOPICS}. '
-            'A question from an analyst is not a fact. Return only JSON: {"facts": [{"topic": one of guidance, demand, deals, margins, people, '
-            'pricing, capital, risk; "statement": one plain sentence of at most 200 characters that repeats only numbers found in the quote; '
-            '"speaker": the manager\'s name as the transcript gives it, or null; "quote": the exact words of the transcript, at most 300 '
-            'characters, copied character for character}]}. Leave a statement out rather than paraphrase a number.\n\n=== TRANSCRIPT ===\n' + section)
-
-
-def sections(text: str) -> list[str]:
-    out, i = [], 0
-    while i < len(text):
-        j = min(len(text), i + SECTION)
-        if j < len(text):   # end at a sentence
-            k = text.rfind('. ', i + SECTION // 2, j)
-            j = k + 1 if k > 0 else j
-        out.append(text[i:j])
-        i = j
-    return out
-
-
-def digits(t: str) -> set[str]:
-    return {x.replace(',', '') for x in re.findall(r'\d[\d,]*(?:\.\d+)?', t or '')}
-
-
-def verified_facts(lanes, company: str, date: str, doc: str, out: list[str]) -> list[dict]:
-    parts = sections(doc)
-    kept, dropped = [], {'quote not in transcript': 0, 'number not in quote': 0, 'no answer': 0}
-    for k, part in enumerate(parts, 1):
-        raw = None
-        for lane in lanes.values():
-            try:
-                text, used, secs = lane.read(fact_prompt(company, date, part, k, len(parts)))
-                raw = s.parse_json(text)
-                if isinstance(raw, dict):
-                    out.append(f'- section {k}/{len(parts)} read by {used} in {secs:.0f}s')
-                    break
-            except Exception as exc:  # noqa: BLE001
-                out.append(f'- section {k}: {type(exc).__name__}: {str(exc)[:120]}')
-        if not isinstance(raw, dict):
-            dropped['no answer'] += 1
-            continue
-        for f in raw.get('facts') or []:
-            if not isinstance(f, dict) or not f.get('quote') or not f.get('statement'):
-                continue
-            if not s.quote_found(f['quote'], doc):
-                dropped['quote not in transcript'] += 1
-                continue
-            if not digits(f['statement']) <= digits(f['quote']):
-                dropped['number not in quote'] += 1
-                continue
-            kept.append({k2: f.get(k2) for k2 in ('topic', 'statement', 'speaker', 'quote')})
-    out.append(f'- facts kept {len(kept)}; dropped {dropped}')
-    return kept
+import management_said as ms  # noqa: E402
+from insiders_clean import said as said_rules  # noqa: E402
 
 
 def card_lines(res: dict) -> list[str]:
@@ -130,7 +74,9 @@ def main() -> int:
     lanes = {n: ln for n, ln in lanes.items() if ln.entries}
     pday, ptext, _ = cached[prior_id]
     out += ['### 1. Management\'s own words from the prior call, checked against the transcript', '']
-    facts = verified_facts(lanes, company, pday, ptext, out)
+    facts, counts = ms.verified_facts(lanes, company, pday, ptext)
+    out.append(f'- {len(facts)} facts kept; {counts}')
+    facts = ms.choose(facts)
     out.append('')
     for f in facts:
         out.append(f'- **{f["topic"]}**: {f["statement"]}' + (f' ({f["speaker"]})' if f.get('speaker') else ''))
@@ -155,10 +101,17 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 res = {'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:150]}'}
         out += [f'**{label}**', ''] + card_lines(res) + ['']
-    out += ['### 3. "Management said last quarter" block for the page (built by code, from the verified facts only)', '']
-    pick = [f for f in facts if f['topic'] in ('guidance', 'margins', 'demand', 'deals')][:5]
-    for f in pick:
-        out.append(f'- {f["statement"]} — {f.get("speaker") or "management"}, call of {pday}. Source: {meta[prior_id].get("file_url")}')
+    out += ['### 3. Paired: what management said on the last call beside what this quarter\'s results show (built by code from the verified facts)', '']
+    metrics = [m for m in (res.get('metrics') or []) if m.get('shown')] if res else []
+    for it in said_rules.pick({'calls': [{'filed': pday, 'call_date': ms.call_date(ptext, pday), 'source_url': meta[prior_id].get('file_url'), 'facts': facts}]},
+                              rday, 4, metrics):
+        out.append(f'- **Said** ({it["call_date"]}, {it["speaker"] or "management"}): {it["statement"]}')
+        out.append(f'  > "{it["quote"]}"')
+        if it['metric']:
+            m = it['metric']
+            out.append(f'  **This quarter:** {m.get("label")} [{m.get("period")}] = {m.get("value")} {m.get("unit")}')
+        else:
+            out.append('  (no figure of this filing answers it; shown as said, not judged)')
     text = '\n'.join(out)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
