@@ -194,7 +194,11 @@ def main() -> int:
     else:
         since = datetime.now(timezone.utc) - timedelta(hours=HOURS)
         df = df[df['_t'] >= since].sort_values('_t')
-        print(f'## Card audit: {len(df)} filings read in the last {HOURS:g} hours\n')
+        names = [x.strip().lower() for x in os.environ.get('COMPANIES', '').split(',') if x.strip()]
+        if names:   # only these companies (symbol or company name contains one of the words), the newest read of each filing
+            hay = (df['symbol'].astype(str) + ' ' + df['company'].astype(str)).str.lower()
+            df = df[hay.apply(lambda h: any(n in h for n in names))].drop_duplicates('event_id', keep='last')
+        print(f'## Card audit: {len(df)} filings read in the last {HOURS:g} hours' + (f' for {", ".join(names)}' if names else '') + '\n')
     flagged = 0
     text_cache = TextCache(r2)
     for r in df.to_dict('records'):
