@@ -206,7 +206,7 @@ def main() -> int:
             text = run(png, one)
             err = ''
         except Exception as exc:  # noqa: BLE001 -- an engine that fails is a result
-            text, err = '', f'{type(exc).__name__}: {str(exc)[:200]}'
+            text, err = '', f'{type(exc).__name__}: {str(exc)[:700]}'
             tot['failed'] += 1
         secs = time.monotonic() - t0
         (OUT_DIR / f'{eid.replace(":", "_")}_{ENGINE}.txt').write_text(text or err)

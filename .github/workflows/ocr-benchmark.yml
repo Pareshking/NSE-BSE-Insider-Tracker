@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [paddle, paddle_structure, marker]
+        engine: [paddle, marker]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,9 +30,17 @@ jobs:
           case "${{ matrix.engine }}" in
             paddle|paddle_structure) pip install paddlepaddle "paddleocr[all]" ;;
             docling) pip install docling ;;
-            marker) pip install marker-pdf && brew install llama.cpp ;;
+            marker)
+              pip install marker-pdf
+              mkdir -p "$HOME/llama" && cd "$HOME/llama"
+              gh release download --repo ggml-org/llama.cpp --pattern '*ubuntu-x64*.zip' --pattern '*ubuntu-x64*.tar.gz'
+              for z in *.zip; do unzip -qo "$z"; done; for z in *.tar.gz; do tar xzf "$z"; done
+              echo "LLAMA_DIR=$(dirname "$(find "$HOME/llama" -name llama-server | head -1)")" >> "$GITHUB_ENV"
+              ;;
           esac
         continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Benchmark
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -40,10 +48,11 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           ENGINE: ${{ matrix.engine }}
+          PATH_EXTRA: ${{ env.LLAMA_DIR }}
           FLAGS_use_mkldnn: '0'
           FLAGS_enable_pir_api: '0'
           OUT_DIR: ocr_out
-        run: python -u scripts/ocr_benchmark.py
+        run: PATH="${LLAMA_DIR:-/usr/bin}:$PATH" python -u scripts/ocr_benchmark.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
