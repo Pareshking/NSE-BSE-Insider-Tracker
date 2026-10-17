@@ -400,6 +400,67 @@ def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
         return text
 
 
+# --- accounting check on a results table (used by the reader's validators and by the text step) ----------------------
+
+_AMT = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])-?\d[\d,]*(?:\.\d+)?(?![\w])')
+_ROWS = {'revenue': re.compile(r'^\W*(?:[IVX\d]+\W+)?(?:revenue\s+from\s+operations|income\s+from\s+operations|net\s+sales)', re.IGNORECASE),
+         'other': re.compile(r'^\W*(?:[IVX\d]+\W+)?other\s+income', re.IGNORECASE),
+         'total_income': re.compile(r'^\W*(?:[IVX\d]+\W+)?total\s+income', re.IGNORECASE),
+         'pbt': re.compile(r'^\W*(?:[IVX\d]+\W+)?profit\s*(?:/\s*\(?loss\)?)?\s*before\s+tax', re.IGNORECASE),
+         'tax': re.compile(r'^\W*(?:[IVX\d]+\W+)?total\s+tax\s+expense|^\W*(?:[IVX\d]+\W+)?tax\s+expenses?\b(?!\s*[:/(]?\s*(?:\(?credit|:))', re.IGNORECASE),
+         'pat': re.compile(r'^\W*(?:[IVX\d]+\W+)?(?:net\s+)?profit\s*(?:/\s*\(?loss\)?)?\s*(?:after\s+tax|for\s+the\s+(?:period|quarter|year))', re.IGNORECASE)}
+
+
+def _first_amount(line: str, start: int = 0):
+    """The first amount after the row's label (the current quarter's column); negative when in brackets."""
+    tail = re.sub(r'\([^()]*[+\-–−][^()]*\)', lambda m: ' ' * len(m.group(0)), line[start:])   # "(1+2)", "(IX-X)": a row's formula, not an amount
+    m = _AMT.search(tail)
+    if not m:
+        return None
+    tok = m.group(0)
+    try:
+        v = float(re.sub(r'[^\d.]', '', tok))
+    except ValueError:
+        return None
+    return -v if tok.startswith('(') or tok.startswith('-') else v
+
+
+def table_arithmetic(doc) -> tuple[int, list[str]]:
+    """Accounting checks on a results table, whatever read it (text layer, OCR, image): revenue + other income = total income, and profit
+    before tax - tax = profit after tax, on the first (current quarter) column. (checks that held, descriptions of those that failed).
+    A check is made only when every row it needs is found; nothing is corrected, a failure means the table was misread or misaligned."""
+    lines = [ln for ln in str(doc).splitlines() if ln.strip()]
+    kinds = []
+    for i, ln in enumerate(lines):
+        for k, rx in _ROWS.items():
+            hit = rx.search(ln)
+            if hit and _first_amount(ln, hit.end()) is not None:
+                kinds.append((i, k, _first_amount(ln, hit.end()), ln.strip()[:60]))
+                break
+    ok, bad = 0, []
+
+    def near(i, kind, back):
+        hits = [t for t in kinds if t[1] == kind and 0 < i - t[0] <= back]
+        return hits[-1] if hits else None
+    for i, k, v, ln in kinds:
+        if k == 'total_income':
+            rev, oth = near(i, 'revenue', 8), near(i, 'other', 8)
+            if rev and oth:
+                if abs(rev[2] + oth[2] - v) <= max(0.015, 0.002 * abs(v)):
+                    ok += 1
+                else:
+                    bad.append(f'revenue {rev[2]:,} + other income {oth[2]:,} is not total income {v:,}')
+        if k == 'pat':
+            pbt = near(i, 'pbt', 40)
+            tax = near(i, 'tax', 40) if pbt else None
+            if pbt and tax and tax[0] > pbt[0]:
+                if abs(pbt[2] - tax[2] - v) <= max(0.015, 0.002 * abs(v)):
+                    ok += 1
+                else:
+                    bad.append(f'profit before tax {pbt[2]:,} - tax {tax[2]:,} is not profit {v:,}')
+    return ok, bad
+
+
 _DOCLING = {}
 
 
@@ -526,6 +587,15 @@ def pdf_text(data: bytes) -> str:
                 elif len(re.sub(r'\s', '', pages[i - 1])) < 80:
                     OCR_LAST[1].append(i)
         OCR_LAST[1].extend(need[OCR_MAX_PAGES:])
+        for i, t in enumerate(pages, 1):      # a text layer whose table does not add up (an old OCR layer: Bajaj Healthcare 17,679.40 for 17,779.40): read the page again
+            if i in OCR_LAST[0] or i > 40 or table_arithmetic(t)[0] >= 1 or not table_arithmetic(t)[1]:
+                continue
+            for cand in [ocr_page(data, i)] + ([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else []):
+                ok, bad = table_arithmetic(cand)
+                if ok >= 1 and not bad:
+                    pages[i - 1] = cand
+                    OCR_LAST[0].append(i)
+                    break
         text = '\f'.join(pages)
         if text.strip():
             return text

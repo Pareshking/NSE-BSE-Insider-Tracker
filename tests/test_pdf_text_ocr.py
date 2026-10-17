@@ -92,3 +92,13 @@ def test_render_page_falls_back_to_pymupdf_when_pdftoppm_leaves_nothing(monkeypa
     monkeypatch.setattr(s.subprocess, 'run', lambda *a, **k: None)       # pdftoppm "ran" and drew nothing
     png = s.render_page(pdf(LONG), 1, tmp_path)
     assert png is not None and png.exists() and png.stat().st_size > 1000
+
+
+def test_a_page_whose_table_does_not_add_up_is_read_again(monkeypatch):
+    bad = ('1. Revenue from operations 17,690.16 16,663.17\\n. Other income 89.24 81.14\\n. Total income (I+II) 17,679.40 16,644.31\\n' * 1).replace('\\n', '\n')
+    good = bad.replace('17,679.40', '17,779.40').replace('16,644.31', '16,744.31')
+    monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: good)
+    text = s.pdf_text(pdf(bad * 3))
+    assert '17,779.40' in text and s.ocr_last()[0] == [1]
+    monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: bad)
+    assert '17,679.40' in s.pdf_text(pdf(bad * 3)) and s.ocr_last()[0] == []        # no reader fixed it: the page stays, the reader holds the headline
