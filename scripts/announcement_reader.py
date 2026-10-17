@@ -940,7 +940,7 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
             r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
         reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
-    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc)
+    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc)
     if why:
         reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
@@ -949,6 +949,22 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
 
 OVERSTATE = re.compile(r'\b(clear(?:ed|s)|exonerat\w*|absolv\w*|acquit\w*|vindicat\w*|quash\w*|waiv\w*)\b', re.IGNORECASE)
 PAYER_NIL = re.compile(r'(?:monetary\s+)?outflow[^.\n]{0,40}\bnil\b|paid\s+(?:entirely\s+)?by|borne\s+by|under\s+(?:an?\s+)?(?:2015\s+)?indemnit|indemnif', re.IGNORECASE)
+
+
+_ALLOT_ITEM = re.compile(r'allot(?:ment|ted)\s+of\s+([\d,]{3,})', re.IGNORECASE)
+
+
+def multi_item_reason(text, doc) -> str | None:
+    """A filing that lists several allotments (Federal Bank: 7,100 + 90,869 + 1,985 equity shares under three schemes) and a headline that
+    gives one of them as if it were the whole: the headline must give the total, or none of the figures."""
+    items = {v.replace(',', '') for v in _ALLOT_ITEM.findall(str(doc))}
+    if len(items) < 2:
+        return None
+    said = {n.replace(',', '') for n in re.findall(r'\d[\d,]*', str(text or ''))}
+    total = str(sum(int(i) for i in items if i.isdigit()))
+    if len(said & items) == 1 and total not in said:
+        return f'the filing lists {len(items)} allotments and the headline gives one of them, not the total'
+    return None
 
 
 def overstatement_reason(text, quote) -> str | None:
@@ -1382,6 +1398,7 @@ def results_headline(metrics, names=(), doc='') -> dict | None:
     period = quarter_label(doc) or period
     body = '; '.join(part(m, w) for m, w in ((rev, 'revenue'), (pat, 'profit after tax')) if m)
     basis = next((b for m in (rev, pat) if m for b in ('consolidated', 'standalone') if re.search(b, str(m.get('label')), re.IGNORECASE)), '')
+    basis = basis or next((b for m in (rev, pat) if m and m.get('quote') for b in [basis_near(doc, m.get('quote'))] if b), '')   # the heading above the table
     if basis:
         body = f'{basis} ' + body
     quotes = ' ... '.join(str(m.get('quote')) for m in (rev, pat) if m and m.get('quote'))
@@ -1491,11 +1508,17 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                      or not re.search(r'\d', shown_text)):
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
     if isinstance(headline, dict) and headline.get('shown'):
+        headline['text'] = re.sub(r'(\d[\d.]*\s?%\s*(?:YoY|QoQ))\s+to\s+(\d[\d.]*\s?%\s*(?:YoY|QoQ))', r'\1 and \2', str(headline['text']))   # Steel Exchange: "up 45% YoY to 25% QoQ"
         headline['text'] = fiscal_label(headline['text'], doc)
     if str(out.get('category') or '').startswith('rating_') and not (isinstance(headline, dict) and headline.get('shown')
                                                                     and FACILITY_CHANGE_SAID.search(str(headline.get('text')))):
         fc = facility_change_headline(doc, names)
-        if fc:
+        multi = len(FACILITY_CHANGE.findall(str(doc))) > 1          # Kernex: two of three facilities were enhanced; one of them is not the story
+        said_action = isinstance(headline, dict) and headline.get('shown') and re.search(r'upgrad|downgrad|reaffirm|assign|withdr', str(headline.get('text')), re.IGNORECASE)
+        if fc and said_action:              # the rating action leads; the size change rides as the subtitle when the filing has one change only
+            if not multi and not headline.get('subtitle'):
+                headline = {**headline, 'subtitle': {k: fc[k] for k in ('text', 'quote', 'evidence', 'shown', 'reason')}}
+        elif fc and not multi:
             headline = fc
     headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
     if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') in ('stake_change', 'pledge'):

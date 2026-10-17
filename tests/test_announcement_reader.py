@@ -2117,3 +2117,19 @@ def test_overstatement_payer_and_capital_guards():
     assert not payer_reason('SEPC disputes settled for Rs 149.5 Crore, paid by indemnifier, nil outflow', doc)
     assert value_is_capital('1,90,87,31,370', 'Paid up Equity Share Capital being Rs. 1,90,87,31,370/-')
     assert not value_is_capital('500', 'order worth Rs. 500 Crore')
+
+
+def test_results_headline_names_the_basis_from_the_heading_above_the_table():
+    doc = ('Q2 FY27 Standalone Results Highlights\nParticulars Q2 FY27 Q1 FY27 Q2 FY26\nTotal Income 38,814 37,557 34,091\n'
+           'Profit after Tax (PAT) 707 1,098 793\nQ2 FY27 Consolidated Results Highlights\nTotal Income 45,231 44,760 42,640\nPAT 353 908 1,386\n')
+    assert ar.basis_near(doc, 'Total Income 38,814 37,557 34,091') == 'standalone'
+    assert ar.basis_near(doc, 'Total Income 45,231 44,760 42,640') == 'consolidated'
+
+
+def test_multi_item_headline_and_garbled_growth_words():
+    doc = ('Allotment of 7,100 (Seven Thousand) Equity Shares under ESOS 2010. Allotment of 90,869 Equity Shares under ESOS 2017. '
+           'Allotment of 1,985 Equity Shares under ESIS 2023.')
+    assert ar.multi_item_reason('7,100 equity shares allotted under ESOS 2010 Scheme', doc)
+    assert ar.multi_item_reason('99,954 equity shares allotted under three schemes', doc) is None
+    assert ar.multi_item_reason('Equity shares allotted under stock option schemes', doc) is None
+    assert ar.multi_item_reason('7,100 equity shares allotted', 'Allotment of 7,100 Equity Shares') is None

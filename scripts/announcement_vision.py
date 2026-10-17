@@ -34,6 +34,9 @@ BOILER = re.compile(r'yours\s+faithfully|thanking\s+you|for\s+and\s+on\s+behalf|
 NUMBER = re.compile(r'\d[\d,]*(?:\.\d+)?')
 
 
+COOL: dict[str, float] = {}   # model -> time (monotonic) it may be tried again
+
+
 def models() -> list[str]:
     return [m.strip() for m in os.environ.get('READER_VISION_MODELS', DEFAULT_MODELS).split(',') if m.strip().startswith('gemini:')]
 
@@ -160,10 +163,15 @@ def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, floa
             f'copy every quote and number exactly as printed.' + (f' Not sent: {"; ".join(left)}.' if left else '') + ')')
     for entry in models():
         model = entry.split(':', 1)[1]
+        if COOL.get(model, 0) > time.monotonic():
+            continue
         t0 = time.monotonic()
         try:
             text, usage = ask(model, prompt_for(note), imgs)
-        except (RuntimeError, requests.RequestException):
+        except (RuntimeError, requests.RequestException) as exc:
+            print(f'vision: {model} did not answer: {str(exc)[:160]}', flush=True)
+            # a model that is out of quota or overloaded rests, so the next filings go straight to the next model
+            COOL[model] = time.monotonic() + (1800 if '429' in str(exc) else 300)
             continue
         return text, model, round(time.monotonic() - t0, 1), usage, note
     return None
