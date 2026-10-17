@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [marker]
+        engine: [tesseract, docling, paddle, paddle_mobile, paddle_structure, paddle_structure_lite]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,7 +28,7 @@ jobs:
       - name: Install the engine
         run: |
           case "${{ matrix.engine }}" in
-            paddle|paddle_mobile|paddle_structure) pip install paddlepaddle "paddleocr[all]" ;;
+            paddle|paddle_mobile|paddle_structure|paddle_structure_lite) pip install paddlepaddle "paddleocr[all]" ;;
             docling) pip install docling ;;
             marker)
               pip install marker-pdf
