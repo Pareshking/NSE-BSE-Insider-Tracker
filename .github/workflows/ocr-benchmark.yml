@@ -1,0 +1,49 @@
+name: OCR benchmark (tesseract / PaddleOCR / Docling / Marker)
+
+# Read-only (17 Oct 2026, owner's request): the same filing pages, each engine scored on cells read off the page images.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/ocr_benchmark.py'
+      - '.github/workflows/ocr-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [tesseract, paddle, paddle_structure, docling, marker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+      - name: Install the engine
+        run: |
+          case "${{ matrix.engine }}" in
+            paddle|paddle_structure) pip install paddlepaddle "paddleocr[all]" ;;
+            docling) pip install docling ;;
+            marker) pip install marker-pdf ;;
+          esac
+        continue-on-error: true
+      - name: Benchmark
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          ENGINE: ${{ matrix.engine }}
+          OUT_DIR: ocr_out
+        run: python -u scripts/ocr_benchmark.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocr-${{ matrix.engine }}
+          path: ocr_out
