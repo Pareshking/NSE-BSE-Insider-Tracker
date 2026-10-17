@@ -379,6 +379,41 @@ def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
         return text
 
 
+_DOCLING = {}
+
+
+def docling_enabled() -> bool:
+    return os.environ.get('READER_DOCLING', '0') == '1'
+
+
+def docling_page(data: bytes, page: int) -> str:
+    """Docling's markdown of one page (tables as '|' rows); '' when Docling is not installed or fails. 17 Oct benchmark on 6 filing pages
+    read by eye: Docling 63 of 68 figures against tesseract's 51 (the ixigo results scan: 21 of 24 against 9), about 20 s a page on a CPU."""
+    try:
+        import pymupdf
+        from docling.document_converter import DocumentConverter
+        if 'c' not in _DOCLING:
+            _DOCLING['c'] = DocumentConverter()
+        with tempfile.TemporaryDirectory() as d, pymupdf.open(stream=data, filetype='pdf') as a, pymupdf.open() as b:
+            b.insert_pdf(a, from_page=page - 1, to_page=page - 1)
+            one = Path(d) / 'one.pdf'
+            b.save(str(one))
+            return _DOCLING['c'].convert(str(one)).document.export_to_markdown()
+    except Exception as exc:  # noqa: BLE001 -- Docling failing leaves tesseract's text
+        log(f'docling page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+        return ''
+
+
+_FIGURE = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])\d[\d,]*\.\d+(?![\w])|(?<![\w.])\d{1,3}(?:,\d{2,3})+(?![\w])')
+
+
+def better_table_text(ocr: str, docling: str) -> str:
+    """Docling's page when it reads clearly more figures than tesseract did (a figure: a decimal, a comma-grouped number or a bracketed
+    one), else tesseract's."""
+    n_ocr, n_doc = len(_FIGURE.findall(ocr)), len(_FIGURE.findall(docling))
+    return docling if n_doc >= n_ocr + 3 and n_doc >= 1.2 * n_ocr else ocr
+
+
 def pdf_text(data: bytes) -> str:
     """PyMuPDF's text in reading order (get_text(sort=True): no layout padding, rows kept together; owner's choice 17 Oct 2026, tested
     against pdftotext -layout on 13 table rows: equal on rows, shorter text). A page with no text layer or a mangled one is OCR'd with
@@ -395,6 +430,8 @@ def pdf_text(data: bytes) -> str:
         todo = need[:OCR_MAX_PAGES]
         with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
             for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
+                if docling_enabled() and len(_FIGURE.findall(got)) >= 8:   # a scanned page of figures: the stronger table reader reads it too
+                    got = better_table_text(got, docling_page(data, i))
                 if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
                     pages[i - 1] = got
                     OCR_LAST[0].append(i)

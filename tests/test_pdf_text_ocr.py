@@ -49,3 +49,23 @@ def test_one_graphic_page_among_text_pages_does_not_drop_the_filing(monkeypatch)
     monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: '')
     text, notes = s.text_of(pdf(*([LONG] * 5 + [''] + [LONG] * 4)))
     assert any(n.startswith('graphic pages without text: 6') for n in notes) and not any(n.startswith('pages without text') for n in notes)
+
+
+def test_docling_is_used_only_when_it_reads_clearly_more_figures(monkeypatch):
+    ocr = 'Total income 343.04 385.90 289.40 ni7o[ aato] G96'
+    doc = '| Total income | 343.04 | 385.90 | 289.40 | 728.94 | 612.41 | 1,275.35 |\n| Profit | 71.70 | 44.16 | (3.96) | 115.86 | 22.37 | 88.54 |'
+    assert s.better_table_text(ocr, doc) == doc
+    assert s.better_table_text(doc, ocr) == doc            # tesseract's page was already the fuller one
+    assert s.better_table_text('a 1.50 2.50', 'a 1.50 2.50 3.50') == 'a 1.50 2.50'   # one figure more is not clearly more
+
+
+def test_docling_page_is_not_called_unless_enabled(monkeypatch):
+    called = []
+    monkeypatch.setattr(s, 'ocr_page', lambda *a, **k: 'Total income 343.04 385.90 289.40 728.94 612.41 1,275.35 71.70 44.16 (3.96) 115.86 ' * 2)
+    monkeypatch.setattr(s, 'docling_page', lambda *a, **k: called.append(1) or '')
+    monkeypatch.delenv('READER_DOCLING', raising=False)
+    s.pdf_text(pdf(LONG, ''))
+    assert not called
+    monkeypatch.setenv('READER_DOCLING', '1')
+    s.pdf_text(pdf(LONG, ''))
+    assert called

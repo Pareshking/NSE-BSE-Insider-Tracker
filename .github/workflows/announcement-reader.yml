@@ -47,6 +47,11 @@ on:
         required: true
         type: boolean
         default: false
+      docling:
+        description: 'Scanned pages of figures are also read with Docling (slower, about 20 s a page; better on tables)'
+        required: true
+        type: boolean
+        default: false
       replay:
         description: 'Engineering loop: file of event_ids in the repo (scripts/golden_set.txt); read exactly these filings again, save nothing'
         required: false
@@ -126,7 +131,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - if: steps.changed.outputs.go == '1'
-        run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+        run: |
+          pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+          if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
       - name: Guard experimental prompt
         if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
         run: |
@@ -143,6 +150,7 @@ jobs:
           READER_HISTORY: ${{ inputs.history == true && '1' || '0' }}
           READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
           READER_VISION: ${{ inputs.vision == true && '1' || '0' }}
+          READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
           REPLAY: ${{ inputs.replay || '' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
