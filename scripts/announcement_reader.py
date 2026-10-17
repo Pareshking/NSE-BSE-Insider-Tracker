@@ -498,6 +498,45 @@ def table_arithmetic(doc) -> tuple[int, list[str]]:
     return ok, bad
 
 
+_SAST_ROW = re.compile(r'^\W*([A-Za-z][A-Za-z .&\'\-]{2,60}?)\s+([\d,]{1,15})\s+(\d{1,3}(?:\.\d+)?)\s+(\d{1,3}(?:\.\d+)?)\W*$')
+_SAST_TOTAL = re.compile(r'^\W*total\s*\(\s*a\s*\+\s*b\s*\+\s*c\s*\+\s*d\s*\)\W+([\d,]{1,15})\s+(\d{1,3}(?:\.\d+)?)\s+(\d{1,3}(?:\.\d+)?)', re.IGNORECASE)
+_SAST_PART = (('before', re.compile(r'before\s+the\s+acquisition', re.IGNORECASE)), ('acquired', re.compile(r'details\s+of\s+(?:the\s+)?(?:acquisition|sale)', re.IGNORECASE)),
+              ('after', re.compile(r'after\s+the\s+acquisition', re.IGNORECASE)))
+_SHARES_PCT = re.compile(r'(?<![\d,.])(\d{1,3}(?:,\d{2,3})+|\d{4,})(?![\d,])[^\d%]{1,12}?(\d{1,3}\.\d{1,2})(?!\d)')
+
+
+def holdings_arithmetic(doc) -> list[str]:
+    """SEBI Reg 29 / Reg 31 forms: in each section (before, acquired, after) the shares of the rows must add up to the section's Total (a+b+c+d);
+    and in a row the share counts and the percentages must come from one capital (shares / % is the same for the holding and the encumbered or
+    acquired shares). A failure means a figure was misread, or the filer's table does not add up; nothing is corrected. (The identity before +
+    acquired = after is NOT checked: warrants held before are in the before total and become the acquired shares.)"""
+    out, part, rows = [], None, []
+    for ln in str(doc).splitlines():
+        for name, rx in _SAST_PART:
+            if rx.search(ln) and not _SAST_ROW.match(ln):
+                part, rows = name, []
+        m = _SAST_TOTAL.match(ln)
+        if m and part:
+            total = int(m.group(1).replace(',', ''))
+            have = sum(int(r.replace(',', '')) for r in rows)
+            if rows and abs(have - total) > 1:
+                out.append(f'{part}: the rows add up to {have:,}, the Total (a+b+c+d) says {total:,}')
+            rows = []
+            continue
+        r = _SAST_ROW.match(ln)
+        if r and part and not re.search(r'total|capital|diluted|equity', r.group(1), re.IGNORECASE):
+            rows.append(r.group(2))
+    for ln in str(doc).splitlines():       # one capital behind every (shares, %) pair of a line
+        pairs = [(int(a.replace(',', '')), float(b)) for a, b in _SHARES_PCT.findall(ln) if float(b) >= 0.05 and int(a.replace(',', '')) >= 1000]
+        if len(pairs) >= 2:
+            caps = [n / (p / 100) for n, p in pairs]
+            tol = max(0.03, max(0.0075 / p for _, p in pairs))     # a percentage printed to two decimals
+            if max(caps) / min(caps) - 1 > tol:
+                out.append('shares and percentages of one row do not come from one capital: ' + ln.strip()[:90])
+                break
+    return out
+
+
 def _pct(now, before) -> float | None:
     return round((now - before) / before * 100, 1) if before and before > 0 and now >= 0 else None
 
@@ -1584,6 +1623,10 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                      or re.search(r'\b(?:lakhs?|lacs?|million|mn)\b', shown_text, re.IGNORECASE)   # Paushak: "revenue rises to 8,932 lakh"
                      or not re.search(r'\d', shown_text)):
             headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
+    if str(out.get('category') or '') in ('stake_change', 'pledge') and isinstance(headline, dict) and headline.get('shown'):
+        bad_holdings = holdings_arithmetic(doc)
+        if bad_holdings:
+            headline = {**headline, 'shown': False, 'reason': '; '.join(x for x in (headline.get('reason'), 'the holdings table does not add up: ' + bad_holdings[0]) if x)}
     if results_filing and isinstance(headline, dict) and headline.get('shown'):
         ok_checks, failed = table_arithmetic(doc)
         if failed:   # the table does not add up: a digit or a column was misread (OCR, text layer or image); nothing is shown from it
@@ -2225,7 +2268,11 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
         why_held = [f"{x.get('name') or x.get('label')}: {x.get('reason')}" for x in (vres.get('fields') or []) + (vres.get('metrics') or []) if not x.get('shown')]
         log(row.get('symbol'), 'vision answer:', re.sub(r'\s+', ' ', text)[:1200])
         log(row.get('symbol'), 'vision held:', ' | '.join(why_held[:6]) or (vres.get('error') or 'no values'), '| headline:', (vres.get('headline') or {}).get('reason'))
-    return {**vres, 'vision_note': note} if ok else res
+    # two readings and no disagreement on the headline's figures: the second reader is named on the card (rule 4: the evidence status)
+    agreed_with = f'vision:{model}' if vres.get('ok') and not clash else None
+    if ok:
+        return {**vres, 'vision_note': note, 'second_reader': res.get('reader') if res.get('ok') and not clash else None}
+    return {**res, 'second_reader': agreed_with}
 
 
 # Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
@@ -2576,7 +2623,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds']})
+                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
+                      'second_reader': res.get('second_reader')})
         with lock:
             docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
         add_row(rec)

@@ -2177,3 +2177,32 @@ def test_shares_times_price_must_be_the_amount():
     two = [{'name': 'shares', 'shown': True, 'number': 5.0}, {'name': 'amount', 'shown': True, 'number': 99.0}]
     ar.deal_arithmetic(two)
     assert two[1]['shown']
+
+
+KESAR_FORM = """Before the acquisition under consideration, holding of:
+a) Shares carrying voting rights
+  Gopal Gupta 1,67,28,600 67.45 51.42
+  Sachin Gopal Gupta 9,26,324 3.74 2.85
+d) Warrants /convertible securities
+  Gopal Gupta 18,57,147 0.00 5.71
+Total (a+b+c+d) 1,95,12,071 71.19 59.98
+Details of acquisition:
+a) Shares carrying voting rights acquired/sold
+  Gopal Gupta 18,57,147 5.42 5.42
+  Sachin Gopal Gupta 57,142 0.17 0.17
+Total (a+b+c+d) 19,14,289 5.59 5.59
+After the acquisition/sale, holding of:
+a) Shares carrying voting rights
+  Gopal Gupta 1,85,85,747 54.24 54.24
+  Sachin Gopal Gupta 9,83,466 2.87 2.87
+Total (a+b+c+d) 1,95,69,213 57.11 57.11
+"""
+
+
+def test_holdings_rows_must_add_up_to_each_total_and_one_capital_behind_the_percentages():
+    assert ar.holdings_arithmetic(KESAR_FORM) == []
+    bad = KESAR_FORM.replace('1,85,85,747', '1,85,85,947')
+    assert any(x.startswith('after: the rows add up to') for x in ar.holdings_arithmetic(bad))
+    row = 'Preetham | 48,71,194 | 9.57 Creation 29.09.2026 | Pledge Pledge of 1,87,500 | 0.37 360 One'
+    assert ar.holdings_arithmetic(row) == []
+    assert ar.holdings_arithmetic(row.replace('0.37', '0.87'))
