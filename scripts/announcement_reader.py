@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
+import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
 PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower()
@@ -2065,6 +2066,31 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
     return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
 
 
+def vision_repair(row: dict, doc: str, data: bytes | None, res: dict) -> dict:
+    """The text read `res` made no safe card (needs_vision): read the PDF's pages as images and run the answer through the same
+    checks; the vision result replaces the text result only if it is better. Always returns a result; `res` when nothing improves."""
+    why = vision.needs_vision(res)
+    if not why or not data or not vision.enabled():
+        return res
+    if text_is_garbled(doc):
+        log(row.get('symbol'), 'vision: not tried, the PDF text is garbled so a quote cannot be checked against it')
+        return res
+    try:
+        got = vision.vision_text(lambda note: card_prompt(row, note), data)
+    except Exception as exc:  # noqa: BLE001 -- a failing repair never costs the text card
+        log(row.get('symbol'), f'vision: {type(exc).__name__}: {exc}')
+        return res
+    if not got:
+        log(row.get('symbol'), 'vision: no page could be drawn or no model answered')
+        return res
+    text, model, secs, usage, note = got
+    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    ok = vision.better(vres, res)
+    log(row.get('symbol'), f'vision ({why}): {model} {usage}; text shown {vision.shown_count(res)}, vision shown {vision.shown_count(vres)}; '
+        f'{"used" if ok else "not used"}')
+    return {**vres, 'vision_note': note} if ok else res
+
+
 # Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
 # unless READER_BATCH=1; every filing is still checked against its own text, and one that the answer misses,
 # or that fails the check as a whole, is read again by itself.
@@ -2279,7 +2305,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 waiting.setdefault(base['text_sha256'], [])
         if twin is not None:
             return copy_of(twin, base)
-        job.update(base=base, doc=doc)
+        job.update(base=base, doc=doc, pdf=data if source_format == 'pdf' and data else None)
         return None
 
     def done_reading(job: dict, rec: dict | None) -> list:
@@ -2394,7 +2420,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        finish_read(lane, job, read_one(lane, job['row'], job['doc']))
+        res = read_one(lane, job['row'], job['doc'])
+        finish_read(lane, job, vision_repair(job['row'], job['doc'], job.get('pdf'), res))
 
     def finish_read(lane: Lane, job: dict, res: dict):
         """Records the checked result of a read of `job`, or hands the filing on when there is none."""

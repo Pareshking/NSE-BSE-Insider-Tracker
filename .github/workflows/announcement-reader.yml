@@ -42,6 +42,11 @@ on:
         required: true
         type: boolean
         default: false
+      vision:
+        description: 'Cards the text read could not make safe are read again from page images (Gemini, page triage); off by default'
+        required: true
+        type: boolean
+        default: false
       replay:
         description: 'Engineering loop: file of event_ids in the repo (scripts/golden_set.txt); read exactly these filings again, save nothing'
         required: false
@@ -137,6 +142,7 @@ jobs:
           READER_MINUTES: ${{ inputs.minutes || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || '0' }}
           READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
+          READER_VISION: ${{ inputs.vision == true && '1' || '0' }}
           REPLAY: ${{ inputs.replay || '' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
