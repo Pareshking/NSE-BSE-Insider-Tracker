@@ -46,3 +46,12 @@ def test_card_block_shows_words_date_link_and_figure():
     assert 'Management said on the last call' in html and 'exit at 25% plus' in html and 'transcript' in html
     assert 'This quarter' in html and '24' in html
     assert fr.said_html({**r, 'category': 'order_win'}, DOC) == '' and fr.said_html(r, {}) == ''
+
+
+def test_unpaired_statements_lead_with_guidance_and_demand_not_people():
+    doc = {'calls': [{'filed': '2026-07-15', 'call_date': '2026-07-15', 'facts': [
+        {'topic': 'people', 'statement': 'We expect hiring to rise.', 'quote': 'we expect hiring to rise'},
+        {'topic': 'demand', 'statement': 'We expect demand to improve.', 'quote': 'we expect demand to improve'},
+        {'topic': 'guidance', 'statement': 'We will not give guidance.', 'quote': "we don't provide any guidance"}]}]}
+    topics = [i['statement'] for i in said.pick(doc, '2026-10-08', 2, [])]
+    assert topics == ['We will not give guidance.', 'We expect demand to improve.']

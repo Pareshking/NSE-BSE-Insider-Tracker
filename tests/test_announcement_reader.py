@@ -2288,3 +2288,8 @@ def test_subtitle_only_clash_does_not_hold_the_headline():
     vis = {'ok': True, 'headline': {'text': 'revenue 235 crore'}, 'points': [], 'fields': [], 'metrics': []}
     assert v.unsupported_numbers(text, vis, subtitle=False) == []
     assert v.unsupported_numbers(text, vis) != []
+
+
+def test_auditor_review_headline_is_not_a_results_headline():
+    assert ar.AUDITOR_HEADLINE.search('Statutory auditors issued an unmodified review report on the financial results')
+    assert not ar.AUDITOR_HEADLINE.search('Kross Q2 FY27 results: revenue ₹235 Cr; profit after tax ₹19.7 Cr')
