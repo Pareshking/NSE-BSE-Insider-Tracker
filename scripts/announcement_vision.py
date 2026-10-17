@@ -150,6 +150,41 @@ def better(vision: dict, text: dict) -> bool:
     return shown_count(vision) >= shown_count(text) or (text.get('category') in TABLE_CATEGORIES and bool(vision.get('points')))
 
 
+_NUM = re.compile(r'\d[\d,]*(?:\.\d+)?')
+
+
+def numbers_of(text) -> set[float]:
+    """The figures a text states that matter: not a day, a month or a year (an integer up to 31, or 1990-2040 without a decimal)."""
+    out = set()
+    for tok in _NUM.findall(str(text or '')):
+        try:
+            v = float(tok.replace(',', ''))
+        except ValueError:
+            continue
+        if '.' not in tok and (v <= 31 or (',' not in tok and 1990 <= v <= 2040)):
+            continue
+        out.add(v)
+    return out
+
+
+def _all_text(res: dict) -> str:
+    h = res.get('headline') or {}
+    parts = [h.get('text'), (h.get('subtitle') or {}).get('text'), h.get('quote')]
+    parts += [p.get('text') for p in (res.get('points') or [])]
+    parts += [f'{f.get("value")} {f.get("quote")}' for f in (res.get('fields') or [])]
+    parts += [f'{m.get("value")} {m.get("quote")}' for m in (res.get('metrics') or [])]
+    return ' '.join(str(x) for x in parts if x)
+
+
+def unsupported_numbers(text_res: dict, vision_res: dict) -> list[float]:
+    """Figures in the text read's headline (and subtitle) that the page-image read does not state anywhere (to 0.5 %): the two readers
+    disagree on them, so neither can be taken. Two independent readings agreeing is the evidence; one alone is not."""
+    h = text_res.get('headline') or {}
+    mine = numbers_of(f'{h.get("text")} {(h.get("subtitle") or {}).get("text")}')
+    theirs = numbers_of(_all_text(vision_res))
+    return sorted(n for n in mine if not any(abs(n - t) <= 0.005 * max(abs(n), 1) for t in theirs))
+
+
 def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str] | None:
     """(answer, model, seconds, usage, pages note) from the first model that answers; None when the PDF has no pages to draw or
     no model answers. `prompt_for(note)` builds the reader's prompt with the note in place of the document text."""

@@ -88,3 +88,16 @@ def test_vision_repair_fetches_the_pdf_when_the_text_came_from_cache(monkeypatch
     assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'%PDF-1.4 x') is held
     assert seen == [b'%PDF-1.4 x']
     assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'PK zip') is held and len(seen) == 1
+
+
+def test_two_readers_must_agree_on_the_headline_figures():
+    text = {'headline': {'text': 'Federal Bank allots 7,100 equity shares', 'subtitle': {'text': 'under ESOS 2010 on 16 October 2026'}}}
+    vision = {'headline': {'text': 'Federal Bank allots shares under stock option schemes'},
+              'points': [{'text': 'allotted 90,869 equity shares under ESOS 2017'}, {'text': 'allotted 1,985 equity shares under ESIS 2023'}],
+              'fields': [], 'metrics': []}
+    assert v.unsupported_numbers(text, vision) == [7100.0]
+    vision['points'].append({'text': 'allotted 7,100 equity shares under ESOS 2010'})
+    assert v.unsupported_numbers(text, vision) == []
+    assert v.numbers_of('on 16 October 2026, 31 days, Rs 73.85 Cr, 2,026 shares') == {73.85, 2026.0}
+    # rounding is not a disagreement
+    assert v.unsupported_numbers({'headline': {'text': 'GST notice of Rs 73.9 Cr'}}, {'headline': {'text': 'Rs 73.85 Cr'}}) == []

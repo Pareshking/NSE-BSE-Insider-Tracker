@@ -2191,6 +2191,12 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
         return res
     text, model, secs, usage, note = got
     vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
+    if clash:   # the owner's rule: two independent readings must agree on the figures, or the card does not go on
+        log(row.get('symbol'), f'vision: the readers disagree on {clash[:4]}; the text headline is held')
+        h = dict(res['headline'])
+        h.update(shown=False, reason='; '.join(x for x in (h.get('reason'), f'the page image does not show {", ".join(f"{n:,.2f}".rstrip("0").rstrip(".") for n in clash[:3])}: two readers disagree') if x))
+        return {**res, 'headline': h}
     ok = vision.better(vres, res)
     log(row.get('symbol'), f'vision ({why}): {model} {usage}; text shown {vision.shown_count(res)}, vision shown {vision.shown_count(vres)}; '
         f'{"used" if ok else "not used"}')
