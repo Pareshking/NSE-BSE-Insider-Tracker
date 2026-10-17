@@ -108,6 +108,16 @@ def run_paddle(png: Path, pdf: Path) -> str:
     return _lines(items)
 
 
+def run_paddle_mobile(png: Path, pdf: Path) -> str:
+    """PP-OCRv5 mobile models: the same engine with the small detector and recogniser (speed against accuracy)."""
+    from paddleocr import PaddleOCR
+    if 'mobile' not in _PADDLE:
+        _PADDLE['mobile'] = PaddleOCR(lang='en', enable_mkldnn=False, text_detection_model_name='PP-OCRv5_mobile_det', text_recognition_model_name='PP-OCRv5_mobile_rec',
+                                      use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False)
+    _PADDLE['ocr'] = _PADDLE['mobile']
+    return run_paddle(png, pdf)
+
+
 def run_paddle_structure(png: Path, pdf: Path) -> str:
     from paddleocr import PPStructureV3
     if 'st' not in _PADDLE:
@@ -141,7 +151,7 @@ def run_marker(png: Path, pdf: Path) -> str:
     return getattr(rendered, 'markdown', None) or str(rendered)
 
 
-ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_structure': run_paddle_structure, 'docling': run_docling, 'marker': run_marker}
+ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_mobile': run_paddle_mobile, 'paddle_structure': run_paddle_structure, 'docling': run_docling, 'marker': run_marker}
 
 
 def norm(s: str) -> str:
