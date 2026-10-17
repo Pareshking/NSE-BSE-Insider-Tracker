@@ -152,13 +152,13 @@ def main() -> int:
                       for o in p.get('Contents', []) if o['Key'].endswith('.parquet'))
         for k in keys:
             df = pd.read_parquet(io.BytesIO(r2.get_object(Bucket=BUCKET, Key=k)['Body'].read()),
-                                 columns=['event_id', 'file_url', 'symbol', 'subject'])
+                                 columns=['event_id', 'file_url', 'subject'])
             rows.append(df[df['event_id'].isin(ids)])
     allr = pd.concat(rows).drop_duplicates('event_id') if rows else pd.DataFrame()
     OUT_DIR.mkdir(exist_ok=True)
     md = ['## Vision test (page triage + page images)', '', f'models: {", ".join(models)}; {DPI} dpi; at most {MAX_PAGES} pages a filing', '']
     for _, f in allr.iterrows():
-        title = f'{f["event_id"]} | {f["symbol"]} | {str(f["subject"])[:60]}'
+        title = f'{f["event_id"]} | {str(f["subject"])[:60]}'
         md += [f'### {title}']
         try:
             data = sample.download(f['file_url'])
