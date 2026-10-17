@@ -225,6 +225,7 @@ so it ends before the next starts; what it does not reach waits for the next run
   `READER_LOOP` to `off` (Settings, Secrets and variables, Actions, Variables) or disable the workflow in
   the Actions tab; on again: remove the variable and run the workflow by hand once. The public repo's
   Actions minutes are free; each cycle collects NSE and BSE once (about 2 minutes).
+- Schedule (18 Oct): live filings by day; old announcements (company history) only 22:30-09:00 IST after the live queue is clear (`READER_HISTORY=night`); runs read 100 filings or 40 minutes; page-image requests are held 12 s apart per Gemini model. See BLUEPRINT_TODO 12.26.
 - A new prompt version re-reads once the filings of today and yesterday read with an older one (and their
   copies), so every card has every part; an older read is never the source of a copy.
 - Saved as read: each filing's row goes to R2 as soon as it is read (at most one write every 15 seconds;
