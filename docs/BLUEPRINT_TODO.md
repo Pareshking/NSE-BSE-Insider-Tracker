@@ -271,3 +271,19 @@ Each needs data we may not have yet. "Needs" says what.
 5. Memory: 5.1, 5.5, 5.6, 5.7, 5.9, 5.15.
 6. Learning: 8.L1 and its children.
 7. Your decisions on the conflicts: 2.1, 3.7, 5.14, 6.2, 6.4, 8.1, 8.2, 8.L3, 9.1, 11.3.
+
+## 12.22 Golden-set loop PAUSED by the owner (17 Oct 2026, ~08:00 IST)
+Owner: "stop here for a while: the cards you are auditing never appeared on site." True by design: every golden replay is a dry run
+(`dry_run=true replay=scripts/golden_set.txt`) and saves nothing; live reading is off until the set is clean. Nothing was published.
+State when stopped (PR #145, branch ccr-0caa4ce9-bh3n2s, not merged):
+- Investor audits of the replayed cards: golden 1 = 3 OK / 48 MINOR / 49 MAJOR; r9 = 22/48/30; r11 = 14/55/29; r14 = 17/49/32 (98 cards).
+  The count has not fallen because reviewers find more each round and the same families recur (see below).
+- Root cause found for many false holds: the reader's text is wide-column layout text (Paushak 27,508 chars vs 12,988 in the audit dump),
+  so unit/basis checks that look a few lines/characters back failed. Fixed with heading_unit, basis window in words, split_value_unit.
+- Still open (not fixed): SAST before/after parsing and "no net change"; multi-item totals (Federal Bank 3 schemes, Regency/Trident/Hilinfra
+  tranches); garbled-cell counts (Affle); pledge direction; paid-up capital as `amount` (Mphasis); production as capacity (Steel Exchange);
+  "cleared" overstatement (Rajesh Exports); legal "who pays" (SEPC); open loops from table fragments; linking earlier filings; no second
+  (cross-check) reader ran in the replays; "shown 0" header counter; enclosure-only cover letters not marked not-read.
+- Autonomous 15-minute cycle stopped (no trigger left). NVIDIA lane stays off (probe 17 Oct 02:09 IST: glm-5.3 and lightning time out,
+  nemotron-ultra 404, only nemotron-3.5-super-vl-120b answers; awaiting the owner on a 10-filing trial).
+Notes of every audit round: kept in the session scratchpad (golden/g9/findings.md); not committed.
