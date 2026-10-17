@@ -3086,6 +3086,14 @@ def collect(r2, today: date, dry_run: bool, notes: list):
     return load_archive(r2, nann.PREFIX, today), load_archive(r2, bann.PREFIX, today)
 
 
+def in_history_window(now=None):
+    """True from 22:30 to 09:00 IST, the hours the owner reserved for old announcements."""
+    now = now or datetime.now(timezone.utc)
+    ist = now.astimezone(IST)
+    minutes = ist.hour * 60 + ist.minute
+    return minutes >= 22 * 60 + 30 or minutes < 9 * 60
+
+
 def main(argv=None):
     # A run that goes silent (16 Oct: 28 minutes without a log line until the job timeout) must say where it is
     # stuck: every 10 minutes the stack of every thread goes to the log.
@@ -3206,7 +3214,10 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
 
     done_after_live = load_archive(r2, READS_PREFIX, today)
     live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
-    if os.environ.get('READER_HISTORY', '1') != '1':
+    history_mode = os.environ.get('READER_HISTORY', '1')
+    if history_mode == 'night' and not in_history_window():
+        log('company-history stage waits for the overnight window (22:30-09:00 IST): daytime runs read live filings only')
+    elif history_mode not in ('1', 'night'):
         log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
     elif live_remaining.empty:
         current_isins = set()
