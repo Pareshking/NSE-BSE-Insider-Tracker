@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import io
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -31,6 +32,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import xml.etree.ElementTree as ET
 import time
 import zipfile
@@ -341,13 +343,283 @@ def parse_json(text: str):
 
 # --- the document ------------------------------------------------------------------
 
+OCR_MAX_PAGES = 40            # a scan longer than this is not read in part (CLAUDE.md rule 8): the filing is marked not read
+_LOCAL = threading.local()   # per reader thread: (pages OCR'd, pages left without text) of its last pdf_text call, for the document notes
+
+
+def ocr_last() -> list:
+    return getattr(_LOCAL, 'ocr', [[], [], 0])
+
+
+def _page_needs_ocr(text: str) -> bool:
+    """A page with (almost) no text layer, or a text layer a scan has mangled ("2J9,51o", "5A23st")."""
+    t = re.sub(r'\s', '', text or '')
+    if len(t) < 80:
+        return True
+    if sum(ch.isdigit() for ch in t) >= 150 and not re.search(r'income|revenue|profit|expenses|total|tax|assets|liabilit|equity|capital|shares|sales|loss|cost', str(text), re.IGNORECASE):
+        return True      # a page of figures with none of the words that label them: the text layer of a scan, labels lost (Kross's results pages)
+    toks = [x for x in str(text).split() if re.search(r'\d', x)]
+    bad = sum(1 for x in toks if re.search(r'(?<=[\d,.])[A-Za-z](?=[\d,.])', x))
+    return bad >= 8 and bad >= 0.08 * max(1, len(toks))
+
+
+def render_page(data: bytes, page: int, out_dir: Path, dpi: int = 200) -> Path | None:
+    """The page as a PNG: pdftoppm first, PyMuPDF when pdftoppm leaves nothing (PARIN, 17 Oct: a 3.6 MB scan pdftoppm could not draw)."""
+    src = out_dir / 'f.pdf'
+    if not src.exists():
+        src.write_bytes(data)
+    png = out_dir / f'p{page}.png'
+    try:
+        subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(out_dir / f'p{page}')],
+                       capture_output=True, timeout=180, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if png.exists():
+        return png
+    try:
+        import pymupdf
+        with pymupdf.open(str(src)) as pdf:
+            pdf[page - 1].get_pixmap(dpi=dpi).save(str(png))
+    except Exception as exc:  # noqa: BLE001
+        log(f'render page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+    return png if png.exists() else None
+
+
+def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
+    """Tesseract's text of one page (1-based); '' when tesseract is not installed or fails."""
+    with tempfile.TemporaryDirectory() as d:
+        png = render_page(data, page, Path(d), dpi)
+        if png is None:
+            return ''
+        try:
+            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=420, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
+            return ''
+        text = out.stdout.decode('utf-8', errors='replace')
+        if not text.strip():
+            log(f'ocr page {page}: tesseract gave no text (rc={out.returncode}): {out.stderr.decode("utf-8", errors="replace")[:160]}')
+        return text
+
+
+# --- accounting check on a results table (used by the reader's validators and by the text step) ----------------------
+
+_AMT = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])-?\d[\d,]*(?:\.\d+)?(?![\w])')
+_ROWS = {'revenue': re.compile(r'^\W*(?:[IVX\d]+\W+)?(?:revenue\s+from\s+operations|income\s+from\s+operations|net\s+sales)', re.IGNORECASE),
+         'other': re.compile(r'^\W*(?:[IVX\d]+\W+)?other\s+income', re.IGNORECASE),
+         'total_income': re.compile(r'^\W*(?:[IVX\d]+\W+)?total\s+income', re.IGNORECASE),
+         'pbt': re.compile(r'^\W*(?:[IVX\d]+\W+)?profit\s*(?:/\s*\(?loss\)?)?\s*before\s+tax', re.IGNORECASE),
+         'tax': re.compile(r'^\W*(?:[IVX\d]+\W+)?total\s+tax\s+expense|^\W*(?:[IVX\d]+\W+)?tax\s+expenses?\b(?!\s*[:/(]?\s*(?:\(?credit|:))', re.IGNORECASE),
+         'pat': re.compile(r'^\W*(?:[IVX\d]+\W+)?(?:net\s+)?profit\s*(?:/\s*\(?loss\)?)?\s*(?:after\s+tax|for\s+the\s+(?:period|quarter|year))', re.IGNORECASE)}
+
+
+def _first_amount(line: str, start: int = 0):
+    """The first amount after the row's label (the current quarter's column); negative when in brackets."""
+    tail = re.sub(r'\([^()]*[+\-–−][^()]*\)', lambda m: ' ' * len(m.group(0)), line[start:])   # "(1+2)", "(IX-X)": a row's formula, not an amount
+    m = _AMT.search(tail)
+    if not m:
+        return None
+    tok = m.group(0)
+    try:
+        v = float(re.sub(r'[^\d.]', '', tok))
+    except ValueError:
+        return None
+    return -v if tok.startswith('(') or tok.startswith('-') else v
+
+
+def table_arithmetic(doc) -> tuple[int, list[str]]:
+    """Accounting checks on a results table, whatever read it (text layer, OCR, image): revenue + other income = total income, and profit
+    before tax - tax = profit after tax, on the first (current quarter) column. (checks that held, descriptions of those that failed).
+    A check is made only when every row it needs is found; nothing is corrected, a failure means the table was misread or misaligned."""
+    lines = [ln for ln in str(doc).splitlines() if ln.strip()]
+    kinds = []
+    for i, ln in enumerate(lines):
+        for k, rx in _ROWS.items():
+            hit = rx.search(ln)
+            if hit and _first_amount(ln, hit.end()) is not None:
+                kinds.append((i, k, _first_amount(ln, hit.end()), ln.strip()[:60]))
+                break
+    ok, bad = 0, []
+
+    def near(i, kind, back):
+        hits = [t for t in kinds if t[1] == kind and 0 < i - t[0] <= back]
+        return hits[-1] if hits else None
+    for i, k, v, ln in kinds:
+        if k == 'total_income':
+            rev, oth = near(i, 'revenue', 8), near(i, 'other', 8)
+            if rev and oth:
+                if abs(rev[2] + oth[2] - v) <= max(0.015, 0.002 * abs(v)):
+                    ok += 1
+                else:
+                    bad.append(f'revenue {rev[2]:,} + other income {oth[2]:,} is not total income {v:,}')
+        if k == 'pat':
+            pbt = near(i, 'pbt', 40)
+            tax = near(i, 'tax', 40) if pbt else None
+            if pbt and tax and tax[0] > pbt[0]:
+                if abs(pbt[2] - tax[2] - v) <= max(0.015, 0.002 * abs(v)):
+                    ok += 1
+                else:
+                    bad.append(f'profit before tax {pbt[2]:,} - tax {tax[2]:,} is not profit {v:,}')
+    return ok, bad
+
+
+_DOCLING = {}
+
+
+def docling_enabled() -> bool:
+    return os.environ.get('READER_DOCLING', '0') == '1'
+
+
+def docling_page(data: bytes, page: int) -> str:
+    """Docling's markdown of one page (tables as '|' rows); '' when Docling is not installed or fails. 17 Oct benchmark on 6 filing pages
+    read by eye: Docling 63 of 68 figures against tesseract's 51 (the ixigo results scan: 21 of 24 against 9), about 20 s a page on a CPU."""
+    try:
+        from docling.document_converter import DocumentConverter
+        if 'c' not in _DOCLING:
+            _DOCLING['c'] = DocumentConverter()
+        with tempfile.TemporaryDirectory() as d:     # the page as an image: the page is one OCR was needed for (and a PDF whose page cannot be cut out, "source object number out of range", still draws)
+            png = render_page(data, page, Path(d))
+            if png is None:
+                return ''
+            return _DOCLING['c'].convert(str(png)).document.export_to_markdown()
+    except Exception as exc:  # noqa: BLE001 -- Docling failing leaves tesseract's text
+        log(f'docling page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+        return ''
+
+
+_PADDLE = {}
+
+
+def paddle_enabled() -> bool:
+    return os.environ.get('READER_PADDLE', '0') == '1'
+
+
+def paddle_page(data: bytes, page: int, dpi: int = 200) -> str:
+    """PaddleOCR (PP-OCRv5 mobile models, oneDNN off) text of one page, boxes joined into lines by height; '' when it is not installed or fails.
+    17 Oct benchmark on 6 filing pages read by eye: mobile 66 of 68 figures (ixigo scan 24 of 24) at about 32 s a page on a CPU; the full models
+    68 of 68 at about 98 s; tesseract 51 of 68 at 2 s."""
+    try:
+        from paddleocr import PaddleOCR
+        if 'ocr' not in _PADDLE:
+            _PADDLE['ocr'] = PaddleOCR(lang='en', enable_mkldnn=False, text_detection_model_name='PP-OCRv5_mobile_det',
+                                       text_recognition_model_name='PP-OCRv5_mobile_rec', use_doc_orientation_classify=False,
+                                       use_doc_unwarping=False, use_textline_orientation=False)
+        with tempfile.TemporaryDirectory() as d:
+            png = render_page(data, page, Path(d), dpi)
+            if png is None:
+                return ''
+            res = _PADDLE['ocr'].predict(str(png))
+        items = []
+        for r in res:
+            data_ = r if isinstance(r, dict) else getattr(r, 'json', {}) or {}
+            data_ = data_.get('res', data_)
+            for t, b in zip(data_.get('rec_texts') or [], data_.get('rec_boxes') if data_.get('rec_boxes') is not None else data_.get('rec_polys') or []):
+                b = [float(v) for v in (b if len(getattr(b, 'shape', [])) == 1 else [x for pt in b for x in pt])]
+                ys, xs = (b[1::2], b[0::2]) if len(b) > 4 else ([b[1], b[3]], [b[0], b[2]])
+                items.append(((min(ys) + max(ys)) / 2, min(xs), t))
+        items.sort(key=lambda t: (round(t[0] / 12), t[1]))
+        lines, cur, last = [], [], None
+        for y, x, t in items:
+            k = round(y / 12)
+            if last is not None and k != last:
+                lines.append('  '.join(cur))
+                cur = []
+            cur.append(t)
+            last = k
+        if cur:
+            lines.append('  '.join(cur))
+        return '\n'.join(lines)
+    except Exception as exc:  # noqa: BLE001 -- PaddleOCR failing leaves the other readers' text
+        log(f'paddle page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+        return ''
+
+
+_FIGURE = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])\d[\d,]*\.\d+(?![\w])|(?<![\w.])\d{1,3}(?:,\d{2,3})+(?![\w])')
+
+
+_WORD = re.compile(r'[A-Za-z]{4,}')
+EXTRA_OCR_PAGES = 12          # pages of one filing the slower readers (PaddleOCR, Docling) read; the rest keep tesseract's text
+
+
+def _page_score(text: str, consensus: set[str]) -> float:
+    """3 a figure (a decimal, a comma-grouped number, a bracketed one), 1 a word that at least two readers produced, minus half a word only
+    this reader produced (a misread word is almost always unique to its reader)."""
+    words = {w.lower() for w in _WORD.findall(text)}
+    return 3 * len(_FIGURE.findall(text)) + len(words & consensus) - 0.5 * len(words - consensus)
+
+
+def best_page_text(ocr: str, *others: str) -> str:
+    """Tesseract's page text, or another reader's when it scores clearly higher (more than 3 points): figures and consensus words decide, for any page
+    of any filing: a scanned results table, a pledge form, a notice of prose."""
+    texts = [ocr, *others]
+    seen: dict[str, int] = {}
+    for t in texts:
+        for w in {w.lower() for w in _WORD.findall(t)}:
+            seen[w] = seen.get(w, 0) + 1
+    consensus = {w for w, n in seen.items() if n >= 2}
+    scores = [_page_score(t, consensus) for t in texts]
+    best = max(range(len(texts)), key=lambda i: (scores[i], -i))
+    return texts[best] if best and scores[best] > scores[0] + 3 else ocr
+
+
+better_table_text = best_page_text
+
+
 def pdf_text(data: bytes) -> str:
+    """PyMuPDF's text in reading order (get_text(sort=True): no layout padding, rows kept together; owner's choice 17 Oct 2026, tested
+    against pdftotext -layout on 13 table rows: equal on rows, shorter text). A page with no text layer or a mangled one is OCR'd with
+    tesseract (17 Oct sample: Unimech, SHK, Viyash scans and ixigo's results had no usable text; OCR gave clean text); pages OCR'd are
+    named in OCR_LAST. pdftotext -layout when PyMuPDF is missing or fails."""
+    _LOCAL.ocr = [[], [], 0]      # pages OCR'd, pages with no text at all, pages in all
+    OCR_LAST = _LOCAL.ocr
+    try:
+        import pymupdf
+        with pymupdf.open(stream=data, filetype='pdf') as pdf:
+            pages = [page.get_text('text', sort=True) for page in pdf]
+        OCR_LAST[2] = len(pages)
+        need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
+        todo = need[:OCR_MAX_PAGES]
+        with ThreadPoolExecutor(max_workers=2 if (docling_enabled() or paddle_enabled()) else 4) as pool:     # a bank's 40-page scan in about a minute, not four
+            for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
+                if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES:   # any scanned or mangled page: the stronger readers read it too
+                    got = best_page_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
+                if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
+                    pages[i - 1] = got
+                    OCR_LAST[0].append(i)
+                elif len(re.sub(r'\s', '', pages[i - 1])) < 80:
+                    OCR_LAST[1].append(i)
+        OCR_LAST[1].extend(need[OCR_MAX_PAGES:])
+        for i, t in enumerate(pages, 1):      # a text layer whose table does not add up (an old OCR layer: Bajaj Healthcare 17,679.40 for 17,779.40): read the page again
+            if i in OCR_LAST[0] or i > 40 or table_arithmetic(t)[0] >= 1 or not table_arithmetic(t)[1]:
+                continue
+            for cand in [ocr_page(data, i)] + ([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else []):
+                ok, bad = table_arithmetic(cand)
+                if ok >= 1 and not bad:
+                    pages[i - 1] = cand
+                    OCR_LAST[0].append(i)
+                    break
+        text = '\f'.join(pages)
+        if text.strip():
+            return text
+    except Exception as exc:  # noqa: BLE001 -- a PDF PyMuPDF cannot open still goes to pdftotext
+        log(f'pymupdf could not read the PDF ({type(exc).__name__}: {str(exc)[:80]}); pdftotext instead')
     with tempfile.TemporaryDirectory() as d:
         src = Path(d) / 'f.pdf'
         src.write_bytes(data)
         # -layout keeps a table's row on one line with its headers above (SML Mahindra's sales table)
         out = subprocess.run(['pdftotext', '-layout', str(src), '-'], capture_output=True, timeout=180, check=False)
-        return out.stdout.decode('utf-8', errors='replace')
+        text = out.stdout.decode('utf-8', errors='replace')
+    if not text.strip():      # nothing from either: a scan PyMuPDF could not open; OCR its pages one by one until they run out
+        got_pages = []
+        for i in range(1, OCR_MAX_PAGES + 1):
+            got = ocr_page(data, i)
+            if not got.strip():
+                break
+            got_pages.append(got)
+        if got_pages:
+            OCR_LAST[0] = list(range(1, len(got_pages) + 1))
+            text = '\f'.join(got_pages)
+    return text
 
 
 def download(url: str, session=None) -> bytes:
@@ -446,6 +718,13 @@ def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]
             notes.append(f'xbrl: standalone XML; {len(text.splitlines()) - 1} structured facts')
         else:
             text = pdf_text(data)
+            last = ocr_last()
+            if last[0]:
+                notes.append(f'ocr: pages {", ".join(map(str, last[0]))} read with tesseract (no usable text layer)')
+            if last[1] and (len(last[1]) > 0.3 * max(1, last[2]) or len(text.strip()) < 500):
+                notes.append(f'pages without text: {", ".join(map(str, last[1]))} could not be read (no text layer and OCR failed or the scan is over {OCR_MAX_PAGES} pages)')
+            elif last[1]:   # a chart or photo page among text pages (Axis Bank's results release: pages 11, 46): named, not a reason to drop the filing
+                notes.append(f'graphic pages without text: {", ".join(map(str, last[1]))}')
     if not text.strip():
         notes.append('no text layer (scanned?)')
     if limit and len(text) > limit:
@@ -476,11 +755,38 @@ def _ocr(text: str) -> str:
     """Letters a scan confuses with digits or each other, folded together (applied to both texts, so it only widens
     what counts as the same string by those look-alikes; the quote still has to be long)."""
     return str(text).translate(_OCR)
+_LIGS = re.compile(r'ffi|ffl|ti|tt|ft|fi|fl|ff')
+
+
+def _unlig(text: str) -> str:
+    return _LIGS.sub('', text)
 _TOKEN = re.compile(r'[a-z]+|\d+(?:[.,]\d+)*')
 
 
 def _tokens(text) -> list[str]:
     return _TOKEN.findall(unicodedata.normalize('NFKC', str(text or '')).lower())
+
+
+def _spread_run(quote, doc, slack: int = 3) -> bool:
+    """Every token of the quote, in order, within a stretch of the document no longer than slack times the quote (plus 20
+    tokens): the quote's words with other columns' words between them. Needs 6 or more tokens, so that two sentences
+    cannot meet by chance; the card shows such a quote as a table row, not as in the filing."""
+    q = _tokens(quote)
+    if len(q) < 6:
+        return False
+    d = _tokens(doc)
+    span = slack * len(q) + 20
+    for i, t in enumerate(d):
+        if t != q[0]:
+            continue
+        j, k = i + 1, 1
+        while k < len(q) and j < len(d) and j - i <= span:
+            if d[j] == q[k]:
+                k += 1
+            j += 1
+        if k == len(q):
+            return True
+    return False
 
 
 def _token_run(quote, doc) -> bool:
@@ -518,6 +824,18 @@ def quote_found(quote, doc: str) -> str | bool:
     # on both sides, for a quote long enough that two different sentences cannot meet by chance.
     if len(lq) >= 24 and _ocr(lq) in _ocr(_loose(doc)):
         return 'exact'
+    # A PDF font's ligature lost in the text layer ("addi onal", "es mated", "Mee ng": ti, tt, ft, fi, fl, ff are missing):
+    # the same text once those letter pairs are dropped on both sides.
+    if len(lq) >= 24 and _unlig(lq) in _unlig(_loose(doc)):
+        return 'exact'
+    # A model that writes the unit and currency into the row ("Revenue from operations ₹118,076 Mn" for a row that has 118,076 under a
+    # "in million" heading, LTM): the same words and figures without the currency and unit words.
+    bare = re.sub(r'[₹$€£]|\b(?:Rs|INR|USD|EUR|US\$)\b\.?|\b(?:mn|million|crores?|cr|lakhs?|lacs?|bn|billion)\b\.?', ' ', str(quote), flags=re.IGNORECASE)
+    lb = _loose(bare)
+    if bare != str(quote) and len(lb) >= 14 and lb in _loose(doc):
+        return 'exact'
+    if _spread_run(quote, doc):   # a table's text with another column interleaved line by line (Minda Corp, Om Galaxy, TFCI)
+        return 'table'
     words = [w for w in re.findall(r'[a-z]{2,}|' + NUMBER, str(quote).lower())]
     numbers = {w.replace(',', '') for w in words if w[0].isdigit()}
     if not numbers or len(words) < 2:
@@ -605,12 +923,45 @@ def table_unit(quote, mult, doc: str) -> bool:
     # unit word nearest before the number, within 2,500 characters, is the table's unit.
     text = str(doc)
     for n in numbers:
-        for m in re.finditer(r'(?<![\d,.])' + re.escape(n).replace(r'\,', r',?') + r'(?![\d])', text):
+        for m in re.finditer(r'(?<![\d,.])' + ',?'.join(re.escape(c) for c in n) + r'(?![\d])', text):
             before = text[max(0, m.start() - 2500):m.start()]
             near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
             if near and max(near)[1] == mult:
                 return True
-    return False
+    return heading_unit(doc) == mult      # wide pdf columns: the table's heading is far from its rows, but it is the filing's one unit
+
+
+def nearest_unit(quote, doc: str, value=None) -> float | None:
+    """The size of the unit word nearest before the quote's number in the document, within 2,500 characters (the table's
+    own heading: "tin million" in LTM, where the model said lakh), or None when there is none or the numbers are not found."""
+    text = str(doc)
+    best = None
+    v = _num(value)
+    nums = {n.replace(',', '') for n in re.findall(NUMBER, str(quote or ''))}
+    if v is not None:      # the metric's own number, not the column numbers and note numbers beside it in the quote
+        nums = {n for n in nums if abs(float(n) - abs(v)) < 1e-6 * max(1, abs(v))}
+    for n in nums:
+        for m in re.finditer(r'(?<![\d,.])' + ',?'.join(re.escape(c) for c in n) + r'(?![\d])', text):
+            before = text[max(0, m.start() - 2500):m.start()]
+            near = [(u.end(), mm) for mm, rx in _UNIT_WORDS_ANY.items() for u in rx.finditer(before)]
+            if near:
+                unit = max(near)[1]
+                if best not in (None, unit):
+                    return heading_unit(doc)      # two answers for the same figure: only a heading that is the filing's one unit decides
+                best = unit
+    return best if best is not None else heading_unit(doc)
+
+
+_HEADING_UNIT = re.compile(r'(?:\(|\b)(?:Rs\.?|₹|INR|Rupees|Amount|Figures?|All\s+amounts?)\s*(?:in|\()?\s*(?:the\s+)?(?:Rs\.?\s*)?(lakhs?|lacs?|crores?|crs?\b|million|mn\b|billion)', re.IGNORECASE)
+
+
+def heading_unit(doc) -> float | None:
+    """The one unit the filing's table headings name ("Rs in lacs", "(₹ crores)", "in million"), when every heading names the same."""
+    found = set()
+    for m in _HEADING_UNIT.finditer(str(doc)):
+        w = m.group(1).lower()
+        found.add(1e5 if w.startswith(('lakh', 'lac')) else 1e7 if w.startswith(('crore', 'cr')) else 1e9 if w.startswith('billion') else 1e6)
+    return found.pop() if len(found) == 1 else None
 
 
 def _num(v):

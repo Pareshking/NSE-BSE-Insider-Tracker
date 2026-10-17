@@ -26,7 +26,7 @@ jobs:
         run: |
           pip install -r requirements.txt
           sudo apt-get update -qq
-          sudo apt-get install -y -qq poppler-utils
+          sudo apt-get install -y -qq poppler-utils tesseract-ocr
       - name: Run dry-run sample (maximum 3 filings)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

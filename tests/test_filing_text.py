@@ -153,9 +153,10 @@ def test_the_reader_cache_returns_only_finished_records_made_from_the_same_link(
     r2 = FakeR2()
     day = date(2026, 10, 14)
     rows = pd.DataFrame([
-        {'event_id': 'nse:1', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/1.pdf', 'status': 'ok', 'tries': 1, 'text': 'hello'},
+        {'event_id': 'nse:1', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/1.pdf', 'status': 'ok', 'tries': 1, 'text': 'hello', 'extractor': ft.EXTRACTOR},
         {'event_id': 'nse:2', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/2.pdf', 'status': 'failed', 'tries': 1, 'text': None},
-        {'event_id': 'nse:3', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/3.pdf', 'status': 'no_text', 'tries': 1, 'text': ''}])
+        {'event_id': 'nse:3', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/3.pdf', 'status': 'no_text', 'tries': 1, 'text': '', 'extractor': ft.EXTRACTOR},
+        {'event_id': 'nse:4', 'exchange': 'nse', 'broadcast_date': '2026-10-14', 'file_url': 'https://x/4.pdf', 'status': 'ok', 'tries': 1, 'text': 'old', 'extractor': 'pdftotext-layout+xbrl-facts v1'}])
     ft.save_day(r2, 'nse', day, rows)
     cache = ft.Cache(r2)
     row = lambda e, u: {'event_id': e, 'exchange': 'NSE', 'broadcast_date': '2026-10-14', 'file_url': u}   # noqa: E731
@@ -163,6 +164,7 @@ def test_the_reader_cache_returns_only_finished_records_made_from_the_same_link(
     assert cache(row('nse:1', 'https://x/other.pdf')) is None      # the link changed: a different file
     assert cache(row('nse:2', 'https://x/2.pdf')) is None          # failed: not finished
     assert cache(row('nse:3', 'https://x/3.pdf'))['status'] == 'no_text'
+    assert cache(row('nse:4', 'https://x/4.pdf')) is None          # made by an older extractor: read again
     assert cache(row('nse:9', 'https://x/9.pdf')) is None          # not cached
     assert cache({'event_id': 'x', 'exchange': 'OTC', 'broadcast_date': '2026-10-14'}) is None
     assert cache({'event_id': 'bse:1', 'exchange': 'BSE', 'broadcast_date': '2026-10-14', 'file_url': 'u'}) is None   # no day file

@@ -1,0 +1,54 @@
+name: Vision probe (page triage + images)
+
+# Read-only test (17 Oct 2026): a few filings, pages chosen by scripts/vision_probe.py, sent as images to the vision models.
+# Nothing is saved to R2 and nothing reaches the site.
+on:
+  workflow_dispatch:
+    inputs:
+      ids_file:
+        description: 'File of event_ids in the repo'
+        required: false
+        default: 'scripts/vision_ids.txt'
+      models:
+        description: 'provider:model, comma separated (zai, nvidia, gemini)'
+        required: false
+        default: 'gemini:gemini-3.5-flash,gemini:gemini-3.6-flash,gemini:gemini-3.8-flash,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite'
+
+  pull_request:     # a new workflow file can be started by hand only once it is on main; until then a change to the probe runs it
+    paths:
+      - 'scripts/vision_probe.py'
+      - 'scripts/vision_ids.txt'
+      - '.github/workflows/vision-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt pymupdf && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr tesseract-ocr
+      - name: Probe
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VISION_MODELS: ${{ inputs.models || 'gemini:gemini-3.5-flash,gemini:gemini-3.6-flash,gemini:gemini-3.8-flash,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite' }}
+          OUT_DIR: vision_out
+          OCR: '1'
+        run: python -u scripts/vision_probe.py "${{ inputs.ids_file || 'scripts/vision_ids.txt' }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vision-out
+          path: vision_out

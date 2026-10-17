@@ -27,7 +27,7 @@ from datetime import date
 import pandas as pd
 
 PREFIX = 'archive/filing_text/'
-EXTRACTOR = 'pdftotext-layout+xbrl-facts v1'
+EXTRACTOR = 'pymupdf-sort+xbrl-facts v2'   # v1 (until 17 Oct 2026): pdftotext -layout
 MAX_TRIES = 3
 DONE = ('ok', 'no_text')
 COLUMNS = ['event_id', 'exchange', 'broadcast_date', 'file_url', 'status', 'tries', 'reason', 'file_bytes',
@@ -78,7 +78,7 @@ def permanent(error: str) -> bool:
 class Cache:
     """What the reader asks before it downloads: `cache(row)` is the filing's finished record or None.
 
-    A record counts only when it is finished (`ok`, `no_text`) and was made from the same file link. Day files are
+    A record counts only when it is finished (`ok`, `no_text`), was made from the same file link and by the current extractor (an older extractor's text is a miss: the filing is downloaded and read again). Day files are
     read once and kept for the run; safe to call from several threads."""
 
     def __init__(self, r2):
@@ -98,4 +98,4 @@ class Cache:
                     df = pd.DataFrame(columns=COLUMNS)
                 self._days[(exchange, day)] = {r['event_id']: r for r in df.to_dict('records')}
             rec = self._days[(exchange, day)].get(row.get('event_id'))
-        return rec if rec and rec.get('status') in DONE and rec.get('file_url') == row.get('file_url') else None
+        return rec if rec and rec.get('status') in DONE and rec.get('file_url') == row.get('file_url') and rec.get('extractor') == EXTRACTOR else None

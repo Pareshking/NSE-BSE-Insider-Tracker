@@ -17,15 +17,15 @@ HEADINGS = {
     'Fund raising': ('qip', 'preferential', 'rights', 'warrant_conversion', 'debt_issue', 'esop'),
     'Buybacks & payouts': ('buyback_open_market', 'buyback_tender', 'dividend', 'bonus_split'),
     'Acquisitions & restructuring': ('acquisition', 'divestment', 'merger_demerger', 'agreement', 'open_offer',
-                                     'delisting'),
+                                     'delisting', 'stake_change'),
     'Orders & business': ('order_win', 'product_launch', 'licence_approval', 'operations_start', 'business_update'),
     'Capex & capacity': ('capex',),
     'Results': ('financial_results',),
-    'Ratings': ('rating_upgrade', 'rating_downgrade', 'rating_reaffirmed'),
+    'Ratings': ('rating_upgrade', 'rating_downgrade', 'rating_reaffirmed', 'rating_assigned'),
     'Debt & distress': ('default', 'restructuring', 'insolvency'),
     'Legal & regulatory': ('legal_regulatory', 'fraud'),
     'Disruption': ('disruption',),
-    'Management & governance': ('auditor_resignation', 'management_change', 'corporate_change'),
+    'Management & governance': ('auditor_resignation', 'management_change', 'corporate_change', 'pledge'),
 }   # 'deal_or_dispute' (reads before live-3: deals and legal matters in one) goes under Other
 OTHER = 'Other'
 PERIODS = {1: 'Today and yesterday', 7: 'Last 7 days', 30: 'Last 30 days', 60: 'Last 60 days'}

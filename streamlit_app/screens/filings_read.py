@@ -15,23 +15,24 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from ui import kit
+from insiders_clean import context
 
 CATEGORY = {
     'buyback_open_market': 'Buyback, open market', 'buyback_tender': 'Buyback, tender offer', 'qip': 'QIP',
     'preferential': 'Preferential issue', 'warrant_conversion': 'Warrants converted', 'rights': 'Rights issue',
     'open_offer': 'Open offer', 'debt_issue': 'Debt issue', 'capex': 'Capacity / investment',
     'product_launch': 'Product launch', 'order_win': 'Order win', 'business_update': 'Business update',
-    'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_downgrade': 'Rating lowered',
+    'auditor_resignation': 'Auditor resigned', 'rating_upgrade': 'Rating raised', 'rating_assigned': 'Rating assigned', 'rating_downgrade': 'Rating lowered',
     'rating_reaffirmed': 'Rating kept', 'esop': 'ESOP allotment', 'dividend': 'Dividend', 'bonus_split': 'Bonus or split',
     'acquisition': 'Acquisition', 'divestment': 'Sale or divestment', 'merger_demerger': 'Merger or demerger',
     'agreement': 'Agreement or JV', 'delisting': 'Delisting', 'licence_approval': 'Licence or approval',
     'operations_start': 'Operations started', 'financial_results': 'Financial results', 'default': 'Default',
     'restructuring': 'Debt settlement', 'insolvency': 'Insolvency', 'legal_regulatory': 'Legal or regulatory',
     'fraud': 'Fraud or forensic audit', 'disruption': 'Disruption', 'management_change': 'Management change',
-    'corporate_change': 'Corporate change',
+    'corporate_change': 'Corporate change', 'stake_change': 'Stake change', 'pledge': 'Promoter pledge',
     'deal_or_dispute': 'Deal or legal matter',   # reads before live-3, when deals and legal matters were one
 }
-FIELD = {'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
+FIELD = {'dividend_per_share': 'Dividend a share', 'price_per_share': 'Price a share', 'max_price_per_share': 'Up to, a share', 'shares': 'Shares',
          'amount': 'Size', 'discount_pct': 'Discount', 'allottee_is_promoter': 'To promoters', 'ratio': 'Ratio',
          'record_date': 'Record date', 'offer_pct': 'Offer size', 'capacity_from': 'Capacity before',
          'capacity_to': 'Capacity after'}
@@ -81,7 +82,7 @@ def value_text(f: dict) -> str:
     currency only when the filing writes one (the reader reads it from the quote or the filing's currency);
     otherwise it is written as the filing writes it, never with Rs assumed."""
     name, n, cur = f.get('name'), f.get('number'), f.get('currency')
-    if name in ('price_per_share', 'max_price_per_share') and n is not None:
+    if name in ('price_per_share', 'max_price_per_share', 'dividend_per_share') and n is not None:
         return kit.price(n) if cur == 'INR' else _money(n, cur) if cur else _as_written(f)
     if name == 'shares' and n is not None:
         return kit.shares(n)
@@ -97,6 +98,11 @@ def value_text(f: dict) -> str:
 
 
 def metric_text(m: dict) -> str:
+    q = str(m.get('qualifier') or '').strip()
+    return (q + ' ' if q else '') + _metric_text(m)
+
+
+def _metric_text(m: dict) -> str:
     n, unit = m.get('number'), str(m.get('unit') or '').strip().lower()
     if n is None:
         return str(m.get('value'))
@@ -170,6 +176,13 @@ def _name(r: dict) -> str:
     return str(r.get('company') or sym) if not sym or sym.isdigit() else sym
 
 
+def _nice_day(iso) -> str:
+    try:
+        return pd.Timestamp(str(iso)).strftime('%-d %b %Y')
+    except (ValueError, TypeError):
+        return str(iso)
+
+
 def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
     """One filing as a card: what happened (headline and points, every number in them found in the filing),
     its key terms, the figures of a periodic update with the change we compute, the filing's own words, and
@@ -237,6 +250,13 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     src = (f'<details class="rc-src"><summary>The filing\'s own words</summary><ul>{src}</ul>{held_html}</details>'
            if src or held_html else '')
 
+    loops = [l for l in _json(r.get('open_loops'), []) if isinstance(l, dict) and l.get('text')]
+    todo = ''.join(f'<li>{esc(str(l["text"])[:200])}{" <b>(" + esc(_nice_day(l["date"])) + ")</b>" if l.get("date") else ""}</li>'
+                   for l in loops if l.get('type') != 'not_disclosed')[:1800]
+    gaps = ''.join(f'<li>{esc(str(l["text"]))}</li>' for l in loops if l.get('type') == 'not_disclosed')
+    loops_html = ((f'<div class="rc-box"><p class="rc-lbl">Still to come, as the filing says</p><ul class="rc-pts">{todo}</ul></div>' if todo else '')
+                  + (f'<div class="rc-box"><p class="rc-lbl">Not in this filing</p><ul class="rc-pts">{gaps}</ul></div>' if gaps else ''))
+
     also = list(r.get('also_filed') if r.get('also_filed') is not None else [])
 
     def _also(a) -> str:
@@ -254,7 +274,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{loops_html}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'
@@ -376,11 +396,12 @@ def _before_html(lines) -> str:
 
 
 EARLIER_DAYS, INSIDER_DAYS = 90, 30
+SIZE_VS_YEAR = ('order_win', 'acquisition', 'divestment', 'capex', 'preferential', 'qip', 'rights', 'debt_issue', 'agreement', 'merger_demerger')
 OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_open_market', 'buyback_tender', 'open_offer')
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
-                insiders: pd.DataFrame | None) -> list[str]:
+                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None) -> list[str]:
     """Context from our own tables, every figure computed here, never by a model: the company's earlier
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
@@ -404,6 +425,11 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     if amt and amt.get('currency') == 'INR' and amt.get('number') and cap and cap == cap:
         out.append(f'The size is <b>{esc(kit.pct(amt["number"] / cap * 100, 1))}</b> of the company\'s market cap '
                    f'({esc(kit.rupees(cap))}).')
+    if amt and amt.get('currency') == 'INR' and amt.get('number') and r.get('category') in SIZE_VS_YEAR and results is not None:
+        year = context.last_year(results, isin, r.get('broadcast_at'))
+        if year:
+            out.append(f'The size is <b>{esc(kit.pct(amt["number"] / year["revenue"] * 100, 1))}</b> of {esc(year["fy"])} revenue '
+                       f'({esc(kit.rupees(year["revenue"]))}, {esc(year["basis"])}).')
     if holding:
         pct, pledge = holding.get('promoter_holding_pct'), holding.get('promoter_pledge_pct')
         if pct is not None and pct == pct:
@@ -447,10 +473,11 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     holdings = ({} if sh is None or sh.empty or 'isin' not in sh else
                 sh.sort_values('quarter_end').drop_duplicates('isin', keep='last').set_index('isin').to_dict('index'))
     insiders = getattr(ctx, 'eligible', None)
+    results = getattr(ctx, 'results', None)
 
     def card(x):
         p = by_isin.get(x.get('isin'))
-        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders))
+        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results))
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 

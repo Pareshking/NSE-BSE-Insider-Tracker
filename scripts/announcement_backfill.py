@@ -355,6 +355,7 @@ def verified_event(row: dict) -> dict | None:
         'points': points,
         'fields': fields,
         'metrics': metrics,
+        'open_loops': [l for l in (json_cell(row.get('open_loops')) or []) if isinstance(l, dict)],
     }
 
 

@@ -13,6 +13,10 @@ on:
         description: 'Golden set: a file of event_ids in the repo (scripts/golden_set.txt); overrides hours'
         required: false
         default: ''
+      replay_run:
+        description: 'Run id of a golden-set replay (announcement-reader.yml dry run): audit ITS cards instead of the stored ones'
+        required: false
+        default: ''
       excerpt:
         description: 'Characters of filing text shown at the start and round each quote (default 3000; 40000 = the whole filing)'
         required: false
@@ -25,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   audit:
@@ -36,7 +41,12 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - run: pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+      - name: Download the replay
+        if: ${{ inputs.replay_run != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ inputs.replay_run }}" -n announcement-pipeline-dry-run -D replay
       - name: Audit
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -45,6 +55,7 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           HOURS: ${{ inputs.hours || '6' }}
           IDS_FILE: ${{ inputs.ids_file || '' }}
+          REPLAY_JSON: ${{ inputs.replay_run != '' && 'replay/announcement_reader_dry_run.json' || '' }}
           EXCERPT: ${{ inputs.excerpt || '3000' }}
         run: python -u scripts/card_audit.py | tee card_audit.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

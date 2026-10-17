@@ -1,0 +1,37 @@
+name: Text mode probe (no AI)
+
+# Read-only (17 Oct 2026): pdftotext -layout vs reading order vs PyMuPDF sort=True vs sorted blocks, scored on table rows read off the page images.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/text_mode_probe.py'
+      - '.github/workflows/text-mode-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt pymupdf && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+      - name: Probe
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          OUT_DIR: text_out
+        run: python -u scripts/text_mode_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: text-out
+          path: text_out

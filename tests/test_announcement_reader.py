@@ -6,7 +6,7 @@ import io
 import json
 import threading
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import announcement_reader as ar
 import announcement_sample as sample
@@ -638,8 +638,8 @@ def test_headline_points_and_year_ago_values_are_checked_against_the_filing():
     boilerplate, _ = ar.card_words({**out, 'headline': {
         'text': 'Madhav Infra Projects Ltd: Submission of Board Meeting Outcome for Board Meeting held today',
         'quote': 'Issue Size up to ₹ 12,000 Lakhs'}}, doc, fields, metrics)
-    assert boilerplate is not None and not boilerplate['shown']
-    assert 'filing-label boilerplate' in boilerplate['reason']
+    assert boilerplate is not None and boilerplate.get('promoted_from_point')   # the boilerplate headline is not shown; a checked point leads
+    assert 'boilerplate' not in str(boilerplate.get('text')).lower()
     assert 'a number not in its quote' in points[1]['reason'] and points[2]['reason'] == 'quote not found in the filing'
     assert metrics[0]['previous_number'] == 812 and metrics[0]['change_pct'] == 31.9   # our sum, not the model's
     assert 'headline' in ar.card_prompt({'exchange': 'NSE', 'symbol': 'X', 'subject': 's'}, doc).split('=== DOCUMENT ===')[0]
@@ -967,7 +967,8 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     store = _ledger_store(monkeypatch)
     c = FakeClient(['{}', '{}', '{}'])
     lanes = {'main': ar.Lane('main', ['nvidia:m'], {'nvidia': c})}
-    ledger = ar.UsageLedger(object(), '2026-10-15', {'nvidia': c}, lanes, 'live')
+    today = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime('%Y-%m-%d')   # the reader's folders are IST days
+    ledger = ar.UsageLedger(object(), today, {'nvidia': c}, lanes, 'live')
     c.generate(['m'], 'p', 'read', True)
     assert ledger.write()
     c.generate(['m'], 'p', 'read', True)
@@ -1264,8 +1265,8 @@ def test_a_headline_or_point_is_backed_by_its_own_quote_not_by_another_quote_of_
            'points': [{'text': 'Initial capacity is 5000 vehicles a year.', 'quote': 'Initial capacity of 5000 vehicles/shift/year.'}]}
     cat, fields, metrics = ar.validate(out, doc)
     headline, points = ar.card_words(out, doc, fields, metrics)
-    assert not headline['shown'] and 'a number not in its quote' in headline['reason']   # 5000 is in another quote
-    assert points[0]['shown']
+    assert 'Rs 1000 crore' not in headline['text']   # the claim backed only by another quote is not shown as written
+    assert headline.get('promoted_from_point') and headline['text'].startswith('Initial capacity is 5000')
 
 
 def test_an_invented_capacity_before_is_held_back_and_a_real_one_is_kept():
@@ -1310,7 +1311,7 @@ def test_a_table_quote_keeps_its_unit_only_when_the_table_heading_has_it():
     assert not metrics[0]['shown'] and 'unit not backed' in metrics[0]['reason']
     lakh = doc.replace('Rs. Crore', 'Rs. in Lakhs')
     _, _, metrics = ar.validate(out, lakh)
-    assert not metrics[0]['shown']                       # the heading says lakh, the card says crore
+    assert metrics[0]['shown'] and metrics[0]['unit'] == 'lakh'     # the heading says lakh, the model said crore: the heading's unit is used
 
 
 def test_prompt_separates_terminations_and_esg_scores_and_asks_for_the_main_news():
@@ -1328,7 +1329,7 @@ def test_an_exact_table_row_keeps_its_unit_from_the_heading_above_it():
     _, _, metrics = ar.validate(out, doc)
     assert metrics[0]['shown']
     _, _, metrics = ar.validate(out, doc.replace('Million', 'Crore'))
-    assert not metrics[0]['shown']                       # the heading says crore, the card says million
+    assert metrics[0]['shown'] and metrics[0]['unit'] == 'crore'    # the heading says crore, the model said million: the heading's unit is used
     _, _, metrics = ar.validate(out, doc.replace('(₹ in Million)', 'Particulars'))
     assert not metrics[0]['shown']                       # no unit anywhere near the row
 
@@ -1783,7 +1784,7 @@ def test_rating_headline_must_carry_a_change_in_the_facility_size():
     out = {'category': 'rating_reaffirmed',
            'headline': {'text': 'Crisil reaffirms Skipper at A+/Stable', 'quote': 'Crisil Ratings has reaffirmed'}}
     head, _ = ar.card_words(out, doc, [], [])
-    assert not head['shown'] and 'enhanced' in head['reason']
+    assert head['shown'] and 'enhanced' in head['text'] and 'from ₹4,621' in head['text']      # the filing's own change leads, not the model's wording
     out['headline']['text'] = 'Crisil reaffirms Skipper at A+/Stable; facilities enhanced to Rs 5,106 Cr'
     head, _ = ar.card_words(out, doc, [], [])
     assert 'enhanced from' not in (head.get('reason') or '')
@@ -1799,3 +1800,423 @@ def test_results_row_gives_qoq_yoy_and_half_year_changes_from_its_own_columns():
     assert ar.results_changes({'quote': 'Revenue 7119.36 6,250.67 5,721.45 7,119.36 15,302.65', 'value': '7,119.36'}) == {}   # 5 columns: not the layout
     assert ar.results_changes({'quote': 'Revenue 100 90 80 500 400 900', 'value': '100'}) == {}   # the six-month figure is not the sum
     assert ar.results_row('Profit (494.90) 10 20 30 40 50') is None
+
+
+def test_period_labels_are_not_figures_and_checked_card_numbers_back_a_headline():
+    assert ar.numbers_backed('Gujarat Energy FY 2025-26 dividend', ['declared dividend for FY 25-26'])
+    assert ar.numbers_backed('Q2 FY27 9M revenue', ['revenue grew'])
+    assert ar.numbers_backed('Kabra revenue ₹2,210 Mn', ['Consolidated revenues grew 64.2%'], extra=[2.21e9])
+    assert not ar.numbers_backed('Kabra revenue ₹2,210 Mn', ['Consolidated revenues grew 64.2%'])
+
+
+def test_legal_name_and_symbol_are_rewritten_not_held():
+    assert ar.rewrite_name('Prime Fresh Limited wins NHB project', ('PRIMEFRESH', 'Prime Fresh Limited')) == 'Prime Fresh wins NHB project'
+    assert ar.rewrite_name('MFSL receives ESG rating of 61', ('MFSL', 'Max Financial Services Limited')).startswith('Max Financial Services receives')
+    assert ar.rewrite_name('KEC International gets rating', ('KEC', 'KEC International Limited')) == 'KEC International gets rating'
+
+
+def test_subject_line_settles_stake_change_pledge_and_routine():
+    assert ar.category_override('open_offer', 'Disclosures under Reg. 29(2) of SEBI (SAST) Regulations, 2011', '') == 'stake_change'
+    assert ar.category_override('open_offer', 'Open Offer', '') == 'open_offer'
+    assert ar.category_override('routine', 'Disclosures under Reg. 31(1) and 31(2) of SEBI (SAST) Regulations, 2011', '') == 'pledge'
+    assert ar.category_override('financial_results', 'Audio Recording of Conference Call', '') == 'routine'
+    assert ar.category_override('rating_upgrade', 'General', 'ERAIL has assigned an ESG rating of 71') == 'routine'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', 'CRISIL ESG not relevant, Crisil has upgraded the credit rating') == 'rating_upgrade'
+    assert 'stake_change' in ar.CATEGORIES and 'pledge' in ar.CATEGORIES
+
+
+def test_repeated_points_are_dropped_and_a_surviving_point_leads_when_the_headline_is_held():
+    doc = 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026 due to personal reasons.'
+    out = {'category': 'management_change',
+           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+                      {'text': 'The reason given is personal reasons', 'quote': 'due to personal reasons'}]}
+    cat, fields, metrics = ar.validate(out, doc)
+    head, points = ar.card_words(out, doc, fields, metrics)
+    assert head['shown'] and [p['shown'] for p in points] == [False, True]
+    assert 'repeats' in points[0]['reason']
+
+
+def test_physical_units_and_qualifiers_are_kept_on_metrics():
+    doc = 'Production of 69,617.424 MT in Q2. The Company has more than 3,000 employees in Hyderabad.'
+    out = {'metrics': [{'label': 'Production', 'period': 'Q2 FY27', 'value': '69,617.424', 'unit': 'units', 'quote': 'Production of 69,617.424 MT in Q2'},
+                       {'label': 'Employees in Hyderabad', 'period': '2026', 'value': '3,000', 'unit': 'units', 'quote': 'more than 3,000 employees in Hyderabad'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert [m['unit'] for m in metrics] == ['MT', 'employees'] and all(m['shown'] for m in metrics)
+    assert metrics[1]['qualifier'] == 'more than' and metrics[0]['qualifier'] is None
+
+
+def test_a_quote_with_another_column_interleaved_is_found_as_a_table_row():
+    import announcement_sample as sm
+    doc = ('Purpose | To reduce the power cost by way of shifting towards\n| the solar and wind power energy, which are cost\n'
+           '| effective and environment friendly.\nTarget | Agganga Energy')
+    q = 'To reduce the power cost by way of shifting towards the solar and wind power energy, which are cost effective and environment friendly.'
+    assert sm.quote_found(q, doc.replace('\\\n', '\n')) in ('exact', 'table')
+    interleaved = ('To reduce the power cost by way of shifting towards  | Nature of business\nthe solar and wind power energy, which are cost  | Renewable power\n'
+                   'effective and environment friendly.  | None')
+    assert sm.quote_found(q, interleaved) == 'table'
+    assert not sm.quote_found('The company plans to build a new plant in Gujarat next year for solar modules.', interleaved)
+
+
+def test_open_loops_are_the_filings_own_sentences_with_their_dates():
+    doc = ("Completion remains subject to due diligence, definitive agreements and required approvals. The Company will apply to the "
+           "Stock Exchanges for listing and trading approval. The Hon'ble NCLAT fixed the next date of hearing on November 06, 2026. "
+           "The reply in DRC-06 is due by October 29, 2026. Details will be intimated in due course. The Board met today.")
+    loops = ar.extract_open_loops(doc)
+    assert [l['type'] for l in loops] == ['approval_pending', 'listing_pending', 'hearing', 'due_date', 'further_disclosure']
+    assert loops[2]['date'] == '2026-11-06' and loops[3]['date'] == '2026-10-29' and loops[0]['date'] is None
+    assert ar.extract_open_loops('The Board met today.') == []
+
+
+def test_a_cover_letter_on_a_large_file_is_not_read_as_if_it_were_the_filing():
+    letter = 'Dear Sir, we enclose herewith the order of the NCLT sanctioning the scheme. Yours faithfully.'
+    assert ar.enclosure_unread_reason(letter, 5_700_000) and 'not read' in ar.enclosure_unread_reason(letter, 5_700_000)
+    assert ar.enclosure_unread_reason(letter, 40_000) is None            # a small file: the letter is the filing
+    assert ar.enclosure_unread_reason('x ' * 3000 + ' enclosed', 5_700_000) is None   # a long text is a real document
+
+
+def test_a_resignation_filed_as_xbrl_facts_gets_the_person_as_subject_and_a_checked_headline():
+    import announcement_sample as sm
+    doc = ('XBRL FACTS (exchange-provided structured data; use exact values and contexts):\n'
+           'TypeOfChange = Cessation [context: startDate=2026-10-16, endDate=2026-10-16]\n'
+           'CategoryOfCessation = Resignation [context: startDate=2026-10-16, endDate=2026-10-16]\n'
+           'DesignationOfDesignatedPerson = Company Secretary and Compliance Officer [context: x]\n'
+           'NameOfDesignatedPerson = Sridevi Dasari [context: instant=2026-10-16]\n'
+           'EffectiveDateOfReasonOfChange = 2026-11-14 [context: instant=2026-10-16]\n'
+           'TypeOfChange = Appointment [context: x]\n'
+           'DesignationOfDesignatedPerson = Company Secretary and Compliance Officer [context: x]\n'
+           'NameOfDesignatedPerson = Kallepally Bharath Kumar [context: instant=2026-10-16]\n'
+           'EffectiveDateOfReasonOfChange = 2026-11-15 [context: instant=2026-10-16]\n')
+    head, points = ar.people_change(doc, ('CCL', 'CCL Products (India) Limited'))
+    assert head['text'] == ('CCL Products (India): Company Secretary and Compliance Officer Sridevi Dasari resigns, effective 14 Nov 2026; '
+                            'Kallepally Bharath Kumar appointed from 15 Nov 2026')
+    assert sm.quote_found(head['quote'], doc) == 'exact'
+    res = ar.result_of({'category': 'management_change', 'headline': {'text': 'CCL Products resigns Company Secretary', 'quote': 'TypeOfChange = Cessation'}},
+                       doc, 'm', 1.0, 'lane', ('CCL', 'CCL Products (India) Limited'), 'Resignation of Director/KMP/SMP')
+    assert res['headline']['from_facts'] and 'Sridevi Dasari resigns' in res['headline']['text']
+    assert ar.people_change('plain text', ('X', 'Y Ltd')) == (None, [])
+
+
+def test_a_gap_is_said_when_the_category_expects_an_amount_and_the_filing_has_none():
+    assert ar.gaps_of('order_win', [], 'Aurionpro has won a contract with Matkahuolto under an MSA.')[0]['type'] == 'not_disclosed'
+    assert ar.gaps_of('order_win', [], 'The order is worth Rs. 69 crore.') == []
+    assert ar.gaps_of('order_win', [{'name': 'amount', 'shown': True}], 'x') == []
+    assert ar.gaps_of('management_change', [], 'x') == []
+
+
+def test_a_results_card_without_a_headline_gets_one_from_its_own_checked_figures():
+    metrics = [{'label': 'Revenue from operations', 'period': 'Q2 FY27', 'number': 3.8238e10, 'currency': 'INR', 'shown': True,
+                'change_pct': 13.4, 'qoq_pct': 2.8, 'quote': 'Revenue from operations 3,823.80 3,721.44 3,371.85 7,545.24 6,672.22 14,620.13'},
+               {'label': 'Profit after tax', 'period': 'Q2 FY27', 'number': 7.069e8, 'currency': 'INR', 'shown': True, 'change_pct': -49.0,
+                'quote': 'Profit after tax 70.69 x'}]
+    h = ar.results_headline(metrics, ('JINDALSAW', 'Jindal Saw Limited'))
+    assert h['text'] == 'Jindal Saw Q2 FY27 results: revenue ₹3,824 Cr (+13.4% YoY, +2.8% QoQ); profit after tax ₹70.7 Cr (-49.0% YoY)'
+    assert ar.results_headline([], ('X', 'Y Ltd')) is None
+    assert ar.indian_currency('lakh', 'Revenue 8,932') == 'INR' and ar.indian_currency('million', 'Revenue 8,932') is None
+    assert ar.indian_currency('crore', 'US$ 5 crore') is None
+
+
+def test_the_fiscal_label_follows_the_quarter_end_date_the_filing_gives():
+    doc = 'The Board approved the results for the quarter ended 30th September, 2026.'
+    assert ar.fiscal_label('Karur Vysya Bank posts Q2 FY26 results', doc) == 'Karur Vysya Bank posts Q2 FY27 results'
+    assert ar.fiscal_label('Revenue up 10% over Q2 FY26 to Q2 FY27', doc) == 'Revenue up 10% over Q2 FY26 to Q2 FY27'   # FY26 here may be the year-ago quarter... only the matching quarter is corrected
+    assert ar.fiscal_label('Q1 FY26 results', doc) == 'Q1 FY26 results'
+    assert ar.fiscal_label('Q2 FY26 results', 'no date here') == 'Q2 FY26 results'
+
+
+def test_a_number_inside_a_name_is_not_a_figure():
+    assert ar.numbers_backed('Atyant Capital ACIF-1 sells 5.815% in Ponni', ['ACIF-1 sold 5.8150% of the equity'])
+
+
+def test_company_memory_keeps_the_open_loops_of_a_read():
+    import announcement_backfill as bf
+    row = {'status': 'read', 'event_id': 'nse:1', 'broadcast_date': '2026-10-16', 'symbol': 'X', 'category': 'preferential',
+           'headline': '{"text": "X approves preferential issue", "shown": true}', 'points': '[]', 'fields': '[]', 'metrics': '[]',
+           'open_loops': '[{"type": "approval_pending", "text": "Subject to shareholders\' approval.", "date": null}]'}
+    assert bf.verified_event(row)['open_loops'][0]['type'] == 'approval_pending'
+
+
+def test_the_point_that_carries_the_checked_figure_leads_and_an_unstated_upgrade_is_held():
+    doc = 'The Board approved the merger of two units effective 01.11.2026. The estimated cost of the expansion is Rs. 500 Crore approx.'
+    out = {'category': 'capex', 'fields': [{'name': 'amount', 'value': '500', 'unit': 'crore', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'}],
+           'headline': {'text': 'BHEL approves Rs 800 Cr expansion', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'},
+           'points': [{'text': 'Merger of two units effective 1 Nov 2026', 'quote': 'merger of two units effective 01.11.2026'},
+                      {'text': 'Estimated cost of the expansion is Rs 500 Cr', 'quote': 'estimated cost of the expansion is Rs. 500 Crore'}]}
+    _, fields, metrics = ar.validate(out, doc)
+    head, points = ar.card_words(out, doc, fields, metrics, ('BHEL', 'BHEL Limited'))
+    assert head['promoted_from_point'] and '500 Cr' in head['text']
+    held = ar.check_words({'text': 'KEI ESG rating upgraded to Excellent', 'quote': 'assigned a rating of 71 (Excellent)'}, 'assigned a rating of 71 (Excellent)')
+    assert not held['shown'] and 'upgraded' in held['reason']
+
+
+def test_a_dividend_is_not_a_price_a_share():
+    doc = 'The Board declared an interim dividend of INR 25/- per equity share of Re. 1 each. Revenue from operations 118,076.'
+    out = {'category': 'financial_results', 'fields': [{'name': 'price_per_share', 'value': '25', 'quote': 'interim dividend of INR 25/- per equity share of Re. 1 each'}],
+           'headline': {'text': 'LTM declares interim dividend of ₹25 per share', 'quote': 'interim dividend of INR 25/- per equity share of Re. 1 each'}}
+    res = ar.result_of(out, doc, 'm', 1.0, 'lane', ('LTM', 'LTM Limited'), 'Outcome of Board Meeting')
+    assert [f['name'] for f in res['fields']] == ['dividend_per_share']
+
+
+def test_quote_found_through_lost_ligatures():
+    from scripts import announcement_sample as sm
+    doc = 'approved:\n1. | Capital investment proposal for addi onal facili es for manufacturing of\nUnit at an es mated cost of Rs. 500\nCrore approx.'
+    q = 'Capital investment proposal for additional facilities for manufacturing of Unit at an estimated cost of Rs. 500 Crore approx.'
+    assert sm.quote_found(q, doc) == 'exact'
+    assert not sm.quote_found(q.replace('500', '600'), doc)
+
+
+def test_results_headline_uses_filing_quarter_and_inr_for_million():
+    from scripts import announcement_reader as r
+    doc = 'Unaudited financial results for the quarter ended 30 September 2026'
+    assert r.quarter_label(doc) == 'Q2 FY27'
+    assert r.indian_currency('million', 'tin million 1,200', True) == 'INR'
+    assert r.indian_currency('million', 'USD 1,200 million', True) is None
+    assert r.indian_currency('million', '1,200 million', False) is None
+    m = [{'shown': True, 'number': 1.2e9, 'currency': 'INR', 'label': 'Revenue from operations', 'period': 'Q1', 'quote': 'q'}]
+    assert 'Q2 FY27' in r.results_headline(m, ('X', 'X Ltd'), doc)['text']
+
+
+def test_unit_from_the_table_heading_when_the_model_names_another():
+    from scripts import announcement_sample as sm
+    doc = 'Results\ntin million, except per share data\nRevenue from operations | 118,076 | 116,080\n'
+    assert sm.nearest_unit('Revenue from operations 118,076', doc) == 1e6
+    assert sm.nearest_unit('Revenue from operations 999', doc) is None
+
+
+def test_facility_change_headline_from_split_table_cells():
+    from scripts import announcement_reader as r
+    doc = 'Facilities | Amount | Rating | Rating Action\nLong Term | Bank Rs.5106 | Crore | Crisil A+/Stable | Reaffirmed\nFacilities | (Enhanced | from\nShort Term | Bank Rs.4621 Crore) | Crisil A1 | Reaffirmed\n'
+    h = r.facility_change_headline(doc, ('Skipper', 'Skipper Ltd'))
+    assert h and 'enhanced to ₹5,106 Cr from ₹4,621 Cr' in h['text'] and h['text'].startswith('Skipper')
+    assert r.facility_change_headline('Rating reaffirmed. Facilities unchanged.', ('A',)) is None
+
+
+def test_person_name_restored_and_unit_from_the_metrics_own_number():
+    from scripts import announcement_reader as r, announcement_sample as sm
+    doc = 'Mr. Nian Nian Yuan (DIN 1), Non-Executive Director, has tendered his resignation'
+    assert r.full_person_name('Oracle Financial Services Yuan resigns as director', doc, ('OFSS', 'Oracle Financial Services Software Ltd')) \
+        == 'Oracle Financial Services Nian Nian Yuan resigns as director'
+    assert r.full_person_name('Yuan resigns', doc, ('Yuan Industries',)) == 'Yuan resigns'
+    d = 'in million\nNet profit after tax (5-6) 13,799 12,000\n'
+    assert sm.nearest_unit('Net profit after tax (5-6) 13,799', d, '13,799') == 1e6
+
+
+def test_first_rating_call_recording_and_unfilled_point_tokens():
+    doc = 'Facility Rated IVR BBB-/Stable (Rating Assigned) Infomerics Valuation and Rating'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', doc) == 'rating_assigned'
+    assert ar.category_override('rating_upgrade', 'Credit Rating', doc + ' upgraded from IVR BB+') == 'rating_upgrade'
+    assert ar.category_override('financial_results', 'General', 'Sub: Audio recording of earnings call for Q2 FY27 results') == 'routine'
+    assert ar.category_override('financial_results', 'Results', 'Unaudited financial results for the quarter ended 30 September 2026. Revenue from operations rose.') == 'financial_results'
+    out = {'category': 'rating_assigned', 'headline': None,
+           'points': [{'text': 'Rated facilities amount to {amount} crore', 'quote': 'Rated facilities amount to Rs 400 crore'}]}
+    _, pts = ar.card_words(out, 'Rated facilities amount to Rs 400 crore', [], [])
+    assert not any(p['shown'] and '{' in p['text'] for p in pts)
+
+
+def test_changes_from_the_filings_row_when_the_quote_has_one_column():
+    doc = 'Particulars\nRevenue from operations | 118,076 | 116,080 | 103,943 | 234,156 | 202,349 | 423,076\nOther income | 915 | 2,554\n'
+    ch = ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}, doc)
+    assert ch['change_pct'] == 13.6 and ch['qoq_pct'] == 1.7
+    assert ar.results_changes({'label': 'Revenue from operations', 'value': '118,076', 'quote': 'Revenue from operations 118,076'}) == {}
+
+
+def test_stake_headline_must_name_the_party_the_filing_names():
+    seller = 'Name of the Target Company (TC) | DCM Shriram Fine Chemicals Limited\nName(s) of the seller and Persons | Urvashi Tilakdhar\nActing in Concert'
+    assert ar.sast_party_reason('DCM Shriram transfers 30.94% stake to Alok B Shriram', seller) is not None
+    assert ar.sast_party_reason('Urvashi Tilakdhar sells 30.94% of DCM Shriram', seller) is None
+    buyer = 'Name(s) of the acquirer and Persons | JBCG ADVISORY SERVICES PRIVATE LIMITED\nActing in concert'
+    assert ar.sast_party_reason('Centrum Capital stake rises 2.40% to 13.88%', buyer) is not None
+    assert ar.sast_party_reason('JBCG Advisory buys 2.40% of Centrum', buyer) is None
+    assert ar.sast_party_reason('anything', 'no party line here') is None
+
+
+def test_number_words_back_digits():
+    assert ar.numbers_backed('Options vest over 3 years', ['The options shall vest over three years from the grant date'])
+    assert not ar.numbers_backed('Options vest over 4 years', ['The options shall vest over three years from the grant date'])
+
+
+def test_quote_with_currency_and_unit_words_the_row_lacks_is_found():
+    from scripts import announcement_sample as sm
+    doc = 'in million\nRevenue from operations | 118,076 | 116,080 | 103,943\n'
+    assert sm.quote_found('Revenue from operations ₹118,076 Mn', doc) == 'exact'
+    assert not sm.quote_found('Revenue from operations ₹118,999 Mn', doc)
+
+
+def test_annual_charge_is_not_stated_as_a_total():
+    assert ar.basis_reason('Power Grid wins project for Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore')
+    assert ar.basis_reason('Power Grid wins project with annual charge of Rs. 199.55 Crore', 'quoted Annual Transmission Charges of Rs. 199.55 Crore') is None
+    assert ar.basis_reason('Wins order for Rs. 7 Cr', 'order worth Rs. 7 Cr') is None
+
+
+def test_quarter_end_in_month_first_form():
+    assert ar.quarter_label('Results for the quarter ended September 30, 2026') == 'Q2 FY27'
+    assert ar.fiscal_label('Tips Music Q2 FY26 results', 'financial results for the quarter ended September 30, 2026') == 'Tips Music Q2 FY27 results'
+
+
+def test_heading_unit_when_the_filing_names_one():
+    from scripts import announcement_sample as sm
+    assert sm.heading_unit('Statement\nRs in lacs\nQuarter Ended') == 1e5
+    assert sm.heading_unit('(₹ crores)\nParticulars') == 1e7
+    assert sm.heading_unit('Rs in lacs ... later ... (₹ crores)') is None
+    assert sm.nearest_unit('Profit 77', 'Statement Rs in lacs\nnothing here') == 1e5
+
+
+def test_up_from_a_higher_figure_is_not_said():
+    assert ar.direction_reason('Standalone net profit ₹70.69 crores, up from ₹79.29 crores')
+    assert ar.direction_reason('Profit ₹80 crores, up from ₹70 crores') is None
+    assert ar.direction_reason('Profit ₹60 crores, down from ₹70 crores') is None
+    assert ar.direction_reason('Profit ₹80 crores, down from ₹70 crores')
+
+
+def test_call_recording_filed_as_results_does_not_headline_results():
+    doc = 'Sub: Audio recording of earnings call for Q2 FY27 unaudited results'
+    out = {'category': 'financial_results', 'headline': {'text': 'Karur Vysya Bank posts unaudited Q2 results', 'quote': 'Audio recording of earnings call for Q2 FY27 unaudited results'},
+           'points': [], 'fields': [], 'metrics': []}
+    res = ar.result_of(out, doc, 'zai:x', 1.0, 'zai', ('KARURVYSYA', 'Karur Vysya Bank Ltd'), 'Updates')
+    assert res['category'] == 'routine'
+    assert not (res['headline'] and res['headline'].get('shown') and 'posts' in res['headline']['text'])
+
+
+def test_heading_unit_backs_the_models_unit_when_the_row_is_wide():
+    pad = ' ' * 60
+    doc = 'Statement of results\nRs in lacs\n' + ('\n' * 30) + f'Profit after tax{pad}1,351{pad}1,510{pad}861\n'
+    out = {'category': 'financial_results', 'metrics': [{'label': 'Profit after tax', 'period': 'Q2 FY27', 'value': '1,351', 'unit': 'lakh', 'quote': 'Profit after tax 1,351'}]}
+    _, _, metrics = ar.validate(out, doc)
+    assert metrics[0]['shown'], metrics[0]
+
+
+def test_unit_written_inside_the_value_is_split_out():
+    assert ar.split_value_unit('₹102 Crore', 'rupees') == ('102', 'crore')
+    assert ar.split_value_unit('₹1,715 Mn', 'rupees') == ('1,715', 'mn')
+    assert ar.split_value_unit('84.48 Cr', None) == ('84.48', 'cr')
+    assert ar.split_value_unit('102', 'crore') == ('102', 'crore')
+    out = {'category': 'financial_results', 'metrics': [{'label': 'Debt reduction', 'period': 'Q2', 'value': '₹102 Crore', 'unit': 'rupees', 'quote': 'Reduced total debt by ₹102 Crore'}]}
+    _, _, metrics = ar.validate(out, 'Reduced total debt by ₹102 Crore in the quarter')
+    assert metrics[0]['shown'] and metrics[0]['number'] == 102 * 1e7
+
+
+def test_a_historic_point_does_not_lead_when_a_current_one_exists():
+    pts = [{'text': 'Previous warrant exercise on June 18, 2026 resulted in 34,964 warrants being exercised', 'quote': 'q1', 'shown': True},
+           {'text': 'Promoter remitted USD 34.99 million to exercise warrants', 'quote': 'q2', 'shown': True}]
+    head, rest = ar.promote_point(None, pts, ('AFFLE', 'Affle 3i Ltd'), (), 'warrant_conversion')
+    assert head and head['text'].startswith('Promoter remitted')
+
+
+def test_basis_window_counts_words_not_padding():
+    pad = ' ' * 400
+    doc = 'Consolidated Results\n' + ('x' + pad) * 6 + f'\nPAT{pad}353{pad}400\n'
+    assert ar.basis_near(doc, 'PAT 353 400') == 'consolidated'
+
+
+def test_overstatement_payer_and_capital_guards():
+    from scripts.announcement_reader import overstatement_reason, payer_reason, value_is_capital
+    assert overstatement_reason('Rajesh Exports cleared of SEBI penalty', 'no penalty is levied; investigation continues')
+    assert not overstatement_reason('Company cleared of charge', 'the Court cleared the company of the charge')
+    doc = 'Direct Monetary Outflow: Nil. Settlement amount paid by the former promoter under indemnity.'
+    assert payer_reason('SEPC settles disputes for Rs 149.5 Crore', doc)
+    assert not payer_reason('SEPC disputes settled for Rs 149.5 Crore, paid by indemnifier, nil outflow', doc)
+    assert value_is_capital('1,90,87,31,370', 'Paid up Equity Share Capital being Rs. 1,90,87,31,370/-')
+    assert not value_is_capital('500', 'order worth Rs. 500 Crore')
+
+
+def test_results_headline_names_the_basis_from_the_heading_above_the_table():
+    doc = ('Q2 FY27 Standalone Results Highlights\nParticulars Q2 FY27 Q1 FY27 Q2 FY26\nTotal Income 38,814 37,557 34,091\n'
+           'Profit after Tax (PAT) 707 1,098 793\nQ2 FY27 Consolidated Results Highlights\nTotal Income 45,231 44,760 42,640\nPAT 353 908 1,386\n')
+    assert ar.basis_near(doc, 'Total Income 38,814 37,557 34,091') == 'standalone'
+    assert ar.basis_near(doc, 'Total Income 45,231 44,760 42,640') == 'consolidated'
+
+
+def test_multi_item_headline_and_garbled_growth_words():
+    doc = ('Allotment of 7,100 (Seven Thousand) Equity Shares under ESOS 2010. Allotment of 90,869 Equity Shares under ESOS 2017. '
+           'Allotment of 1,985 Equity Shares under ESIS 2023.')
+    assert ar.multi_item_reason('7,100 equity shares allotted under ESOS 2010 Scheme', doc)
+    assert ar.multi_item_reason('99,954 equity shares allotted under three schemes', doc) is None
+    assert ar.multi_item_reason('Equity shares allotted under stock option schemes', doc) is None
+    assert ar.multi_item_reason('7,100 equity shares allotted', 'Allotment of 7,100 Equity Shares') is None
+
+
+def test_no_percent_change_from_a_loss_to_a_profit():
+    raw = {'previous': '(0.35)', 'previous_quote': 'Consolidated PAT was 1.82 crore, compared with a loss of (0.35) crore', 'previous_period': 'Q1 FY26'}
+    m = ar.with_previous({'shown': True, 'number': 1.82, 'unit': None, 'currency': 'INR'}, raw, 'Consolidated PAT was 1.82 crore, compared with a loss of (0.35) crore')
+    assert m.get('previous_number') == -0.35 and m.get('change_pct') is None
+    raw2 = {'previous': '0.95', 'previous_quote': 'PAT rose to 2.77 crore from 0.95 crore a year earlier', 'previous_period': 'Q1 FY26'}
+    m2 = ar.with_previous({'shown': True, 'number': 2.77, 'unit': None, 'currency': 'INR'}, raw2, 'PAT rose to 2.77 crore from 0.95 crore a year earlier')
+    assert m2.get('change_pct') == 191.6
+
+
+def test_person_name_broken_over_two_lines_is_not_repeated():
+    doc = 'resignation of Mr. Jayprakash\n Labhshankar Raval as Chief Financial Officer'
+    text = 'Trustedge Capital CFO Jayprakash Labhshankar Raval resigns'
+    assert ar.full_person_name(text, doc, ('Trustedge Capital',)) == text
+
+
+def test_table_arithmetic_catches_a_misread_results_table():
+    good = ('I Revenue from operations 320.96 356.75 284.23\nII Other income 22.08 29.15 5.17\nIII Total income (I + II) 343.04 385.90 289.40\n'
+            'IX Profit / (loss) before tax 71.70 44.16 (3.96)\nX Tax expense / (credit):\nTotal tax expense / (credit) 8.28 9.92 (0.50)\n'
+            'XI Profit / (loss) for the period / year (IX-X) 63.42 34.24 (3.46)\n')
+    assert ar.table_arithmetic(good) == (2, [])
+    bad = good.replace('343.04', '843.04').replace('63.42', '68.42')
+    ok, failed = ar.table_arithmetic(bad)
+    assert ok == 0 and len(failed) == 2
+    assert ar.table_arithmetic('Revenue from operations 8,932 8,355\nProfit after tax 1,351 1,510\n') == (0, [])   # rows that cannot be checked are not failures
+
+
+def test_short_name_in_a_headline_is_replaced_whole_by_the_full_name():
+    doc = 'Mr. Rahul Jagdishbhai Adesara has resigned as Manager'
+    assert ar.full_person_name('Knack Packaging Rahul Adesara resigns as Manager', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns as Manager'
+    assert ar.full_person_name('Knack Packaging Adesara resigns', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns'
+
+
+def test_shares_times_price_must_be_the_amount():
+    ok = [{'name': 'shares', 'shown': True, 'number': 3880000.0}, {'name': 'price_per_share', 'shown': True, 'number': 110.0}, {'name': 'amount', 'shown': True, 'number': 426800000.0}]
+    ar.deal_arithmetic(ok)
+    assert all(f['shown'] for f in ok)
+    bad = [{'name': 'shares', 'shown': True, 'number': 100000.0}, {'name': 'price_per_share', 'shown': True, 'number': 49.82}, {'name': 'amount', 'shown': True, 'number': 12460000.0}]
+    ar.deal_arithmetic(bad)
+    assert bad[2]['shown'] is False and 'shares x' in bad[2]['reason'] and bad[0]['shown'] and bad[1]['shown']
+    two = [{'name': 'shares', 'shown': True, 'number': 5.0}, {'name': 'amount', 'shown': True, 'number': 99.0}]
+    ar.deal_arithmetic(two)
+    assert two[1]['shown']
+
+
+KESAR_FORM = """Before the acquisition under consideration, holding of:
+a) Shares carrying voting rights
+  Gopal Gupta 1,67,28,600 67.45 51.42
+  Sachin Gopal Gupta 9,26,324 3.74 2.85
+d) Warrants /convertible securities
+  Gopal Gupta 18,57,147 0.00 5.71
+Total (a+b+c+d) 1,95,12,071 71.19 59.98
+Details of acquisition:
+a) Shares carrying voting rights acquired/sold
+  Gopal Gupta 18,57,147 5.42 5.42
+  Sachin Gopal Gupta 57,142 0.17 0.17
+Total (a+b+c+d) 19,14,289 5.59 5.59
+After the acquisition/sale, holding of:
+a) Shares carrying voting rights
+  Gopal Gupta 1,85,85,747 54.24 54.24
+  Sachin Gopal Gupta 9,83,466 2.87 2.87
+Total (a+b+c+d) 1,95,69,213 57.11 57.11
+"""
+
+
+def test_holdings_rows_must_add_up_to_each_total_and_one_capital_behind_the_percentages():
+    assert ar.holdings_arithmetic(KESAR_FORM) == []
+    bad = KESAR_FORM.replace('1,85,85,747', '1,85,85,947')
+    assert any(x.startswith('after: the rows add up to') for x in ar.holdings_arithmetic(bad))
+    row = 'Preetham | 48,71,194 | 9.57 Creation 29.09.2026 | Pledge Pledge of 1,87,500 | 0.37 360 One'
+    assert ar.holdings_arithmetic(row) == []
+    assert ar.holdings_arithmetic(row.replace('0.37', '0.87'))
+
+
+def test_a_rows_formula_in_brackets_is_not_its_first_amount():
+    doc = ('1  Revenue from Operations  1,142.03  1,019.42  1,117.05\n2  Other Income  3.42  2.10  4.00\n'
+           '3  Total Income (1+2)  1,145.45  1,021.52  1,121.05\n')
+    assert ar.table_arithmetic(doc) == (1, [])
+    assert ar.table_arithmetic(doc.replace('1,145.45', '1,195.45'))[1]
+
+
+def test_an_approximate_figure_is_not_written_as_exact():
+    q = 'the estimated value of which is approximately Rs. 12.5 crores based on current prices'
+    assert ar.hedge_estimate('Positron wins RLNG tender worth ₹12.5 Cr', q) == 'Positron wins RLNG tender worth ~₹12.5 Cr'
+    assert ar.hedge_estimate('Positron wins tender worth about ₹12.5 Cr', q) == 'Positron wins tender worth about ₹12.5 Cr'
+    assert ar.hedge_estimate('Refex wins ₹32.4 Cr order', 'Award Value of Rs. 32,44,50,000/-') == 'Refex wins ₹32.4 Cr order'

@@ -51,13 +51,14 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
+import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
 PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower()
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-14' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-17' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -96,6 +97,9 @@ PROVIDERS = {**s.PROVIDERS, 'gemini': (s.API, 'GEMINI_API_KEY', None)}   # Gemin
 # test harness keeps its shorter list (its "deal_or_dispute" is split here, as an acquisition filed under
 # "dispute" read as trouble), so the 24-filing test stays comparable. Reads before live-3 keep their category.
 ADDED = {
+    'rating_assigned': 'a first credit rating assigned to a company or its debt (the rating action says "Assigned", with no earlier rating to upgrade or reaffirm)',
+    'stake_change': 'a shareholder buys or sells shares and discloses it under SEBI takeover Reg 29 (not an open offer): who, shares, before and after %',
+    'pledge': 'promoter shares pledged, released or invoked (SEBI Reg 31): who, shares, lender, % of capital encumbered',
     'esop': 'shares allotted or options granted to employees (ESOP, ESPS)',
     'dividend': 'dividend declared or recommended, or its record date',
     'bonus_split': 'bonus issue, stock split or consolidation of shares',
@@ -132,7 +136,7 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'market_cap_match', 'market_cap')
+           'seconds', 'read_at', 'headline', 'points', 'open_loops', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
@@ -436,14 +440,98 @@ def results_row(quote) -> list[float] | None:
     return v
 
 
+table_arithmetic = sample_table_arithmetic = s.table_arithmetic   # moved to announcement_sample (the text step re-reads a page whose table does not add up)
+
+
+_SAST_ROW = re.compile(r'^\W*([A-Za-z][A-Za-z .&\'\-]{2,60}?)\s+([\d,]{1,15})\s+(\d{1,3}(?:\.\d+)?)\s+(\d{1,3}(?:\.\d+)?)\W*$')
+_SAST_TOTAL = re.compile(r'^\W*total\s*\(\s*a\s*\+\s*b\s*\+\s*c\s*\+\s*d\s*\)\W+([\d,]{1,15})\s+(\d{1,3}(?:\.\d+)?)\s+(\d{1,3}(?:\.\d+)?)', re.IGNORECASE)
+_SAST_PART = (('before', re.compile(r'before\s+the\s+acquisition', re.IGNORECASE)), ('acquired', re.compile(r'details\s+of\s+(?:the\s+)?(?:acquisition|sale)', re.IGNORECASE)),
+              ('after', re.compile(r'after\s+the\s+acquisition', re.IGNORECASE)))
+_SHARES_PCT = re.compile(r'(?<![\d,.])(\d{1,3}(?:,\d{2,3})+|\d{4,})(?![\d,])[^\d%]{1,12}?(\d{1,3}\.\d{1,2})(?!\d)')
+
+
+def holdings_arithmetic(doc) -> list[str]:
+    """SEBI Reg 29 / Reg 31 forms: in each section (before, acquired, after) the shares of the rows must add up to the section's Total (a+b+c+d);
+    and in a row the share counts and the percentages must come from one capital (shares / % is the same for the holding and the encumbered or
+    acquired shares). A failure means a figure was misread, or the filer's table does not add up; nothing is corrected. (The identity before +
+    acquired = after is NOT checked: warrants held before are in the before total and become the acquired shares.)"""
+    out, part, rows = [], None, []
+    for ln in str(doc).splitlines():
+        for name, rx in _SAST_PART:
+            if rx.search(ln) and not _SAST_ROW.match(ln):
+                part, rows = name, []
+        m = _SAST_TOTAL.match(ln)
+        if m and part:
+            total = int(m.group(1).replace(',', ''))
+            have = sum(int(r.replace(',', '')) for r in rows)
+            if rows and abs(have - total) > 1:
+                out.append(f'{part}: the rows add up to {have:,}, the Total (a+b+c+d) says {total:,}')
+            rows = []
+            continue
+        r = _SAST_ROW.match(ln)
+        if r and part and not re.search(r'total|capital|diluted|equity', r.group(1), re.IGNORECASE):
+            rows.append(r.group(2))
+    for ln in str(doc).splitlines():       # one capital behind every (shares, %) pair of a line
+        pairs = [(int(a.replace(',', '')), float(b)) for a, b in _SHARES_PCT.findall(ln) if float(b) >= 0.05 and int(a.replace(',', '')) >= 1000]
+        if len(pairs) >= 2:
+            caps = [n / (p / 100) for n, p in pairs]
+            tol = max(0.03, max(0.0075 / p for _, p in pairs))     # a percentage printed to two decimals
+            if max(caps) / min(caps) - 1 > tol:
+                out.append('shares and percentages of one row do not come from one capital: ' + ln.strip()[:90])
+                break
+    return out
+
+
 def _pct(now, before) -> float | None:
     return round((now - before) / before * 100, 1) if before and before > 0 and now >= 0 else None
 
 
-def results_changes(m: dict) -> dict:
+_VALUE_UNIT = re.compile(r'^\s*(?:₹|Rs\.?|INR|US\$|\$|USD)?\s*(\d[\d,]*(?:\.\d+)?)\s*(crores?|cr|lakhs?|lacs?|million|mn|billion|bn)\.?\s*$', re.IGNORECASE)
+
+
+def split_value_unit(value, unit):
+    """A reply that puts the unit inside the value ("₹102 Crore", "84.48 Cr", "₹1,715 Mn") with 'rupees' as the unit: the number and its
+    unit word, so that the unit is checked against the quote as any other (Steel Exchange, E2E, Sacheerome)."""
+    if str(unit or '').strip().lower().rstrip('.') in ('', 'rupees', 'rupee', 'rs', 'inr', '₹', 'units', 'unit'):
+        m = _VALUE_UNIT.match(str(value or ''))
+        if m:
+            return m.group(1), m.group(2).lower()
+    return value, unit
+
+
+_CAPITAL_PHRASE = re.compile(r'(?:paid[- ]?up|authori[sz]ed|issued|subscribed|voting)\s+(?:equity\s+)?(?:share\s+)?capital|equity\s+share\s+capital', re.IGNORECASE)
+
+
+def value_is_capital(value, quote) -> bool:
+    """The value stands within 90 characters after a capital phrase in its quote ("Paid up Equity Share Capital being Rs. 1,90,87,31,370/-",
+    Mphasis; Nirlon): the capital of the target, not a deal amount."""
+    digits = re.sub(r'\D', '', str(value or '').split('.')[0])
+    if len(digits) < 4:
+        return False
+    for m in _CAPITAL_PHRASE.finditer(str(quote or '')):
+        if digits in re.sub(r'\D', '', str(quote)[m.start():m.end() + 90].replace('/-', ' ')):
+            return True
+    return False
+
+
+def row_in_doc(m: dict, doc) -> str | None:
+    """The one line of the filing that holds the metric's label and its figure with six amounts (the model's quote had only the
+    first column: LTM, Jindal Saw), so that the changes come from the filing's own columns."""
+    value = str(m.get('value') or '').strip()
+    words = [w for w in re.findall(r'[a-z]{4,}', str(m.get('label') or '').lower())][:2]
+    if not value or not words:
+        return None
+    hits = [ln for ln in str(doc).splitlines() if value in ln and all(w in ln.lower() for w in words) and results_row(ln)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def results_changes(m: dict, doc=None) -> dict:
     """QoQ and YoY (and six months against six months) for a metric taken from a verified results-table row, worked
     out by us from the row's own columns; {} when the row is not in the layout or the figure is not in it once."""
     row = results_row(m.get('quote'))
+    if row is None and doc is not None:
+        found = row_in_doc(m, doc)
+        row = results_row(found) if found else None
     n = s._num(m.get('value'))
     if row is None or n is None:
         return {}
@@ -477,6 +565,19 @@ def unreadable_reason(doc: str) -> str | None:
     return None
 
 
+ENCLOSURE = re.compile(r'\bencl(?:ose[sd]?|osing|osures?|\.)(?=\W)|attached\s+herewith|copy\s+of\s+(?:the\s+)?[^.]{0,60}\bis\s+(?:enclosed|attached)', re.IGNORECASE)
+
+
+def enclosure_unread_reason(doc: str, size: int) -> str | None:
+    """A short cover letter on a large file that says it encloses the document: the enclosure (often a scan) did not come out
+    as text, so the filing was not read in full (GFL: 2,517 characters of a 5.7 MB file; Tips Music; String Metaverse; Texmo;
+    Avishkar). CLAUDE.md rule 8: marked not read, with the reason, not carded from the letter."""
+    n = len(str(doc or '').strip())
+    if size and size > 300_000 and n < 3000 and ENCLOSURE.search(str(doc)):
+        return f'a cover letter only ({n:,} characters of a {size / 1e6:.1f} MB file): the enclosure it mentions did not come out as text; not read'
+    return None
+
+
 _BASIS = re.compile(r'\b(standalone|consolidated)\b', re.IGNORECASE)
 
 
@@ -487,10 +588,11 @@ def basis_near(doc: str, quote) -> str | None:
     toks = s._tokens(quote)
     if len(toks) < 2:
         return None
-    m = re.search(r'[^a-z0-9]+'.join(map(re.escape, toks)), str(doc), re.IGNORECASE)
+    flat = re.sub(r'\s+', ' ', str(doc))      # wide pdf columns: the window must count words, not padding (Jindal Saw NSE)
+    m = re.search(r'[^a-z0-9]+'.join(map(re.escape, toks)), flat, re.IGNORECASE)
     if not m:
         return None
-    found = _BASIS.findall(str(doc)[max(0, m.start() - 1500):m.start() + len(m.group())])
+    found = _BASIS.findall(flat[max(0, m.start() - 1800):m.start() + len(m.group())])
     return found[-1].lower() if found else None
 
 
@@ -507,6 +609,32 @@ def garbled_near(doc: str, quote) -> bool:
     toks = [x for x in flat[max(0, at - 750): at + 750].split() if re.search(r'\d', x)]
     bad = sum(1 for x in toks if _GARBLED_TOKEN.search(x))
     return bad >= 4 and bad >= 0.08 * max(1, len(toks))
+
+
+_APPROX_QUOTE = re.compile(r'\b(?:approximately|approx\.?|estimated|about|around|nearly)\s+(?:value\s+of\s+|worth\s+)?(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)\s*\d', re.IGNORECASE)
+_HEDGED = re.compile(r'~|\b(?:approx\w*|estimated|about|around|nearly|up\s*to|upto|over|more than)\b', re.IGNORECASE)
+_MONEY_AT = re.compile(r'(?:₹|Rs\.?\s?|INR\s?|US\$|USD\s?|\$)\s*\d')
+
+
+def hedge_estimate(text: str, quote) -> str:
+    """A figure the filing calls approximate or estimated (Positron: "estimated value of which is approximately Rs. 12.5 crores based on
+    current prices") is not written as exact: "~" goes before the first amount of a sentence that has no such word."""
+    if _APPROX_QUOTE.search(str(quote or '')) and not _HEDGED.search(text):
+        return _MONEY_AT.sub(lambda m: '~' + m.group(0), text, count=1)
+    return text
+
+
+def deal_arithmetic(fields: list[dict]) -> None:
+    """Shares x price per share must be the amount, within 2 % (an issue, a warrant or option allotment, a buyback, a stake purchase): when the
+    three are shown and do not agree, the amount is held, with the product in the reason (nothing is corrected). Any filing type that gives the three."""
+    by = {f['name']: f for f in fields if f.get('shown') and isinstance(f.get('number'), (int, float)) and f.get('number')}
+    sh, pr, am = by.get('shares'), by.get('price_per_share'), by.get('amount')
+    if not (sh and pr and am):
+        return
+    prod = sh['number'] * pr['number']
+    if abs(prod - am['number']) > 0.02 * max(prod, am['number']):
+        am['shown'] = False
+        am['reason'] = '; '.join(x for x in (am.get('reason'), f'{sh["number"]:,.0f} shares x {pr["number"]:,.2f} = {prod:,.0f}, not the amount {am["number"]:,.0f}') if x)
 
 
 def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
@@ -534,11 +662,21 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if name == 'amount' and (TARGET_CAPITAL.search(str(quote or '')) or (
                 NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')))):
             reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
+        if name == 'amount' and str(out.get('category') or '') != 'corporate_change' and value_is_capital(value, quote):
+            reasons.append('the number is the company\'s paid-up / authorised / voting capital, not the size of the event')
+        if name.startswith('capacity') and quote and not re.search(r'capacit', str(quote), re.IGNORECASE):
+            reasons.append('its quote does not speak of capacity (a production record is not capacity)')
+        if name == 'amount' and re.search(r'\d\s*%|%\s*\)?\s*$|\(\s*[\d.]+\s*%', str(value)) or (
+                name == 'amount' and re.search(re.escape(str(value).strip()) + r'\s*%', str(quote or ''))):
+            reasons.append('a percentage, not a money amount')
         if name == 'shares' and '%' in str(value):
             reasons.append('a percentage, not a count of shares')
         if name in s.NUMERIC:
             if not s.digits_in_quote(value, quote):
                 reasons.append('number not in its quote')
+            if name == 'amount':
+                value, unit = split_value_unit(value, unit)
+                rec['value'] = value
             rec['number'] = s.in_units(value, unit) if name == 'amount' else s._num(value)
             if rec['number'] is None:
                 reasons.append('not one number')
@@ -567,11 +705,15 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('entity labels not shown yet')
         rec['shown'], rec['reason'] = not reasons, '; '.join(reasons) or None
         fields.append(rec)
+    deal_arithmetic(fields)
     metrics = []
     for m in out.get('metrics') or []:
         if not isinstance(m, dict):
             continue
         value, quote, unit_m = m.get('value'), m.get('quote'), m.get('unit')
+        value, unit_m = split_value_unit(value, unit_m)
+        if str(unit_m or '').strip().lower() in ('', 'unit', 'units', 'number', 'count'):
+            unit_m = physical_unit(quote, value) or unit_m   # MT, MW, MMBTU, employees: the printed unit, never 'units'
         qf = s.quote_found(quote, doc)
         reasons = [] if qf else ['quote not found in the filing']
         if garbled_near(doc, quote):
@@ -586,16 +728,29 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if number is None:
             reasons.append('not one number')
         if money and s.unit_backed(value, unit_m, quote, qf, doc) is False:
-            reasons.append('unit not backed by its quote')
+            # A results table's unit is in its heading: when the model named another unit than the one printed nearest
+            # before the figure (LTM: lakh for "tin million"), the printed one is used, never the model's.
+            alt = s.nearest_unit(quote, doc, value) if (str(out.get('category') or '') == 'financial_results' or RESULTS_LABEL.search(str(m.get('label') or ''))) else None
+            alt_name = {v: k for k, v in (('thousand', 1e3), ('lakh', 1e5), ('crore', 1e7), ('million', 1e6), ('billion', 1e9))}.get(alt)
+            mult0 = s.UNIT.get(str(unit_m or 'rupees').strip().lower().rstrip('.'), 1)
+            if alt is not None and alt == mult0 and qf:
+                pass      # the filing's heading names the very unit the model gave (Paushak "Rs in lacs", Jindal Saw "(₹ crores)": wide pdf columns)
+            elif alt_name and alt != mult0 and s.unit_backed(value, alt_name, quote, qf, doc) is not False and s.in_units(value, alt_name):
+                unit_m, number = alt_name, s.in_units(value, alt_name)
+            else:
+                reasons.append('unit not backed by its quote')
+                log(f'DEBUG unit not backed: label={m.get("label")!r} value={value!r} unit={unit_m!r} quote={str(quote)[:90]!r} found={qf!r} '
+                    f'doc_chars={len(str(doc))} alt={alt} heading_unit={s.heading_unit(doc)} table_unit={[s.table_unit(quote, k, doc) for k in (1e5, 1e6, 1e7)]} '
+                    f'doc_head={str(doc)[:80]!r}')
         if PROJECTION.search(str(quote or '')):
             reasons.append('its quote is a projection or estimate, not a reported figure')
-        metrics.append({'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
+        metrics.append({'qualifier': qualifier_of(quote, value), 'label': m.get('label'), 'period': m.get('period'), 'value': value, 'unit': unit_m,
                         'number': number, 'quote': quote, 'evidence': qf or None,
-                        'currency': currency_in_quote(value, quote) if money else None,
+                        'currency': (currency_in_quote(value, quote) or indian_currency(unit_m, quote, str(out.get('category') or '') == 'financial_results')) if money else None,
                         'shown': not reasons, 'reason': '; '.join(reasons) or None})
     for m in metrics:
         if m['shown'] and m.get('number') is not None:
-            m.update(results_changes(m))
+            m.update(results_changes(m, doc))
     seen: dict = {}
     for m in metrics:
         if m['shown']:
@@ -607,6 +762,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
                 for m, b in zip(group, bases):
                     m['label'] = f"{m.get('label')} ({b})"
                 continue
+            log(f'DEBUG two values: label={group[0].get("label")!r} bases={bases} quotes={[str(m.get("quote"))[:60] for m in group]} doc_chars={len(str(doc))}')
             for m in group:
                 m['shown'], m['reason'] = False, 'two different values for the same measure and period: standalone or consolidated is not stated'
     cat = out.get('category') if out.get('category') in KNOWN_CATEGORIES else None
@@ -627,7 +783,7 @@ CARD_ASK = (
     'converted exactly (12,000 lakh = 120 crore); no opinion, forecast or judgement of impact, and no growth '
     'rates you work out yourself. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). \n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). WHAT LEADS (investor audit, 16 Oct): a results filing leads with revenue from operations and profit after tax of the quarter (not total income, not a segment, not the half year first), with the change the filing states; an event of today leads over a running total ("remitted USD 34.99 million today", not "USD 64.49 million to date"); a filing with several instruments or items (equity and warrants, two tranches, several schemes) names each and gives the filing\'s own total; a legal or tax filing leads with the demand or the net effect on the company and says who pays (a payment made by someone else under an indemnity is not the company\'s outflow), never with an adjournment or the company\'s own view; a stake or pledge filing names the seller or acquirer as the filing does, says promoter or not, and gives the holding before and after; a rating filing gives the action, the rating, the outlook and, when the limits changed, the old and new size; when the filing states a percentage, use that one, not your own arithmetic; keep up to, approximately and subject to; a procedural line, a restated earlier approval or boilerplate never leads. \n\n')
 # Opt-in experimental prompt. Keep CARD_ASK unchanged as the control for a controlled comparison.
 CARD_ASK_V2 = (
     'Also return "headline": {"text": one line of at most 70 characters describing the actual corporate action, '
@@ -651,7 +807,7 @@ CARD_ASK_V2 = (
     'claim. If the filing text does not establish an actual action or outcome, return an empty headline rather than '
     'invent one; preserve independently supported points. The headline is the filing\'s main news: when the document has several items, lead with the one the subject and the opening lines name, and say a termination or cancellation as such. '
     'Add no word that the quote does not contain: no exchange, place, person, purpose or reason of your own. Use the quote\'s own words for the key terms: do not swap one word for another ("unearned" for "unaudited") and do not add a fact you know from elsewhere, such as which side a court ruling favours, unless the quote states it. A figure taken from a table must carry its own unit and period, and a row you cannot read in full is left out. '
-    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). Return the existing JSON schema only.\n\n')
+    'HEADLINE FORMAT (the owner\'s rule: a reader should know the news from the title alone): the headline is the company\'s short trading name ("Ujjivan SFB", not "Ujjivan Small Finance Bank Limited"), a plain verb for what it did, and the one figure that matters: "Ujjivan SFB approves {amount} preferential issue", "Aurum PropTech Q2 income rises {m1_pct} to {m1}", "Onward Technologies raises FY27 growth outlook". At most 70 characters. NEVER type a money amount, a share count or a growth percentage yourself (models get lakh and crore wrong): write a token and our code puts in the checked value in the right unit: {amount} (your "amount" field), {price} (your "price_per_share" field), {shares} (your "shares" field), {m1}, {m2}, ... (the first, second ... metric you list, in your order) and {m1_pct} (that metric\'s change on its year-earlier value, only when you give the metric a "previous"; when the filing itself states the growth percentage, write it as stated and put that sentence in your quote). Use each token once. Use a token only for a value you also list in fields or metrics. Other numbers (Q2, FY27, 1:2, a date) are written as in the quote and must be in it. No "announces", "informs", "submits", "intimates" or "discloses". Also return "subtitle": {"text": one line of at most 90 characters with the second most useful fact, such as "Up to {shares} equity shares" or "Q2 revenue up {m1_pct} to {m1}; EBITDA rises {m2_pct} to {m2}", "quote": the exact words of the document that state it}; its numbers are in its own quote or are tokens. The subject of the headline is the company that acts: in a shareholding, pledge or SAST filing it is the acquirer, seller or promoter named in the filing, never the listed company that is the target; say "allots" for an allotment and "approves" for an approval; a correction or addendum says so; keep a condition the filing states (subject to approval, up to, proposed). A person is named in full as the filing writes the name, never cut to a surname or a middle name ("Nian Nian Yuan", not "Yuan"). WHAT LEADS (investor audit, 16 Oct): a results filing leads with revenue from operations and profit after tax of the quarter (not total income, not a segment, not the half year first), with the change the filing states; an event of today leads over a running total ("remitted USD 34.99 million today", not "USD 64.49 million to date"); a filing with several instruments or items (equity and warrants, two tranches, several schemes) names each and gives the filing\'s own total; a legal or tax filing leads with the demand or the net effect on the company and says who pays (a payment made by someone else under an indemnity is not the company\'s outflow), never with an adjournment or the company\'s own view; a stake or pledge filing names the seller or acquirer as the filing does, says promoter or not, and gives the holding before and after; a rating filing gives the action, the rating, the outlook and, when the limits changed, the old and new size; when the filing states a percentage, use that one, not your own arithmetic; keep up to, approximately and subject to; a procedural line, a restated earlier approval or boilerplate never leads. Return the existing JSON schema only.\n\n')
 
 _NUM = re.compile(r'(?<!\w)(?<!\d[.,])(\d[\d,]*(?:\.\d+)?)\s*(lakhs?|lacs?|crores?|crs?\b|million|mn\b|m\b|billion|bn\b'
                   r'|thousand|k\b)?', re.IGNORECASE)
@@ -685,7 +841,13 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'Use a {m1}-style token only for a metric you list (none listed, no token). For a credit rating the rating agency acts (Crisil reaffirms X), not the company; '
              'for a shareholding disclosure name the acquirer and the seller; when a person resigns or is appointed the person is the subject; '
              'an amount the filing calls "not exceeding" or "up to" keeps those words; a rating headline gives the action, the rating and, when the filing says "enhanced from X" or "reduced from X", the change in the size of the facilities (a bigger limit is the news); a results headline is about the results, never a dividend or an appointment; a demand of duty plus penalty is called both; '
-             'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number.\n\n')
+             'a total voting or share capital is never the size of a deal; a number written as words in the filing ("three") is the same number. '
+             'The headline carries what an investor needs first: results = the quarter\'s revenue and profit with their growth tokens, never a dividend or an appointment first; '
+             'order = value (say if with or without GST), customer, period; fund raise = instrument, size, price, who, approvals still needed; '
+             'open offer = acquirer, shares and %, price; stake change = who bought or sold, before and after %; promoter pledge = who, shares, % of capital, lender, created or released; '
+             'debt = size, coupon, tenure, secured or not; litigation or tax demand = forum, amount, stage, direction, and whether interest is excluded; '
+             'rating = agency, action, rating and any change in the facilities; management = the person, role, effective date, reason if given; dividend = per share and record date. '
+             'If the filing does not give a size, price or value, the card does not invent one.\n\n')
     return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
@@ -727,13 +889,31 @@ def dates_in(text) -> tuple[set[tuple[int, int, int]], str]:
     return found, rest
 
 
-def numbers_backed(text, quotes, unit_ok=None) -> bool:
+_PERIOD = re.compile(r'(?<![\w.])(?:FY\s?\d{2,4}\s*[-–/]\s*\d{2,4}|(?:FY|F\.Y\.?|financial\s+year|year)\s*\d{2,4}\s*[-–/]\s*\d{2,4}'
+                     r'|FY\s?\d{2,4}|[1-4]Q\s?(?:FY)?\s?\d{0,4}|Q[1-4]|H[12]|\d{1,2}M(?=\s*(?:FY|ended|period|\d{2,4}))|\d{1,2}M(?=[\s,.;)]|$)|[A-Za-z]{2,}-\d{1,2}(?![\d.,]))', re.IGNORECASE)   # last: a name with a number (ACIF-1)
+
+
+def strip_periods(text) -> str:
+    """Period labels (FY25-26, FY 2025-26, Q2, H1, 9M) are not figures of the claim: out before numbers are compared,
+    on both sides (ROX, Gujarat Energy, E2E, Sacheerome: 'FY 25-26' against '2025-26', 'Q2' as the number 2)."""
+    return _PERIOD.sub(' ', str(text or ''))
+
+
+NUMBER_WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+                'eleven': 11, 'twelve': 12, 'fifteen': 15, 'twenty': 20, 'thirty': 30, 'sixty': 60}
+
+
+def numbers_backed(text, quotes, unit_ok=None, extra=()) -> bool:
     """Every number of `text` is written the same way in one of the quotes: the same number with the same unit
     word, or, when the text gives a unit, the same amount (12,000 lakh may be written 120 crore, 16,45,000 as 16.45
     lakh within 0.5%). A number never changes unit on the way: 5 crore is not backed by 5 lakh, and 250 is not
     backed by 250 crore (a dropped unit)."""
-    quotes = list(quotes)
+    quotes = [strip_periods(q) for q in quotes]
+    text = strip_periods(text)
     have = [pair for q in quotes for pair in numbers_in(dates_in(q)[1])]
+    have += [pair for q in quotes for pair in numbers_in(' '.join(str(NUMBER_WORDS[w.lower()]) for w in re.findall(
+        r'\b(?:' + '|'.join(NUMBER_WORDS) + r')\b', str(q), re.IGNORECASE)))]    # "vest over three years" backs "3 years" (Sedemac)
+    have += [(float(x), float(x)) for x in extra if isinstance(x, (int, float)) and x == x]   # figures already checked on this card
     have_dates = set().union(*(dates_in(q)[0] for q in quotes)) if quotes else set()
     have_days = {d for _, _, d in have_dates}   # "from November 3 to November 5, 2026" gives the first date no year
     claim_dates, text = dates_in(text)
@@ -755,9 +935,22 @@ def numbers_backed(text, quotes, unit_ok=None) -> bool:
                 return True            # as written, same unit
             if c != n and abs(c - c2) <= 0.005 * max(1.0, abs(c2)):
                 return True            # a unit was given: the same amount, converted
+            if unit_ok is not None and c != n and c2 == n2 and n2 != 0:
+                for mult in (1e3, 1e5, 1e6, 1e7, 1e9):   # 61.4 crore for 6,140.54 under a "Rs in lakh" heading (International Travel House)
+                    if abs(n2 * mult - c) <= 0.005 * max(1.0, abs(c)) and unit_ok(n2, mult):
+                        return True
         return False
 
     return all(backed(n, c) for n, c in numbers_in(text))
+
+
+def basis_reason(text, quote) -> str | None:
+    """An annual charge or a monthly rent stated as if it were the size of the deal (POWERGRID: 'quoted Annual Transmission Charges of
+    Rs. 199.55 Crore' became 'wins project for Rs. 199.55 Crore')."""
+    if re.search(r'\bannual\b|per\s+annum|\bp\.a\.|per\s+month|monthly', str(quote or ''), re.IGNORECASE) and re.search(r'\d', str(text or '')) \
+            and not re.search(r'annual|per\s+(?:annum|year|month)|yearly|monthly|\bp\.a\.', str(text or ''), re.IGNORECASE):
+        return 'the figure is an annual or monthly amount in its quote and the headline states it as a total'
+    return None
 
 
 def headline_quality_reason(text: str) -> str | None:
@@ -788,13 +981,14 @@ def status_upgraded(text: str, quote: str) -> bool:
                                                 and not re.search(r'approv', q, re.IGNORECASE)))
 
 
-def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dict | None:
+def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
     (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
     does not say approved where its quote says recommended. `more_quotes` is no longer used."""
     if not isinstance(item, dict) or not str(item.get('text') or '').strip():
         return None
     text, quote = str(item['text']).strip(), item.get('quote')
+    text = hedge_estimate(text, quote)
     qf = s.quote_found(quote, doc)
     reasons = [] if qf else ['quote not found in the filing']
     if re.search(r'\d', text) and garbled_near(doc, quote):
@@ -809,12 +1003,72 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False) -> dic
         reasons.append('drops the condition its quote states (subject to approval)')
     if keep_up_to and UPTO_QUOTE.search(str(quote or '')) and not UPTO_KEPT.search(text):
         reasons.append('drops "up to" that its quote states')
-    if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
+    if not numbers_backed(text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc), extra=extra_numbers):
         reasons.append('a number not in its quote')
     if status_upgraded(text, quote):
         reasons.append('says approved where its quote says recommended')
+    if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
+            r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
+        reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
+    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc)
+    if why:
+        reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
             'reason': '; '.join(reasons) or None}
+
+
+OVERSTATE = re.compile(r'\b(clear(?:ed|s)|exonerat\w*|absolv\w*|acquit\w*|vindicat\w*|quash\w*|waiv\w*)\b', re.IGNORECASE)
+PAYER_NIL = re.compile(r'(?:monetary\s+)?outflow[^.\n]{0,40}\bnil\b|paid\s+(?:entirely\s+)?by|borne\s+by|under\s+(?:an?\s+)?(?:2015\s+)?indemnit|indemnif', re.IGNORECASE)
+
+
+_ALLOT_ITEM = re.compile(r'allot(?:ment|ted)\s+of\s+([\d,]{3,})', re.IGNORECASE)
+
+
+def multi_item_reason(text, doc) -> str | None:
+    """A filing that lists several allotments (Federal Bank: 7,100 + 90,869 + 1,985 equity shares under three schemes) and a headline that
+    gives one of them as if it were the whole: the headline must give the total, or none of the figures."""
+    items = {v.replace(',', '') for v in _ALLOT_ITEM.findall(str(doc))}
+    if len(items) < 2:
+        return None
+    said = {n.replace(',', '') for n in re.findall(r'\d[\d,]*', str(text or ''))}
+    total = str(sum(int(i) for i in items if i.isdigit()))
+    if len(said & items) == 1 and total not in said:
+        return f'the filing lists {len(items)} allotments and the headline gives one of them, not the total'
+    return None
+
+
+def overstatement_reason(text, quote) -> str | None:
+    """'cleared of SEBI penalty' where the quote says no fine is levied and the investigation goes on (Rajesh Exports): a word that
+    says the matter is over must be a word of the quote."""
+    m = OVERSTATE.search(str(text or ''))
+    if m and not re.search(re.escape(m.group(1)[:5]), str(quote or ''), re.IGNORECASE):
+        return f'says "{m.group(1)}" but its quote does not say the matter is over'
+    return None
+
+
+def payer_reason(text, doc) -> str | None:
+    """'SEPC settles disputes for Rs 149.5 Crore' where the filing says the outflow is nil and someone else pays under an indemnity."""
+    if re.search(r'\b(?:settl\w*|pays?|paid|payment|dues|deposit\w*)\b', str(text or ''), re.IGNORECASE) and re.search(r'\d', str(text or '')) \
+            and PAYER_NIL.search(str(doc)) and not re.search(r'\bnil\b|paid\s+by|indemn|borne|third[- ]party', str(text or ''), re.IGNORECASE):
+        return 'the filing says who pays (outflow nil / paid by another party): the headline states the amount as the company\'s payment'
+    return None
+
+
+_DIRECTION = re.compile(r'(?P<n1>\d[\d,]*\.?\d*)\s*(?:crores?|cr|lakhs?|lacs?|million|mn)?[^.\d]{0,25}?\b(?P<word>up|higher|increased?|rose|grew|down|lower|decreased?|fell|declined?)\b'
+                        r'[^.\d]{0,12}?\b(?:from|vs\.?|against)\b[^.\d]{0,12}?(?P<n2>\d[\d,]*\.?\d*)', re.IGNORECASE)
+
+
+def direction_reason(text) -> str | None:
+    """'up' next to two numbers that fall, or 'down' next to two that rise ("net profit 70.69 crores, up from 79.29 crores", Jindal Saw)."""
+    for m in _DIRECTION.finditer(str(text or '')):
+        try:
+            n1, n2 = float(m.group('n1').replace(',', '')), float(m.group('n2').replace(',', ''))
+        except ValueError:
+            continue
+        up = m.group('word').lower() in ('up', 'higher', 'increase', 'increased', 'rose', 'grew')
+        if n1 != n2 and ((up and n1 < n2) or (not up and n1 > n2)):
+            return f'says {m.group("word")} but its two figures go the other way ({m.group("n1")} from {m.group("n2")})'
+    return None
 
 
 # --- headline figures are put in by our code, from values already checked ------------------------------------------
@@ -914,6 +1168,30 @@ def fill_tokens(text: str, fields: list[dict], metrics: list[dict]) -> tuple[str
     return filled, ('a figure of the headline is not among the checked values: ' + ', '.join(bad)) if bad else None
 
 
+_LEGAL_SUFFIX = re.compile(r'\s*\b(?:Limited|Ltd\.?|Pvt\.?|Private)\b\.?', re.IGNORECASE)
+
+
+def short_name(company) -> str:
+    return re.sub(r'\s+', ' ', _LEGAL_SUFFIX.sub('', str(company or ''))).strip(' ,.')
+
+
+def rewrite_name(text: str, names=()) -> str:
+    """The short company name instead of the legal name or the exchange symbol: 'Prime Fresh Limited wins' -> 'Prime Fresh
+    wins'; 'MFSL gets' -> 'Max Financial Services gets'. A headline that is right in every fact is not held for its style."""
+    text = str(text or '')
+    symbol = str(names[0] or '').strip() if len(names) > 0 else ''
+    company = str(names[1] or '').strip() if len(names) > 1 else ''
+    short = short_name(company)
+    if short:
+        text = re.sub(re.escape(short) + r'\s*(?:Limited|Ltd\.?|Pvt\.?|Private)\b\.?', short, text, flags=re.IGNORECASE)
+    text = re.sub(r'\s+', ' ', _LEGAL_SUFFIX.sub('', text)).strip() if re.search(r'\b(?:Limited|Ltd\.?)\b', text, re.IGNORECASE) else text
+    first = re.split(r'[\s,:]', text.strip(), maxsplit=1)[0]
+    if short and symbol and len(symbol) >= 3 and first == symbol and symbol.isupper() \
+            and re.split(r'\W+', short, maxsplit=1)[0].upper() != symbol:
+        text = short + text.strip()[len(symbol):]
+    return text
+
+
 def headline_name_reason(text: str, names=()) -> str | None:
     """A headline names the company by its short name: not by the exchange symbol (ONEGLOBAL, MGEL, RPEL) and not by the
     full legal name with "Ltd" or "Limited"."""
@@ -940,8 +1218,316 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 
 
-FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)\s+from\s+(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)[\s|(]*from\b[\s|]*(?:\w+[\s|]*){0,6}?(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+RATING_ACTION = re.compile(r'upgrad|downgrad|reaffirm|assigned|withdr|outlook|rating\s+(?:of|at)', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
+LOOP_PATTERNS = (
+    ('approval_pending', re.compile(r'subject\s+to\b[^.;]{0,90}(?:approval|consent|sanction|no[- ]objection|clearance|due\s+diligence|definitive|conditions?\s+precedent)', re.IGNORECASE)),
+    ('further_disclosure', re.compile(r'(?:will|shall)\s+be\s+(?:intimated|informed|disclosed|furnished|provided|announced|submitted|notified)\b|in\s+due\s+course|further\s+(?:details|disclosures?)\b[^.;]{0,40}(?:will|shall)', re.IGNORECASE)),
+    ('due_date', re.compile(r'(?:on\s+or\s+before|not\s+later\s+than|expected\s+to\s+(?:be\s+)?(?:complete[d]?|commence[d]?|commission(?:ed)?|clos(?:e|ed))|to\s+be\s+completed|(?:reply|response|appeal|payment)\b[^.;]{0,30}\b(?:due|within|by))\b', re.IGNORECASE)),
+    ('hearing', re.compile(r'(?:next\s+(?:date\s+of\s+)?hearing|listed\s+for|posted\s+for|adjourned\s+to|matter\s+is\s+(?:now\s+)?(?:listed|posted))\b', re.IGNORECASE)),
+    ('listing_pending', re.compile(r'will\s+apply\s+(?:to|for)\b[^.;]{0,80}(?:listing|approval)|(?:listing|trading)\s+approval\b[^.;]{0,60}(?:awaited|to\s+be|will\s+be)', re.IGNORECASE)),
+)
+
+
+def extract_open_loops(doc, limit: int = 6) -> list[dict]:
+    """Things the filing itself says are still to happen (an approval, a hearing, a due date, a further disclosure, a listing),
+    each as the filing's own sentence with its date if it has one. Written beside the card and into company memory so the
+    next filing of the company can close the loop (golden set 1: 40 cards named a pending step that nothing kept)."""
+    text = re.sub(r'\s+', ' ', str(doc or ''))
+    sentences = re.split(r'(?<=[.;])\s+(?=[A-Z0-9(])', text)
+    out, seen = [], set()
+    for sent in sentences:
+        if not 25 <= len(sent) <= 400:
+            continue
+        letters = sum(c.isalpha() for c in sent)
+        if re.search(r'not\s+applicable|\bN\.?A\.?\b|\bnil\b', sent, re.IGNORECASE) or letters < 0.45 * len(sent) or sent.count('|') >= 3:
+            continue      # an annexure row ("Not applicable"), or a table fragment, is not a step still to happen
+        for kind, rx in LOOP_PATTERNS:
+            key = re.sub(r'\W+', '', sent.lower())[:70]
+            if rx.search(sent) and key not in seen:
+                seen.add(key)
+                hit = rx.search(sent)
+                dates = dates_in(sent[hit.end():])[0] if hit else set()      # the date AFTER "next hearing" / "on or before", not the earlier intimation's
+                if not dates:
+                    dates = dates_in(sent)[0]
+                    if dates and kind in ('hearing', 'due_date', 'listing_pending'):
+                        dates = {max(dates)}
+                txt = sent.strip()
+                if len(txt) > 260:
+                    txt = txt[:260].rsplit(' ', 1)[0] + ' …'      # never cut inside a word
+                out.append({'type': kind, 'text': txt,
+                            'date': (lambda d: f'{d[0]:04d}-{int(d[1]):02d}-{int(d[2]):02d}')(min(dates)) if dates else None})
+                break
+        if len(out) >= limit:
+            break
+    return out
+
+
+PHYSICAL_UNIT = re.compile(r'\s{0,2}(MMSCMD|MMBTU|MTPA|MTPD|TPD|TPA|GWh|MWh|kWh|MVA|GW|MW|kW|MT|KL|tonnes?|tons?|kg|km|'
+                           r'employees|people|stores?|keys|rooms|outlets|vehicles|schools|districts|customers|users|orders|'
+                           r'beds|acres|sq\.?\s?ft)\b', re.IGNORECASE)
+QUALIFIER = re.compile(r'(more\s+than|over|approximately|approx\.?|about|nearly|around|up\s*to|upto|at\s+least|~)\s*$', re.IGNORECASE)
+
+
+def indian_currency(unit, quote, results=False) -> str | None:
+    """Lakh and crore are rupee words: a figure in either with no other currency in its quote is in rupees (LTM, Paushak, Jindal Saw:
+    'Rs in lacs' sits in the heading, the row has the bare figure). Million and billion are not: no currency, no guess."""
+    if str(unit or '').strip().lower().rstrip('.') in ('lakh', 'lakhs', 'lac', 'lacs', 'crore', 'crores', 'cr', 'crs') \
+            and not re.search(r'US\$|USD|\$|EUR|€|GBP|£|AED|SGD|CAD|JPY', str(quote or '')):
+        return 'INR'
+    # A results table of an Indian listed company in millions ("tin million": the scan lost the rupee sign: LTM, ITH, Jindal Saw)
+    if results and str(unit or '').strip().lower().rstrip('.') in ('million', 'millions', 'mn', 'billion', 'bn') \
+            and not re.search(r'US\$|USD|\$|EUR|€|GBP|£|AED|SGD|CAD|JPY', str(quote or '')):
+        return 'INR'
+    return None
+
+
+def physical_unit(quote, value) -> str | None:
+    """The unit printed right after the metric's number in its quote when it is a physical one ('69,617.424 MT',
+    'more than 3,000 employees'), so the card never says 'units' for tonnes, megawatts or people (Steel Exchange, BHEL, Persistent)."""
+    v = s._num(value)
+    if v is None:
+        return None
+    for m in re.finditer(s.NUMBER, str(quote or '')):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+            u = PHYSICAL_UNIT.match(str(quote)[m.end():])
+            if u:
+                return u.group(1)
+    return None
+
+
+def qualifier_of(quote, value) -> str | None:
+    """'more than', 'approximately', 'up to', 'nearly' written just before the number in the quote: the card keeps it."""
+    v = s._num(value)
+    if v is None:
+        return None
+    for m in re.finditer(s.NUMBER, str(quote or '')):
+        if abs(float(m.group(0).replace(',', '')) - v) < 1e-6 * max(1, abs(v)):
+            q = QUALIFIER.search(re.sub(r'(?:Rs\.?|INR|₹|US\$|\$)\s*$', '', str(quote)[max(0, m.start() - 24):m.start()]))
+            return re.sub(r'\s+', ' ', q.group(1)).lower().replace('upto', 'up to').rstrip('.') if q else None
+    return None
+
+
+def card_numbers(fields, metrics) -> list[float]:
+    """The numbers of the card's shown deal fields (size, price, shares) and metrics (already checked against their own quotes), in base units: a
+    headline or point may state one of them without repeating it in its own quote (Kabra: the revenue is in the
+    table row, the headline quote is the title)."""
+    out = []
+    deal = ('amount', 'price_per_share', 'max_price_per_share', 'shares', 'offer_pct', 'discount_pct')
+    for f in [f for f in (fields or []) if isinstance(f, dict) and f.get('name') in deal] + list(metrics or []):
+        if isinstance(f, dict) and f.get('shown'):
+            for k in ('number', 'previous_number'):
+                if isinstance(f.get(k), (int, float)) and f[k] == f[k]:
+                    out.append(float(f[k]))
+    return out
+
+
+def _words3(text) -> set[str]:
+    return {w[:6] for w in re.findall(r'[a-z0-9]{3,}', str(text or '').lower())}   # crude stem: resigns, resigned, resignation
+
+
+def drop_repeats(headline, points):
+    """A point that only says again what the headline or an earlier point says is not shown (Polycab, ROX, Ashika, Kernex:
+    two points that repeat the headline word for word); one that carries a number the others lack stays."""
+    seen = [_words3(headline.get('text'))] if isinstance(headline, dict) and headline.get('shown') else []
+    nums = lambda t: set(re.findall(r'\d[\d,.]*', str(t or '')))
+    shown_text = [str(headline.get('text'))] if isinstance(headline, dict) and headline.get('shown') else []
+    for pt in points:
+        if not pt.get('shown'):
+            continue
+        w = _words3(pt.get('text'))
+        if w and any(len(w & x) / len(w) >= 0.8 for x in seen) and not (nums(pt['text']) - set().union(*(nums(t) for t in shown_text))):
+            pt['shown'], pt['reason'] = False, 'repeats the headline or an earlier point'
+            continue
+        seen.append(w)
+        shown_text.append(str(pt.get('text')))
+    return points
+
+
+def facility_change_headline(doc: str, names=()) -> dict | None:
+    """A rating filing that enhances or cuts the rated facilities (Skipper: 'Enhanced from ... Rs.4621 Crore' split across table
+    cells): the headline is that change, from the filing's own words, when the model's headline left it out."""
+    m = FACILITY_CHANGE.search(str(doc))
+    if not m:
+        return None
+    span = re.sub(r'\s+', ' ', str(doc)[m.start():m.end() + 70])
+    if not re.match(r'(?:enhanced|reduced|increased|decreased|revised)', span, re.IGNORECASE):
+        return None
+    num = re.search(r'(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d+)?)\s*(crores?|cr\b|lakhs?|million)?', span, re.IGNORECASE)
+    if not num:
+        return None
+    verb = {'enh': 'enhanced', 'inc': 'enhanced', 'red': 'reduced', 'dec': 'reduced', 'rev': 'revised'}[span[:3].lower()]
+    unit = (num.group(2) or '').lower()
+    unit = 'Cr' if unit.startswith('cr') else 'lakh' if unit.startswith('lakh') else unit
+    amount = f"₹{float(num.group(1).replace(',', '')):{',.2f' if '.' in num.group(1) else ',.0f'}}{' ' + unit if unit else ''}"
+    quote = span[:num.end()]
+    if not s.quote_found(quote, doc):
+        return None
+    name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
+    text = f"{name} rated bank facilities {verb} from {amount}".strip()
+    # the new size: the last "Rs.N" before the change words (Skipper: "Bank Rs.5106 | Crore ... (Enhanced | from ... Rs.4621 Crore)")
+    head = str(doc)[max(0, m.start() - 220):m.start()]
+    new = list(re.finditer(r'(?:Rs\.?|INR|₹)\s*([\d,]+(?:\.\d+)?)', head, re.IGNORECASE))
+    if new and new[-1].group(1) != num.group(1):
+        start = max(0, m.start() - 220) + new[-1].start()
+        wide = re.sub(r'\s+', ' ', str(doc)[start:m.end() + 70])
+        wide = wide[:wide.index(num.group(0)) + len(num.group(0))] if num.group(0) in wide else ''
+        if wide and s.quote_found(wide, doc):
+            val = float(new[-1].group(1).replace(',', ''))
+            text = f"{name} rated bank facilities {verb} to ₹{val:,.2f}".replace('.00', '') + (f" {unit}" if unit else '') + f" from {amount}"
+            quote = wide
+    return {'text': text, 'quote': quote, 'evidence': 'exact', 'shown': True, 'reason': None, 'subtitle': None}
+
+
+_PERSON = re.compile(r'\b(?:Mr|Ms|Mrs|Dr|Shri|Smt|Prof)\.?\s+((?:[A-Z][a-z]+\s+){1,3}[A-Z][a-z]+)')
+
+
+def full_person_name(text: str, doc: str, names=()) -> str:
+    """A headline that cuts a person to the last word of the name ("Oracle Financial Services Yuan resigns", OFSS) gets the name as the
+    filing writes it ("Nian Nian Yuan"), when the last word is not a word of the company's own name."""
+    company = ' '.join(str(n) for n in names).lower()
+    for full in dict.fromkeys(re.sub(r'\s+', ' ', m.group(1)) for m in _PERSON.finditer(str(doc))):   # a name broken over two lines is one name
+        last = full.split()[-1]
+        if full in text or len(full.split()) < 3 or last.lower() in company:
+            continue
+        first = re.escape(full.split()[0])
+        pat = rf'(?<![A-Za-z])(?:{first}\s+)?{re.escape(last)}(?![A-Za-z])'   # "Rahul Adesara" is replaced whole, not "Rahul " + the full name (Knack)
+        text = re.sub(pat, full, text, count=1) if re.search(pat, text) else text
+    return text
+
+
+_SAST_PARTY = re.compile(r'Name\(s\)\s+of\s+the\s+(acquirer|seller)(?:\s+and\s+Persons)?\s*(?:Acting\s+in\s+Concert\s*)?(?:\(PAC\)\s*)?(?:with\s+the\s+)?(?:acquirer\s*)?[|:]?\s*'
+                         r'([A-Z0-9][^\n|]{2,80}?)(?=\s*(?:\(|\n|\||Acting|Persons?\b|$))', re.IGNORECASE)
+_PARTY_STOP = {'private', 'limited', 'ltd', 'pvt', 'the', 'and', 'company', 'trustee', 'india', 'a/c', 'fund'}
+
+
+def sast_party_reason(headline_text: str, doc, names=()) -> str | None:
+    """A stake or pledge headline names the acquirer or seller the filing names ("Name(s) of the acquirer / seller"), not the listed
+    company that is the target (DCM Shriram "transfers" its own stake, Centrum "stake rises": the party was JBCG / Urvashi Tilakdhar)."""
+    m = _SAST_PARTY.search(str(doc))
+    if not m:
+        return None
+    party = re.sub(r'\(.*?\)|[:.;]+$', '', m.group(2)).strip()
+    words = [w for w in re.findall(r'[A-Za-z0-9&]{3,}', party.lower()) if w not in _PARTY_STOP]
+    if not words:
+        return None
+    head = str(headline_text).lower()
+    if words[0] in head:
+        return None
+    return f'the headline does not name the {m.group(1).lower()} the filing names ({party[:40]})'
+
+
+def promote_point(headline, points, names=(), extra=(), category=''):
+    """No headline survived the checks: the first point that did survive (each is proved by its own quote) leads the card,
+    in the company's short name, rather than a card with nothing on it (golden set 1: Aegis, Regency, Kabra, ITH)."""
+    if isinstance(headline, dict) and headline.get('shown'):
+        return headline, points
+    best, best_score = None, -1
+    for i, pt in enumerate(points):
+        text = str(pt.get('text') or '').strip()
+        if pt.get('shown') and text and '{' not in text and len(text) <= 160:
+            nums = numbers_in(dates_in(text)[1])
+            score = 3 * any(abs(c - x) <= 0.005 * max(1, abs(x)) for _, c in nums for x in extra) + (1 if nums else 0) \
+                - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0) \
+                - (1 if re.match(r'the\s+(?:transaction|company|promoter|filing)\b', text, re.IGNORECASE) else 0) \
+                - (3 if str(category) == 'financial_results' and not RESULTS_WORDS.search(text) else 0) \
+                - (2 if re.match(r'(?:the\s+)?(?:previous|earlier|prior|last)\b|\bpreviously\b', text, re.IGNORECASE) else 0) \
+                + (4 if str(category).startswith('rating_') and re.search(r'upgrad|downgrad|reaffirm|assign|outlook|enhanc|rated|rating', text, re.IGNORECASE) else 0)
+            if score > best_score:
+                best, best_score = i, score
+    if best is not None:
+        pt = points[best]
+        lead = {**pt, 'text': rewrite_name(str(pt['text']).strip().rstrip('.'), names), 'promoted_from_point': True,
+                'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) else None}
+        return lead, points[:best] + points[best + 1:]
+    return headline, points
+
+
+def results_headline(metrics, names=(), doc='') -> dict | None:
+    """A results card with no headline left: revenue and profit of the quarter, each with the change we worked out from the
+    table's own columns, in the company's short name (LTM, Paushak, Jindal Saw, Kabra, ITH: the card had boilerplate or nothing)."""
+    shown = [m for m in metrics if m.get('shown') and isinstance(m.get('number'), (int, float)) and m.get('currency')]
+    def best(rx):
+        found = [m for m in shown if re.search(rx, str(m.get('label')), re.IGNORECASE)]
+        # consolidated before standalone, a quarter before a half year, a figure with its change before one without
+        return min(found, key=lambda m: (not re.search('consolidated', str(m.get('label')), re.IGNORECASE),
+                                         bool(re.search(r'H[12]|half|six|nine|9M|year', str(m.get('period')), re.IGNORECASE)),
+                                         m.get('change_pct') is None), default=None)
+    rev = best(r'revenue\s+from\s+operations|net\s+sales|net\s+interest\s+income') or best(r'revenue|total\s+income|operating\s+income|sales')
+    pat = best(r'profit\s+after\s+tax|\bPAT\b|net\s+profit|profit\s+for\s+the')
+    if not (rev or pat):
+        return None
+    name = short_name(names[1]) if len(names) > 1 and names[1] else (names[0] if names else '')
+
+    def part(m, word):
+        if word == 'revenue' and re.search(r'total\s+income', str(m.get('label')), re.IGNORECASE) and not re.search(r'revenue|sales', str(m.get('label')), re.IGNORECASE):
+            word = 'total income'      # a Total Income row is not revenue from operations (International Travel House, Jindal Saw)
+        if word == 'revenue' and re.search(r'net\s+interest\s+income|\bNII\b', str(m.get('label')), re.IGNORECASE):
+            word = 'net interest income'   # a bank's NII is not its revenue (Axis Bank: "revenue Rs 15,371 Cr")
+        txt = f"{word} {money_text(m['number'], m['currency'])}"
+        ch = [f"{m['change_pct']:+.1f}% YoY"] if isinstance(m.get('change_pct'), (int, float)) else []
+        ch += [f"{m['qoq_pct']:+.1f}% QoQ"] if isinstance(m.get('qoq_pct'), (int, float)) else []
+        return txt + (f" ({', '.join(ch)})" if ch else '')
+    period = next((str(m.get('period')) for m in (rev, pat) if m and m.get('period') and str(m.get('period')).lower() not in NO_PERIOD_WORDS), '')
+    period = quarter_label(doc) or period
+    body = '; '.join(part(m, w) for m, w in ((rev, 'revenue'), (pat, 'profit after tax')) if m)
+    basis = next((b for m in (rev, pat) if m for b in ('consolidated', 'standalone') if re.search(b, str(m.get('label')), re.IGNORECASE)), '')
+    basis = basis or next((b for m in (rev, pat) if m and m.get('quote') for b in [basis_near(doc, m.get('quote'))] if b), '')   # the heading above the table
+    if basis:
+        body = f'{basis} ' + body
+    quotes = ' ... '.join(str(m.get('quote')) for m in (rev, pat) if m and m.get('quote'))
+    return {'text': f"{name} {period} results: {body}".replace('  ', ' ').strip(), 'quote': quotes, 'evidence': 'table', 'shown': True,
+            'reason': None, 'from_table': True}
+
+
+_ENDED = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|year)\s+ended\s+(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\s*(?:day\s+of\s+)?([A-Za-z]{3,9})\.?,?\s*(\d{4})', re.IGNORECASE)
+_MONTH_NO = {m: i for i, m in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'), 1)}
+
+
+_ENDED_MDY = re.compile(r'(?:quarter|half[- ]year|six\s+months|nine\s+months|period|year)\s+ended\s+(?:on\s+)?(?:the\s+)?([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})', re.IGNORECASE)
+
+
+def _quarter_ends(doc) -> set:
+    """The period-end dates the filing states, '30th September 2026' or 'September 30, 2026' (day, month, year)."""
+    head = str(doc)[:6000]
+    ends = {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for d, m, y in _ENDED.findall(head)}
+    ends |= {(int(d), _MONTH_NO.get(m[:3].lower()), int(y)) for m, d, y in _ENDED_MDY.findall(head)}
+    return {e for e in ends if e[1]}
+
+
+def quarter_label(doc: str) -> str | None:
+    """'Q2 FY27' from the one quarter-end date the filing states ('quarter ended 30 September 2026'), else None."""
+    ends = {e for e in _quarter_ends(doc) if e[1] in (3, 6, 9, 12)}
+    if len(ends) != 1:
+        return None
+    _, mo, yr = next(iter(ends))
+    return f"Q{ {6: 1, 9: 2, 12: 3, 3: 4}[mo] } FY{(yr + 1 if mo >= 4 else yr) % 100:02d}"
+
+
+def fiscal_label(text: str, doc: str) -> str:
+    """'Q2 FY26' for a quarter that ended 30 September 2026 is Q2 FY27 (Karur Vysya, Tips Music): the fiscal year is the year it
+    ends and the quarter follows the month of the date the filing gives. Rewritten from the filing's own date, only when the filing
+    states one quarter-end date."""
+    ends = _quarter_ends(doc)
+    if len(ends) != 1:
+        return text
+    _, mo, yr = next(iter(ends))
+    if mo not in (3, 6, 9, 12):
+        return text
+    fy = yr + 1 if mo >= 4 else yr
+    q = {6: 1, 9: 2, 12: 3, 3: 4}[mo]
+    if re.search(rf'Q{q}\s*FY\s?(?:20)?{fy % 100:02d}\b', text):
+        return text      # the right label is there: another one is a comparison
+
+    def fix(m):
+        # only a label that names the quarter this filing is about is corrected (a year-ago quarter in a comparison is not)
+        return f'Q{q} FY{fy % 100:02d}' if int(m.group(1)) == q and re.sub(r'\D', '', m.group(2))[-2:] != f'{fy % 100:02d}' else m.group(0)
+    return re.sub(r'Q([1-4])\s*FY\s?(\d{2,4})\b', fix, text)
+
+
+RESULTS_LABEL = re.compile(r'revenue|\bsales\b|income|profit|\bPAT\b|\bPBT\b|EBITDA|earnings|turnover', re.IGNORECASE)
+NO_PERIOD_WORDS = ('', 'n/a', 'na', '-', 'none', 'not stated')
 RESULTS_WORDS = re.compile(r'\bresults?\b|revenue|profit|\bloss\b|\bincome\b|\bPAT\b|EBITDA|earnings|\bsales\b|turnover|\bPBT\b|\bEPS\b', re.IGNORECASE)
 ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommended by the audit committee|limited review|'
                                    r'only one reportable segment|one reportable segment|engaged in the business of [^.]{0,60}\bonly\b|'
@@ -950,13 +1536,19 @@ ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommen
 
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
-    points = [p for p in (check_words(x, doc, keep_up_to=True) for x in (out.get('points') or [])[:4]) if p]
+    extra = card_numbers(fields, metrics)
+    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra) for x in (out.get('points') or [])[:4]) if p]
+    for pt in points:   # Megamont, Bench Mark, Lloyds: a point never shows an unfilled "{amount}"
+        if pt.get('shown') and '{' in str(pt.get('text') or ''):
+            pt['text'], tok_reason = fill_tokens(pt['text'], fields, metrics)
+            if tok_reason or '{' in pt['text']:
+                pt['shown'], pt['reason'] = False, tok_reason or 'a figure the card could not check'
     results_filing = str(out.get('category') or '') == 'financial_results'
     if results_filing:   # Paushak (16 Oct): the card showed "reviewed by the auditors" and "one segment" and no profit
         for pt in points:
             if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
                 pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
-    headline = check_words(out.get('headline'), doc)
+    headline = check_words(out.get('headline'), doc, extra_numbers=extra)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
         if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
@@ -969,12 +1561,13 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         if token_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), token_reason) if x)
+        headline['text'] = rewrite_name(headline['text'], names)   # ROX, J.A. Finance, Prime Fresh, Admach: rewrite, never blank the card
         quality_reason = headline_quality_reason(headline['text']) or headline_name_reason(headline['text'], names) \
-            or correction_reason(headline['text'], doc)
+            or correction_reason(headline['text'], doc) or basis_reason(headline['text'], headline.get('quote'))
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
-        sub = check_words(out.get('subtitle'), doc)       # the line under the headline, checked as the headline is
+        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra)       # the line under the headline, checked as the headline is
         if sub:
             sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
             if sub_reason:
@@ -982,7 +1575,49 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
             headline['subtitle'] = sub
-    return headline, points
+    if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
+        ours = results_headline(metrics, names, doc)
+        shown_text = str(headline.get('text')) if isinstance(headline, dict) and headline.get('shown') else ''
+        if ours and (' profit after tax' in ours['text'] and (' revenue' in ours['text'] or ' total income' in ours['text']) or '%' in ours['text']
+                     or re.search(r'\b(?:lakhs?|lacs?|million|mn)\b', shown_text, re.IGNORECASE)   # Paushak: "revenue rises to 8,932 lakh"
+                     or not re.search(r'\d', shown_text)):
+            headline = {**ours, 'subtitle': (headline or {}).get('subtitle') if isinstance(headline, dict) and headline.get('shown') else None}
+    if str(out.get('category') or '') in ('stake_change', 'pledge') and isinstance(headline, dict) and headline.get('shown'):
+        bad_holdings = holdings_arithmetic(doc)
+        if bad_holdings:
+            headline = {**headline, 'shown': False, 'reason': '; '.join(x for x in (headline.get('reason'), 'the holdings table does not add up: ' + bad_holdings[0]) if x)}
+    if results_filing and isinstance(headline, dict) and headline.get('shown'):
+        ok_checks, failed = table_arithmetic(doc)
+        if failed:   # the table does not add up: a digit or a column was misread (OCR, text layer or image); nothing is shown from it
+            headline = {**headline, 'shown': False, 'reason': '; '.join(x for x in (headline.get('reason'), 'the results table does not add up: ' + '; '.join(failed[:2])) if x)}
+    if isinstance(headline, dict) and headline.get('shown'):
+        headline['text'] = re.sub(r'(\d[\d.]*\s?%\s*(?:YoY|QoQ))\s+to\s+(\d[\d.]*\s?%\s*(?:YoY|QoQ))', r'\1 and \2', str(headline['text']))   # Steel Exchange: "up 45% YoY to 25% QoQ"
+        headline['text'] = fiscal_label(headline['text'], doc)
+    if str(out.get('category') or '').startswith('rating_') and not (isinstance(headline, dict) and headline.get('shown')
+                                                                    and FACILITY_CHANGE_SAID.search(str(headline.get('text')))):
+        fc = facility_change_headline(doc, names)
+        multi = len(FACILITY_CHANGE.findall(str(doc))) > 1          # Kernex: two of three facilities were enhanced; one of them is not the story
+        said_action = isinstance(headline, dict) and headline.get('shown') and re.search(r'upgrad|downgrad|reaffirm|assign|withdr', str(headline.get('text')), re.IGNORECASE)
+        if fc and said_action:              # the rating action leads; the size change rides as the subtitle when the filing has one change only
+            if not multi and not headline.get('subtitle'):
+                headline = {**headline, 'subtitle': {k: fc[k] for k in ('text', 'quote', 'evidence', 'shown', 'reason')}}
+        elif fc and not multi:
+            headline = fc
+    if (str(out.get('category') or '').startswith('rating_') and isinstance(headline, dict) and headline.get('shown')
+            and isinstance(headline.get('subtitle'), dict) and headline['subtitle'].get('shown')
+            and not RATING_ACTION.search(str(headline.get('text'))) and RATING_ACTION.search(str(headline['subtitle'].get('text')))):
+        # TAN Finance: "Total rated bank facilities increased to Rs 225 crore" led, the reaffirmed rating rode as the subtitle: the action leads
+        sub = headline['subtitle']
+        headline = {**sub, 'subtitle': {k: headline[k] for k in ('text', 'quote', 'evidence', 'shown', 'reason') if k in headline}}
+    headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
+    if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') in ('stake_change', 'pledge'):
+        why = sast_party_reason(headline.get('text'), doc, names)
+        if why:
+            headline = {**headline, 'shown': False, 'reason': '; '.join(x for x in (headline.get('reason'), why) if x)}
+            headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
+    if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') == 'management_change':
+        headline['text'] = full_person_name(headline['text'], doc, names)
+    return headline, drop_repeats(headline, points)
 
 
 COMPARISON_WORDS = re.compile(
@@ -1011,8 +1646,11 @@ def with_previous(m: dict, raw: dict, doc: str) -> dict:
     ok = bool(s.quote_found(q, doc)) and s.digits_in_quote(prev, q) and n is not None
     m = {**m, 'previous': prev, 'previous_period': raw.get('previous_period'), 'previous_quote': q,
          'previous_number': n if ok else None}
+    if ok and n and re.match(r'\s*\(\s*[\d.,]+\s*\)\s*$', str(prev)):
+        n = -abs(n)                      # "(0.35)" is a loss of 0.35 (ArMee: a loss to a profit is not "+420%")
+        m['previous_number'] = n
     if ok and n and m.get('number') is not None:
-        m['change_pct'] = round((m['number'] - n) / abs(n) * 100, 1)
+        m['change_pct'] = _pct(m['number'], n)   # None unless the year-earlier value was a profit: no % across a loss
     return m
 
 
@@ -1382,16 +2020,146 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
 
 # --- reading ---------------------------------------------------------------------------
 
-def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=()) -> dict:
+REG29 = re.compile(r'Reg(?:ulation|\.)?\s*29\s*\(\s*[12]\s*\)|substantial\s+acquisition|\(SAST\)\s+Regulations', re.IGNORECASE)
+REG31 = re.compile(r'Reg(?:ulation|\.)?\s*31\s*\(\s*1\s*\)|(?:creation|release|invocation)\s+of\s+(?:pledge|encumbrance)|pledge', re.IGNORECASE)
+CALL_OR_AD = re.compile(r'audio\s+recording|conference\s+call|earnings\s+call|transcript|newspaper|advertisement|publication', re.IGNORECASE)
+CALL_WORDS_OPENING = re.compile(r'audio\s+recording|recording\s+of\s+the\s+(?:earnings|conference|analyst)|earnings\s+call|conference\s+call|newspaper\s+advertisement', re.IGNORECASE)
+ESG_WORDS = re.compile(r'\bESG\b|sustainab|environmental,\s+social', re.IGNORECASE)
+
+
+def category_override(cat, subject, doc: str):
+    """Categories the exchange's own subject line settles, without a model (golden-set audit, 16 Oct): a Reg 29 disclosure
+    is a stake change (Nirlon, Mphasis, DCM Shriram, Ponni), a Reg 31 filing a pledge (Lloyds Engineering twice), a call
+    recording or a newspaper copy is routine whatever it mentions (Karur Vysya, Tips Music), an ESG score is not a credit
+    rating (KEI)."""
+    subject = str(subject or '')
+    if cat != 'open_offer' or not re.search(r'open\s+offer|public\s+announcement|detailed\s+public', subject, re.IGNORECASE):
+        if re.search(r'Reg(?:ulation|\.)?\s*29\s*\(\s*[12]\s*\)', subject, re.IGNORECASE):
+            return 'stake_change'
+    if re.search(r'Reg(?:ulation|\.)?\s*31\s*\(\s*[12]\s*\)', subject, re.IGNORECASE) and 'SAST' in subject.upper():
+        return 'pledge'
+    if cat == 'financial_results' and (CALL_OR_AD.search(subject) or CALL_WORDS_OPENING.search(str(doc)[:700])):
+        return 'routine'
+    if str(cat or '') in ('rating_upgrade', 'rating_reaffirmed') and re.search(r'\bRating\s+Assigned\b|\bAssigned\b', str(doc)[:8000]) \
+            and not re.search(r'upgrad|downgrad|reaffirm|withdraw|revis', str(doc)[:8000], re.IGNORECASE):
+        return 'rating_assigned'      # Megamont: a first rating is neither an upgrade nor a reaffirmation
+    if str(cat or '').startswith('rating_') and ESG_WORDS.search(subject + ' ' + str(doc)[:1500]) \
+            and not re.search(r'CRISIL|ICRA|CARE\s+Ratings|India\s+Ratings|Acuit|Infomerics|Brickwork|credit\s+rating', str(doc)[:1500], re.IGNORECASE):
+        return 'routine'
+    return cat
+
+
+_FACT = re.compile(r'^([A-Za-z0-9]+) = (.*?)(?: \[context:.*)?$')
+_VERB = {'resignation': 'resigns', 'retirement': 'retires', 'removal': 'is removed', 'death': 'dies', 'completion of tenure': 'completes tenure',
+         'cessation': 'steps down'}
+
+
+def _nice_date(iso) -> str:
+    try:
+        return datetime.strptime(str(iso)[:10], '%Y-%m-%d').strftime('%-d %b %Y')
+    except ValueError:
+        return str(iso)
+
+
+def people_change(doc: str, names=()) -> tuple[dict | None, list[dict]]:
+    """A resignation or appointment filed as XBRL facts (NSE's 'Resignation of Director/KMP/SMP'): the headline and points are
+    built from the facts, with the person as the subject and each fact line as its own quote. CCL Products' headline made
+    the company resign its own secretary; NIIT's CEO change carried quotes the text never had. The facts are the filing."""
+    if not str(doc).startswith('XBRL FACTS') or 'TypeOfChange' not in doc:
+        return None, []
+    events, cur = [], None
+    for line in str(doc).splitlines():
+        m = _FACT.match(line.strip())
+        if not m:
+            continue
+        key, val = m.group(1), m.group(2).strip()
+        if key == 'TypeOfChange':
+            cur = {'type': val, 'lines': {}}
+            events.append(cur)
+        elif cur is not None and key in ('CategoryOfCessation', 'DesignationOfDesignatedPerson', 'SalutationOfDesignatedPerson',
+                                        'NameOfDesignatedPerson', 'EffectiveDateOfReasonOfChange', 'BriefProfile',
+                                        'CategoryForChange', 'DateOnWhichTheResignationLetterWasReceived') \
+                or (cur is not None and re.search(r'Reason(?:Of|For)', key) and key != 'EffectiveDateOfReasonOfChange' and len(val) > 8):
+            cur['lines'].setdefault(key, (val, line.strip()))
+    events = [e for e in events if 'NameOfDesignatedPerson' in e['lines']]
+    if not events:
+        return None, []
+    short = short_name(names[1]) if len(names) > 1 and names[1] else ''
+    left = [e for e in events if str(e['type']).lower().startswith('cessation')]
+    joined = [e for e in events if str(e['type']).lower().startswith('appointment')]
+
+    def who(e):
+        l = e['lines']
+        return l['NameOfDesignatedPerson'][0], (l.get('DesignationOfDesignatedPerson') or ('',))[0]
+    parts, quotes = [], []
+    for e in left:
+        n, d = who(e)
+        verb = _VERB.get(str(e['lines'].get('CategoryOfCessation', ('',))[0]).lower(), 'steps down')
+        dt = e['lines'].get('EffectiveDateOfReasonOfChange', (None,))[0]
+        parts.append(f"{d} {n} {verb}" + (f", effective {_nice_date(dt)}" if dt else ''))
+        quotes += [e['lines']['NameOfDesignatedPerson'][1], e['lines'].get('CategoryOfCessation', (0, ''))[1]]
+    for e in joined:
+        n, d = who(e)
+        dt = e['lines'].get('EffectiveDateOfReasonOfChange', (None,))[0]
+        same = left and who(left[0])[1] == d
+        parts.append((f"{n} appointed" if same else f"{d} {n} appointed") + (f" from {_nice_date(dt)}" if dt else ''))
+        quotes += [e['lines']['NameOfDesignatedPerson'][1]]
+    text = (short + ': ' if short else '') + '; '.join(parts)
+    quotes = [q for q in quotes if q]
+    head = {'text': text, 'quote': ' ... '.join(quotes), 'evidence': 'exact', 'shown': True, 'reason': None, 'from_facts': True}
+    points = []
+    for e in left + joined:
+        for key, label in (('DateOnWhichTheResignationLetterWasReceived', 'Resignation letter received on'),):
+            if key in e['lines']:
+                points.append({'text': f"{label} {_nice_date(e['lines'][key][0])}", 'quote': e['lines'][key][1], 'evidence': 'exact', 'shown': True, 'reason': None})
+        for key, (val, raw) in e['lines'].items():
+            if re.search(r'Reason(?:Of|For)', key) and key != 'EffectiveDateOfReasonOfChange':
+                points.append({'text': f"Reason given: {val[:140]}", 'quote': raw[:300], 'evidence': 'exact', 'shown': True, 'reason': None})
+        prof = e['lines'].get('BriefProfile')
+        if prof and e in joined:
+            first = re.split(r'(?<=[.])\s', prof[0])[0]
+            points.append({'text': f"Appointee: {first[:180]}", 'quote': f"BriefProfile = {first}"[:300], 'evidence': 'exact', 'shown': True, 'reason': None})
+    return head, points[:4]
+
+
+SIZE_CATEGORIES = {'order_win': 'the value of the order', 'acquisition': 'the price paid', 'divestment': 'the sale price',
+                   'agreement': 'any financial terms', 'capex': 'the cost of the investment', 'preferential': 'the size of the issue',
+                   'merger_demerger': 'the exchange ratio or consideration', 'open_offer': 'the offer price'}
+
+
+def gaps_of(cat, fields, doc: str) -> list[dict]:
+    """What the category normally gives and this filing does not (the amount of an order, the price of a purchase): said on the card
+    as a gap, never filled in (CLAUDE.md rule 7). Only when no amount or price field survived and the text has none either."""
+    what = SIZE_CATEGORIES.get(cat)
+    if not what or any(f.get('shown') and f.get('name') in ('amount', 'price_per_share', 'ratio', 'offer_pct') for f in fields or []):
+        return []
+    if re.search(r'(?:Rs\.?|INR|₹|US\$|USD|\$)\s*[\d,]+', str(doc)):
+        return []     # the text has an amount somewhere: not a gap, a check that held it
+    return [{'type': 'not_disclosed', 'text': f'This filing does not state {what}.', 'date': None}]
+
+
+def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
         return {'ok': False, 'error': f'{lane_name}: {used}: reply was not JSON'}
     cat, fields, metrics = validate(out, doc)
+    cat_before = cat
+    cat = category_override(cat, subject, doc)
+    for f in fields:   # a dividend is not a price (LTM: 'Price a share 25' on a results card)
+        if f.get('name') in ('price_per_share', 'max_price_per_share') and re.search(r'dividend', str(f.get('quote') or ''), re.IGNORECASE):
+            f['name'] = 'dividend_per_share'
     raw = [m for m in (out.get('metrics') or []) if isinstance(m, dict)] if isinstance(out, dict) else []
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
-    headline, points = card_words(out, doc, fields, metrics, names)
+    headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
+    if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
+            and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
+        headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
+        headline, points = promote_point(headline, points, names, (), 'routine')
+    facts_head, facts_points = people_change(doc, names)
+    if facts_head and cat in ('management_change', 'auditor_resignation', None):
+        headline, points = facts_head, facts_points + [p for p in points if p.get('shown') and not any(p.get('text') == q.get('text') for q in facts_points)][:1]
     withdrawn = headline and WITHDRAWN.search(str((headline or {}).get('text') or ''))
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
@@ -1399,7 +2167,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=()) -
     if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points}
+            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
 
 
 def read_one(lane: Lane, row: dict, doc: str) -> dict:
@@ -1410,7 +2178,60 @@ def read_one(lane: Lane, row: dict, doc: str) -> dict:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
-    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')))
+    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
+
+
+def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.download) -> dict:
+    """The text read `res` made no safe card (needs_vision): read the PDF's pages as images and run the answer through the same
+    checks; the vision result replaces the text result only if it is better. Always returns a result; `res` when nothing improves."""
+    why = vision.needs_vision(res)
+    if not why or not vision.enabled():
+        return res
+    if not data:   # the text came from the text cache or an XBRL attachment: fetch the PDF itself
+        try:
+            data = fetch(row['file_url'])
+        except Exception as exc:  # noqa: BLE001
+            log(row.get('symbol'), f'vision: wanted ({why}) but the PDF could not be downloaded: {type(exc).__name__}')
+            return res
+    if data[:4] != b'%PDF':
+        log(row.get('symbol'), f'vision: wanted ({why}) but the filing is not a PDF')
+        return res
+    if text_is_garbled(doc):
+        log(row.get('symbol'), 'vision: not tried, the PDF text is garbled so a quote cannot be checked against it')
+        return res
+    try:
+        got = vision.vision_text(lambda note: card_prompt(row, note), data)
+    except Exception as exc:  # noqa: BLE001 -- a failing repair never costs the text card
+        log(row.get('symbol'), f'vision: {type(exc).__name__}: {exc}')
+        return res
+    if not got:
+        log(row.get('symbol'), 'vision: no page could be drawn or no model answered')
+        return res
+    text, model, secs, usage, note, imgs = got
+    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
+    if clash and (res.get('headline') or {}).get('from_table'):
+        clash = []       # a headline we built from verified table rows (and checked by the table's own arithmetic) is not read twice
+    if clash:        # not stated by the image read: ask the page, figure by figure, and keep only what a quote from the filing's text backs
+        printed = vision.verify_figures(str((res.get('headline') or {}).get('text')), clash, imgs)
+        clash = [n for n in clash if not (n in printed and s.quote_found(printed[n], doc))]
+    if clash:   # the owner's rule: two independent readings must agree on the figures, or the card does not go on
+        log(row.get('symbol'), f'vision: the readers disagree on {clash[:4]}; the text headline is held')
+        h = dict(res['headline'])
+        h.update(shown=False, reason='; '.join(x for x in (h.get('reason'), f'the page image does not show {", ".join(f"{n:,.2f}".rstrip("0").rstrip(".") for n in clash[:3])}: two readers disagree') if x))
+        return {**res, 'headline': h}
+    ok = vision.better(vres, res)
+    log(row.get('symbol'), f'vision ({why}): {model} {usage}; text shown {vision.shown_count(res)}, vision shown {vision.shown_count(vres)}; '
+        f'{"used" if ok else "not used"}')
+    if not ok:   # why the image read was not used: the first reasons its values were held
+        why_held = [f"{x.get('name') or x.get('label')}: {x.get('reason')}" for x in (vres.get('fields') or []) + (vres.get('metrics') or []) if not x.get('shown')]
+        log(row.get('symbol'), 'vision answer:', re.sub(r'\s+', ' ', text)[:1200])
+        log(row.get('symbol'), 'vision held:', ' | '.join(why_held[:6]) or (vres.get('error') or 'no values'), '| headline:', (vres.get('headline') or {}).get('reason'))
+    # two readings and no disagreement on the headline's figures: the second reader is named on the card (rule 4: the evidence status)
+    agreed_with = f'vision:{model}' if vres.get('ok') and not clash else None
+    if ok:
+        return {**vres, 'vision_note': note, 'second_reader': res.get('reader') if res.get('ok') and not clash else None}
+    return {**res, 'second_reader': agreed_with}
 
 
 # Several short filings in one request, for providers that count calls, not tokens (Gemini: 500 a day). Off
@@ -1454,7 +2275,7 @@ def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
     for k, job in enumerate(jobs, 1):
         item = by_id.get(str(k))
         res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name,
-                             (job['row'].get('symbol'), job['row'].get('company'))) if item is not None else None)
+                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '') if item is not None else None)
     return res
 
 
@@ -1468,7 +2289,7 @@ def finish(rec: dict) -> dict:
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
     rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
         sum(not m['shown'] for m in rec.get('metrics') or [])
-    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points'):
+    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'open_loops'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
     rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
     return {c: rec.get(c) for c in COLUMNS}
@@ -1605,9 +2426,16 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     text_chars=len(doc), source_format=source_format)
         if not doc.strip():
             return finish({**base, 'status': 'no_text', 'reason': '; '.join(doc_notes)})
-        bad_text = unreadable_reason(doc)
+        try:
+            size = len(data) if data is not None else int(float(row.get('file_bytes') or 0))
+        except (TypeError, ValueError):
+            size = 0
+        bad_text = unreadable_reason(doc) or enclosure_unread_reason(doc, size)
         if bad_text:   # rule 8: a filing whose text did not come out is marked not read, not guessed from its subject
             return finish({**base, 'status': 'not_read', 'reason': bad_text})
+        blank = next((n for n in doc_notes if str(n).startswith('pages without text:')), None)
+        if blank:   # rule 8: a scan some of whose pages gave no text is not read in part
+            return finish({**base, 'status': 'not_read', 'reason': f'{blank}; not read in part'})
         cut = next((n for n in doc_notes if str(n).startswith('cut to ')), None)
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',
@@ -1623,7 +2451,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 waiting.setdefault(base['text_sha256'], [])
         if twin is not None:
             return copy_of(twin, base)
-        job.update(base=base, doc=doc)
+        job.update(base=base, doc=doc, pdf=data if source_format == 'pdf' and data else None)
         return None
 
     def done_reading(job: dict, rec: dict | None) -> list:
@@ -1738,7 +2566,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        finish_read(lane, job, read_one(lane, job['row'], job['doc']))
+        res = read_one(lane, job['row'], job['doc'])
+        finish_read(lane, job, vision_repair(job['row'], job['doc'], job.get('pdf'), res))
 
     def finish_read(lane: Lane, job: dict, res: dict):
         """Records the checked result of a read of `job`, or hands the filing on when there is none."""
@@ -1753,7 +2582,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'headline': res['headline'], 'points': res['points'], 'seconds': res['seconds']})
+                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
+                      'second_reader': res.get('second_reader')})
         with lock:
             docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
         add_row(rec)
