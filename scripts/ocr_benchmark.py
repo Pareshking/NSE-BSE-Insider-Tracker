@@ -153,6 +153,16 @@ def run_paddle_structure(png: Path, pdf: Path) -> str:
     return _structure_text(_PADDLE['st'], png)
 
 
+def run_paddle_structure_text(png: Path, pdf: Path) -> str:
+    """PP-StructureV3 as layout + OCR in reading order (no table, seal, formula or chart models; mobile OCR models)."""
+    if 'text' not in _PADDLE:
+        _PADDLE['text'] = _structure('text', use_doc_orientation_classify=False, use_doc_unwarping=False, use_seal_recognition=False,
+                                     use_formula_recognition=False, use_chart_recognition=False, use_region_detection=False,
+                                     use_table_recognition=False, text_detection_model_name='PP-OCRv5_mobile_det',
+                                     text_recognition_model_name='PP-OCRv5_mobile_rec')
+    return _structure_text(_PADDLE['text'], png)
+
+
 def run_paddle_structure_lite(png: Path, pdf: Path) -> str:
     """PP-StructureV3 with the small models and only the parts a filing needs (layout, OCR, tables)."""
     if 'lite' not in _PADDLE:
@@ -186,7 +196,7 @@ def run_marker(png: Path, pdf: Path) -> str:
     return getattr(rendered, 'markdown', None) or str(rendered)
 
 
-ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_mobile': run_paddle_mobile, 'paddle_structure': run_paddle_structure, 'paddle_structure_lite': run_paddle_structure_lite, 'docling': run_docling, 'marker': run_marker}
+ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_mobile': run_paddle_mobile, 'paddle_structure': run_paddle_structure, 'paddle_structure_lite': run_paddle_structure_lite, 'paddle_structure_text': run_paddle_structure_text, 'docling': run_docling, 'marker': run_marker}
 
 
 def norm(s: str) -> str:
