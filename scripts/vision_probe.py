@@ -175,7 +175,26 @@ def check(answer: str, doc: str) -> tuple[int, int, dict | None]:
     return sum(1 for q in qs if squash(q) and squash(q) in d), len(qs), j
 
 
+def list_models() -> list[str]:
+    """Model ids each key can see (the ids the owner named - Gemini 3.6/3.7/3.8 Flash, GLM-4.6V, Nemotron VL - are checked here, not assumed)."""
+    out = []
+    if os.environ.get('GEMINI_API_KEY'):
+        r = requests.get('https://generativelanguage.googleapis.com/v1beta/models', params={'pageSize': 1000},
+                         headers={'x-goog-api-key': os.environ['GEMINI_API_KEY']}, timeout=60)
+        ids = sorted(m['name'].removeprefix('models/') for m in r.json().get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', []))
+        out.append(f'gemini (HTTP {r.status_code}): ' + ', '.join(i for i in ids if 'gemini' in i))
+    for prov in ('zai', 'nvidia'):
+        key = os.environ.get(KEYS[prov], '').strip()
+        if key:
+            r = requests.get(f'{BASES[prov]}/models', headers={'Authorization': f'Bearer {key}'}, timeout=60)
+            ids = sorted(m.get('id', '') for m in (r.json().get('data', []) if r.ok else []))
+            out.append(f'{prov} (HTTP {r.status_code}): ' + ', '.join(ids)[:3000])
+    return out
+
+
 def main() -> int:
+    for line in list_models():
+        print('MODELS', line, flush=True)
     ids = [ln.split('#')[0].strip() for ln in Path(sys.argv[1]).read_text().splitlines() if ln.split('#')[0].strip()]
     models = [m.strip() for m in os.environ.get('VISION_MODELS', 'zai:glm-4.6v-flash,gemini:gemini-3.5-flash').split(',') if m.strip()]
     r2 = r2_client()
