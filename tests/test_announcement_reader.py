@@ -2213,3 +2213,10 @@ def test_a_rows_formula_in_brackets_is_not_its_first_amount():
            '3  Total Income (1+2)  1,145.45  1,021.52  1,121.05\n')
     assert ar.table_arithmetic(doc) == (1, [])
     assert ar.table_arithmetic(doc.replace('1,145.45', '1,195.45'))[1]
+
+
+def test_an_approximate_figure_is_not_written_as_exact():
+    q = 'the estimated value of which is approximately Rs. 12.5 crores based on current prices'
+    assert ar.hedge_estimate('Positron wins RLNG tender worth ₹12.5 Cr', q) == 'Positron wins RLNG tender worth ~₹12.5 Cr'
+    assert ar.hedge_estimate('Positron wins tender worth about ₹12.5 Cr', q) == 'Positron wins tender worth about ₹12.5 Cr'
+    assert ar.hedge_estimate('Refex wins ₹32.4 Cr order', 'Award Value of Rs. 32,44,50,000/-') == 'Refex wins ₹32.4 Cr order'

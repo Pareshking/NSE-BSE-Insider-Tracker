@@ -356,6 +356,8 @@ def _page_needs_ocr(text: str) -> bool:
     t = re.sub(r'\s', '', text or '')
     if len(t) < 80:
         return True
+    if sum(ch.isdigit() for ch in t) >= 150 and not re.search(r'income|revenue|profit|expenses|total|tax|assets|liabilit|equity|capital|shares|sales|loss|cost', str(text), re.IGNORECASE):
+        return True      # a page of figures with none of the words that label them: the text layer of a scan, labels lost (Kross's results pages)
     toks = [x for x in str(text).split() if re.search(r'\d', x)]
     bad = sum(1 for x in toks if re.search(r'(?<=[\d,.])[A-Za-z](?=[\d,.])', x))
     return bad >= 8 and bad >= 0.08 * max(1, len(toks))

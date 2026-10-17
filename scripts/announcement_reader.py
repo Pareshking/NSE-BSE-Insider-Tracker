@@ -611,6 +611,19 @@ def garbled_near(doc: str, quote) -> bool:
     return bad >= 4 and bad >= 0.08 * max(1, len(toks))
 
 
+_APPROX_QUOTE = re.compile(r'\b(?:approximately|approx\.?|estimated|about|around|nearly)\s+(?:value\s+of\s+|worth\s+)?(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)\s*\d', re.IGNORECASE)
+_HEDGED = re.compile(r'~|\b(?:approx\w*|estimated|about|around|nearly|up\s*to|upto|over|more than)\b', re.IGNORECASE)
+_MONEY_AT = re.compile(r'(?:₹|Rs\.?\s?|INR\s?|US\$|USD\s?|\$)\s*\d')
+
+
+def hedge_estimate(text: str, quote) -> str:
+    """A figure the filing calls approximate or estimated (Positron: "estimated value of which is approximately Rs. 12.5 crores based on
+    current prices") is not written as exact: "~" goes before the first amount of a sentence that has no such word."""
+    if _APPROX_QUOTE.search(str(quote or '')) and not _HEDGED.search(text):
+        return _MONEY_AT.sub(lambda m: '~' + m.group(0), text, count=1)
+    return text
+
+
 def deal_arithmetic(fields: list[dict]) -> None:
     """Shares x price per share must be the amount, within 2 % (an issue, a warrant or option allotment, a buyback, a stake purchase): when the
     three are shown and do not agree, the amount is held, with the product in the reason (nothing is corrected). Any filing type that gives the three."""
@@ -975,6 +988,7 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if not isinstance(item, dict) or not str(item.get('text') or '').strip():
         return None
     text, quote = str(item['text']).strip(), item.get('quote')
+    text = hedge_estimate(text, quote)
     qf = s.quote_found(quote, doc)
     reasons = [] if qf else ['quote not found in the filing']
     if re.search(r'\d', text) and garbled_near(doc, quote):

@@ -102,3 +102,9 @@ def test_a_page_whose_table_does_not_add_up_is_read_again(monkeypatch):
     assert '17,779.40' in text and s.ocr_last()[0] == [1]
     monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: bad)
     assert '17,679.40' in s.pdf_text(pdf(bad * 3)) and s.ocr_last()[0] == []        # no reader fixed it: the page stays, the reader holds the headline
+
+
+def test_a_page_of_figures_without_any_label_word_needs_ocr():
+    figures = ' '.join(f'{1000 + i}.{i % 100:02d}' for i in range(80))
+    assert s._page_needs_ocr(figures)
+    assert not s._page_needs_ocr('Total income ' + figures)
