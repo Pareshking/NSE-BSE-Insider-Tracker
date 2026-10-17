@@ -24,7 +24,7 @@ def test_text_page_is_kept_and_a_blank_page_is_ocrd(monkeypatch):
     monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: 'Pledge of 1,87,500 shares created in favour of 360 One ' * 3)
     text = s.pdf_text(pdf(LONG, ''))
     assert 'Regulation 29(2)' in text and 'Pledge of 1,87,500 shares' in text
-    assert s.ocr_last() == [[2], []]
+    assert s.ocr_last()[:2] == [[2], []]
 
 
 def test_ocr_that_gives_nothing_is_named_and_the_filing_is_not_read_in_part(monkeypatch):
@@ -37,9 +37,15 @@ def test_a_page_with_text_is_never_ocrd(monkeypatch):
     called = []
     monkeypatch.setattr(s, 'ocr_page', lambda *a, **k: called.append(1) or '')
     s.pdf_text(pdf(LONG, LONG))
-    assert not called and s.ocr_last() == [[], []]
+    assert not called and s.ocr_last()[:2] == [[], []]
 
 
 def test_garbled_text_layer_needs_ocr():
     garbled = ' '.join(f'2J{i}9,51o 5A23st' for i in range(40))
     assert s._page_needs_ocr(garbled) and not s._page_needs_ocr(LONG)
+
+
+def test_one_graphic_page_among_text_pages_does_not_drop_the_filing(monkeypatch):
+    monkeypatch.setattr(s, 'ocr_page', lambda data, page, dpi=200: '')
+    text, notes = s.text_of(pdf(*([LONG] * 5 + [''] + [LONG] * 4)))
+    assert any(n.startswith('graphic pages without text: 6') for n in notes) and not any(n.startswith('pages without text') for n in notes)

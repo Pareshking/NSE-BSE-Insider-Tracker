@@ -348,7 +348,7 @@ _LOCAL = threading.local()   # per reader thread: (pages OCR'd, pages left witho
 
 
 def ocr_last() -> list:
-    return getattr(_LOCAL, 'ocr', [[], []])
+    return getattr(_LOCAL, 'ocr', [[], [], 0])
 
 
 def _page_needs_ocr(text: str) -> bool:
@@ -380,12 +380,13 @@ def pdf_text(data: bytes) -> str:
     against pdftotext -layout on 13 table rows: equal on rows, shorter text). A page with no text layer or a mangled one is OCR'd with
     tesseract (17 Oct sample: Unimech, SHK, Viyash scans and ixigo's results had no usable text; OCR gave clean text); pages OCR'd are
     named in OCR_LAST. pdftotext -layout when PyMuPDF is missing or fails."""
-    _LOCAL.ocr = [[], []]
+    _LOCAL.ocr = [[], [], 0]      # pages OCR'd, pages with no text at all, pages in all
     OCR_LAST = _LOCAL.ocr
     try:
         import pymupdf
         with pymupdf.open(stream=data, filetype='pdf') as pdf:
             pages = [page.get_text('text', sort=True) for page in pdf]
+        OCR_LAST[2] = len(pages)
         need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
         todo = need[:OCR_MAX_PAGES]
         with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
@@ -519,8 +520,10 @@ def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]
             last = ocr_last()
             if last[0]:
                 notes.append(f'ocr: pages {", ".join(map(str, last[0]))} read with tesseract (no usable text layer)')
-            if last[1]:
+            if last[1] and (len(last[1]) > 0.3 * max(1, last[2]) or len(text.strip()) < 500):
                 notes.append(f'pages without text: {", ".join(map(str, last[1]))} could not be read (no text layer and OCR failed or the scan is over {OCR_MAX_PAGES} pages)')
+            elif last[1]:   # a chart or photo page among text pages (Axis Bank's results release: pages 11, 46): named, not a reason to drop the filing
+                notes.append(f'graphic pages without text: {", ".join(map(str, last[1]))}')
     if not text.strip():
         notes.append('no text layer (scanned?)')
     if limit and len(text) > limit:
