@@ -155,8 +155,21 @@ def stage(r2, today: date, lanes: dict, max_transcripts: int, months_back: int =
           deadline: float | None = None, log=print) -> dict:
     """Read up to `max_transcripts` transcripts not yet read, newest first (companies with results in hand first). The text comes from the
     text cache; a transcript not cached yet waits for the next run."""
-    from insiders_clean.filing_text import Cache
-    cache = Cache(r2)
+    from insiders_clean import filing_text
+    days: dict = {}
+
+    def cached(row):
+        """The cached record of a filing whatever extractor made its text (a transcript read by the older extractor is still the words
+        of the call); only long texts are kept in memory."""
+        key = (str(row.get('exchange')).lower(), str(row['broadcast_date'])[:10])
+        if key not in days:
+            try:
+                df = filing_text.load_day(r2, *key)
+                df = df[df['status'].isin(filing_text.DONE) & (pd.to_numeric(df['chars'], errors='coerce').fillna(0) >= 15_000)]
+                days[key] = {x['event_id']: x for x in df.to_dict('records')}
+            except Exception:  # noqa: BLE001 -- a day that cannot be read is a miss
+                days[key] = {}
+        return days[key].get(row['event_id'])
     months = []
     y, m = today.year, today.month
     for _ in range(months_back + 1):
@@ -169,6 +182,7 @@ def stage(r2, today: date, lanes: dict, max_transcripts: int, months_back: int =
     if results_isins:
         rows = rows.assign(_p=~rows['isin'].isin(results_isins)).sort_values(['_p', 'broadcast_date'], ascending=[True, False])
     docs = {}
+    seen_days = 0
     for r in rows.to_dict('records'):
         if report['read'] >= max_transcripts or (deadline and time.monotonic() > deadline):
             break
@@ -178,7 +192,7 @@ def stage(r2, today: date, lanes: dict, max_transcripts: int, months_back: int =
         if any(c.get('event_id') == r['event_id'] for c in docs[isin].get('calls') or []):
             report['already'] += 1
             continue
-        rec = cache(r)
+        rec = cached(r)
         text = str((rec or {}).get('text') or '')
         if not text:
             report['not_cached'] += 1
