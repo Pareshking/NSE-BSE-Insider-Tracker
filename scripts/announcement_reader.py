@@ -443,6 +443,19 @@ def _pct(now, before) -> float | None:
     return round((now - before) / before * 100, 1) if before and before > 0 and now >= 0 else None
 
 
+_VALUE_UNIT = re.compile(r'^\s*(?:₹|Rs\.?|INR|US\$|\$|USD)?\s*(\d[\d,]*(?:\.\d+)?)\s*(crores?|cr|lakhs?|lacs?|million|mn|billion|bn)\.?\s*$', re.IGNORECASE)
+
+
+def split_value_unit(value, unit):
+    """A reply that puts the unit inside the value ("₹102 Crore", "84.48 Cr", "₹1,715 Mn") with 'rupees' as the unit: the number and its
+    unit word, so that the unit is checked against the quote as any other (Steel Exchange, E2E, Sacheerome)."""
+    if str(unit or '').strip().lower().rstrip('.') in ('', 'rupees', 'rupee', 'rs', 'inr', '₹', 'units', 'unit'):
+        m = _VALUE_UNIT.match(str(value or ''))
+        if m:
+            return m.group(1), m.group(2).lower()
+    return value, unit
+
+
 def row_in_doc(m: dict, doc) -> str | None:
     """The one line of the filing that holds the metric's label and its figure with six amounts (the model's quote had only the
     first column: LTM, Jindal Saw), so that the changes come from the filing's own columns."""
@@ -572,6 +585,9 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if name in s.NUMERIC:
             if not s.digits_in_quote(value, quote):
                 reasons.append('number not in its quote')
+            if name == 'amount':
+                value, unit = split_value_unit(value, unit)
+                rec['value'] = value
             rec['number'] = s.in_units(value, unit) if name == 'amount' else s._num(value)
             if rec['number'] is None:
                 reasons.append('not one number')
@@ -605,6 +621,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if not isinstance(m, dict):
             continue
         value, quote, unit_m = m.get('value'), m.get('quote'), m.get('unit')
+        value, unit_m = split_value_unit(value, unit_m)
         if str(unit_m or '').strip().lower() in ('', 'unit', 'units', 'number', 'count'):
             unit_m = physical_unit(quote, value) or unit_m   # MT, MW, MMBTU, employees: the printed unit, never 'units'
         qf = s.quote_found(quote, doc)

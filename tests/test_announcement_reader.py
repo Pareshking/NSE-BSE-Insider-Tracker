@@ -2083,3 +2083,13 @@ def test_heading_unit_backs_the_models_unit_when_the_row_is_wide():
     out = {'category': 'financial_results', 'metrics': [{'label': 'Profit after tax', 'period': 'Q2 FY27', 'value': '1,351', 'unit': 'lakh', 'quote': 'Profit after tax 1,351'}]}
     _, _, metrics = ar.validate(out, doc)
     assert metrics[0]['shown'], metrics[0]
+
+
+def test_unit_written_inside_the_value_is_split_out():
+    assert ar.split_value_unit('₹102 Crore', 'rupees') == ('102', 'crore')
+    assert ar.split_value_unit('₹1,715 Mn', 'rupees') == ('1,715', 'mn')
+    assert ar.split_value_unit('84.48 Cr', None) == ('84.48', 'cr')
+    assert ar.split_value_unit('102', 'crore') == ('102', 'crore')
+    out = {'category': 'financial_results', 'metrics': [{'label': 'Debt reduction', 'period': 'Q2', 'value': '₹102 Crore', 'unit': 'rupees', 'quote': 'Reduced total debt by ₹102 Crore'}]}
+    _, _, metrics = ar.validate(out, 'Reduced total debt by ₹102 Crore in the quarter')
+    assert metrics[0]['shown'] and metrics[0]['number'] == 102 * 1e7
