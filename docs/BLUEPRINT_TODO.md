@@ -287,3 +287,11 @@ State when stopped (PR #145, branch ccr-0caa4ce9-bh3n2s, not merged):
 - Autonomous 15-minute cycle stopped (no trigger left). NVIDIA lane stays off (probe 17 Oct 02:09 IST: glm-5.3 and lightning time out,
   nemotron-ultra 404, only nemotron-3.5-super-vl-120b answers; awaiting the owner on a 10-filing trial).
 Notes of every audit round: kept in the session scratchpad (golden/g9/findings.md); not committed.
+
+## 12.23 Vision repair (17 Oct 2026, owner's design; off by default, `vision=true` on the reader workflow)
+
+Cards the text read cannot make safe go to the PDF's page images: page triage without AI (`scripts/announcement_vision.py`: first page, number-dense pages, scans; signature pages left out and named), one Gemini request per filing, the first model of the list that answers (3.5/3.6/3.7/3.8 Flash, then 3.5/3.1 Flash-Lite; ids checked against the key's model list), the answer through the same checks as a text read (quotes must be words of the PDF text), used only if better (table cards: a shown headline with points beats a specific wrong one).
+
+Test on 10 failed filings, audited against the page images: Affle (74,00,000 warrants), Mphasis, Kernex, Steel Exchange, Hilinfra read right by image; about 1,000 tokens a page image, 1 request a filing. Fixed in code after the audit: rating action leads (size change as subtitle, none if several facilities changed), basis label from the heading above the table (Jindal Saw), multi-item headline held (Federal Bank 7,100 of 99,954), garbled "45% YoY to 25% QoQ", per-model cool-down on 429.
+
+Open: Steel Exchange headline says "H1 FY27" for a Q2 statement; Affle text read still says 29.81 million shares (needs the image read); Gemini free quotas were used up by the tests (every model 429), so the last run could not use images; Z.ai's list has no glm-4.6v-flash; NVIDIA vision ids exist (nemotron-3.5-super-vl-120b-a12b, nemotron-parse-2.0, llama-3.2-90b-vision) but are not tried; PyMuPDF `sort=True` text mode is in the probe, not yet compared.
