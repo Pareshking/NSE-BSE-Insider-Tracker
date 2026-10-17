@@ -323,3 +323,22 @@ The ixigo results scan (24 figures): tesseract 9, Docling 21, Paddle 24. Decisio
 
 Built after the owner said the OCR / validation suggestions apply to all filings: (1) the slower OCR readers (PaddleOCR, Docling) now read any scanned or mangled page, not only pages of figures; the page text is chosen by figures plus words that two readers agree on; (2) shares x price per share must equal the amount (2 %), any filing; (3) SEBI Reg 29 / Reg 31 forms: the rows of each section (before, acquired, after) must add up to its Total (a+b+c+d), and the shares and percentages of a row must come from one capital (the Kesar and Unimech forms pass, a changed digit fails); the identity before + acquired = after is not used because warrants held before are in the before total; a failure holds the headline, nothing is corrected; (4) the record carries `second_reader` when a second independent reading (page image or text) agreed on the headline figures. Open: show the agreement on the site card; rating totals; structured exchange sources for SAST and pledge; a cell-level benchmark across types.
 
+### 12.23e OCR benchmark, 7 pages / 92 figures (17 Oct 2026, final)
+
+| Engine | Figures | Time a page |
+|---|---|---|
+| PaddleOCR PP-OCR full models | 92 / 92 | 60 s |
+| PaddleOCR PP-OCRv5 mobile | 90 / 92 | 35 s |
+| Docling | 82 / 92 | 24 s |
+| tesseract | 74 / 92 | 1.2 s |
+| PP-StructureV3 light (small models, tables on) | 25 / 92 | 42 s |
+| PP-StructureV3 layout + OCR, no table model | 0 / 92 (tables come out as images) | 44 s |
+| PP-StructureV3 default models | not run: the 7 GB GitHub runner kills it (asked for 20 GB) | |
+| Marker | not run on scans (needs a llama.cpp server; two install tries failed) | |
+
+Winner on accuracy: PaddleOCR full models (now the default of `paddle=true`; `READER_PADDLE_MODELS=mobile` for the 35 s version). Tesseract stays the first reader (speed); Paddle and Docling read scanned pages when asked, inside a 300 s OCR budget a filing. PP-StructureV3 needs a bigger machine (or a GPU) than the hosted runners: to be measured there; the owner says it is faster, not measured by us.
+
+### 12.24 Continuous mode ON (owner, 17 Oct 2026, ~23:30 IST)
+
+After the 100 reviewed cards (three live runs from main), the owner asked to make everything live and watch the cards on the site in real time. `announcement-reader.yml` runs in chain mode again: each run (up to 100 filings or 40 minutes, newest first, vision second reading on, PaddleOCR full models for scanned pages, Docling off, company history off) saves to R2 as it reads and starts the next one 10 minutes after it began (30 after a failure). To stop: cancel the running run or start one by hand with `chain=false`. Watch: the site's Filings page, the run summaries (counts, held reasons), and `second_reader` on each record.
+

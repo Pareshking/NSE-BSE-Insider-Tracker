@@ -28,6 +28,11 @@ OUT_DIR = Path(os.environ.get('OUT_DIR', 'ocr_out'))
 WINDOW = 300
 # event_id -> (page, [(label, [figures in the order the page shows them])]); every figure read off the page image
 TRUTH = {
+    'bse:43aa426c-0e01-4c7f-b061-944ce743efed': (4, [   # Bajaj Healthcare results (a scan whose embedded text layer misreads 17,590.16 and 16,563.17)
+        ('Revenue from operations', ['17,590.16', '16,563.17', '14,791.49', '34,153.33', '29,675.12', '61,103.14']),
+        ('Other income', ['89.24', '81.14', '165.29', '170.38', '253.06', '713.39']),
+        ('Total income', ['17,679.40', '16,644.31', '14,956.78', '34,323.71', '29,928.18', '61,816.53']),
+        ('Profit before tax', ['1,847.59', '1,645.83', '1,596.21', '3,493.42', '3,048.72', '2,892.30'])]),
     'bse:fe68aee3-b3b9-4bbe-bff0-62c26c69cc5d': (5, [   # ixigo consolidated results (a scan)
         ('Revenue from operations', ['320.96', '356.75', '284.23', '677.71', '600.28', '1,228.04']),
         ('Total income', ['343.04', '385.90', '289.40', '728.94', '612.41', '1,275.35']),
@@ -118,15 +123,55 @@ def run_paddle_mobile(png: Path, pdf: Path) -> str:
     return run_paddle(png, pdf)
 
 
-def run_paddle_structure(png: Path, pdf: Path) -> str:
+def _structure(key: str, **kw):
+    """PPStructureV3 built with the given options; options this PaddleOCR version does not know are dropped one at a time."""
     from paddleocr import PPStructureV3
-    if 'st' not in _PADDLE:
-        _PADDLE['st'] = PPStructureV3(enable_mkldnn=False, use_doc_orientation_classify=False, use_doc_unwarping=False)
+    kw = dict(kw)
+    while True:
+        try:
+            return PPStructureV3(enable_mkldnn=False, **kw)
+        except TypeError as exc:
+            bad = next((k for k in kw if k in str(exc)), None)
+            if bad is None:
+                raise
+            print(f'NOTE PPStructureV3 does not take {bad}; dropped', flush=True)
+            kw.pop(bad)
+
+
+def _structure_text(pipe, png: Path) -> str:
     out = []
-    for r in _PADDLE['st'].predict(str(png)):
+    for r in pipe.predict(str(png)):
         md = getattr(r, 'markdown', None) or (r.get('markdown') if isinstance(r, dict) else None)
         out.append(md.get('markdown_texts', '') if isinstance(md, dict) else str(md))
     return '\n'.join(out)
+
+
+def run_paddle_structure(png: Path, pdf: Path) -> str:
+    """PP-StructureV3 with its default models (asked for 20 GB on the 7 GB runner in the first run)."""
+    if 'st' not in _PADDLE:
+        _PADDLE['st'] = _structure('st', use_doc_orientation_classify=False, use_doc_unwarping=False)
+    return _structure_text(_PADDLE['st'], png)
+
+
+def run_paddle_structure_text(png: Path, pdf: Path) -> str:
+    """PP-StructureV3 as layout + OCR in reading order (no table, seal, formula or chart models; mobile OCR models)."""
+    if 'text' not in _PADDLE:
+        _PADDLE['text'] = _structure('text', use_doc_orientation_classify=False, use_doc_unwarping=False, use_seal_recognition=False,
+                                     use_formula_recognition=False, use_chart_recognition=False, use_region_detection=False,
+                                     use_table_recognition=False, text_detection_model_name='PP-OCRv5_mobile_det',
+                                     text_recognition_model_name='PP-OCRv5_mobile_rec')
+    return _structure_text(_PADDLE['text'], png)
+
+
+def run_paddle_structure_lite(png: Path, pdf: Path) -> str:
+    """PP-StructureV3 with the small models and only the parts a filing needs (layout, OCR, tables)."""
+    if 'lite' not in _PADDLE:
+        _PADDLE['lite'] = _structure('lite', use_doc_orientation_classify=False, use_doc_unwarping=False, use_seal_recognition=False,
+                                     use_formula_recognition=False, use_chart_recognition=False, use_region_detection=False,
+                                     text_detection_model_name='PP-OCRv5_mobile_det', text_recognition_model_name='PP-OCRv5_mobile_rec',
+                                     layout_detection_model_name='PP-DocLayout-S',
+                                     wired_table_structure_recognition_model_name='SLANet', wireless_table_structure_recognition_model_name='SLANet')
+    return _structure_text(_PADDLE['lite'], png)
 
 
 _DOC = {}
@@ -151,7 +196,7 @@ def run_marker(png: Path, pdf: Path) -> str:
     return getattr(rendered, 'markdown', None) or str(rendered)
 
 
-ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_mobile': run_paddle_mobile, 'paddle_structure': run_paddle_structure, 'docling': run_docling, 'marker': run_marker}
+ENGINES = {'tesseract': run_tesseract, 'paddle': run_paddle, 'paddle_mobile': run_paddle_mobile, 'paddle_structure': run_paddle_structure, 'paddle_structure_lite': run_paddle_structure_lite, 'paddle_structure_text': run_paddle_structure_text, 'docling': run_docling, 'marker': run_marker}
 
 
 def norm(s: str) -> str:

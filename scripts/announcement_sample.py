@@ -498,14 +498,15 @@ def paddle_enabled() -> bool:
 
 def paddle_page(data: bytes, page: int, dpi: int = 200) -> str:
     """PaddleOCR (PP-OCRv5 mobile models, oneDNN off) text of one page, boxes joined into lines by height; '' when it is not installed or fails.
-    17 Oct benchmark on 6 filing pages read by eye: mobile 66 of 68 figures (ixigo scan 24 of 24) at about 32 s a page on a CPU; the full models
-    68 of 68 at about 98 s; tesseract 51 of 68 at 2 s."""
+    17 Oct benchmark on 7 filing pages read by eye (92 figures): full models 92, mobile 90 (READER_PADDLE_MODELS=mobile) at about 35 s against 60 s a
+    page on a CPU; Docling 82 at 24 s; tesseract 74 at 1.2 s. The full models are the default: accuracy first, and few pages need them."""
     try:
         from paddleocr import PaddleOCR
         if 'ocr' not in _PADDLE:
-            _PADDLE['ocr'] = PaddleOCR(lang='en', enable_mkldnn=False, text_detection_model_name='PP-OCRv5_mobile_det',
-                                       text_recognition_model_name='PP-OCRv5_mobile_rec', use_doc_orientation_classify=False,
-                                       use_doc_unwarping=False, use_textline_orientation=False)
+            models = ({} if os.environ.get('READER_PADDLE_MODELS', 'full') == 'full'
+                      else {'text_detection_model_name': 'PP-OCRv5_mobile_det', 'text_recognition_model_name': 'PP-OCRv5_mobile_rec'})
+            _PADDLE['ocr'] = PaddleOCR(lang='en', enable_mkldnn=False, use_doc_orientation_classify=False, use_doc_unwarping=False,
+                                       use_textline_orientation=False, **models)
         with tempfile.TemporaryDirectory() as d:
             png = render_page(data, page, Path(d), dpi)
             if png is None:
@@ -584,7 +585,7 @@ def pdf_text(data: bytes) -> str:
         t_ocr = time.monotonic()
         with ThreadPoolExecutor(max_workers=2 if (docling_enabled() or paddle_enabled()) else 4) as pool:     # a bank's 40-page scan in about a minute, not four
             for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n) if time.monotonic() - t_ocr < OCR_BUDGET_SECONDS else '', todo)):
-                if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES:   # any scanned or mangled page: the stronger readers read it too
+                if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES and time.monotonic() - t_ocr < OCR_BUDGET_SECONDS:   # any scanned or mangled page: the stronger readers read it too
                     got = best_page_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
                 if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
                     pages[i - 1] = got
@@ -595,7 +596,7 @@ def pdf_text(data: bytes) -> str:
         for i, t in enumerate(pages, 1):      # a text layer whose table does not add up (an old OCR layer: Bajaj Healthcare 17,679.40 for 17,779.40): read the page again
             if i in OCR_LAST[0] or i > 40 or table_arithmetic(t)[0] >= 1 or not table_arithmetic(t)[1]:
                 continue
-            for cand in [ocr_page(data, i)] + ([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else []):
+            for cand in [ocr_page(data, i)] + ([paddle_page(data, i)] if paddle_enabled() and time.monotonic() - t_ocr < OCR_BUDGET_SECONDS else []) + ([docling_page(data, i)] if docling_enabled() and time.monotonic() - t_ocr < OCR_BUDGET_SECONDS else []):
                 ok, bad = table_arithmetic(cand)
                 if ok >= 1 and not bad:
                     pages[i - 1] = cand
