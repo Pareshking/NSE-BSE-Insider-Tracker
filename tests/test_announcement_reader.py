@@ -2133,3 +2133,12 @@ def test_multi_item_headline_and_garbled_growth_words():
     assert ar.multi_item_reason('99,954 equity shares allotted under three schemes', doc) is None
     assert ar.multi_item_reason('Equity shares allotted under stock option schemes', doc) is None
     assert ar.multi_item_reason('7,100 equity shares allotted', 'Allotment of 7,100 Equity Shares') is None
+
+
+def test_no_percent_change_from_a_loss_to_a_profit():
+    raw = {'previous': '(0.35)', 'previous_quote': 'Consolidated PAT was 1.82 crore, compared with a loss of (0.35) crore', 'previous_period': 'Q1 FY26'}
+    m = ar.with_previous({'shown': True, 'number': 1.82, 'unit': None, 'currency': 'INR'}, raw, 'Consolidated PAT was 1.82 crore, compared with a loss of (0.35) crore')
+    assert m.get('previous_number') == -0.35 and m.get('change_pct') is None
+    raw2 = {'previous': '0.95', 'previous_quote': 'PAT rose to 2.77 crore from 0.95 crore a year earlier', 'previous_period': 'Q1 FY26'}
+    m2 = ar.with_previous({'shown': True, 'number': 2.77, 'unit': None, 'currency': 'INR'}, raw2, 'PAT rose to 2.77 crore from 0.95 crore a year earlier')
+    assert m2.get('change_pct') == 191.6

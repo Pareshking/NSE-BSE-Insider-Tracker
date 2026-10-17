@@ -78,7 +78,23 @@ def text_modes(data: bytes) -> dict[str, str]:
         except Exception as exc:  # noqa: BLE001
             out['blocks'] = ''
             log_note(f'PyMuPDF unavailable: {exc}')
+    if os.environ.get('OCR', '') == '1':
+        out['ocr'] = ocr_text(data)
     return out
+
+
+def ocr_text(data: bytes, max_pages: int = 8, dpi: int = 200) -> str:
+    """OCR of the first pages with tesseract (the text a scan or a garbled text layer does not give): pages joined by form feeds."""
+    out = []
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / 'f.pdf'
+        src.write_bytes(data)
+        subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-f', '1', '-l', str(max_pages), str(src), str(Path(d) / 'p')],
+                       capture_output=True, timeout=300, check=False)
+        for png in sorted(Path(d).glob('p-*.png')):
+            r = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
+            out.append(r.stdout.decode('utf-8', errors='replace'))
+    return '\f'.join(out)
 
 
 def log_note(msg: str) -> None:

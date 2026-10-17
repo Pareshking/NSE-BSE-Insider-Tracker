@@ -33,7 +33,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt pymupdf && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      - run: pip install -r requirements.txt pymupdf && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
       - name: Probe
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -45,6 +45,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           VISION_MODELS: ${{ inputs.models || 'gemini:gemini-3.5-flash,gemini:gemini-3.6-flash,gemini:gemini-3.8-flash,gemini:gemini-3.5-flash-lite,gemini:gemini-3.1-flash-lite' }}
           OUT_DIR: vision_out
+          OCR: '1'
         run: python -u scripts/vision_probe.py "${{ inputs.ids_file || 'scripts/vision_ids.txt' }}"
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1557,8 +1557,11 @@ def with_previous(m: dict, raw: dict, doc: str) -> dict:
     ok = bool(s.quote_found(q, doc)) and s.digits_in_quote(prev, q) and n is not None
     m = {**m, 'previous': prev, 'previous_period': raw.get('previous_period'), 'previous_quote': q,
          'previous_number': n if ok else None}
+    if ok and n and re.match(r'\s*\(\s*[\d.,]+\s*\)\s*$', str(prev)):
+        n = -abs(n)                      # "(0.35)" is a loss of 0.35 (ArMee: a loss to a profit is not "+420%")
+        m['previous_number'] = n
     if ok and n and m.get('number') is not None:
-        m['change_pct'] = round((m['number'] - n) / abs(n) * 100, 1)
+        m['change_pct'] = _pct(m['number'], n)   # None unless the year-earlier value was a profit: no % across a loss
     return m
 
 
