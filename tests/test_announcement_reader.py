@@ -2106,3 +2106,14 @@ def test_basis_window_counts_words_not_padding():
     pad = ' ' * 400
     doc = 'Consolidated Results\n' + ('x' + pad) * 6 + f'\nPAT{pad}353{pad}400\n'
     assert ar.basis_near(doc, 'PAT 353 400') == 'consolidated'
+
+
+def test_overstatement_payer_and_capital_guards():
+    from scripts.announcement_reader import overstatement_reason, payer_reason, value_is_capital
+    assert overstatement_reason('Rajesh Exports cleared of SEBI penalty', 'no penalty is levied; investigation continues')
+    assert not overstatement_reason('Company cleared of charge', 'the Court cleared the company of the charge')
+    doc = 'Direct Monetary Outflow: Nil. Settlement amount paid by the former promoter under indemnity.'
+    assert payer_reason('SEPC settles disputes for Rs 149.5 Crore', doc)
+    assert not payer_reason('SEPC disputes settled for Rs 149.5 Crore, paid by indemnifier, nil outflow', doc)
+    assert value_is_capital('1,90,87,31,370', 'Paid up Equity Share Capital being Rs. 1,90,87,31,370/-')
+    assert not value_is_capital('500', 'order worth Rs. 500 Crore')

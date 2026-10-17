@@ -456,6 +456,21 @@ def split_value_unit(value, unit):
     return value, unit
 
 
+_CAPITAL_PHRASE = re.compile(r'(?:paid[- ]?up|authori[sz]ed|issued|subscribed|voting)\s+(?:equity\s+)?(?:share\s+)?capital|equity\s+share\s+capital', re.IGNORECASE)
+
+
+def value_is_capital(value, quote) -> bool:
+    """The value stands within 90 characters after a capital phrase in its quote ("Paid up Equity Share Capital being Rs. 1,90,87,31,370/-",
+    Mphasis; Nirlon): the capital of the target, not a deal amount."""
+    digits = re.sub(r'\D', '', str(value or '').split('.')[0])
+    if len(digits) < 4:
+        return False
+    for m in _CAPITAL_PHRASE.finditer(str(quote or '')):
+        if digits in re.sub(r'\D', '', str(quote)[m.start():m.end() + 90].replace('/-', ' ')):
+            return True
+    return False
+
+
 def row_in_doc(m: dict, doc) -> str | None:
     """The one line of the filing that holds the metric's label and its figure with six amounts (the model's quote had only the
     first column: LTM, Jindal Saw), so that the changes come from the filing's own columns."""
@@ -578,6 +593,10 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
         if name == 'amount' and (TARGET_CAPITAL.search(str(quote or '')) or (
                 NOT_A_DEAL_SIZE.search(str(quote or '')) and not DEAL_WORDS.search(str(quote or '')))):
             reasons.append('its quote is a turnover, net worth or income figure, not the size of the deal')
+        if name == 'amount' and str(out.get('category') or '') != 'corporate_change' and value_is_capital(value, quote):
+            reasons.append('the number is the company\'s paid-up / authorised / voting capital, not the size of the event')
+        if name.startswith('capacity') and quote and not re.search(r'capacit', str(quote), re.IGNORECASE):
+            reasons.append('its quote does not speak of capacity (a production record is not capacity)')
         if name == 'amount' and re.search(r'\d\s*%|%\s*\)?\s*$|\(\s*[\d.]+\s*%', str(value)) or (
                 name == 'amount' and re.search(re.escape(str(value).strip()) + r'\s*%', str(quote or ''))):
             reasons.append('a percentage, not a money amount')
@@ -920,11 +939,32 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
             r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
         reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
-    why = direction_reason(text)
+    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc)
     if why:
         reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
             'reason': '; '.join(reasons) or None}
+
+
+OVERSTATE = re.compile(r'\b(clear(?:ed|s)|exonerat\w*|absolv\w*|acquit\w*|vindicat\w*|quash\w*|waiv\w*)\b', re.IGNORECASE)
+PAYER_NIL = re.compile(r'(?:monetary\s+)?outflow[^.\n]{0,40}\bnil\b|paid\s+(?:entirely\s+)?by|borne\s+by|under\s+(?:an?\s+)?(?:2015\s+)?indemnit|indemnif', re.IGNORECASE)
+
+
+def overstatement_reason(text, quote) -> str | None:
+    """'cleared of SEBI penalty' where the quote says no fine is levied and the investigation goes on (Rajesh Exports): a word that
+    says the matter is over must be a word of the quote."""
+    m = OVERSTATE.search(str(text or ''))
+    if m and not re.search(re.escape(m.group(1)[:5]), str(quote or ''), re.IGNORECASE):
+        return f'says "{m.group(1)}" but its quote does not say the matter is over'
+    return None
+
+
+def payer_reason(text, doc) -> str | None:
+    """'SEPC settles disputes for Rs 149.5 Crore' where the filing says the outflow is nil and someone else pays under an indemnity."""
+    if re.search(r'\b(?:settl\w*|pays?|paid|payment|dues|deposit\w*)\b', str(text or ''), re.IGNORECASE) and re.search(r'\d', str(text or '')) \
+            and PAYER_NIL.search(str(doc)) and not re.search(r'\bnil\b|paid\s+by|indemn|borne|third[- ]party', str(text or ''), re.IGNORECASE):
+        return 'the filing says who pays (outflow nil / paid by another party): the headline states the amount as the company\'s payment'
+    return None
 
 
 _DIRECTION = re.compile(r'(?P<n1>\d[\d,]*\.?\d*)\s*(?:crores?|cr|lakhs?|lacs?|million|mn)?[^.\d]{0,25}?\b(?P<word>up|higher|increased?|rose|grew|down|lower|decreased?|fell|declined?)\b'
@@ -1119,7 +1159,12 @@ def extract_open_loops(doc, limit: int = 6) -> list[dict]:
             key = re.sub(r'\W+', '', sent.lower())[:70]
             if rx.search(sent) and key not in seen:
                 seen.add(key)
-                dates = dates_in(sent)[0]
+                hit = rx.search(sent)
+                dates = dates_in(sent[hit.end():])[0] if hit else set()      # the date AFTER "next hearing" / "on or before", not the earlier intimation's
+                if not dates:
+                    dates = dates_in(sent)[0]
+                    if dates and kind in ('hearing', 'due_date', 'listing_pending'):
+                        dates = {max(dates)}
                 txt = sent.strip()
                 if len(txt) > 260:
                     txt = txt[:260].rsplit(' ', 1)[0] + ' …'      # never cut inside a word
