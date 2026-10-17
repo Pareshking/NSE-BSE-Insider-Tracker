@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [tesseract, paddle, paddle_structure, docling, marker]
+        engine: [paddle, paddle_structure, marker]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,7 +30,7 @@ jobs:
           case "${{ matrix.engine }}" in
             paddle|paddle_structure) pip install paddlepaddle "paddleocr[all]" ;;
             docling) pip install docling ;;
-            marker) pip install marker-pdf ;;
+            marker) pip install marker-pdf && brew install llama.cpp ;;
           esac
         continue-on-error: true
       - name: Benchmark
@@ -40,6 +40,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           ENGINE: ${{ matrix.engine }}
+          FLAGS_use_mkldnn: '0'
+          FLAGS_enable_pir_api: '0'
           OUT_DIR: ocr_out
         run: python -u scripts/ocr_benchmark.py
       - uses: actions/upload-artifact@v4

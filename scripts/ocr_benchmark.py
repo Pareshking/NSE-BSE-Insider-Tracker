@@ -87,9 +87,8 @@ def _lines(items) -> str:
 
 def run_paddle(png: Path, pdf: Path) -> str:
     from paddleocr import PaddleOCR
-    if 'ocr' not in _PADDLE:
-        _PADDLE['ocr'] = PaddleOCR(lang='en', use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False) \
-            if 'use_doc_orientation_classify' in PaddleOCR.__init__.__code__.co_varnames or True else PaddleOCR(lang='en')
+    if 'ocr' not in _PADDLE:   # mkldnn off: Paddle 3.x's oneDNN path raised NotImplementedError (ConvertPirAttribute2RuntimeAttribute) on the CPU runner
+        _PADDLE['ocr'] = PaddleOCR(lang='en', enable_mkldnn=False, use_doc_orientation_classify=False, use_doc_unwarping=False, use_textline_orientation=False)
     ocr = _PADDLE['ocr']
     res = ocr.predict(str(png)) if hasattr(ocr, 'predict') else ocr.ocr(str(png))
     items = []
@@ -112,7 +111,7 @@ def run_paddle(png: Path, pdf: Path) -> str:
 def run_paddle_structure(png: Path, pdf: Path) -> str:
     from paddleocr import PPStructureV3
     if 'st' not in _PADDLE:
-        _PADDLE['st'] = PPStructureV3(use_doc_orientation_classify=False, use_doc_unwarping=False)
+        _PADDLE['st'] = PPStructureV3(enable_mkldnn=False, use_doc_orientation_classify=False, use_doc_unwarping=False)
     out = []
     for r in _PADDLE['st'].predict(str(png)):
         md = getattr(r, 'markdown', None) or (r.get('markdown') if isinstance(r, dict) else None)
