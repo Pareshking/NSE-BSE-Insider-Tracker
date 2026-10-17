@@ -1,5 +1,3 @@
-# the four replay cards whose image read showed nothing (17 Oct 2026)
+# image read showed nothing on these (17 Oct 2026)
 nse:106820190  # Federal Bank
-bse:40c7b951-66b5-4be5-a155-57950601e092  # Mphasis
-nse:106815713  # Kernex
 bse:9d3fa507-cb53-4ec0-abb8-46604deae148  # Trident

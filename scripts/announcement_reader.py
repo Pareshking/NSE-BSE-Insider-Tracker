@@ -2099,6 +2099,7 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
         f'{"used" if ok else "not used"}')
     if not ok:   # why the image read was not used: the first reasons its values were held
         why_held = [f"{x.get('name') or x.get('label')}: {x.get('reason')}" for x in (vres.get('fields') or []) + (vres.get('metrics') or []) if not x.get('shown')]
+        log(row.get('symbol'), 'vision answer:', re.sub(r'\s+', ' ', text)[:1200])
         log(row.get('symbol'), 'vision held:', ' | '.join(why_held[:6]) or (vres.get('error') or 'no values'), '| headline:', (vres.get('headline') or {}).get('reason'))
     return {**vres, 'vision_note': note} if ok else res
 
