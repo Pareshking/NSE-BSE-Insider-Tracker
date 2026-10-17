@@ -2093,3 +2093,10 @@ def test_unit_written_inside_the_value_is_split_out():
     out = {'category': 'financial_results', 'metrics': [{'label': 'Debt reduction', 'period': 'Q2', 'value': '₹102 Crore', 'unit': 'rupees', 'quote': 'Reduced total debt by ₹102 Crore'}]}
     _, _, metrics = ar.validate(out, 'Reduced total debt by ₹102 Crore in the quarter')
     assert metrics[0]['shown'] and metrics[0]['number'] == 102 * 1e7
+
+
+def test_a_historic_point_does_not_lead_when_a_current_one_exists():
+    pts = [{'text': 'Previous warrant exercise on June 18, 2026 resulted in 34,964 warrants being exercised', 'quote': 'q1', 'shown': True},
+           {'text': 'Promoter remitted USD 34.99 million to exercise warrants', 'quote': 'q2', 'shown': True}]
+    head, rest = ar.promote_point(None, pts, ('AFFLE', 'Affle 3i Ltd'), (), 'warrant_conversion')
+    assert head and head['text'].startswith('Promoter remitted')

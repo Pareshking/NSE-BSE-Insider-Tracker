@@ -1296,6 +1296,7 @@ def promote_point(headline, points, names=(), extra=(), category=''):
                 - (1 if re.match(r'(?:the\s+)?board\b', text, re.IGNORECASE) else 0) \
                 - (1 if re.match(r'the\s+(?:transaction|company|promoter|filing)\b', text, re.IGNORECASE) else 0) \
                 - (3 if str(category) == 'financial_results' and not RESULTS_WORDS.search(text) else 0) \
+                - (2 if re.match(r'(?:the\s+)?(?:previous|earlier|prior|last)\b|\bpreviously\b', text, re.IGNORECASE) else 0) \
                 + (4 if str(category).startswith('rating_') and re.search(r'upgrad|downgrad|reaffirm|assign|outlook|enhanc|rated|rating', text, re.IGNORECASE) else 0)
             if score > best_score:
                 best, best_score = i, score
