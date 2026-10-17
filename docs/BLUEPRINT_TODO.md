@@ -338,3 +338,7 @@ Built after the owner said the OCR / validation suggestions apply to all filings
 
 Winner on accuracy: PaddleOCR full models (now the default of `paddle=true`; `READER_PADDLE_MODELS=mobile` for the 35 s version). Tesseract stays the first reader (speed); Paddle and Docling read scanned pages when asked, inside a 300 s OCR budget a filing. PP-StructureV3 needs a bigger machine (or a GPU) than the hosted runners: to be measured there; the owner says it is faster, not measured by us.
 
+### 12.24 Continuous mode ON (owner, 17 Oct 2026, ~23:30 IST)
+
+After the 100 reviewed cards (three live runs from main), the owner asked to make everything live and watch the cards on the site in real time. `announcement-reader.yml` runs in chain mode again: each run (up to 100 filings or 40 minutes, newest first, vision second reading on, PaddleOCR full models for scanned pages, Docling off, company history off) saves to R2 as it reads and starts the next one 10 minutes after it began (30 after a failure). To stop: cancel the running run or start one by hand with `chain=false`. Watch: the site's Filings page, the run summaries (counts, held reasons), and `second_reader` on each record.
+

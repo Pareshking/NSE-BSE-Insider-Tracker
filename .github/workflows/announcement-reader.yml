@@ -1,8 +1,10 @@
 name: Unified announcement pipeline
 
-# SUPERVISED MODE (owner approved 16 Oct 2026): no schedule, no push trigger, no self-dispatch chain, no company
-# history. A run happens only when started by hand, reads at most `max` of today's filings, and stops. To go back to
-# the continuous worker, the owner must say so (docs/BLUEPRINT_TODO.md, 4.15 / 3.12).
+# CONTINUOUS MODE (owner, 17 Oct 2026: "make everything live, we will monitor cards on the site in real time"): a run started with
+# chain=true ends by starting the next one (10 minutes after it began, 30 after a failure), reads the newest filings first
+# (up to `max`, for `minutes`), saves what it reads to R2 as it goes, and uses the page-image second reading and PaddleOCR for scanned pages.
+# Company history is off (history=false). TO STOP: cancel the running run, or run it by hand with chain=false; nothing else starts it.
+# (Supervised mode of 16 Oct, kept in docs/BLUEPRINT_TODO.md 12.22: no schedule, no self-dispatch.)
 
 # One serialized workflow handles current NSE/BSE announcements and targeted company history.
 # Historical AI reads are triggered only by eligible companies with current announcements; source collection
@@ -198,5 +200,5 @@ jobs:
           if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=true -f batch=false -f chain=true
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=false -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
