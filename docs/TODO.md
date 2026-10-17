@@ -42,7 +42,8 @@ same day something is promised, started or finished. Pages follow the data:
 | R | **Headline and subtitle format** merged (#132, live-10); kicker line and more owner examples per category open (12.3) | run 5 headlines read; kicker restyled |
 | S | **Run-4 findings without a rule yet**: cards with no headline, wrong categories, duplicate events, instalment amounts, dropped hedges (12.4) | each has a rule or hold and a test |
 | T | **Context engine** (12.5): results backfill of 12 quarters, other XBRL layouts, BSE results, balance sheet, shares and convertibles, then fundraising, results, debt, acquisition and capacity blocks, then ledgers of orders, capacity and ratings | blocks on real cards with dated inputs; "not available" where an input is missing |
-| U | **Concalls and annual reports** (12.6): read transcripts by section; probe the annual-report source; management's words only as quoted, dated facts | a transcript read with quotes; source probed |
+| U | **Concalls and annual reports** (12.6; owner 18 Oct: a transcript is a must when there is one, example first on one company with Q1 and Q2 transcripts and Q2 results via `concall-probe.yml`): read transcripts by section; probe the annual-report source; management's words only as quoted, dated facts | a transcript read with quotes; source probed |
+| W | **Live by day, history by night** (12.26): confirm the first overnight run read old dates; checkpoint status view; real RPM per Gemini model; model-list probe for models with their own quota | history run log and checkpoint show the latest filled date |
 | V | **Text cache fill 1 Jan to 15 Oct** (run 38848258817) and the **nightly collection at 02:30 IST**: report counts and sizes (12.7, 12.8) | reported to the owner |
 
 ## Later
