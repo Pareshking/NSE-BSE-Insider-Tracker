@@ -1,2 +1,18 @@
+bse:359507ce-fe0f-47c5-b88f-cafa675d6253	https://www.bseindia.com/xml-data/corpfiling/AttachLive/13507e8e-39e4-4a21-97e0-30320ac4130d.pdf	Resignation of Company Secretary / Compliance Offi
+bse:067cf85f-4227-46a0-91fa-022375c719b5	https://www.bseindia.com/xml-data/corpfiling/AttachLive/9e98cb76-a42d-443e-8e75-99fa95e7ad2c.pdf	General
+nse:106821267	https://nsearchives.nseindia.com/corporate/8910457293_17102026180004_Reg_30amd_33_Outcome_BM_17102026.pdf	Outcome of Board Meeting
+nse:106821258	https://nsearchives.nseindia.com/corporate/POSITRON_17102026175328_General_Update_17102026.pdf	Updates
+nse:106821251	https://nsearchives.nseindia.com/corporate/LAGNAM_17102026174451_PressRelease171026.pdf	Press Release
+nse:106821248	https://nsearchives.nseindia.com/corporate/RBDENIMS_17102026174415_Intimation_of_ED_Search.pdf	General Updates
+nse:106821240	https://nsearchives.nseindia.com/corporate/ZODIAC_17102026173844_Reg_30_GST_Order_.pdf	Action(s) taken or orders passed
+nse:106821239	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026173815_SEsltrdt17102026ShiftingofRegisteredOfficesd.pdf	General Updates
+bse:d7ffaffc-33d9-4b7c-876c-479eec318c9d	https://www.bseindia.com/xml-data/corpfiling/AttachLive/cb815082-96b4-4d4a-8d22-5c0f3abbe4f3.pdf	General
+nse:106821252	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026174545_SEsltrdt17102026InvestorPresentationsd.pdf	Investor Presentation
+bse:2cece28f-e780-4332-9e95-ffbe0ff2af51	https://www.bseindia.com/xml-data/corpfiling/AttachLive/6bb1a3ab-cc05-42e0-97c7-a7107220bcce.pdf	General
+bse:24bca0bd-d246-4bc5-9b56-4a7669d8924e	https://www.bseindia.com/xml-data/corpfiling/AttachLive/04ed7737-9828-4539-b9a4-57eeea7d9f95.pdf	General
+nse:106821237	https://nsearchives.nseindia.com/corporate/KPIGLOBAL_17102026173042_SunDrops.pdf	Acquisition
+nse:106821236	https://nsearchives.nseindia.com/corporate/MOIL_17102026173038_Intimation_JVC.pdf	General Updates
 nse:106821235	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026172846_SEltrdt17102026ICLUFR30092026sd.pdf	Outcome of Board Meeting
-bse:43aa426c-0e01-4c7f-b061-944ce743efed	https://www.bseindia.com/xml-data/corpfiling/AttachLive/00dd959f-15bf-4ae0-abef-88781ecd9601.pdf	Outcome of Board Meeting
+bse:ca5d2c08-f1eb-47f7-9766-1d239ceb20f2	https://www.bseindia.com/xml-data/corpfiling/AttachLive/b340102c-01b5-4a9e-aa62-bf0184c295ac.pdf	Change in Management
+nse:106821230	https://nsearchives.nseindia.com/corporate/SAMBHAV2024_17102026171635_Sign.pdf	Allotment of Securities
+nse:106821228	https://nsearchives.nseindia.com/corporate/ARIHANTACADEMY_17102026171929_Reg30newBranchBodkdevAhemdabadsigned.pdf	General Updates
