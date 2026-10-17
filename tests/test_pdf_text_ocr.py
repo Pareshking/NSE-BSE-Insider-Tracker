@@ -69,3 +69,12 @@ def test_docling_page_is_not_called_unless_enabled(monkeypatch):
     monkeypatch.setenv('READER_DOCLING', '1')
     s.pdf_text(pdf(LONG, ''))
     assert called
+
+
+def test_best_of_several_readers_wins_only_when_clearly_fuller():
+    ocr = 'Total income 343.04 385.90 ni7o[ aato] G96'
+    docling = '| Total income | 343.04 | 385.90 | 289.40 |'
+    paddle = 'Total income 343.04 385.90 289.40 728.94 612.41 1,275.35 (3.96) 115.86'
+    assert s.better_table_text(ocr, docling, paddle) == paddle
+    assert s.better_table_text(paddle, ocr, docling) == paddle
+    assert s.better_table_text(ocr) == ocr

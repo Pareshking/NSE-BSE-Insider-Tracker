@@ -304,3 +304,18 @@ Text extraction is now PyMuPDF `sort=True` (equal to `pdftotext -layout` on 13 t
 
 A card goes on only when two independent readings agree and the deterministic checks pass; otherwise it is held with the reason, never corrected. In order: (1) structured source first (XBRL when the filing links one); (2) text read: PyMuPDF `sort=True`, tesseract for pages with no or mangled text, model extraction, every quote must be words of that text; (3) deterministic checks: units, signs ((0.35) is a loss, no % across a loss), results arithmetic (revenue + other income = total income; PBT - tax = PAT), basis label from the heading, multi-item totals; (4) for table cards and cards the checks hold, a second independent reading from the page images (Gemini, page triage, fallback across models): a figure of the text headline the image read does not state is asked of the page, claim by claim, and kept only if the page quotes it and the quote is in the filing's text; otherwise the headline is held ("two readers disagree"); (5) a scan whose pages mostly give no text is marked not read. Not built: PaddleOCR / Docling / Marker (tesseract has been enough; benchmark only if it fails on a measured sample), annual-report statements, a cell-level benchmark (to fold into the audits). Open: a published card should show whether it was agreed by two readers (rule 4).
 
+### 12.23c OCR engine benchmark (17 Oct 2026, owner: test before discarding)
+
+Six filing pages (four scans, a digital results table drawn as an image, a slide), 68 figures read off the page images, same page image or one-page PDF for every engine (`scripts/ocr_benchmark.py`, workflow `ocr-benchmark.yml`, GitHub CPU runner):
+
+| Engine | Figures right (with sign) | Rows intact | Time a page |
+|---|---|---|---|
+| tesseract (psm 6) | 51 / 68 | 11 / 17 | 1.8 s |
+| Docling | 63 / 68 | 11 / 17 | 20 s |
+| PaddleOCR PP-OCRv5 mobile | 66 / 68 | 12 / 17 | 32 s |
+| PaddleOCR PP-OCR full models | 68 / 68 | 12 / 17 | 98 s |
+| PaddleOCR PP-StructureV3 | not run: asks for 20 GB of memory on the 7 GB runner | | |
+| Marker | not run on scans: needs a llama.cpp server for scanned pages (digital pages 15 / 68 only because the scans failed); the install of the binary on the runner did not work in two tries | | |
+
+The ixigo results scan (24 figures): tesseract 9, Docling 21, Paddle 24. Decision: tesseract stays the first reader for every page that needs OCR (fast); a scanned page with at least 8 figures is also read by PaddleOCR (`paddle=true` on the reader workflow) and/or Docling (`docling=true`), and the text with clearly more figures (3 more and 20 % more) is used. Both are opt-in until a run on a live sample shows the extra time is worth it. Paddle needs `enable_mkldnn=False` on the CPU runner (oneDNN raised NotImplementedError). Open: PP-StructureV3 on a bigger machine, Marker with a working llama.cpp binary, a larger benchmark (the six pages are few), row integrity metric is crude for Paddle (lines rebuilt from boxes).
+

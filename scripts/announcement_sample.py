@@ -404,14 +404,64 @@ def docling_page(data: bytes, page: int) -> str:
         return ''
 
 
+_PADDLE = {}
+
+
+def paddle_enabled() -> bool:
+    return os.environ.get('READER_PADDLE', '0') == '1'
+
+
+def paddle_page(data: bytes, page: int, dpi: int = 200) -> str:
+    """PaddleOCR (PP-OCRv5 mobile models, oneDNN off) text of one page, boxes joined into lines by height; '' when it is not installed or fails.
+    17 Oct benchmark on 6 filing pages read by eye: mobile 66 of 68 figures (ixigo scan 24 of 24) at about 32 s a page on a CPU; the full models
+    68 of 68 at about 98 s; tesseract 51 of 68 at 2 s."""
+    try:
+        from paddleocr import PaddleOCR
+        if 'ocr' not in _PADDLE:
+            _PADDLE['ocr'] = PaddleOCR(lang='en', enable_mkldnn=False, text_detection_model_name='PP-OCRv5_mobile_det',
+                                       text_recognition_model_name='PP-OCRv5_mobile_rec', use_doc_orientation_classify=False,
+                                       use_doc_unwarping=False, use_textline_orientation=False)
+        with tempfile.TemporaryDirectory() as d:
+            src = Path(d) / 'f.pdf'
+            src.write_bytes(data)
+            subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(Path(d) / 'p')],
+                           capture_output=True, timeout=180, check=False)
+            res = _PADDLE['ocr'].predict(str(Path(d) / 'p.png'))
+        items = []
+        for r in res:
+            data_ = r if isinstance(r, dict) else getattr(r, 'json', {}) or {}
+            data_ = data_.get('res', data_)
+            for t, b in zip(data_.get('rec_texts') or [], data_.get('rec_boxes') if data_.get('rec_boxes') is not None else data_.get('rec_polys') or []):
+                b = [float(v) for v in (b if len(getattr(b, 'shape', [])) == 1 else [x for pt in b for x in pt])]
+                ys, xs = (b[1::2], b[0::2]) if len(b) > 4 else ([b[1], b[3]], [b[0], b[2]])
+                items.append(((min(ys) + max(ys)) / 2, min(xs), t))
+        items.sort(key=lambda t: (round(t[0] / 12), t[1]))
+        lines, cur, last = [], [], None
+        for y, x, t in items:
+            k = round(y / 12)
+            if last is not None and k != last:
+                lines.append('  '.join(cur))
+                cur = []
+            cur.append(t)
+            last = k
+        if cur:
+            lines.append('  '.join(cur))
+        return '\n'.join(lines)
+    except Exception as exc:  # noqa: BLE001 -- PaddleOCR failing leaves the other readers' text
+        log(f'paddle page {page}: {type(exc).__name__}: {str(exc)[:100]}')
+        return ''
+
+
 _FIGURE = re.compile(r'\(\s*\d[\d,]*(?:\.\d+)?\s*\)|(?<![\w.])\d[\d,]*\.\d+(?![\w])|(?<![\w.])\d{1,3}(?:,\d{2,3})+(?![\w])')
 
 
-def better_table_text(ocr: str, docling: str) -> str:
-    """Docling's page when it reads clearly more figures than tesseract did (a figure: a decimal, a comma-grouped number or a bracketed
-    one), else tesseract's."""
-    n_ocr, n_doc = len(_FIGURE.findall(ocr)), len(_FIGURE.findall(docling))
-    return docling if n_doc >= n_ocr + 3 and n_doc >= 1.2 * n_ocr else ocr
+def better_table_text(ocr: str, *others: str) -> str:
+    """The page text that reads clearly more figures than tesseract did (a figure: a decimal, a comma-grouped number or a bracketed one;
+    at least 3 more and 20 % more), the fullest of the other readers', else tesseract's."""
+    n_ocr = len(_FIGURE.findall(ocr))
+    best = max(others, key=lambda t: len(_FIGURE.findall(t)), default='')
+    n = len(_FIGURE.findall(best))
+    return best if n >= n_ocr + 3 and n >= 1.2 * n_ocr else ocr
 
 
 def pdf_text(data: bytes) -> str:
@@ -430,8 +480,8 @@ def pdf_text(data: bytes) -> str:
         todo = need[:OCR_MAX_PAGES]
         with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
             for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
-                if docling_enabled() and len(_FIGURE.findall(got)) >= 8:   # a scanned page of figures: the stronger table reader reads it too
-                    got = better_table_text(got, docling_page(data, i))
+                if (docling_enabled() or paddle_enabled()) and len(_FIGURE.findall(got)) >= 8:   # a scanned page of figures: the stronger readers read it too
+                    got = better_table_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))
                 if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
                     pages[i - 1] = got
                     OCR_LAST[0].append(i)

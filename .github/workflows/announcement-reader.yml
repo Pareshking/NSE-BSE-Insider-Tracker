@@ -52,6 +52,11 @@ on:
         required: true
         type: boolean
         default: false
+      paddle:
+        description: 'Scanned pages of figures are also read with PaddleOCR (about 30 s a page; most accurate in the 17 Oct benchmark)'
+        required: true
+        type: boolean
+        default: false
       replay:
         description: 'Engineering loop: file of event_ids in the repo (scripts/golden_set.txt); read exactly these filings again, save nothing'
         required: false
@@ -134,6 +139,7 @@ jobs:
         run: |
           pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
           if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
+          if [ "${{ inputs.paddle }}" = "true" ]; then pip install paddlepaddle "paddleocr[all]"; fi
       - name: Guard experimental prompt
         if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
         run: |
@@ -151,6 +157,8 @@ jobs:
           READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
           READER_VISION: ${{ inputs.vision == true && '1' || '0' }}
           READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
+          READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
+          FLAGS_use_mkldnn: '0'
           REPLAY: ${{ inputs.replay || '' }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
