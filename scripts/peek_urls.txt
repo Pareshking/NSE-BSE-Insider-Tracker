@@ -1,0 +1,7 @@
+nse:106821267	https://nsearchives.nseindia.com/corporate/8910457293_17102026180004_Reg_30amd_33_Outcome_BM_17102026.pdf
+nse:106821258	https://nsearchives.nseindia.com/corporate/POSITRON_17102026175328_General_Update_17102026.pdf
+nse:106821251	https://nsearchives.nseindia.com/corporate/LAGNAM_17102026174451_PressRelease171026.pdf
+nse:106821239	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026173815_SEsltrdt17102026ShiftingofRegisteredOfficesd.pdf
+nse:106821252	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026174545_SEsltrdt17102026InvestorPresentationsd.pdf
+nse:106821235	https://nsearchives.nseindia.com/corporate/INDIACEM_17102026172846_SEltrdt17102026ICLUFR30092026sd.pdf
+nse:106821230	https://nsearchives.nseindia.com/corporate/SAMBHAV2024_17102026171635_Sign.pdf
