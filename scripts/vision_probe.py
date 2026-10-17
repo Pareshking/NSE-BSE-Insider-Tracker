@@ -71,7 +71,7 @@ def triage(pages: list[str]) -> tuple[list[int], dict[int, str]]:
             score[i], why[i] = 1000, 'first page'
         elif BOILER.search(p) and nums < 8 and terms < 6:
             score[i], why[i] = -1, 'left out: signature / disclaimer / address page (few figures)'
-        elif nums >= 6 and terms >= 4:
+        elif (nums >= 6 and terms >= 4) or nums >= 30:   # a table of figures continues on a page with few words (Paushak p3, Jindal Saw p5/7/9)
             score[i], why[i] = nums + terms, f'sent: {nums} numbers, {terms} key words'
         else:
             score[i], why[i] = -1, f'left out: {nums} numbers, {terms} key words'
@@ -177,7 +177,11 @@ def main() -> int:
         prompt = PROMPT.format(pages=', '.join(map(str, imgs)), total=len(pages))
         doc = '\n'.join(pages)
         for entry in models:
-            ans, secs, err = ask(entry, prompt, imgs)
+            for attempt in range(3):   # 429 / 503 'overloaded' answers came in the first run: wait and ask again
+                ans, secs, err = ask(entry, prompt, imgs)
+                if not (err.startswith('HTTP 429') or err.startswith('HTTP 503')):
+                    break
+                time.sleep(30 * (attempt + 1))
             found, n, j = check(ans, doc)
             (OUT_DIR / f'{str(f["event_id"]).replace(":", "_")}_{entry.replace(":", "_").replace("/", "_")}.txt').write_text(ans or err)
             md += [f'**{entry}** ({secs:.0f} s): ' + (f'ERROR {err}' if err else f'quotes found in the PDF text {found}/{n}')]
