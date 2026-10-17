@@ -2261,3 +2261,14 @@ def test_xbrl_context_line_for_prompt():
     assert len(lines) == 1 and 'Q1 FY27' in lines[0] and 'sales +25%' in lines[0] and 'profit +31%' in lines[0]
     assert ar.xbrl_context_lines(pd.DataFrame(rows), 'INE9', '2026-10-17') == []
     assert ar.xbrl_context_lines(None, 'INE1', '2026-10-17') == []
+
+
+def test_bare_number_quote_is_widened_to_the_one_row():
+    doc = 'Total income 9,865.12 9,001.00\nNet Profit from Ordinary Activities after tax ( F-G ) 2,205.45 2,115.18\nOther 12'
+    out = {'metrics': [{'label': 'Net profit', 'quote': '2,205.45', 'value': '2,205.45'},
+                       {'label': 'Other', 'quote': '12', 'value': '12'},
+                       {'label': 'Net profit', 'quote': 'Net profit 2,205.45', 'value': '2,205.45'}]}
+    assert ar.widen_bare_quotes(out, doc) == 2       # the net profit row and the 'Other' row; the full quote is left as it is
+    assert out['metrics'][1]['quote'] == 'Other 12'
+    assert 'after tax' in out['metrics'][0]['quote']
+    assert out['metrics'][2]['quote'] == 'Net profit 2,205.45'

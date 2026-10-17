@@ -29,8 +29,8 @@ def main() -> int:
     r2 = r2_client()
     rows = []
     for ex in ('nse', 'bse'):
-        for m in ('2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10'):
-            df = read_parquet(r2, f'archive/announcements/{ex}/{m}.parquet')
+        for m in (5, 6, 7, 8, 9, 10):
+            df = read_parquet(r2, f'archive/announcements/{ex}/year=2026/month={m:02d}.parquet')
             if df is None or df.empty:
                 continue
             df = df.assign(exchange=ex)
