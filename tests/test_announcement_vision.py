@@ -22,9 +22,11 @@ def test_needs_vision_and_better():
     good = {'ok': True, 'headline': {'shown': True}, 'fields': [f(), f()], 'metrics': []}
     assert v.better(good, held_head)
     worse = {'ok': True, 'headline': {'shown': True}, 'fields': [], 'metrics': []}
-    assert not v.better(worse, two_held) or v.shown_count(worse) >= v.shown_count(two_held)
+    assert not v.better(worse, safe)         # fewer shown values than the text card: keep the text card
     assert not v.better({'ok': True, 'headline': {'shown': False}, 'fields': [f()], 'metrics': []}, held_head)
-    assert not v.better(good, safe)          # equal and the text card was already safe: keep the text card
+    assert v.better(good, safe)              # a tie goes to the page image
+    assert v.needs_vision({**safe, 'category': 'esop'}) and 'table card' in v.needs_vision({**safe, 'category': 'esop'})
+    assert v.needs_vision({**safe, 'category': 'order_win'}) is None
 
 
 def test_triage_sends_figure_pages_and_names_the_rest():

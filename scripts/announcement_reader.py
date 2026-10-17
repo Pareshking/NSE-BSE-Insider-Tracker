@@ -2070,7 +2070,10 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict) -> dict:
     """The text read `res` made no safe card (needs_vision): read the PDF's pages as images and run the answer through the same
     checks; the vision result replaces the text result only if it is better. Always returns a result; `res` when nothing improves."""
     why = vision.needs_vision(res)
-    if not why or not data or not vision.enabled():
+    if not why or not vision.enabled():
+        return res
+    if not data:
+        log(row.get('symbol'), f'vision: wanted ({why}) but the filing is not a PDF')
         return res
     if text_is_garbled(doc):
         log(row.get('symbol'), 'vision: not tried, the PDF text is garbled so a quote cannot be checked against it')

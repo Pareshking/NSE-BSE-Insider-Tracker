@@ -109,6 +109,13 @@ def ask_gemini(model: str, prompt: str, images: dict[int, bytes], session=reques
     raise RuntimeError(f'{model}: no answer')
 
 
+# Card kinds whose numbers live in tables or several rows: the text read can pass its own checks with the wrong row (17 Oct replay: Federal
+# Bank 7,100 shares for a 99,954 total; Affle 29.81 million shares for 74 lakh warrants). The page image is a second, independent reading.
+TABLE_CATEGORIES = {'financial_results', 'stake_change', 'pledge', 'esop', 'warrant_conversion', 'preferential', 'qip', 'rights',
+                    'rating_upgrade', 'rating_downgrade', 'rating_reaffirmed', 'rating_assigned', 'debt_issue', 'open_offer',
+                    'buyback_open_market', 'buyback_tender', 'dividend', 'bonus_split', 'capex', 'business_update'}
+
+
 def needs_vision(res: dict) -> str | None:
     """Why the text read of a filing should be tried again from the page images; None when the card is safe as it is."""
     if not res.get('ok'):
@@ -119,6 +126,8 @@ def needs_vision(res: dict) -> str | None:
         return 'the headline was held' + (f' ({held} values held)' if held else '')
     if held >= 2:
         return f'{held} values held'
+    if res.get('category') in TABLE_CATEGORIES:
+        return f'a table card ({res.get("category")}): the page image is read as a second opinion'
     return None
 
 
@@ -127,10 +136,10 @@ def shown_count(res: dict) -> int:
 
 
 def better(vision: dict, text: dict) -> bool:
-    """The vision result replaces the text result only when it is clearly no worse: a shown headline and at least as many shown values."""
+    """The vision result replaces the text result when it passes every check (shown headline) and shows at least as many values:
+    on a table card the page image is the better reader, so a tie goes to the image."""
     head = vision.get('headline')
-    return bool(vision.get('ok') and head and head.get('shown') is not False and shown_count(vision) >= shown_count(text)
-                and (shown_count(vision) > shown_count(text) or (text.get('headline') or {}).get('shown') is False or not text.get('headline')))
+    return bool(vision.get('ok') and head and head.get('shown') is not False and shown_count(vision) >= shown_count(text))
 
 
 def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str] | None:
