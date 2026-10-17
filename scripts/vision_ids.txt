@@ -1,20 +1,3 @@
 # nomodel
-# 20-card sample of 17 Oct 2026 (pages only, for auditing against the documents)
-bse:c603fee4-d0f2-496e-941c-97b51788c713  # ARMEE
-nse:106821001  # REFEX
-bse:e59a257c-bc14-4bad-89cf-430dc57ecc20  # Syschem
-bse:d7669d43-707f-4d4e-8434-7d2e033ac06b  # Chambal
-nse:106820992  # M&M
-nse:106820990  # SVLL not_read
-nse:106821000  # Maithan
-bse:75d3a800-072a-4d72-ae06-21435d362409  # Omaxe
-bse:8e8c4bad-32b8-4a33-a821-c38e12aa2148  # TVS Srichakra
-bse:263abe2e-c21f-4f5b-934b-f4f33dbd2e28  # Unimech no_text
-bse:fe68aee3-b3b9-4bbe-bff0-62c26c69cc5d  # ixigo
-bse:edfd4c36-c7a9-4434-bc9b-e0039c9e6c6d  # Kalpataru
-bse:110dd579-5e1a-4738-8447-5d5affdfef86  # Viyash no_text
-bse:da7a2a15-176d-4bf5-9422-afaa53dd541f  # SHK no_text
-bse:5e428690-a75a-46d8-b924-7ff0d265e9be  # Kesar 543542
-nse:106821005  # Axis Bank no_text
-bse:bbef876e-ac28-4fea-9e46-962c66154172  # BSL
-bse:58158c81-ff59-414d-924a-b747b7191b44  # LTM
+nse:106821235
+bse:43aa426c-0e01-4c7f-b061-944ce743efed
