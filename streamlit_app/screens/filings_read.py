@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from ui import kit
-from insiders_clean import context
+from insiders_clean import context, said as said_rules
 
 CATEGORY = {
     'buyback_open_market': 'Buyback, open market', 'buyback_tender': 'Buyback, tender offer', 'qip': 'QIP',
@@ -187,7 +187,33 @@ def _nice_day(iso) -> str:
         return str(iso)
 
 
-def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None) -> str:
+def said_html(r: dict, said_doc: dict | None) -> str:
+    """"Management said on the last call": the forward-looking statements of the company's latest earnings call before this filing, in
+    management's own quoted words with the call date and link, each beside the figure of this filing it is about when the card has it.
+    Nothing is judged: the words and the figure stand side by side."""
+    if r.get('category') not in ('financial_results', 'business_update') or not said_doc:
+        return ''
+    metrics = [m for m in _json(r.get('metrics'), []) if m.get('shown')]
+    items = said_rules.pick(said_doc, str(r.get('broadcast_at') or '')[:10], 3, metrics)
+    if not items:
+        return ''
+    lis = []
+    for it in items:
+        who = f' — {esc(str(it["speaker"]))}' if it.get('speaker') else ''
+        day = esc(kit.day(it['call_date'])) if it.get('call_date') else ''
+        src = (f' <a href="{esc(str(it["source_url"]))}" target="_blank" rel="noopener">transcript ↗</a>' if it.get('source_url') else '')
+        now = ''
+        if it.get('metric'):
+            m = it['metric']
+            now = f'<br>This quarter: <b>{esc(_metric_label(m))}</b> {_metric_text(m)}'
+        lis.append(f'<li>{esc(str(it["statement"]))}{who} <span class="rc-s">(call of {day})</span>{src}'
+                   f'<br><q>{esc(str(it["quote"]))}</q>{now}</li>')
+    return ('<div class="rc-box rc-before"><p class="rc-lbl">Management said on the last call</p><ul class="rc-pts">'
+            + ''.join(lis) + '</ul></div>')
+
+
+def card_html(r: dict, price: dict | None = None, history: dict | None = None, before: list[str] | None = None,
+              said_box: str = '') -> str:
     """One filing as a card: what happened (headline and points, every number in them found in the filing),
     its key terms, the figures of a periodic update with the change we compute, the filing's own words, and
     the stock's moves. Older reads without a headline show their checked values only."""
@@ -284,7 +310,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{terms}{loops_html}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{said_box}{terms}{loops_html}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'
@@ -499,7 +525,14 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
 
     def card(x):
         p = by_isin.get(x.get('isin'))
-        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results))
+        box = ''
+        if x.get('category') in ('financial_results', 'business_update') and x.get('isin'):
+            try:
+                from data import store
+                box = said_html(x, store.said(x.get('isin')))
+            except Exception:   # the call words are an extra: a card never fails for them
+                box = ''
+        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 

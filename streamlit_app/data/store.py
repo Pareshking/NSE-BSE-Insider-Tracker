@@ -113,6 +113,19 @@ def market_strip() -> list:
     return json.loads(body) if body else []
 
 
+@st.cache_data(ttl=600, show_spinner=False, max_entries=500)
+def said(isin: str) -> dict:
+    """What management said on the company's latest earnings calls (archive/management_said/{ISIN}.json, written by the reader from
+    the call transcripts, each fact with its exact quote); {} when none has been read."""
+    if not isin or not str(isin).replace('_', '').isalnum():
+        return {}
+    body = _read(f'archive/management_said/{isin}.json')
+    try:
+        return json.loads(body) if body else {}
+    except ValueError:
+        return {}
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def latest() -> dict:
     body = _read('clean/latest.json')

@@ -3277,6 +3277,30 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     memories_written = upsert_company_memories(r2, rows)
     log(f'updated persistent company memory for {memories_written} companies')
 
+    # Earnings-call transcripts into management's own words (quote-checked), for the next results card. A few by day, more in the
+    # overnight window; a failure here never costs a live card (owner, 18 Oct).
+    if os.environ.get('READER_TRANSCRIPTS', '1') == '1' and not args.dry_run and r2 is not None and lanes:
+        try:
+            import io
+            import management_said as ms
+            from clean_writer import get
+            night = in_history_window()
+            res_isins = set()
+            try:
+                body = get(r2, 'clean/current/results.parquet')
+                if body:
+                    rs = pd.read_parquet(io.BytesIO(body), columns=['isin', 'period_end'])
+                    res_isins = set(rs.loc[pd.to_datetime(rs['period_end'], errors='coerce') >= pd.Timestamp('2026-09-30'), 'isin'].astype(str))
+            except Exception as exc:  # noqa: BLE001
+                log(f'transcripts: results list not loaded ({type(exc).__name__})')
+            report = ms.stage(r2, today, lanes, max_transcripts=8 if night else 2, months_back=5 if night else 1,
+                              results_isins=res_isins, deadline=time.monotonic() + (25 if night else 6) * 60, log=log)
+            log('management said (transcripts)', json.dumps(report))
+        except Exception as exc:  # noqa: BLE001
+            message = f'transcript stage failed: {type(exc).__name__}: {exc}'[:300]
+            setup.append(message)
+            log(message)
+
     done_after_live = load_archive(r2, READS_PREFIX, today)
     live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
     history_mode = os.environ.get('READER_HISTORY', '1')
