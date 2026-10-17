@@ -52,7 +52,7 @@ jobs:
           FLAGS_use_mkldnn: '0'
           FLAGS_enable_pir_api: '0'
           OUT_DIR: ocr_out
-        run: PATH="${LLAMA_DIR:-/usr/bin}:$PATH" python -u scripts/ocr_benchmark.py
+        run: PATH="$PATH:${LLAMA_DIR:-/usr/bin}" python -u scripts/ocr_benchmark.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
