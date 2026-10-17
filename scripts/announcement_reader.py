@@ -2181,20 +2181,25 @@ _BARE_NUMBER = re.compile(r'[\s(]*[-\u2212]?\s*[\u20b9$]?\s*(?:Rs\.?\s*)?\d[\d,]
 
 
 def widen_bare_quotes(out, doc) -> int:
-    """A quote that is only the number ("2,205.45", IDBI 17 Oct) proves nothing about the row: when the figure stands on exactly one line of the
-    filing and that line carries a word of the label, the line becomes the quote (still the filing's own words). Returns how many were widened."""
+    """A quote that is only the number ("2,205.45", IDBI 17 Oct), or one the model rebuilt from table columns so that it is not in the
+    filing ("Revenue from operations: 2,350.92 (Sept 30, 2026)", Kross), proves nothing about the row. When the figure stands on exactly
+    one line of the filing and that line carries a word of the label, the line becomes the quote (still the filing's own words).
+    Returns how many were widened."""
     if not isinstance(out, dict):
         return 0
     lines = [ln.strip() for ln in str(doc).splitlines() if ln.strip()]
     n = 0
     for item in [x for key in ('fields', 'metrics') for x in (out.get(key) or []) if isinstance(x, dict)]:
         quote = str(item.get('quote') or '')
-        if not quote or len(quote) > 16 or not _BARE_NUMBER.fullmatch(quote):
+        bare = bool(quote) and len(quote) <= 16 and bool(_BARE_NUMBER.fullmatch(quote))
+        if not quote or not (bare or not s.quote_found(quote, doc)):
             continue
-        value = quote.strip(' ()')
+        value = quote.strip(' ()') if bare else str(item.get('value') or '').strip()
+        if not re.fullmatch(r'[-\u2212]?\d[\d,]*(?:\.\d+)?', value):
+            continue
         words = [w for w in re.findall(r'[a-z]{4,}', str(item.get('label') or item.get('name') or '').lower())]
         hits = [ln for ln in lines if re.search(rf'(?<![\d.,]){re.escape(value)}(?![\d,]|\.\d)', ln) and len(ln) <= 400]
-        if len(hits) == 1 and (not words or any(w in hits[0].lower() for w in words)):
+        if len(hits) == 1 and words and any(w in hits[0].lower() for w in words):
             item['quote'] = hits[0][:300]
             n += 1
     return n
@@ -2275,6 +2280,13 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
     text, model, secs, usage, note, imgs = got
     vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
     clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
+    if clash:    # a figure only the subtitle states (Kross 30.6, Bright Outdoor 104) costs the subtitle, not the headline (owner: only improve)
+        head_clash = vision.unsupported_numbers(res, vres, subtitle=False)
+        if not head_clash and isinstance((res.get('headline') or {}).get('subtitle'), dict):
+            h0 = dict(res['headline'])
+            h0['subtitle'] = {**h0['subtitle'], 'shown': False, 'reason': 'its figures are not stated by the page image: two readers disagree'}
+            res = {**res, 'headline': h0}
+            clash = []
     if clash and (res.get('headline') or {}).get('from_table'):
         clash = []       # a headline we built from verified table rows (and checked by the table's own arithmetic) is not read twice
     if clash:        # not stated by the image read: ask the page, figure by figure, and keep only what a quote from the filing's text backs

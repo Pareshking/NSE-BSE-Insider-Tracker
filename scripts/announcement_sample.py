@@ -959,12 +959,17 @@ def nearest_unit(quote, doc: str, value=None) -> float | None:
 _HEADING_UNIT = re.compile(r'(?:\(|\b)(?:Rs\.?|₹|INR|Rupees|Amount|Figures?|All\s+amounts?)\s*(?:in|\()?\s*(?:the\s+)?(?:Rs\.?\s*)?(lakhs?|lacs?|crores?|crs?\b|million|mn\b|billion)', re.IGNORECASE)
 
 
+_HEADING_UNIT_GARBLED = re.compile(r'\(\s*[^\s()]{1,4}\s+[^\s()]{0,3}\.?\s*(akhs?|rores?)\s*\)', re.IGNORECASE)   # "(tin t.akhs)": a scan's "(₹ in Lakhs)"
+
+
 def heading_unit(doc) -> float | None:
     """The one unit the filing's table headings name ("Rs in lacs", "(₹ crores)", "in million"), when every heading names the same."""
     found = set()
     for m in _HEADING_UNIT.finditer(str(doc)):
         w = m.group(1).lower()
         found.add(1e5 if w.startswith(('lakh', 'lac')) else 1e7 if w.startswith(('crore', 'cr')) else 1e9 if w.startswith('billion') else 1e6)
+    for m in _HEADING_UNIT_GARBLED.finditer(str(doc)):   # an OCR-garbled heading still names the one unit (Yes Bank BSE, 17 Oct: lakh read as crore)
+        found.add(1e5 if m.group(1).lower().startswith('akh') else 1e7)
     return found.pop() if len(found) == 1 else None
 
 

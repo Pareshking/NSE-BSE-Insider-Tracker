@@ -2272,3 +2272,19 @@ def test_bare_number_quote_is_widened_to_the_one_row():
     assert out['metrics'][1]['quote'] == 'Other 12'
     assert 'after tax' in out['metrics'][0]['quote']
     assert out['metrics'][2]['quote'] == 'Net profit 2,205.45'
+
+
+def test_rebuilt_quote_is_widened_and_garbled_unit_heading_read():
+    doc = 'Revenue from operations 2,350.92 1,309.20\nProfit for the period 196.86 80.84\n(tin t.akhs)'
+    out = {'metrics': [{'label': 'Revenue from operations', 'value': '2,350.92', 'quote': 'Revenue from operations: 2,350.92 (Sept 30, 2026)'}]}
+    assert ar.widen_bare_quotes(out, doc) == 1
+    assert out['metrics'][0]['quote'] == 'Revenue from operations 2,350.92 1,309.20'
+    assert sample.heading_unit(doc) == 1e5
+
+
+def test_subtitle_only_clash_does_not_hold_the_headline():
+    import announcement_vision as v
+    text = {'headline': {'text': 'Kross reports Q2 revenue at ₹235 Cr', 'subtitle': {'text': 'EBITDA at ₹30.6 crore'}}}
+    vis = {'ok': True, 'headline': {'text': 'revenue 235 crore'}, 'points': [], 'fields': [], 'metrics': []}
+    assert v.unsupported_numbers(text, vis, subtitle=False) == []
+    assert v.unsupported_numbers(text, vis) != []

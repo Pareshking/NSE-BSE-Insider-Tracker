@@ -204,13 +204,13 @@ def _all_text(res: dict) -> str:
     return ' '.join(str(x) for x in parts if x)
 
 
-def unsupported_numbers(text_res: dict, vision_res: dict) -> list[float]:
+def unsupported_numbers(text_res: dict, vision_res: dict, subtitle: bool = True) -> list[float]:
     """Figures in the text read's headline (and subtitle) that the page-image read does not state anywhere (to 0.5 %, in any of a figure's unit
     forms): the two readers disagree on them, so neither can be taken. Two independent readings agreeing is the evidence; one alone is not."""
     h = text_res.get('headline') or {}
     theirs = numbers_of(_all_text(vision_res))
     out = []
-    for g in figure_groups(f'{h.get("text")} {(h.get("subtitle") or {}).get("text")}'):
+    for g in figure_groups(f'{h.get("text")} {(h.get("subtitle") or {}).get("text") if subtitle else ""}'):
         if not any(abs(n - t) <= 0.005 * max(abs(n), 1) for n in g for t in theirs):
             out.append(min(g))
     return sorted(out)
