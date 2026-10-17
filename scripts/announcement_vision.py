@@ -199,7 +199,7 @@ def unsupported_numbers(text_res: dict, vision_res: dict) -> list[float]:
     return sorted(out)
 
 
-def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemini) -> dict[float, str]:
+def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemini) -> dict[float, str] | None:
     """Ask the page images, claim by claim: is this figure printed on the pages? {figure: the printed words the model quotes} for those it
     says are printed; the caller still checks each quote against the filing's text. Empty when no model answers."""
     prompt = (f'These page images are one stock-exchange filing. A summary of it says: "{headline}". For each of these figures, say whether it is '
@@ -214,6 +214,7 @@ def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemi
             text, _ = ask(model, prompt, imgs)
         except (RuntimeError, requests.RequestException):
             continue
+        asked = True
         m = re.search(r'\{.*\}', text or '', re.S)
         try:
             checks = json.loads(m.group(0)).get('checks', []) if m else []
@@ -225,7 +226,7 @@ def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemi
                 for n in numbers_of(c.get('figure')):
                     out[n] = str(c['quote'])
         return out
-    return {}
+    return None      # no model answered (quota, overload): unconfirmed, not disagreed
 
 
 def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str, dict] | None:

@@ -1,1 +1,3 @@
-nse:106821267	https://nsearchives.nseindia.com/corporate/8910457293_17102026180004_Reg_30amd_33_Outcome_BM_17102026.pdf
+bse:31034079-c6f1-4c32-87e7-fa24414e5c5d	https://www.bseindia.com/xml-data/corpfiling/AttachLive/5cfdd946-a1bc-467b-b9b4-9b9575db9255.pdf
+bse:24e1e6f8-ca32-4124-90ec-7514cd9d58c0	https://www.bseindia.com/xml-data/corpfiling/AttachLive/876357ab-51da-44b3-87f8-159fd956a673.pdf
+bse:d6cf6457-e965-473d-9c2b-63afa46ffba1	https://www.bseindia.com/xml-data/corpfiling/AttachLive/f0203969-a40e-48de-9efa-a8508df20ab0.pdf

@@ -45,3 +45,56 @@ def last_year(results: pd.DataFrame | None, isin, as_of) -> dict | None:
     end = best['_end']
     return {'fy': f'FY{end.year % 100:02d}', 'revenue': float(best['_rev']), 'profit': _number(best.get('ytd_profit')),
             'basis': 'consolidated' if best['_cons'] else 'standalone', 'period_end': end.date().isoformat()}
+
+
+def quarter_label(period_end) -> str | None:
+    """'Q1 FY27' for a quarter that ended 30 June 2026 (April-June is Q1 of the year that ends the next March)."""
+    d = pd.to_datetime(period_end, errors='coerce')
+    if pd.isna(d) or d.month not in (3, 6, 9, 12):
+        return None
+    q = {6: 1, 9: 2, 12: 3, 3: 4}[d.month]
+    fy = d.year + 1 if d.month >= 4 else d.year
+    return f'Q{q} FY{fy % 100:02d}'
+
+
+def _quarter_rows(results: pd.DataFrame, isin) -> pd.DataFrame:
+    r = results[results['isin'].astype(str).eq(str(isin))].copy()
+    r['_end'] = pd.to_datetime(r['period_end'], errors='coerce')
+    r = r[r['_end'].notna() & r['_end'].dt.month.isin([3, 6, 9, 12])]
+    r['_rev'] = [(_number(a) or 0) or (_number(b) or 0) for a, b in zip(r.get('quarter_revenue', pd.Series(dtype=float, index=r.index)),
+                                                                          r.get('quarter_total_income', pd.Series(dtype=float, index=r.index)))]
+    r['_profit'] = [_number(x) for x in r.get('quarter_profit', pd.Series(dtype=float, index=r.index))]
+    r['_cons'] = r['consolidated'].astype(str).str.lower().eq('consolidated')
+    r['_at'] = pd.to_datetime(r.get('broadcast_at'), errors='coerce', utc=True)
+    r = r[r['_rev'] > 0]
+    # one row a period: consolidated before standalone, the latest revision
+    return r.sort_values(['_end', '_cons', '_at']).drop_duplicates('_end', keep='last')
+
+
+def last_quarter(results: pd.DataFrame | None, isin, as_of) -> dict | None:
+    """The company's latest quarterly result published before `as_of` (the card's own date), from its XBRL: {'quarter': 'Q1 FY27',
+    'revenue', 'profit', 'revenue_yoy', 'profit_yoy', 'basis'}. The growth figures are against the same quarter a year earlier when
+    our table has it (a profit growth only when both profits are positive), else None. None when there is no earlier quarter."""
+    if results is None or results.empty or not isin or 'isin' not in results:
+        return None
+    r = _quarter_rows(results, isin)
+    if r.empty:
+        return None
+    cut = pd.to_datetime(as_of, errors='coerce')
+    if pd.notna(cut):
+        cut = cut.tz_convert(None) if getattr(cut, 'tzinfo', None) else cut
+        r = r[r['_at'].dt.tz_convert(None) < cut]
+    if r.empty:
+        return None
+    cur = r.iloc[-1]
+    prior = r[(r['_end'] >= cur['_end'] - pd.Timedelta(days=380)) & (r['_end'] <= cur['_end'] - pd.Timedelta(days=350))]
+    prior = prior.iloc[-1] if len(prior) else None
+
+    def growth(a, b, positive_only=False):
+        if a is None or b is None or b == 0 or (positive_only and (a <= 0 or b <= 0)):
+            return None
+        return (a / b - 1) * 100
+    return {'quarter': quarter_label(cur['_end']), 'revenue': float(cur['_rev']), 'profit': cur['_profit'],
+            'revenue_yoy': growth(float(cur['_rev']), float(prior['_rev'])) if prior is not None else None,
+            'profit_yoy': growth(cur['_profit'], prior['_profit'], True) if prior is not None else None,
+            'basis': 'consolidated' if cur['_cons'] else 'standalone', 'period_end': cur['_end'].date().isoformat()}

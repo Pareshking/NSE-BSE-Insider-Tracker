@@ -164,8 +164,12 @@ def _mcap(r: dict, price: dict) -> str:
     return ' · '.join(p for p in parts if p)
 
 
+_ROW_REF = re.compile(r'\s*[\(\[]\s*(?:[IVXivx]+|\d+[A-Za-z]?)\s*(?:[-+–−/&]\s*(?:[IVXivx]+|\d+[A-Za-z]?)\s*)+[\)\]]|\s*\((?:refer\s+)?notes?\s*[\d.,\s&and]+\)|^\s*(?:[IVX]+|\d+)[.)]\s+', re.IGNORECASE)
+
+
 def _metric_label(m: dict) -> str:
     period, label = str(m.get('period') or '').strip(), str(m.get('label') or '').strip()
+    label = _ROW_REF.sub('', label).strip(' :;-') or label     # "Net Profit (12-13)": the table row's own numbering is not part of the name
     label = label[:1].upper() + label[1:]
     return ' '.join(x for x in (label, f'({period})' if period.lower() not in NO_PERIOD else '') if x)
 
@@ -217,8 +221,14 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
         if item:
             label = {'amount': 'size', 'price_per_share': 'a share', 'shares': 'shares'}[key]
             fallback_terms.append(f'{value_text(item)} {label}')
+    figs_title = ''
+    if not headline and metrics and r.get('category') in ('financial_results', 'business_update'):   # no headline (held, or none read): a results or business-update card still leads with its own figures, not "business update"
+        per = next((str(m.get('period')) for m in metrics if m.get('period') and str(m.get('period')).lower() not in NO_PERIOD), '')
+        parts = [f'{_ROW_REF.sub("", str(m.get("label") or "")).strip(" :;-")} {metric_text(m)}' for m in metrics[:2] if m.get('label')]
+        if parts:
+            figs_title = f'{r.get("company") or sym}{" " + per if per else ""}: ' + '; '.join(parts)
     title = headline['text'] if headline else (
-        f'{r.get("company") or sym}: {category.lower()}'
+        figs_title or f'{r.get("company") or sym}: {category.lower()}'
         + (f' · {" · ".join(fallback_terms[:2])}' if fallback_terms else ''))
     sub = headline.get('subtitle') if headline else None
     sub = sub if isinstance(sub, dict) and sub.get('shown') and sub.get('text') else None
@@ -233,8 +243,8 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
 
     figs = ''
     for m in metrics[:6]:
-        ch = m.get('change_pct')
-        tone = '' if ch is None else ' up' if ch > 0 else ' down' if ch < 0 else ''
+        ch = m.get('change_pct') if m.get('change_pct') is not None else m.get('qoq_pct')    # colour by the year-on-year change, else the quarter-on-quarter one
+        tone = '' if ch is None or not kit._finite(ch) else ' up' if ch > 0 else ' down' if ch < 0 else ''
         both = ' ' + kit.tag('2 readers agree', 'buy') if agreed.get(f'metric:{m["_i"]}') is True else ''
         figs += (f'<tr><td>{esc(_metric_label(m))}{both}</td><td class="n">{esc(metric_text(m))}</td>'
                  f'<td class="n rc-ch{tone}">{esc(_changes_text(m))}</td></tr>')
@@ -430,7 +440,19 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
         if year:
             out.append(f'The size is <b>{esc(kit.pct(amt["number"] / year["revenue"] * 100, 1))}</b> of {esc(year["fy"])} revenue '
                        f'({esc(kit.rupees(year["revenue"]))}, {esc(year["basis"])}).')
-    if holding:
+    is_results = r.get('category') in ('financial_results', 'business_update') and results is not None
+    if is_results:    # the company's own previous quarter, from our XBRL history (owner, 17 Oct: instead of "Promoters hold ...")
+        lq = context.last_quarter(results, isin, r.get('broadcast_at'))
+        if lq and lq.get('quarter'):
+            def g(v, noun):
+                return None if v is None or not kit._finite(v) else (
+                    f'{noun} growth of <b>{esc(kit.pct(abs(v), 0))}</b>' if v >= 0 else f'{noun} decline of <b>{esc(kit.pct(abs(v), 0))}</b>')
+            parts = [x for x in (g(lq.get('revenue_yoy'), 'sales'), g(lq.get('profit_yoy'), 'profit')) if x]
+            if parts:
+                out.append(f'{esc(lq["quarter"])} also posted {" and ".join(parts)} on the year before ({esc(lq["basis"])}).')
+            else:
+                out.append(f'{esc(lq["quarter"])}: sales <b>{esc(kit.rupees(lq["revenue"]))}</b>' + (f', profit <b>{esc(kit.rupees(lq["profit"]))}</b>' if lq.get('profit') is not None else '') + f' ({esc(lq["basis"])}).')
+    if holding and not (is_results and r.get('category') == 'financial_results'):
         pct, pledge = holding.get('promoter_holding_pct'), holding.get('promoter_pledge_pct')
         if pct is not None and pct == pct:
             q = f' ({kit.day(holding["quarter_end"])})' if holding.get('quarter_end') is not None else ''

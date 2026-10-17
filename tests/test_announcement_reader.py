@@ -2220,3 +2220,21 @@ def test_an_approximate_figure_is_not_written_as_exact():
     assert ar.hedge_estimate('Positron wins RLNG tender worth ₹12.5 Cr', q) == 'Positron wins RLNG tender worth ~₹12.5 Cr'
     assert ar.hedge_estimate('Positron wins tender worth about ₹12.5 Cr', q) == 'Positron wins tender worth about ₹12.5 Cr'
     assert ar.hedge_estimate('Refex wins ₹32.4 Cr order', 'Award Value of Rs. 32,44,50,000/-') == 'Refex wins ₹32.4 Cr order'
+
+
+def test_row_numbering_is_not_part_of_a_metric_label():
+    assert ar.clean_label('NET PROFIT (12-13)') == 'NET PROFIT'
+    assert ar.clean_label('Profit for the period (IX-X)') == 'Profit for the period'
+    assert ar.clean_label('Loss before tax from discontinued operations (Refer note 4)') == 'Loss before tax from discontinued operations'
+    assert ar.clean_label('Revenue from operations') == 'Revenue from operations'
+    assert ar.clean_label('Operating profit (EBITDA)') == 'Operating profit (EBITDA)'
+    assert ar.clean_label('Total income (I+II)') == 'Total income'
+
+
+def test_a_change_the_company_states_is_taken_as_stated():
+    assert ar.stated_change('Revenue from Operations for Q2 FY27 stood at Rs 235.1 crores, up 79.6% year-on-year.') == (79.6, 'yoy')
+    assert ar.stated_change('EBITDA for Q2 FY27 was Rs 30.6 crores, registering a 107.4% growth year-on-year.') == (107.4, 'yoy')
+    assert ar.stated_change('Net profit fell 12% YoY to Rs 5 crore') == (-12.0, 'yoy')
+    assert ar.stated_change('Profit rose 3% quarter-on-quarter') == (3.0, 'qoq')
+    assert ar.stated_change('Profit after tax reached Rs 19.7 crores compared to Rs 8.1 crores in Q2 FY26') is None     # no % stated: not worked out by us here
+    assert ar.stated_change('Order book is up 20% to Rs 100 crore') is None                                                 # no stated basis

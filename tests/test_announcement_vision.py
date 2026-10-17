@@ -74,7 +74,7 @@ def test_vision_repair_is_off_unless_enabled_and_keeps_text_when_not_better(monk
     monkeypatch.setenv('READER_VISION', '1')
     monkeypatch.setenv('GEMINI_API_KEY', 'k')
     monkeypatch.setattr(v, 'vision_text', lambda *a, **k: None)
-    assert r.vision_repair(row, 'doc', b'%PDF', held) is held
+    assert r.vision_repair(row, 'doc', b'%PDF', held)['ok'] is False      # deferred: tried again when a page reader answers
     assert r.vision_repair(row, 'doc', None, held) is held
 
 
@@ -85,7 +85,7 @@ def test_vision_repair_fetches_the_pdf_when_the_text_came_from_cache(monkeypatch
     monkeypatch.setenv('GEMINI_API_KEY', 'k')
     seen = []
     monkeypatch.setattr(v, 'vision_text', lambda prompt_for, data, **k: seen.append(data) or None)
-    assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'%PDF-1.4 x') is held
+    assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'%PDF-1.4 x')['ok'] is False
     assert seen == [b'%PDF-1.4 x']
     assert r.vision_repair(row, 'doc', None, held, fetch=lambda url: b'PK zip') is held and len(seen) == 1
 
@@ -108,7 +108,7 @@ def test_verify_figures_asks_the_page_and_keeps_printed_ones(monkeypatch):
     replies = ['{"checks": [{"figure": "42.7", "printed": true, "quote": "total consideration Rs. 42.7 Crore"}, {"figure": "9", "printed": false, "quote": ""}]}']
     got = v.verify_figures('Pakka allots 38.8 lakh shares for Rs 42.7 Cr', [42.7, 99.0], {1: b'png'}, ask=lambda model, prompt, imgs: (replies[0], {}))
     assert got == {42.7: 'total consideration Rs. 42.7 Crore'}
-    assert v.verify_figures('x', [1.5], {1: b'png'}, ask=lambda *a: (_ for _ in ()).throw(RuntimeError('429'))) == {}
+    assert v.verify_figures('x', [1.5], {1: b'png'}, ask=lambda *a: (_ for _ in ()).throw(RuntimeError('429'))) is None      # unconfirmed, not disagreed
     assert 14.9 not in v.numbers_of('profit up 14.9% YoY, Rs 63.4 Cr') and 63.4 in v.numbers_of('profit up 14.9% YoY, Rs 63.4 Cr')      # a % is worked out by us
 
 
@@ -118,3 +118,15 @@ def test_a_figure_with_a_unit_word_is_the_same_as_its_plain_form():
     vision = {'headline': {'text': 'issues 87,00,000 warrants'}, 'fields': [{'value': '115', 'quote': 'Rs. 115/- per warrant'}], 'points': [], 'metrics': []}
     assert v.unsupported_numbers(text, vision) == []
     assert any(abs(x - 944200000.0) < 1 for x in v.numbers_of('Rs 94.42 crore'))
+
+
+def test_a_card_the_text_could_not_make_safe_is_deferred_when_no_page_reader_answers(monkeypatch):
+    held = {'ok': True, 'headline': {'shown': False}, 'fields': [], 'metrics': []}
+    row = {'symbol': 'X', 'exchange': 'NSE', 'subject': 's', 'file_url': 'http://x/f.pdf'}
+    monkeypatch.setenv('READER_VISION', '1')
+    monkeypatch.setenv('GEMINI_API_KEY', 'k')
+    monkeypatch.setattr(v, 'vision_text', lambda *a, **k: None)
+    got = r.vision_repair(row, 'doc', b'%PDF-1.4 x', held)
+    assert got['ok'] is False and '429' in got['error']                 # is_rate_limit_error: kept retryable, not failed for good
+    safe = {'ok': True, 'headline': {'shown': True}, 'fields': [{'shown': True}], 'metrics': [], 'category': 'esop'}
+    assert r.vision_repair(row, 'doc', b'%PDF-1.4 x', safe) is safe      # a table card the text passed alone keeps its text card
