@@ -2100,3 +2100,9 @@ def test_a_historic_point_does_not_lead_when_a_current_one_exists():
            {'text': 'Promoter remitted USD 34.99 million to exercise warrants', 'quote': 'q2', 'shown': True}]
     head, rest = ar.promote_point(None, pts, ('AFFLE', 'Affle 3i Ltd'), (), 'warrant_conversion')
     assert head and head['text'].startswith('Promoter remitted')
+
+
+def test_basis_window_counts_words_not_padding():
+    pad = ' ' * 400
+    doc = 'Consolidated Results\n' + ('x' + pad) * 6 + f'\nPAT{pad}353{pad}400\n'
+    assert ar.basis_near(doc, 'PAT 353 400') == 'consolidated'

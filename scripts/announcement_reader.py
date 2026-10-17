@@ -530,10 +530,11 @@ def basis_near(doc: str, quote) -> str | None:
     toks = s._tokens(quote)
     if len(toks) < 2:
         return None
-    m = re.search(r'[^a-z0-9]+'.join(map(re.escape, toks)), str(doc), re.IGNORECASE)
+    flat = re.sub(r'\s+', ' ', str(doc))      # wide pdf columns: the window must count words, not padding (Jindal Saw NSE)
+    m = re.search(r'[^a-z0-9]+'.join(map(re.escape, toks)), flat, re.IGNORECASE)
     if not m:
         return None
-    found = _BASIS.findall(str(doc)[max(0, m.start() - 1500):m.start() + len(m.group())])
+    found = _BASIS.findall(flat[max(0, m.start() - 1800):m.start() + len(m.group())])
     return found[-1].lower() if found else None
 
 
