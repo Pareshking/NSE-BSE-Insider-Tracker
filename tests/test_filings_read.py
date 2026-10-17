@@ -293,3 +293,27 @@ def test_before_this_sets_the_size_against_the_last_full_year_from_the_results_t
     assert any('FY26 revenue' in x and '29.9%' in x and 'consolidated' in x for x in lines)
     assert not any('FY26' in x for x in fr.before_this({**r, 'category': 'management_change'}, None, None, None, None, results))
     assert not any('FY26' in x for x in fr.before_this(r, None, None, None, None, None))
+
+
+def test_a_results_card_without_a_headline_leads_with_its_own_figures():
+    html = fr.card_html(row(symbol='INDIACEM', company='The India Cements Limited', category='business_update', fields='[]',
+                            metrics=json.dumps([{'label': 'Revenue from Operations', 'period': 'Q2FY27', 'number': 1.142e10, 'value': '1,142', 'unit': 'crore',
+                                                 'currency': 'INR', 'quote': 'q', 'shown': True},
+                                                {'label': 'PAT (12-13)', 'period': 'Q2FY27', 'number': 3.9e8, 'value': '39', 'unit': 'crore',
+                                                 'currency': 'INR', 'quote': 'q', 'shown': True}])))
+    assert 'The India Cements Limited Q2FY27: Revenue from Operations' in html and 'business update</h4>' not in html
+    assert '(12-13)' not in html
+
+
+def test_a_results_card_before_this_gives_the_previous_quarters_growth_not_the_promoter_holding():
+    import pandas as pd
+    results = pd.DataFrame([
+        {'isin': 'INE1', 'period_end': '2025-06-30', 'consolidated': 'Consolidated', 'quarter_revenue': 1.0e10, 'quarter_profit': 1.0e9, 'broadcast_at': '2025-08-01T10:00:00Z'},
+        {'isin': 'INE1', 'period_end': '2026-06-30', 'consolidated': 'Consolidated', 'quarter_revenue': 1.27e10, 'quarter_profit': 1.31e9, 'broadcast_at': '2026-08-01T10:00:00Z'}])
+    r = {'isin': 'INE1', 'symbol': 'KROSS', 'category': 'financial_results', 'broadcast_at': '2026-10-17T12:00:00Z', 'fields': '[]', 'event_id': 'x'}
+    holding = {'promoter_holding_pct': 68.6, 'promoter_pledge_pct': 0.0, 'quarter_end': pd.Timestamp('2026-09-30')}
+    lines = fr.before_this(r, None, None, holding, None, results)
+    assert any('Q1 FY27 also posted sales growth of <b>27%</b> and profit growth of <b>31%</b>' in x for x in lines)
+    assert not any('Promoters hold' in x for x in lines)
+    other = fr.before_this({**r, 'category': 'order_win'}, None, None, holding, None, results)
+    assert any('Promoters hold' in x for x in other) and not any('also posted' in x for x in other)
