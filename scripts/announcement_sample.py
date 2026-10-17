@@ -390,7 +390,7 @@ def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
         if png is None:
             return ''
         try:
-            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=180, check=False)
+            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=420, check=False)
         except (OSError, subprocess.SubprocessError) as exc:
             log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
             return ''
@@ -577,7 +577,7 @@ def pdf_text(data: bytes) -> str:
         OCR_LAST[2] = len(pages)
         need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
         todo = need[:OCR_MAX_PAGES]
-        with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
+        with ThreadPoolExecutor(max_workers=2 if (docling_enabled() or paddle_enabled()) else 4) as pool:     # a bank's 40-page scan in about a minute, not four
             for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
                 if (docling_enabled() or paddle_enabled()) and got.strip() and todo.index(i) < EXTRA_OCR_PAGES:   # any scanned or mangled page: the stronger readers read it too
                     got = best_page_text(got, *(([paddle_page(data, i)] if paddle_enabled() else []) + ([docling_page(data, i)] if docling_enabled() else [])))

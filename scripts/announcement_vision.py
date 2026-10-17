@@ -154,19 +154,28 @@ def better(vision: dict, text: dict) -> bool:
 _NUM = re.compile(r'\d[\d,]*(?:\.\d+)?')
 
 
-def numbers_of(text) -> set[float]:
-    """The figures a text states that matter: not a day, a month or a year (an integer up to 31, or 1990-2040 without a decimal)."""
-    out = set()
+_SCALE = {'lakh': 1e5, 'lakhs': 1e5, 'lac': 1e5, 'lacs': 1e5, 'crore': 1e7, 'crores': 1e7, 'cr': 1e7, 'million': 1e6, 'mn': 1e6, 'billion': 1e9, 'bn': 1e9}
+_NUM_UNIT = re.compile(r'(\d[\d,]*(?:\.\d+)?)(?:\s*(lakhs?|lacs?|crores?|cr|million|mn|billion|bn)\b\.?)?', re.IGNORECASE)
+
+
+def figure_groups(text) -> list[set[float]]:
+    """Each figure a text states that matters (not a day, a month or a year: an integer up to 31, or 1990-2040 without a comma or decimal), as the
+    set of its forms: the number as written and, with a unit word ("87 lakh", "Rs 94.42 crore"), the plain-unit value (8,700,000)."""
+    groups = []
     text = re.sub(r'[+\-−]?\d[\d,]*(?:\.\d+)?\s*%', ' ', str(text or ''))   # a change in % is worked out by us from the table's columns, not read
-    for tok in _NUM.findall(text):
+    for tok, unit in _NUM_UNIT.findall(text):
         try:
             v = float(tok.replace(',', ''))
         except ValueError:
             continue
-        if '.' not in tok and (v <= 31 or (',' not in tok and 1990 <= v <= 2040)):
+        if not unit and '.' not in tok and (v <= 31 or (',' not in tok and 1990 <= v <= 2040)):
             continue
-        out.add(v)
-    return out
+        groups.append({v, v * _SCALE[unit.lower()]} if unit else {v})
+    return groups
+
+
+def numbers_of(text) -> set[float]:
+    return {x for g in figure_groups(text) for x in g}
 
 
 def _all_text(res: dict) -> str:
@@ -179,12 +188,15 @@ def _all_text(res: dict) -> str:
 
 
 def unsupported_numbers(text_res: dict, vision_res: dict) -> list[float]:
-    """Figures in the text read's headline (and subtitle) that the page-image read does not state anywhere (to 0.5 %): the two readers
-    disagree on them, so neither can be taken. Two independent readings agreeing is the evidence; one alone is not."""
+    """Figures in the text read's headline (and subtitle) that the page-image read does not state anywhere (to 0.5 %, in any of a figure's unit
+    forms): the two readers disagree on them, so neither can be taken. Two independent readings agreeing is the evidence; one alone is not."""
     h = text_res.get('headline') or {}
-    mine = numbers_of(f'{h.get("text")} {(h.get("subtitle") or {}).get("text")}')
     theirs = numbers_of(_all_text(vision_res))
-    return sorted(n for n in mine if not any(abs(n - t) <= 0.005 * max(abs(n), 1) for t in theirs))
+    out = []
+    for g in figure_groups(f'{h.get("text")} {(h.get("subtitle") or {}).get("text")}'):
+        if not any(abs(n - t) <= 0.005 * max(abs(n), 1) for n in g for t in theirs):
+            out.append(min(g))
+    return sorted(out)
 
 
 def verify_figures(headline: str, figures: list[float], imgs: dict, ask=ask_gemini) -> dict[float, str]:

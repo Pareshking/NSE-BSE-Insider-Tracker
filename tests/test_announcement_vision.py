@@ -98,7 +98,7 @@ def test_two_readers_must_agree_on_the_headline_figures():
     assert v.unsupported_numbers(text, vision) == [7100.0]
     vision['points'].append({'text': 'allotted 7,100 equity shares under ESOS 2010'})
     assert v.unsupported_numbers(text, vision) == []
-    assert v.numbers_of('on 16 October 2026, 31 days, Rs 73.85 Cr, 2,026 shares') == {73.85, 2026.0}
+    assert {73.85, 2026.0} <= v.numbers_of('on 16 October 2026, 31 days, Rs 73.85 Cr, 2,026 shares') and 16.0 not in v.numbers_of('on 16 October 2026')
     # rounding is not a disagreement
     assert v.unsupported_numbers({'headline': {'text': 'GST notice of Rs 73.9 Cr'}}, {'headline': {'text': 'Rs 73.85 Cr'}}) == []
 
@@ -109,4 +109,12 @@ def test_verify_figures_asks_the_page_and_keeps_printed_ones(monkeypatch):
     got = v.verify_figures('Pakka allots 38.8 lakh shares for Rs 42.7 Cr', [42.7, 99.0], {1: b'png'}, ask=lambda model, prompt, imgs: (replies[0], {}))
     assert got == {42.7: 'total consideration Rs. 42.7 Crore'}
     assert v.verify_figures('x', [1.5], {1: b'png'}, ask=lambda *a: (_ for _ in ()).throw(RuntimeError('429'))) == {}
-    assert v.numbers_of('profit up 14.9% YoY, Rs 63.4 Cr') == {63.4}      # a % is worked out by us
+    assert 14.9 not in v.numbers_of('profit up 14.9% YoY, Rs 63.4 Cr') and 63.4 in v.numbers_of('profit up 14.9% YoY, Rs 63.4 Cr')      # a % is worked out by us
+
+
+def test_a_figure_with_a_unit_word_is_the_same_as_its_plain_form():
+    assert 8700000.0 in v.numbers_of('allots 87 lakh warrants')
+    text = {'headline': {'text': 'Sambhv Steel allots 87 lakh warrants at ₹115 each'}}
+    vision = {'headline': {'text': 'issues 87,00,000 warrants'}, 'fields': [{'value': '115', 'quote': 'Rs. 115/- per warrant'}], 'points': [], 'metrics': []}
+    assert v.unsupported_numbers(text, vision) == []
+    assert any(abs(x - 944200000.0) < 1 for x in v.numbers_of('Rs 94.42 crore'))
