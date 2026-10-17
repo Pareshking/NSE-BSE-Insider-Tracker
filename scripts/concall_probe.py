@@ -51,10 +51,11 @@ def main() -> int:
     info = []
     for r in arch.to_dict('records'):
         rec = days[(r['exchange'], r['broadcast_date'])].get(r['event_id']) or {}
+        chars = int(pd.to_numeric(rec.get('chars'), errors='coerce') or 0) if pd.notna(pd.to_numeric(rec.get('chars'), errors='coerce')) else 0
         info.append({'isin': r.get('isin'), 'company': r.get('company'), 'symbol': r.get('symbol'), 'date': r['broadcast_date'],
-                     'exchange': r['exchange'], 'subject': str(r.get('subject'))[:60], 'chars': int(rec.get('chars') or 0),
+                     'exchange': r['exchange'], 'subject': str(r.get('subject'))[:60], 'chars': chars,
                      'pages': rec.get('pages'), 'status': rec.get('status'),
-                     'transcript_like': bool(rec.get('chars') or 0) and int(rec.get('chars') or 0) > 15000 and bool(CALLISH.search(str(r.get('subject')))),
+                     'transcript_like': chars > 15000 and bool(CALLISH.search(str(r.get('subject')))),
                      'event_id': r['event_id']})
     t = pd.DataFrame(info)
     t = t[t['isin'].astype(str).str.len() > 5]
