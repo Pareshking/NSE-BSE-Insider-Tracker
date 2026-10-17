@@ -1149,6 +1149,7 @@ def correction_reason(text: str, doc: str) -> str | None:
 
 
 FACILITY_CHANGE = re.compile(r'\b(?:enhanced|reduced|increased|decreased|revised)[\s|(]*from\b[\s|]*(?:\w+[\s|]*){0,6}?(?:Rs\.?|INR|₹)?\s*[\d,.]+|\benhancement\s+of\b', re.IGNORECASE)
+RATING_ACTION = re.compile(r'upgrad|downgrad|reaffirm|assigned|withdr|outlook|rating\s+(?:of|at)', re.IGNORECASE)
 FACILITY_CHANGE_SAID = re.compile(r'enhanc|increas|raise[sd]?\b|reduc|decreas|cut\b|lower|higher|expand|upsiz', re.IGNORECASE)
 LOOP_PATTERNS = (
     ('approval_pending', re.compile(r'subject\s+to\b[^.;]{0,90}(?:approval|consent|sanction|no[- ]objection|clearance|due\s+diligence|definitive|conditions?\s+precedent)', re.IGNORECASE)),
@@ -1316,7 +1317,7 @@ def full_person_name(text: str, doc: str, names=()) -> str:
     """A headline that cuts a person to the last word of the name ("Oracle Financial Services Yuan resigns", OFSS) gets the name as the
     filing writes it ("Nian Nian Yuan"), when the last word is not a word of the company's own name."""
     company = ' '.join(str(n) for n in names).lower()
-    for full in dict.fromkeys(m.group(1) for m in _PERSON.finditer(str(doc))):
+    for full in dict.fromkeys(re.sub(r'\s+', ' ', m.group(1)) for m in _PERSON.finditer(str(doc))):   # a name broken over two lines is one name
         last = full.split()[-1]
         if full in text or len(full.split()) < 3 or last.lower() in company:
             continue
@@ -1390,6 +1391,8 @@ def results_headline(metrics, names=(), doc='') -> dict | None:
     def part(m, word):
         if word == 'revenue' and re.search(r'total\s+income', str(m.get('label')), re.IGNORECASE) and not re.search(r'revenue|sales', str(m.get('label')), re.IGNORECASE):
             word = 'total income'      # a Total Income row is not revenue from operations (International Travel House, Jindal Saw)
+        if word == 'revenue' and re.search(r'net\s+interest\s+income|\bNII\b', str(m.get('label')), re.IGNORECASE):
+            word = 'net interest income'   # a bank's NII is not its revenue (Axis Bank: "revenue Rs 15,371 Cr")
         txt = f"{word} {money_text(m['number'], m['currency'])}"
         ch = [f"{m['change_pct']:+.1f}% YoY"] if isinstance(m.get('change_pct'), (int, float)) else []
         ch += [f"{m['qoq_pct']:+.1f}% QoQ"] if isinstance(m.get('qoq_pct'), (int, float)) else []
@@ -1520,6 +1523,12 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                 headline = {**headline, 'subtitle': {k: fc[k] for k in ('text', 'quote', 'evidence', 'shown', 'reason')}}
         elif fc and not multi:
             headline = fc
+    if (str(out.get('category') or '').startswith('rating_') and isinstance(headline, dict) and headline.get('shown')
+            and isinstance(headline.get('subtitle'), dict) and headline['subtitle'].get('shown')
+            and not RATING_ACTION.search(str(headline.get('text'))) and RATING_ACTION.search(str(headline['subtitle'].get('text')))):
+        # TAN Finance: "Total rated bank facilities increased to Rs 225 crore" led, the reaffirmed rating rode as the subtitle: the action leads
+        sub = headline['subtitle']
+        headline = {**sub, 'subtitle': {k: headline[k] for k in ('text', 'quote', 'evidence', 'shown', 'reason') if k in headline}}
     headline, points = promote_point(headline, points, names, extra, str(out.get('category') or ''))
     if isinstance(headline, dict) and headline.get('shown') and str(out.get('category') or '') in ('stake_change', 'pledge'):
         why = sast_party_reason(headline.get('text'), doc, names)

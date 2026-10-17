@@ -2142,3 +2142,9 @@ def test_no_percent_change_from_a_loss_to_a_profit():
     raw2 = {'previous': '0.95', 'previous_quote': 'PAT rose to 2.77 crore from 0.95 crore a year earlier', 'previous_period': 'Q1 FY26'}
     m2 = ar.with_previous({'shown': True, 'number': 2.77, 'unit': None, 'currency': 'INR'}, raw2, 'PAT rose to 2.77 crore from 0.95 crore a year earlier')
     assert m2.get('change_pct') == 191.6
+
+
+def test_person_name_broken_over_two_lines_is_not_repeated():
+    doc = 'resignation of Mr. Jayprakash\n Labhshankar Raval as Chief Financial Officer'
+    text = 'Trustedge Capital CFO Jayprakash Labhshankar Raval resigns'
+    assert ar.full_person_name(text, doc, ('Trustedge Capital',)) == text

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import io
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -31,6 +32,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import xml.etree.ElementTree as ET
 import time
 import zipfile
@@ -341,8 +343,12 @@ def parse_json(text: str):
 
 # --- the document ------------------------------------------------------------------
 
-OCR_MAX_PAGES = 12            # a scan longer than this is not read in part (CLAUDE.md rule 8): the filing is marked not read
-OCR_LAST: list = []           # (pages OCR'd, pages left without text) of the last pdf_text call, for the document notes
+OCR_MAX_PAGES = 40            # a scan longer than this is not read in part (CLAUDE.md rule 8): the filing is marked not read
+_LOCAL = threading.local()   # per reader thread: (pages OCR'd, pages left without text) of its last pdf_text call, for the document notes
+
+
+def ocr_last() -> list:
+    return getattr(_LOCAL, 'ocr', [[], []])
 
 
 def _page_needs_ocr(text: str) -> bool:
@@ -374,31 +380,44 @@ def pdf_text(data: bytes) -> str:
     against pdftotext -layout on 13 table rows: equal on rows, shorter text). A page with no text layer or a mangled one is OCR'd with
     tesseract (17 Oct sample: Unimech, SHK, Viyash scans and ixigo's results had no usable text; OCR gave clean text); pages OCR'd are
     named in OCR_LAST. pdftotext -layout when PyMuPDF is missing or fails."""
-    OCR_LAST[:] = [[], []]
+    _LOCAL.ocr = [[], []]
+    OCR_LAST = _LOCAL.ocr
     try:
         import pymupdf
         with pymupdf.open(stream=data, filetype='pdf') as pdf:
             pages = [page.get_text('text', sort=True) for page in pdf]
         need = [i for i, t in enumerate(pages, 1) if _page_needs_ocr(t)]
-        for i in need[:OCR_MAX_PAGES]:
-            got = ocr_page(data, i)
-            if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
-                pages[i - 1] = got
-                OCR_LAST[0].append(i)
-            elif len(re.sub(r'\s', '', pages[i - 1])) < 80:
-                OCR_LAST[1].append(i)
+        todo = need[:OCR_MAX_PAGES]
+        with ThreadPoolExecutor(max_workers=4) as pool:     # a bank's 40-page scan in about a minute, not four
+            for i, got in zip(todo, pool.map(lambda n: ocr_page(data, n), todo)):
+                if len(re.sub(r'\s', '', got)) > len(re.sub(r'\s', '', pages[i - 1])):
+                    pages[i - 1] = got
+                    OCR_LAST[0].append(i)
+                elif len(re.sub(r'\s', '', pages[i - 1])) < 80:
+                    OCR_LAST[1].append(i)
         OCR_LAST[1].extend(need[OCR_MAX_PAGES:])
         text = '\f'.join(pages)
         if text.strip():
             return text
-    except Exception:  # noqa: BLE001 -- a PDF PyMuPDF cannot open still goes to pdftotext
-        pass
+    except Exception as exc:  # noqa: BLE001 -- a PDF PyMuPDF cannot open still goes to pdftotext
+        log(f'pymupdf could not read the PDF ({type(exc).__name__}: {str(exc)[:80]}); pdftotext instead')
     with tempfile.TemporaryDirectory() as d:
         src = Path(d) / 'f.pdf'
         src.write_bytes(data)
         # -layout keeps a table's row on one line with its headers above (SML Mahindra's sales table)
         out = subprocess.run(['pdftotext', '-layout', str(src), '-'], capture_output=True, timeout=180, check=False)
-        return out.stdout.decode('utf-8', errors='replace')
+        text = out.stdout.decode('utf-8', errors='replace')
+    if not text.strip():      # nothing from either: a scan PyMuPDF could not open; OCR its pages one by one until they run out
+        got_pages = []
+        for i in range(1, OCR_MAX_PAGES + 1):
+            got = ocr_page(data, i)
+            if not got.strip():
+                break
+            got_pages.append(got)
+        if got_pages:
+            OCR_LAST[0] = list(range(1, len(got_pages) + 1))
+            text = '\f'.join(got_pages)
+    return text
 
 
 def download(url: str, session=None) -> bytes:
@@ -497,10 +516,11 @@ def text_of(data: bytes, limit: int | None = MAX_CHARS) -> tuple[str, list[str]]
             notes.append(f'xbrl: standalone XML; {len(text.splitlines()) - 1} structured facts')
         else:
             text = pdf_text(data)
-            if OCR_LAST and OCR_LAST[0]:
-                notes.append(f'ocr: pages {", ".join(map(str, OCR_LAST[0]))} read with tesseract (no usable text layer)')
-            if OCR_LAST and OCR_LAST[1]:
-                notes.append(f'pages without text: {", ".join(map(str, OCR_LAST[1]))} could not be read (no text layer and OCR failed or the scan is over {OCR_MAX_PAGES} pages)')
+            last = ocr_last()
+            if last[0]:
+                notes.append(f'ocr: pages {", ".join(map(str, last[0]))} read with tesseract (no usable text layer)')
+            if last[1]:
+                notes.append(f'pages without text: {", ".join(map(str, last[1]))} could not be read (no text layer and OCR failed or the scan is over {OCR_MAX_PAGES} pages)')
     if not text.strip():
         notes.append('no text layer (scanned?)')
     if limit and len(text) > limit:
