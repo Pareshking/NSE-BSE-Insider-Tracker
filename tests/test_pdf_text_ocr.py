@@ -114,5 +114,5 @@ def test_ocr_budget_leaves_later_pages_without_text(monkeypatch):
     monkeypatch.setattr(s, 'OCR_BUDGET_SECONDS', -1)
     called = []
     monkeypatch.setattr(s, 'ocr_page', lambda *a, **k: called.append(1) or 'text ' * 40)
-    text, notes = s.text_of(pdf('', '', ''))
-    assert not called and any(n.startswith('pages without text: 1, 2, 3') for n in notes)
+    text, notes = s.text_of(pdf(LONG, '', '', ''))
+    assert not called and any(n.startswith('pages without text: 2, 3, 4') for n in notes)
