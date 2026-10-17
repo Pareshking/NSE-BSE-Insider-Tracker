@@ -130,3 +130,13 @@ def test_a_card_the_text_could_not_make_safe_is_deferred_when_no_page_reader_ans
     assert got['ok'] is False and '429' in got['error']                 # is_rate_limit_error: kept retryable, not failed for good
     safe = {'ok': True, 'headline': {'shown': True}, 'fields': [{'shown': True}], 'metrics': [], 'category': 'esop'}
     assert r.vision_repair(row, 'doc', b'%PDF-1.4 x', safe) is safe      # a table card the text passed alone keeps its text card
+
+
+def test_pace_holds_requests_to_the_same_model_apart():
+    import announcement_vision as v
+    v._LAST.clear()
+    waits = []
+    assert v.pace('m1', sleep=waits.append, gap=5) == 0
+    assert v.pace('m2', sleep=waits.append, gap=5) == 0       # another model has its own limit
+    assert 0 < v.pace('m1', sleep=waits.append, gap=5) <= 5
+    assert len(waits) == 1
