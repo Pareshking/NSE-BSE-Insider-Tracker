@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [paddle_structure_text]
+        engine: [tesseract, docling, paddle, paddle_mobile, paddle_structure_lite, paddle_structure_text]   # paddle_structure (default models) is killed by the 7 GB runner: run it by hand on a larger machine
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
