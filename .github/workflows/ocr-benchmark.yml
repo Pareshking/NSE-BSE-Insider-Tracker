@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [paddle_mobile, marker]
+        engine: [marker]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,7 +35,7 @@ jobs:
               mkdir -p "$HOME/llama" && cd "$HOME/llama"
               gh release download --repo ggml-org/llama.cpp --pattern '*ubuntu-x64*.zip' --pattern '*ubuntu-x64*.tar.gz'
               for z in *.zip; do unzip -qo "$z"; done; for z in *.tar.gz; do tar xzf "$z"; done
-              echo "LLAMA_DIR=$(dirname "$(find "$HOME/llama" -name llama-server | head -1)")" >> "$GITHUB_ENV"
+              echo "LLAMA_CPP_BINARY=$(find "$HOME/llama" -name llama-server | head -1)" >> "$GITHUB_ENV"; chmod +x "$(find "$HOME/llama" -name llama-server | head -1)"
               ;;
           esac
         continue-on-error: true
