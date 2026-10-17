@@ -627,6 +627,19 @@ def garbled_near(doc: str, quote) -> bool:
     return bad >= 4 and bad >= 0.08 * max(1, len(toks))
 
 
+def deal_arithmetic(fields: list[dict]) -> None:
+    """Shares x price per share must be the amount, within 2 % (an issue, a warrant or option allotment, a buyback, a stake purchase): when the
+    three are shown and do not agree, the amount is held, with the product in the reason (nothing is corrected). Any filing type that gives the three."""
+    by = {f['name']: f for f in fields if f.get('shown') and isinstance(f.get('number'), (int, float)) and f.get('number')}
+    sh, pr, am = by.get('shares'), by.get('price_per_share'), by.get('amount')
+    if not (sh and pr and am):
+        return
+    prod = sh['number'] * pr['number']
+    if abs(prod - am['number']) > 0.02 * max(prod, am['number']):
+        am['shown'] = False
+        am['reason'] = '; '.join(x for x in (am.get('reason'), f'{sh["number"]:,.0f} shares x {pr["number"]:,.2f} = {prod:,.0f}, not the amount {am["number"]:,.0f}') if x)
+
+
 def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
     """(category, fields, metrics), each value with its checks, `shown` and, when held back, `reason`."""
     out = out if isinstance(out, dict) else {}
@@ -695,6 +708,7 @@ def validate(out, doc: str) -> tuple[str | None, list[dict], list[dict]]:
             reasons.append('entity labels not shown yet')
         rec['shown'], rec['reason'] = not reasons, '; '.join(reasons) or None
         fields.append(rec)
+    deal_arithmetic(fields)
     metrics = []
     for m in out.get('metrics') or []:
         if not isinstance(m, dict):

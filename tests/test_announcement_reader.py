@@ -2165,3 +2165,15 @@ def test_short_name_in_a_headline_is_replaced_whole_by_the_full_name():
     doc = 'Mr. Rahul Jagdishbhai Adesara has resigned as Manager'
     assert ar.full_person_name('Knack Packaging Rahul Adesara resigns as Manager', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns as Manager'
     assert ar.full_person_name('Knack Packaging Adesara resigns', doc, ('Knack Packaging',)) == 'Knack Packaging Rahul Jagdishbhai Adesara resigns'
+
+
+def test_shares_times_price_must_be_the_amount():
+    ok = [{'name': 'shares', 'shown': True, 'number': 3880000.0}, {'name': 'price_per_share', 'shown': True, 'number': 110.0}, {'name': 'amount', 'shown': True, 'number': 426800000.0}]
+    ar.deal_arithmetic(ok)
+    assert all(f['shown'] for f in ok)
+    bad = [{'name': 'shares', 'shown': True, 'number': 100000.0}, {'name': 'price_per_share', 'shown': True, 'number': 49.82}, {'name': 'amount', 'shown': True, 'number': 12460000.0}]
+    ar.deal_arithmetic(bad)
+    assert bad[2]['shown'] is False and 'shares x' in bad[2]['reason'] and bad[0]['shown'] and bad[1]['shown']
+    two = [{'name': 'shares', 'shown': True, 'number': 5.0}, {'name': 'amount', 'shown': True, 'number': 99.0}]
+    ar.deal_arithmetic(two)
+    assert two[1]['shown']
