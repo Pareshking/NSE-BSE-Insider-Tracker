@@ -1,0 +1,11 @@
+# The cards of the companies the owner raised (17-18 Oct): Yes Bank, Punjab & Sind Bank, Kross, Bright Outdoor Media, India Cements
+nse:106821349   # Yes Bank press release
+bse:44bdbd4f-1807-4a16-b213-fcb667d27912   # Yes Bank BSE results (lakh read as crore)
+nse:106821267   # Kross outcome of board meeting
+nse:106821331   # Kross investor presentation
+nse:106821320   # Kross press release
+bse:8c250502-8dce-46bc-adb2-c74d2a5c82c7   # Punjab & Sind Bank press release
+bse:f25a9fb0-c02e-42ce-b05b-39933df52e3a   # Punjab & Sind Bank BSE results
+nse:106821339   # Punjab & Sind Bank presentation
+nse:106821252   # India Cements presentation
+bse:a69756b4-44e5-4d63-84f4-4df12adf8372   # Bright Outdoor Media
