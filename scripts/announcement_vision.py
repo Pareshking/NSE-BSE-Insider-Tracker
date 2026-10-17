@@ -132,14 +132,19 @@ def needs_vision(res: dict) -> str | None:
 
 
 def shown_count(res: dict) -> int:
-    return sum(bool(f.get('shown')) for f in (res.get('fields') or [])) + sum(bool(m.get('shown')) for m in (res.get('metrics') or []))
+    """Values shown, not counting `entity` (held on every card until entity labels are shown on the site)."""
+    return (sum(bool(f.get('shown')) for f in (res.get('fields') or []) if f.get('name') != 'entity')
+            + sum(bool(m.get('shown')) for m in (res.get('metrics') or [])))
 
 
 def better(vision: dict, text: dict) -> bool:
-    """The vision result replaces the text result when it passes every check (shown headline) and shows at least as many values:
-    on a table card the page image is the better reader, so a tie goes to the image."""
+    """The vision result replaces the text result when it passes every check (shown headline) and either shows at least as many
+    values or the card is a table card: there the page image is the better reader, and a true general headline (Federal Bank: "allots
+    shares under stock option schemes", the three allotments as points) beats a specific wrong one (7,100 shares of a 99,954 total)."""
     head = vision.get('headline')
-    return bool(vision.get('ok') and head and head.get('shown') is not False and shown_count(vision) >= shown_count(text))
+    if not (vision.get('ok') and head and head.get('shown') is not False and head.get('text')):
+        return False
+    return shown_count(vision) >= shown_count(text) or (text.get('category') in TABLE_CATEGORIES and bool(vision.get('points')))
 
 
 def vision_text(prompt_for, data: bytes, ask=ask_gemini) -> tuple[str, str, float, dict, str] | None:

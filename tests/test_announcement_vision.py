@@ -19,12 +19,16 @@ def test_needs_vision_and_better():
     two_held = {'ok': True, 'headline': {'shown': True}, 'fields': [f(False), f(False)], 'metrics': []}
     assert 'values held' in v.needs_vision(two_held)
     assert v.needs_vision({'ok': False}) is None
-    good = {'ok': True, 'headline': {'shown': True}, 'fields': [f(), f()], 'metrics': []}
+    good = {'ok': True, 'headline': {'shown': True, 'text': 'h'}, 'fields': [f(), f()], 'metrics': []}
     assert v.better(good, held_head)
     worse = {'ok': True, 'headline': {'shown': True}, 'fields': [], 'metrics': []}
     assert not v.better(worse, safe)         # fewer shown values than the text card: keep the text card
     assert not v.better({'ok': True, 'headline': {'shown': False}, 'fields': [f()], 'metrics': []}, held_head)
     assert v.better(good, safe)              # a tie goes to the page image
+    table_text = {**safe, 'category': 'esop', 'fields': [f()]}
+    generic = {'ok': True, 'headline': {'shown': True, 'text': 'allots shares'}, 'fields': [], 'metrics': [], 'points': [{'text': 'x'}]}
+    assert v.better(generic, table_text) and not v.better(generic, {**table_text, 'category': 'order_win'})
+    assert v.shown_count({'fields': [{'name': 'entity', 'shown': True}, {'name': 'shares', 'shown': True}], 'metrics': []}) == 1
     assert v.needs_vision({**safe, 'category': 'esop'}) and 'table card' in v.needs_vision({**safe, 'category': 'esop'})
     assert v.needs_vision({**safe, 'category': 'order_win'}) is None
 
