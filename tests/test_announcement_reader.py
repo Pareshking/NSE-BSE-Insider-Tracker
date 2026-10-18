@@ -2344,3 +2344,10 @@ def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
     ar.report_quota(True)
     ar.report_quota(False)
     assert out.read_text().split() == ['quota_exhausted=1', 'quota_exhausted=0']
+
+def test_recurring_production_chain_enables_bounded_gemini_batching():
+    from pathlib import Path
+
+    workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/announcement-reader.yml').read_text()
+    assert '-f batch=true -f chain=true' in workflow
+    assert "BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'" in ar.__file__ and ar.BATCH_MAX <= 4
