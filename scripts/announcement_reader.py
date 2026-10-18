@@ -3208,6 +3208,7 @@ def in_history_window(now=None):
 # schedule: live all day, history 22:30-09:00 (in_history_window).
 LIVE_SLOTS = ((13 * 60, 14 * 60), (19 * 60, 20 * 60))   # IST minutes
 CALENDAR_KEY = 'reference/nse_calendar.json'
+HISTORY_DAILY_CAP = int(os.environ.get('READER_HISTORY_DAILY_CAP', '500'))   # old filings read by date in an IST day (scripts/announcement_backfill.py)
 HISTORY_BATCH, HISTORY_MINUTES = 40, 12.0   # a history run reads up to 40 old filings in 12 minutes (a live-slot run: 8 in 2)
 
 
@@ -3410,6 +3411,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             history_result = unified_company_history_stage(
                 r2, current_isins, today, master, lanes, clients, setup,
                 batch_size=HISTORY_BATCH if history_run else 8, batch_minutes=HISTORY_MINUTES if history_run else 2.0,
+                by_date_cap=HISTORY_DAILY_CAP if (history_run or window_only) else 0,
             )
             log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
         except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards

@@ -693,9 +693,67 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
     return result
 
 
+HISTORY_DAILY_CAP = int(os.environ.get('READER_HISTORY_DAILY_CAP', '500'))   # old filings read by date in one IST day
+BY_DATE_BATCH, BY_DATE_MINUTES = 40, 12.0   # one run's share of it
+
+
+def history_left_today(state: dict, today: date, cap: int) -> int:
+    """How many more old filings the by-date reader may take today (the count restarts each IST day)."""
+    done = state.get('date_history') or {}
+    return max(0, cap - int(done.get('reads', 0))) if done.get('day') == today.isoformat() else cap
+
+
+def read_history_by_date(r2, today: date, master, lanes: dict, setup: list[str], *, cap: int,
+                         batch_size: int, batch_minutes: float) -> dict:
+    """Old eligible filings of every company, oldest first from START_DEFAULT, whether or not it announced today.
+
+    Only dates whose NSE and BSE source days are collected (the pipeline's `collection_next_date`) are taken. The
+    first month with work is read, up to `batch_size` filings, and at most `cap` a day so the model quota and the
+    rate limits are respected; the lanes pace the calls. Reads are keyed by event_id, so a rerun skips what is done."""
+    state = read_pipeline_state(r2)
+    left = history_left_today(state, today, cap)
+    if left <= 0:
+        return {'by_date': 'daily cap reached', 'cap': cap}
+    pointer = date.fromisoformat(str(state.get('collection_next_date') or START_DEFAULT.isoformat()))
+    end = min(today - timedelta(days=1), pointer - timedelta(days=1))
+    if end < START_DEFAULT:
+        return {'by_date': 'no collected day yet'}
+    for month in _month_range(START_DEFAULT, end):
+        nse = month_parquet(r2, 'archive/announcements/nse/', month)
+        bse = month_parquet(r2, 'archive/announcements/bse/', month)
+        if nse.empty and bse.empty:
+            continue
+        candidates = ar.candidates(nse, bse, master)
+        reads = month_parquet(r2, ar.READS_PREFIX, month)
+        to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=START_DEFAULT, date_to=end)
+        if to_read.empty:
+            continue
+        to_read = to_read.sort_values(['broadcast_date', 'broadcast_at']).head(min(batch_size, left))
+        to_read = add_memory_context(r2, to_read)
+        saver = ar.Saver(r2, today.isoformat(), today)
+        rows, notes = ar.run(to_read, lanes, reads, batch_minutes * 60, max_filings=min(batch_size, left),
+                             on_row=saver.add, text_cache=_text_cache(r2))
+        statuses = [ar.finish({**row, 'prompt_version': ar.PROMPT_VERSION, 'read_at': datetime.now(timezone.utc).isoformat()})
+                    for row in status_rows.to_dict('records')] if status_rows is not None and not status_rows.empty else []
+        saver.pending.extend(statuses)
+        saver.flush(final=True)
+        upsert_company_memories(r2, rows + statuses)
+        taken = len(rows)
+        state = read_pipeline_state(r2)
+        today_done = int((state.get('date_history') or {}).get('reads', 0)) if (state.get('date_history') or {}).get('day') == today.isoformat() else 0
+        state['date_history'] = {'day': today.isoformat(), 'reads': today_done + taken, 'month': month}
+        save_pipeline_state(r2, state)
+        result = {'by_date': month, 'selected': len(to_read), 'taken': taken, 'left_today': max(0, left - taken),
+                  'oldest': str(to_read['broadcast_date'].min()), 'newest': str(to_read['broadcast_date'].max()),
+                  'counts': counts, 'notes': notes}
+        print('By-date historical reads: ' + json.dumps(result, default=str), flush=True)
+        return result
+    return {'by_date': 'nothing left in the collected days', 'through': end.isoformat()}
+
+
 def unified_company_history_stage(r2, current_isins: set[str], today: date, master, lanes: dict,
                                   clients: dict, setup: list[str], *, batch_size: int = 8,
-                                  batch_minutes: float = 2.0, dry_run: bool = False) -> dict:
+                                  batch_minutes: float = 2.0, dry_run: bool = False, by_date_cap: int = 0) -> dict:
     """Queue today's announcing companies, advance source collection, then AI-read only queued companies."""
     if dry_run or r2 is None:
         return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': None}
@@ -714,6 +772,15 @@ def unified_company_history_stage(r2, current_isins: set[str], today: date, mast
     state = read_pipeline_state(r2)
     result = run_targeted_company_backfill(r2, queue, today, master, lanes, clients, setup,
                                            batch_size=batch_size, batch_minutes=batch_minutes, dry_run=False)
+
+    if by_date_cap > 0:   # a history run: then every eligible company's old filings, by date, within the day's cap
+        try:
+            result['by_date'] = read_history_by_date(r2, today, master, lanes, setup, cap=by_date_cap,
+                                                     batch_size=BY_DATE_BATCH, batch_minutes=BY_DATE_MINUTES)
+        except Exception as exc:  # noqa: BLE001 -- the by-date reading never costs the targeted reads or the live cards
+            result['by_date'] = f'failed: {type(exc).__name__}: {exc}'[:300]
+            setup.append(result['by_date'])
+        state = read_pipeline_state(r2)
 
     # Retire a company only after all historical source dates are collected and its eligible queue is empty.
     if complete and result.get('remaining') == 0:
