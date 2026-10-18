@@ -16,7 +16,12 @@ def _norm(value: object) -> str:
 
 _NEGATIVE_EVENT = re.compile(
     r"\b(?:cancel(?:led|ed|lation)?|terminat(?:ed|ion)|withdraw(?:n|al)?|rescinded|"
-    r"revoked|rejected|not awarded|not selected|did not receive|no order was received)\b", re.I)
+    r"revoked|rejected|not awarded|not selected|did not receive|no order was received|"
+    r"not approved|did not approve|approval not granted|not completed|did not complete|"
+    r"not launched|did not launch|not commenced|did not commence)\b", re.I)
+_NEGATED_ACTION = re.compile(
+    r"\b(?:not|never|no|did not|does not|has not|have not|was not|were not|is not|isn't|wasn't|weren't)\b"
+    r".{0,35}\b(?:win|award|approve|complete|acquire|receive|launch|commence|start|pay|increase|rise|grow)\\w*\\b", re.I)
 _POSITIVE_EVENT = re.compile(
     r"\b(?:wins?|won|awarded|secures?|secured|bags?|bagged|receives?|received|"
     r"approved|approves|completes?|completed|acquires?|acquired|launches?|launched|"
@@ -51,10 +56,11 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
         return None
     c, q = claim.casefold(), proof.casefold()
 
-    if _NEGATIVE_EVENT.search(proof) and _POSITIVE_EVENT.search(claim) and not _CANCEL_WORD.search(claim):
-        return "the quote describes a cancellation, termination, withdrawal or rejection but the claim states a positive event"
-    if _POSITIVE_EVENT.search(proof) and _CANCEL_WORD.search(claim) and not _NEGATIVE_EVENT.search(proof):
-        return "the claim says the event was cancelled or terminated but its quote does not support that status"
+    if (_NEGATIVE_EVENT.search(proof) or _NEGATED_ACTION.search(proof)) and _POSITIVE_EVENT.search(claim) and not _CANCEL_WORD.search(claim):
+        return "the quote negates or reverses the event, but the claim states a positive action"
+    if _NEGATIVE_EVENT.search(claim) or _NEGATED_ACTION.search(claim):
+        if _POSITIVE_EVENT.search(proof) and not (_NEGATIVE_EVENT.search(proof) or _NEGATED_ACTION.search(proof)):
+            return "the claim negates or reverses an action that its quote states positively"
 
     if re.search(r"\b(?:approved|approves|completed|completed the acquisition|closed the deal|commenced operations)\b", c):
         if _PENDING.search(proof) and not _APPROVED.search(proof):
