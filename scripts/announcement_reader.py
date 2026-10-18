@@ -152,7 +152,10 @@ def clean_document_text(doc: str, subject: str | None = None) -> tuple[str, list
     raw = str(doc or '')
     if not raw:
         return raw, []
-    cleaned, removed = clean_filing_text(raw, subject)
+    try:
+        cleaned, removed = clean_filing_text(raw, subject)
+    except Exception as exc:  # noqa: BLE001 -- a cleaner bug must never discard a filing
+        return raw, [f'text clean skipped: {type(exc).__name__}']
     if not cleaned.strip():
         # Never replace usable source text with an empty cleaner result.
         return raw, ['text clean skipped: cleaner returned empty text']
