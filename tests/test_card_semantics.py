@@ -45,11 +45,11 @@ def test_narrative_rejects_quote_not_in_memory():
 
 def test_guidance_claim_requires_both_sources_and_checks_direction():
     memory = '- 2026-04-20: management expects consolidated EBITDA margin to reach 18% (source: https://example.com/call)'
-    doc = "The EBITDA margin for the quarter was 16%."
+    doc = "Consolidated EBITDA margin for the quarter was 16%."
     out = cs.validate_narrative(
         [{"text": "The company achieved its 18% EBITDA margin target at 16%.", "evidence": [
             {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18%"},
-            {"source": "current_filing", "quote": "The EBITDA margin for the quarter was 16%."}]}],
+            {"source": "current_filing", "quote": "Consolidated EBITDA margin for the quarter was 16%."}]}],
         doc, memory, lambda text, quotes: True,
     )
     assert not out[0]["shown"]
