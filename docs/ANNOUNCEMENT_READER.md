@@ -72,8 +72,15 @@ Code:
   refused (HTTP 401) ... renew the GitHub secret"), `ZAI_API_KEY`. Never in the repo or Streamlit secrets,
   so models cannot be called from a laptop.
 - Only public filing text goes in a prompt; nothing personal. Models get extracted text
-  (`pdftotext -layout`, ZIPs opened), never PDFs.
-- Every value must carry a quote found in the PDF text, and prices and counts must have their digits in
+  (`pdftotext -layout`, ZIPs opened), never PDFs. For PDF/ZIP text, the reader applies
+  `insiders_clean.text_clean.clean` to the model input to remove repeated page furniture, exchange address
+  lines and letterhead padding. The original extracted text remains untouched for quote validation, number/unit
+  checks, hashes and duplicate detection. Structured XBRL facts bypass this layout cleaner; a cleaner failure
+  or empty result falls back to the original text and is logged.
+- The recurring production chain enables bounded Gemini batching for short filings (up to four per request).
+  Each response is validated against its own filing; a missing/invalid batch answer and a long filing fall back
+  to individual reads. Manual runs remain configurable.
+- Every value must carry a quote found in the original PDF text, and prices and counts must have their digits in
   the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
   our code converts (lakh, crore, million, billion) and computes every % change.
 - Use free limits up to 95%, through the day (every 15 minutes), not only at night; today's filings first.
