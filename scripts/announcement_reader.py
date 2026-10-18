@@ -2468,7 +2468,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
         copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
-                                           'points', 'second_reader', 'second_category', 'second_fields', 'agreed')}
+                                           'points', 'narrative', 'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
