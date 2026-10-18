@@ -2350,4 +2350,6 @@ def test_recurring_production_chain_enables_bounded_gemini_batching():
 
     workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/announcement-reader.yml').read_text()
     assert '-f batch=true -f chain=true' in workflow
-    assert "BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'" in ar.__file__ and ar.BATCH_MAX <= 4
+    reader_source = Path(ar.__file__).read_text()
+    assert "BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'" in reader_source
+    assert ar.BATCH_MAX <= 4
