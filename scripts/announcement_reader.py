@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
+from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- deterministic, number-preserving prompt cleanup
 import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -144,6 +145,23 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
 
 def log(*parts):
     print(time.strftime('%H:%M:%S'), *parts, flush=True)
+
+
+def clean_document_text(doc: str, subject: str | None = None) -> tuple[str, list[str]]:
+    """Clean extracted text for model input, preserving the raw extraction in the separate text cache."""
+    raw = str(doc or '')
+    if not raw:
+        return raw, []
+    cleaned, removed = clean_filing_text(raw, subject)
+    if not cleaned.strip():
+        # Never replace usable source text with an empty cleaner result.
+        return raw, ['text clean skipped: cleaner returned empty text']
+    saved = len(raw) - len(cleaned)
+    notes = []
+    if saved > 0:
+        rules = ', '.join(f'{name}={count}' for name, count in sorted(removed.items()) if count)
+        notes.append(f'text clean: {saved} chars removed' + (f' ({rules})' if rules else ''))
+    return cleaned, notes
 
 
 # --- lanes ---------------------------------------------------------------------------
@@ -2519,6 +2537,9 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
                     content_url = row['file_url']
                     file_sha = _sha(data)
+            # The durable filing_text cache remains raw. Clean only the working copy sent to AI and used for quote checks.
+            doc, cleaning_notes = clean_document_text(doc, row.get('subject'))
+            doc_notes.extend(cleaning_notes)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
