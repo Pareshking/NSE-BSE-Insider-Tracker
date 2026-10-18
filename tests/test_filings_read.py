@@ -317,3 +317,18 @@ def test_a_results_card_before_this_gives_the_previous_quarters_growth_not_the_p
     assert not any('Promoters hold' in x for x in lines)
     other = fr.before_this({**r, 'category': 'order_win'}, None, None, holding, None, results)
     assert any('Promoters hold' in x for x in other) and not any('also posted' in x for x in other)
+
+
+def test_pages_hold_50_or_100_cards_and_return_to_the_first_when_filters_change(monkeypatch):
+    import streamlit as st
+    from screens import filings
+    state = {}
+    monkeypatch.setattr(st, 'session_state', state)
+    assert filings.page_of(230, ('a',)) == (50, 0, 5)
+    state['fl_page'] = 3
+    assert filings.page_of(230, ('a',)) == (50, 3, 5)         # same filters: the page stays
+    assert filings.page_of(230, ('b',)) == (50, 0, 5)         # other filters: back to the first
+    state['fl_page'], state['fl_size'] = 4, 100
+    assert filings.page_of(230, ('b',)) == (100, 0, 3)        # another page size starts again
+    state['fl_page'] = 9
+    assert filings.page_of(60, ('b',)) == (100, 0, 1)         # a short list has one page

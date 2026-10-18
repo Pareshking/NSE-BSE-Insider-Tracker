@@ -31,7 +31,7 @@ OTHER = 'Other'
 PERIODS = {1: 'Today and yesterday', 7: 'Last 7 days', 30: 'Last 30 days', 60: 'Last 60 days', 3650: 'From the start'}
 RECENT_DAYS = 60   # the live table's span (scripts/announcement_reader.py READ_DAYS); a longer period adds the history table
 SIZES = ('Large', 'Mid', 'Small', 'Micro')
-LIMIT = 120
+PAGE_SIZES = (50, 100)   # cards drawn at once: every card carries its own context, so a page is bounded, not the whole period
 
 
 def heading_of(category) -> str:
@@ -58,6 +58,31 @@ def pick(r: pd.DataFrame, headings, exchanges, sizes, query: str, agreed_only: b
     if agreed_only:
         keep &= r['agreed'].map(_agreed) if 'agreed' in r else False
     return r[keep]
+
+
+def page_of(total: int, signature: tuple) -> tuple[int, int, int]:
+    """(page size, page index, pages). The size is the reader's choice; the page goes back to the first when the
+    filters change, and is kept inside the range when the list gets shorter."""
+    size = st.session_state.get('fl_size', PAGE_SIZES[0])
+    size = size if size in PAGE_SIZES else PAGE_SIZES[0]
+    pages = max(1, -(-total // size))
+    if st.session_state.get('fl_sig') != (signature, size):
+        st.session_state['fl_sig'], st.session_state['fl_page'] = (signature, size), 0
+    page = min(max(int(st.session_state.get('fl_page', 0)), 0), pages - 1)
+    st.session_state['fl_page'] = page
+    return size, page, pages
+
+
+def pager(page: int, pages: int) -> None:
+    a, b, c, d = st.columns([1, 1, 2, 1])
+    with a:
+        st.button('Previous', disabled=page == 0, key='fl_prev', on_click=lambda: st.session_state.update(fl_page=page - 1))
+    with b:
+        st.button('Next', disabled=page >= pages - 1, key='fl_next', on_click=lambda: st.session_state.update(fl_page=page + 1))
+    with c:
+        st.caption(f'Page {page + 1} of {pages}')
+    with d:
+        st.selectbox('Cards per page', PAGE_SIZES, key='fl_size', label_visibility='collapsed')
 
 
 def render():
@@ -110,12 +135,16 @@ def render():
                if not ctx.prices.empty and 'mcap_bucket' in ctx.prices else {})
     shown = pick(r, chosen, exchanges, sizes, query, agreed_only, size_of)
     st.html(fr.coverage_html(fr.coverage(reads, since)))
+    size, page, pages = page_of(len(shown), (days_new, tuple(chosen), tuple(exchanges or ()), tuple(sizes or ()), query, agreed_only))
+    first = page * size
     with kit.card(f'{kit.plural(len(shown), "filing")}', 'fl_cards',
-                  f'{PERIODS[days].lower()}, newest first' + (f'; the first {LIMIT}' if len(shown) > LIMIT else '')):
+                  f'{PERIODS[days].lower()}, newest first' + (f'; {first + 1}-{min(first + size, len(shown))}' if len(shown) > size else '')):
         if shown.empty:
             kit.empty('Nothing matches these filters.')
         else:
-            st.html(fr.LEGEND + fr.cards_html(shown, reads, ctx, store.price_history(), limit=LIMIT))
+            st.html(fr.LEGEND + fr.cards_html(shown.iloc[first:first + size], reads, ctx, store.price_history(), limit=size))
+            if pages > 1:
+                pager(page, pages)
     kit.caption('Read by free models in the backend (NVIDIA, Z.ai, Groq, Gemini); a value is shown only when its quote '
                 'is in the filing, and every figure in a headline or point is one of its quote\'s numbers. Routine '
                 'filings, companies below Rs 100 Cr and concall notices are not read. Check the filing before acting.')
