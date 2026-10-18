@@ -427,6 +427,12 @@ steps. Subscribe to PR #56 and keep CI green."
    cited there), so routine board outcomes are not read in full.
 6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.
 
+### Evidence-backed card narrative (18 Oct 2026)
+
+Each new read may include a short narrative in addition to the checked headline, points, fields and metrics. The narrative can connect a previously verified management-call statement or company event with the current filing, and can surface explicit forward guidance from the current filing. Every narrative sentence must cite verbatim evidence from the current filing or persistent company memory; the reader verifies source membership and number support before it is stored or shown. Claims that guidance was met/missed require both historical and current evidence for the same measure, and simple percentage-margin comparisons are checked deterministically. Unsupported claims are held back. The prompt version is bumped so eligible recent filings are reread once.
+
+The deterministic semantic gate also holds claims that turn a cancellation into a win, promote a proposal to an approval/completion, reverse the direction of a measure, or name a counterparty absent from the supporting quote. It is deliberately conservative and must be judged on false positives as well as false negatives in the reviewed card set.
+
 ### Headline format (16 Oct, owner's rule)
 
 A reader should know the news from the title alone. The headline is the company's short trading name, a plain verb and the one
