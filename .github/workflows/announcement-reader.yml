@@ -43,7 +43,7 @@ on:
         description: 'Gemini lane: read short filings several to a request (saves calls; each filing still checked alone)'
         required: true
         type: boolean
-        default: false
+        default: true
       vision:
         description: 'Cards the text read could not make safe are read again from page images (Gemini, page triage); off by default'
         required: true
@@ -73,6 +73,10 @@ on:
       - 'scripts/announcement_reader.py'
       - 'scripts/announcement_backfill.py'
       - 'scripts/announcement_sample.py'
+      - 'insiders_clean/text_clean.py'
+      - 'streamlit_app/screens/filings_read.py'
+      - 'tests/test_filings_read.py'
+      - 'tests/test_text_clean.py'
       - 'scripts/announcement_readers.txt'
       - 'collectors/nse_events/run_daily.py'
       - 'collectors/nse_events/announcements.py'
@@ -89,7 +93,7 @@ permissions:
 
 concurrency:
   # One production pipeline; experiments on PRs/branches remain isolated.
-  group: ${{ github.event_name == 'pull_request' && 'announcement-pipeline-pr' || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
+  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
   # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -129,7 +133,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           before="${{ github.event.before }}"
           if [ -z "$before" ] || ! git cat-file -e "$before" 2>/dev/null; then echo "go=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|backfill|sample)[.]py|scripts/announcement_readers[.]txt|collectors/nse_events/(run_daily|announcements|client)[.]py|tests/test_(announcement_(reader|backfill)|announcements|nse_announcement_parser)[.]py|[.]github/workflows/announcement-reader[.]yml)$'; then
+          if git diff --name-only "$before" "${{ github.event.pull_request.head.sha }}" | grep -qE '^(scripts/announcement_(reader|backfill|sample)[.]py|scripts/announcement_readers[.]txt|insiders_clean/text_clean[.]py|streamlit_app/screens/filings_read[.]py|tests/test_(filings_read|text_clean|announcement_(reader|backfill)|announcements|nse_announcement_parser)[.]py|collectors/nse_events/(run_daily|announcements|client)[.]py|[.]github/workflows/announcement-reader[.]yml)$'; then
             echo "go=1" >> "$GITHUB_OUTPUT"
           else
             echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
@@ -209,5 +213,5 @@ jobs:
           if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=false -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"

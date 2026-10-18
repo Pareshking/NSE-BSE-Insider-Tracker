@@ -2344,3 +2344,41 @@ def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
     ar.report_quota(True)
     ar.report_quota(False)
     assert out.read_text().split() == ['quota_exhausted=1', 'quota_exhausted=0']
+
+
+def test_reader_cleans_prompt_text_but_keeps_material_figures_and_reports_savings(monkeypatch):
+    raw = """ACME LIMITED
+Registered Office: 12 Mill Road, Pune 411001
+CIN: L12345MH2001PLC000001
+To,
+The Manager - Listing Department
+BSE Limited
+Phiroze Jeejeebhoy Towers, Dalal Street
+Mumbai - 400 001
+
+Subject: Allotment of 1,81,10,473 equity shares at Rs. 165.65 per share
+
+The Board approved allotment on 13 October 2026.
+Particulars                       FY26          FY25
+Revenue from operations        1,234.50       1,100.25
+"""
+    cleaned, notes = ar.clean_document_text(raw, 'Allotment of Securities')
+    assert 'Phiroze Jeejeebhoy' not in cleaned and 'Registered Office:' not in cleaned
+    assert 'The Board approved allotment on 13 October 2026.' in cleaned
+    assert 'Revenue from operations | 1,234.50 | 1,100.25' in cleaned
+    assert '1,81,10,473' in cleaned and '165.65' in cleaned
+    assert notes and notes[0].startswith('text clean: ')
+    # An empty/unsafe cleaner result must never erase usable source text.
+    assert ar.clean_document_text('important source text', None)[0]
+    monkeypatch.setattr(ar, 'clean_filing_text', lambda *_: (_ for _ in ()).throw(ValueError('bad text')))
+    original = 'raw filing with numbers 12.50 and 500 shares'
+    fallback, warning = ar.clean_document_text(original, 'Allotment')
+    assert fallback == original and warning == ['text clean skipped: ValueError']
+
+
+def test_reader_keeps_raw_text_if_cleaner_raises(monkeypatch):
+    monkeypatch.setattr(ar, 'clean_filing_text', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('unexpected input')))
+    raw = 'Material announcement: 1,23,456 shares at Rs. 123.45'
+    cleaned, notes = ar.clean_document_text(raw, 'Allotment')
+    assert cleaned == raw
+    assert notes == ['text clean skipped: RuntimeError']

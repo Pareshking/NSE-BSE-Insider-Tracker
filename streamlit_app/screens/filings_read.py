@@ -437,11 +437,13 @@ OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_op
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
-                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None) -> list[str]:
+                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None,
+                reads_sorted: bool = False) -> list[str]:
     """Context from our own tables, every figure computed here, never by a model: the company's earlier
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
     out, isin, sym = [], r.get('isin'), r.get('symbol')
+    has_isin = pd.notna(isin) and bool(str(isin).strip()) and str(isin).strip().lower() not in ('nan', 'none')
     at = pd.to_datetime(r.get('broadcast_at'), errors='coerce', utc=True)
     fields = {f['name']: f for f in _json(r.get('fields'), []) if f.get('shown')}
     price = price or {}
@@ -485,7 +487,7 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
             pl = (f', <b>{esc(kit.pct(pledge, 1))}</b> of it pledged' if pledge is not None and pledge == pledge and pledge > 0
                   else ', none of it pledged' if pledge == 0 else '')
             out.append(f'Promoters hold <b>{esc(kit.pct(pct, 1))}</b>{esc(q)}{pl}.')
-    if insiders is not None and not insiders.empty and isin:
+    if insiders is not None and not insiders.empty and has_isin:
         t = insiders[(insiders['isin'] == isin) & (insiders['seen'] >= (at.tz_convert(None).normalize() if pd.notna(at) else
                      pd.Timestamp.now()) - np.timedelta64(INSIDER_DAYS, 'D'))]
         for side, word in (('BUY', 'bought'), ('SELL', 'sold')):
@@ -494,12 +496,17 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
                 out.append(f'Insiders {word} <b>{esc(kit.rupees(x["value"].sum()))}</b> on the market in '
                            f'{kit.plural(len(x), "filing")} in the last {INSIDER_DAYS} days.')
     if reads is not None and not reads.empty and pd.notna(at):
-        e = reads[((reads['isin'] == isin) if isin and 'isin' in reads else (reads['symbol'] == sym))
+        # cards_html passes a per-company slice sorted newest-first once for the whole render.
+        # Keep this function independently usable by tests and other callers with the old full-frame input.
+        e = reads[((reads['isin'] == isin) if has_isin and 'isin' in reads else (reads['symbol'] == sym))
                   & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
                   & reads['event_id'].ne(r.get('event_id'))]
         t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
         e = e[(t < at - np.timedelta64(DEAL_HOURS, 'h')) & (t >= at - np.timedelta64(EARLIER_DAYS, 'D'))]
-        for x in e.sort_values('broadcast_at', ascending=False).head(3).to_dict('records'):
+        # A pre-sorted per-company slice preserves the order; avoid sorting it for every card.
+        if not reads_sorted:
+            e = e.sort_values('broadcast_at', ascending=False)
+        for x in e.head(3).to_dict('records'):
             h = _json(x.get('headline'), None)
             what = h['text'] if isinstance(h, dict) and h.get('shown') else CATEGORY.get(x['category'], x['category'])
             day = pd.Timestamp(x['broadcast_at']).tz_convert('Asia/Kolkata').strftime('%d %b')
@@ -523,6 +530,34 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     insiders = getattr(ctx, 'eligible', None)
     results = getattr(ctx, 'results', None)
 
+    # Index history once, not once per card. Each per-company history is already newest-first,
+    # so before_this() filters a small slice instead of scanning and sorting the whole archive N times.
+    read_index = {}
+    if reads is not None and not reads.empty:
+        ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable')
+        if 'isin' in ordered_reads:
+            isins = ordered_reads['isin']
+            has_isin = isins.notna() & isins.astype(str).str.strip().ne('')
+            company_keys = pd.Series(
+                np.where(has_isin, 'isin:' + isins.astype(str), 'symbol:' + ordered_reads['symbol'].astype(str)),
+                index=ordered_reads.index)
+        else:
+            company_keys = 'symbol:' + ordered_reads['symbol'].astype(str)
+        # One index per company identity (ISIN where available, otherwise symbol), not two
+        # full copies of the archive. The key rule matches before_this()'s prior identity selection.
+        for key, group in ordered_reads.groupby(company_keys, sort=False):
+            read_index[str(key)] = group
+
+    insider_index = {}
+    if insiders is not None and not insiders.empty and 'isin' in insiders:
+        for key, group in insiders.groupby('isin', sort=False):
+            insider_index[str(key)] = group
+
+    results_index = {}
+    if results is not None and not results.empty and 'isin' in results:
+        for key, group in results.groupby('isin', sort=False):
+            results_index[str(key)] = group
+
     def card(x):
         p = by_isin.get(x.get('isin'))
         box = ''
@@ -532,7 +567,13 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
                 box = said_html(x, store.said(x.get('isin')))
             except Exception:   # the call words are an extra: a card never fails for them
                 box = ''
-        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results), box)
+        isin = x.get('isin')
+        key = f'isin:{isin}' if pd.notna(isin) and str(isin).strip() else f'symbol:{x.get("symbol")}'
+        company_reads = read_index.get(key, pd.DataFrame(columns=reads.columns if reads is not None else []))
+        has_isin = pd.notna(isin) and bool(str(isin).strip())
+        company_insiders = insider_index.get(str(isin)) if has_isin else None
+        company_results = results_index.get(str(isin)) if has_isin else None
+        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results, reads_sorted=True), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 
