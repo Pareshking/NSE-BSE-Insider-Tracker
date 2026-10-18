@@ -2322,3 +2322,25 @@ def test_off_days_are_weekends_and_listed_holidays(monkeypatch):
     assert ar.off_day(date(2026, 11, 10), object())            # a listed holiday
     assert not ar.off_day(date(2026, 10, 19), object())        # a Monday
     assert not ar.off_day(date(2026, 10, 19), None)            # no calendar: a weekday is a trading day
+
+
+def test_quota_is_exhausted_only_when_every_lane_is_out_of_models_for_the_day(monkeypatch, tmp_path):
+    zai = ar.Lane('zai', ['zai:glm-4.5-flash'], {})
+    groq = ar.Lane('groq', ['groq:qwen/qwen3.8-27b'], {})
+    assert not ar.lanes_exhausted({'zai': zai, 'groq': groq})
+    zai.dropped.append('zai:glm-4.5-flash')                       # one lane out is not enough
+    assert not ar.lanes_exhausted({'zai': zai, 'groq': groq})
+    groq.used_today = {'groq:qwen/qwen3.8-27b': 950}              # 95% of its 1,000 a day
+    assert ar.lanes_exhausted({'zai': zai, 'groq': groq})
+    groq.used_today = {}
+    groq.cool_until['groq:qwen/qwen3.8-27b'] = 1e12               # only resting: it will come back
+    assert not ar.lanes_exhausted({'zai': zai, 'groq': groq})
+    assert not ar.lanes_exhausted({})                              # no lanes: nothing to stop
+
+
+def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
+    out = tmp_path / 'out'
+    monkeypatch.setenv('GITHUB_OUTPUT', str(out))
+    ar.report_quota(True)
+    ar.report_quota(False)
+    assert out.read_text().split() == ['quota_exhausted=1', 'quota_exhausted=0']

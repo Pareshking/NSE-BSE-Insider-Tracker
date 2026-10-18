@@ -30,6 +30,7 @@ import announcement_sample as sample  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
 START_DEFAULT = date(2026, 1, 1)
+HISTORY_END = date(2026, 10, 18)   # hard stop (owner, 18 Oct): history is 1 Jan to 18 Oct 2026, from there the reader is live only
 MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
 COLLECTION_PREFIX = 'archive/announcement_backfill/collection/'
@@ -550,7 +551,7 @@ def advance_pipeline_history_collection(r2, today: date, state: dict, notes: lis
     A date cursor advances only after the existing two-exchange verifier certifies NSE + BSE. Failures
     are checkpointed and surfaced but do not prevent current announcements from being read.
     """
-    cutoff = today - timedelta(days=1)  # certify through yesterday; this workflow itself collects that date
+    cutoff = min(today - timedelta(days=1), HISTORY_END)  # certify through yesterday, never past the hard stop
     try:
         pointer = date.fromisoformat(str(state.get('collection_next_date') or START_DEFAULT.isoformat()))
     except (TypeError, ValueError):
@@ -635,7 +636,7 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
     if not clean_isins:
         return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': 0}
 
-    end = today - timedelta(days=1)
+    end = min(today - timedelta(days=1), HISTORY_END)
     start = START_DEFAULT
     if end < start:
         return {'companies': len(clean_isins), 'historical_candidates': 0, 'read': 0, 'remaining': 0}
@@ -715,7 +716,7 @@ def read_history_by_date(r2, today: date, master, lanes: dict, setup: list[str],
     if left <= 0:
         return {'by_date': 'daily cap reached', 'cap': cap}
     pointer = date.fromisoformat(str(state.get('collection_next_date') or START_DEFAULT.isoformat()))
-    end = min(today - timedelta(days=1), pointer - timedelta(days=1))
+    end = min(today - timedelta(days=1), pointer - timedelta(days=1), HISTORY_END)
     if end < START_DEFAULT:
         return {'by_date': 'no collected day yet'}
     for month in _month_range(START_DEFAULT, end):
@@ -748,6 +749,8 @@ def read_history_by_date(r2, today: date, master, lanes: dict, setup: list[str],
                   'counts': counts, 'notes': notes}
         print('By-date historical reads: ' + json.dumps(result, default=str), flush=True)
         return result
+    if end >= HISTORY_END:
+        return {'by_date': 'done', 'through': end.isoformat()}   # every day to the hard stop is read
     return {'by_date': 'nothing left in the collected days', 'through': end.isoformat()}
 
 
@@ -758,6 +761,8 @@ def unified_company_history_stage(r2, current_isins: set[str], today: date, mast
     if dry_run or r2 is None:
         return {'companies': 0, 'historical_candidates': 0, 'read': 0, 'remaining': None}
     state = read_pipeline_state(r2)
+    if state.get('history_complete'):
+        return {'history': 'complete', 'read': 0, 'remaining': 0}   # past the hard stop: live only
     queue = {str(x).strip() for x in state.get('target_isins', [])
              if x is not None and str(x).strip().lower() not in ('', 'nan', 'none')}
     queue.update(str(x).strip() for x in current_isins
@@ -781,6 +786,8 @@ def unified_company_history_stage(r2, current_isins: set[str], today: date, mast
             result['by_date'] = f'failed: {type(exc).__name__}: {exc}'[:300]
             setup.append(result['by_date'])
         state = read_pipeline_state(r2)
+        if complete and isinstance(result.get('by_date'), dict) and result['by_date'].get('by_date') == 'done':
+            state['history_complete'] = datetime.now(timezone.utc).isoformat()   # collected and read to the hard stop
 
     # Retire a company only after all historical source dates are collected and its eligible queue is empty.
     if complete and result.get('remaining') == 0:

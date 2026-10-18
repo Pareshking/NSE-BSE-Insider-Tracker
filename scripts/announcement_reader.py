@@ -291,6 +291,25 @@ def load_rate_limited_models(r2, run_date: str) -> dict[str, str]:
     models = body.get('models', {})
     return models if isinstance(models, dict) else {}
 
+def lanes_exhausted(lanes: dict) -> bool:
+    """True when no lane has a model left today: every model is dropped (quota), at its daily share, and none is only
+    resting (a rest ends within minutes, so it is not exhaustion). Without lanes there is nothing to stop."""
+    return bool(lanes) and not any(lane.models() or lane.cooling() for lane in lanes.values())
+
+
+def report_output(name: str, value: bool) -> None:
+    """A 0/1 job output for the workflow's chain (no file outside Actions)."""
+    out = os.environ.get('GITHUB_OUTPUT')
+    if out:
+        with open(out, 'a', encoding='utf-8') as f:
+            f.write(f'{name}={1 if value else 0}\n')
+
+
+def report_quota(exhausted: bool) -> None:
+    """Tell the workflow whether the AI quota is used up, so the chain waits an hour instead of ten minutes."""
+    report_output('quota_exhausted', exhausted)
+
+
 def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: str) -> None:
     """Restore today's provider blocks and persist new 429/quota blocks for live and historical runs."""
     from clean_writer import get, put
@@ -3208,7 +3227,8 @@ def in_history_window(now=None):
 # schedule: live all day, history 22:30-09:00 (in_history_window).
 LIVE_SLOTS = ((13 * 60, 14 * 60), (19 * 60, 20 * 60))   # IST minutes
 CALENDAR_KEY = 'reference/nse_calendar.json'
-HISTORY_DAILY_CAP = int(os.environ.get('READER_HISTORY_DAILY_CAP', '500'))   # old filings read by date in an IST day (scripts/announcement_backfill.py)
+HISTORY_DAILY_CAP = int(os.environ.get('READER_HISTORY_DAILY_CAP', '500'))   # old filings read by date in a Monday-Friday IST day (scripts/announcement_backfill.py)
+HISTORY_OFFDAY_CAP = int(os.environ.get('READER_HISTORY_OFFDAY_CAP', '1000'))   # the same on weekends and NSE holidays
 HISTORY_BATCH, HISTORY_MINUTES = 40, 12.0   # a history run reads up to 40 old filings in 12 minutes (a live-slot run: 8 in 2)
 
 
@@ -3293,6 +3313,10 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
+    out_of_quota = not getattr(args, 'replay', None) and lanes_exhausted(lanes)
+    if out_of_quota:
+        log('All AI quota is used for today (every model at its daily share or blocked): no model work this run; '
+            'filings are still collected and saved, the chain waits an hour')
     if getattr(args, 'replay', None):
         # Engineering loop: read the same filings again (a fixed golden set), save nothing, so a framework change is
         # judged on the cards that were audited. Same text, same company memory (earlier events only), new rules.
@@ -3311,6 +3335,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         current_candidates = candidates(nse, bse, master)
         to_read, status_rows, counts = choose(current_candidates, done, today)
 
+    if out_of_quota:
+        to_read = to_read.iloc[0:0]   # nothing is sent to a model; the next run with quota reads them
     history_mode = os.environ.get('READER_HISTORY', '1')
     history_run = False   # an off-day run between the live passes: no live reading, history only
     window_only = False   # Monday to Friday in the scheduled chain: history only in the overnight window
@@ -3364,7 +3390,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
 
     # Earnings-call transcripts into management's own words (quote-checked), for the next results card. A few by day, more in the
     # overnight window; a failure here never costs a live card (owner, 18 Oct).
-    if os.environ.get('READER_TRANSCRIPTS', '1') == '1' and not args.dry_run and r2 is not None and lanes:
+    if os.environ.get('READER_TRANSCRIPTS', '1') == '1' and not args.dry_run and r2 is not None and lanes and not lanes_exhausted(lanes):
         try:
             import io
             import management_said as ms
@@ -3388,7 +3414,11 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
 
     done_after_live = load_archive(r2, READS_PREFIX, today)
     live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
-    if history_mode not in ('1', 'night'):
+    quota_gone = lanes_exhausted(lanes)
+    report_quota(quota_gone)
+    if quota_gone:
+        log('company-history stage skipped: all AI quota is used for today')
+    elif history_mode not in ('1', 'night'):
         log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
     elif window_only and not in_history_window():
         log('company-history stage waits for the overnight window (22:30-09:00 IST): Monday to Friday daytime reads live filings only')
@@ -3411,9 +3441,10 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             history_result = unified_company_history_stage(
                 r2, current_isins, today, master, lanes, clients, setup,
                 batch_size=HISTORY_BATCH if history_run else 8, batch_minutes=HISTORY_MINUTES if history_run else 2.0,
-                by_date_cap=HISTORY_DAILY_CAP if (history_run or window_only) else 0,
+                by_date_cap=HISTORY_OFFDAY_CAP if history_run else (HISTORY_DAILY_CAP if window_only else 0),
             )
             log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
+            report_output('history_done', history_run and history_result.get('history') == 'complete')   # nothing to read between live passes
         except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards
             message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
             setup.append(message)

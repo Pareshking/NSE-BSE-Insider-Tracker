@@ -477,3 +477,22 @@ def test_by_date_reading_takes_the_oldest_collected_filings_within_the_daily_cap
     assert backfill.read_history_by_date(r2, today, None, {}, [], cap=3, batch_size=40, batch_minutes=1)['by_date'] == 'daily cap reached'
     tomorrow = backfill.history_left_today(saved['s'], today + timedelta(days=1), 3)
     assert tomorrow == 3                                   # the count restarts with the day
+
+
+def test_history_stops_at_the_hard_stop_and_is_marked_complete(monkeypatch):
+    r2 = FakeR2()
+    state = {'collection_next_date': '2026-10-19', 'target_isins': []}
+    saved = {'s': dict(state)}
+    monkeypatch.setattr(backfill, 'read_pipeline_state', lambda _r: dict(saved['s']))
+    monkeypatch.setattr(backfill, 'save_pipeline_state', lambda _r, s: saved.update(s=s))
+    seen = []
+    monkeypatch.setattr(backfill, 'month_parquet', lambda _r, prefix, month: (seen.append(month), pd.DataFrame())[1])
+    out = backfill.read_history_by_date(r2, date(2026, 11, 5), None, {}, [], cap=10, batch_size=40, batch_minutes=1)
+    assert out['by_date'] == 'done' and out['through'] == '2026-10-18'   # never past 18 Oct, whatever today is
+    assert max(seen) == '2026-10' and '2026-11' not in seen
+    # before the stop is reached, an empty month is not "done"
+    saved['s'] = {'collection_next_date': '2026-10-17', 'target_isins': []}
+    assert backfill.read_history_by_date(r2, date(2026, 10, 18), None, {}, [], cap=10, batch_size=40, batch_minutes=1)['by_date'] != 'done'
+    # once marked complete, the stage does nothing: live only from then on
+    saved['s'] = {'history_complete': '2026-10-19T00:00:00+00:00'}
+    assert backfill.unified_company_history_stage(r2, {'INE000A01001'}, date(2026, 11, 5), None, {}, {}, [])['history'] == 'complete'
