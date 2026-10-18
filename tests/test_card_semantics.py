@@ -3,7 +3,7 @@ import card_semantics as cs
 
 
 def test_cancellation_cannot_be_headlined_as_a_win():
-    assert "cancellation" in cs.semantic_reason(
+    assert "negates" in cs.semantic_reason(
         "Acme wins the supply contract", "The customer terminated the supply contract."
     )
 
