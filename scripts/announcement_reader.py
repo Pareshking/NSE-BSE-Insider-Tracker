@@ -3405,7 +3405,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             except Exception as exc:  # noqa: BLE001
                 log(f'transcripts: results list not loaded ({type(exc).__name__})')
             report = ms.stage(r2, today, lanes, max_transcripts=8 if night else 2, months_back=5 if night else 1,
-                              results_isins=res_isins, deadline=time.monotonic() + (25 if night else 6) * 60, log=log)
+                              results_isins=res_isins, deadline=time.monotonic() + (8 if night else 6) * 60, log=log)
             log('management said (transcripts)', json.dumps(report))
         except Exception as exc:  # noqa: BLE001
             message = f'transcript stage failed: {type(exc).__name__}: {exc}'[:300]

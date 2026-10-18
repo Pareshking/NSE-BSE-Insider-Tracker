@@ -695,7 +695,7 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
 
 
 HISTORY_DAILY_CAP = int(os.environ.get('READER_HISTORY_DAILY_CAP', '500'))   # old filings read by date in one IST day
-BY_DATE_BATCH, BY_DATE_MINUTES = 40, 12.0   # one run's share of it
+BY_DATE_BATCH, BY_DATE_MINUTES = 60, 30.0   # one history run's share of it (run 565: 12 filings in 12 minutes, so time is the limit)
 
 
 def history_left_today(state: dict, today: date, cap: int) -> int:
