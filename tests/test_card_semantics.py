@@ -8,6 +8,12 @@ def test_cancellation_cannot_be_headlined_as_a_win():
     )
 
 
+def test_negated_approval_cannot_be_reported_as_approved():
+    assert "negates" in cs.semantic_reason(
+        "Acme approves the acquisition", "The board did not approve the acquisition."
+    )
+
+
 def test_proposed_action_cannot_be_called_approved():
     assert "upgrades a proposal" in cs.semantic_reason(
         "Acme approves a new plant", "The board recommended the proposal, subject to shareholder approval."
