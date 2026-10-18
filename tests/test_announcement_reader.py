@@ -2380,3 +2380,14 @@ def test_structured_xbrl_text_is_not_passed_through_pdf_layout_cleaner(monkeypat
     rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda url: b'<xbrl/>', idle_wait=0.01)
     assert len(rows) == 1 and rows[0]['status'] == 'read'
     assert called == []
+
+
+def test_narrative_audit_counts_do_not_inflate_value_counts():
+    rec = ar.finish({
+        'event_id': 'nse:test', 'fields': [], 'metrics': [],
+        'narrative': [{'text': 'Supported statement', 'shown': True, 'reason': None},
+                      {'text': 'Unsupported statement', 'shown': False, 'reason': 'quote not found'}],
+    })
+    assert rec['shown'] == 0 and rec['held'] == 0
+    assert rec['narrative_shown'] == 1 and rec['narrative_held'] == 1
+    assert json.loads(rec['narrative'])[1]['reason'] == 'quote not found'
