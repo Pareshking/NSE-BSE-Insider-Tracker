@@ -547,6 +547,11 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         for key, group in insiders.groupby('isin', sort=False):
             insider_index[str(key)] = group
 
+    results_index = {}
+    if results is not None and not results.empty and 'isin' in results:
+        for key, group in results.groupby('isin', sort=False):
+            results_index[str(key)] = group
+
     def card(x):
         p = by_isin.get(x.get('isin'))
         box = ''
@@ -559,8 +564,10 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         isin = x.get('isin')
         key = ('isin', str(isin)) if pd.notna(isin) and str(isin).strip() else ('symbol', str(x.get('symbol')))
         company_reads = read_index.get(key, pd.DataFrame(columns=reads.columns if reads is not None else []))
-        company_insiders = insider_index.get(str(isin)) if pd.notna(isin) and str(isin).strip() else None
-        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, results, reads_sorted=True), box)
+        has_isin = pd.notna(isin) and bool(str(isin).strip())
+        company_insiders = insider_index.get(str(isin)) if has_isin else None
+        company_results = results_index.get(str(isin)) if has_isin else results
+        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results, reads_sorted=True), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 
