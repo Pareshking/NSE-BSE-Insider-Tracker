@@ -36,6 +36,7 @@ _COMPLETED = re.compile(r"\b(?:completed|closed|concluded|has acquired|acquired|
 _RISE = re.compile(r"\b(?:rose|ris(?:e|es|ing)|increas(?:e|ed|es|ing)|grew|growth|higher|up)\b", re.I)
 _FALL = re.compile(r"\b(?:fell|fall(?:s|en|ing)?|declin(?:e|ed|es|ing)|decreas(?:e|ed|es|ing)|lower|down|reduction)\b", re.I)
 _GUIDANCE = re.compile(r"\b(?:target|guid(?:e|ance|ed)|expect(?:s|ed)?|aim(?:s|ed)?|outlook|plan(?:s|ned)?|intend(?:s|ed)?|will|commit(?:s|ted)?)\b", re.I)
+_NO_GUIDANCE = re.compile(r"(?:do not|don't|doesn't|does not)\s+(?:provide|give)\b.{0,80}\bguidance\b", re.I)
 _RESULT_VERB = re.compile(r"\b(?:met|achieved|exceeded|missed|fell short of|beat)\b", re.I)
 _PERCENT = re.compile(r"(?<![\w.])([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*%")
 _METRIC = re.compile(r"\b(ebitda|ebit|operating margin|net interest margin|gross margin|net margin|revenue|sales|pat|net profit|profit|attrition|order book)\b", re.I)
@@ -106,7 +107,7 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     cmetrics = {m.casefold() for m in _METRIC.findall(current)}
     if not pmetrics.intersection(cmetrics):
         return "the prior guidance and current result do not identify the same measure"
-    if not _GUIDANCE.search(prior):
+    if _NO_GUIDANCE.search(prior) or not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
     target_fy = {x.upper().replace(" ", "") for x in re.findall(r"\bFY\s*\d{2,4}\b", prior, re.I)}
     actual_fy = {x.upper().replace(" ", "") for x in re.findall(r"\bFY\s*\d{2,4}\b", current, re.I)}
