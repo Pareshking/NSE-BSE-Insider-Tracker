@@ -140,7 +140,7 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
+           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'narrative_shown', 'narrative_held', 'agreed',
            'seconds', 'read_at', 'headline', 'points', 'narrative', 'open_loops', 'market_cap_match', 'market_cap')
 
 
@@ -2417,9 +2417,11 @@ def _sha(b) -> str:
 def finish(rec: dict) -> dict:
     """JSON columns and counts for the archive."""
     rec = dict(rec)
-    rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or []) + sum(n.get('shown', False) for n in rec.get('narrative') or [])
-    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
-        sum(not m['shown'] for m in rec.get('metrics') or []) + sum(not n.get('shown', False) for n in rec.get('narrative') or [])
+    # Value counts remain fields + metrics; prose claims have their own audit counters.
+    rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
+    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + sum(not m['shown'] for m in rec.get('metrics') or [])
+    rec['narrative_shown'] = sum(bool(n.get('shown')) for n in rec.get('narrative') or [])
+    rec['narrative_held'] = sum(not bool(n.get('shown')) for n in rec.get('narrative') or [])
     for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'narrative', 'open_loops'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
     rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
@@ -2468,7 +2470,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
         copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
-                                           'points', 'narrative', 'second_reader', 'second_category', 'second_fields', 'agreed')}
+                                           'points', 'narrative', 'narrative_shown', 'narrative_held',
+                                           'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
@@ -3204,15 +3207,33 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
              '| Outcome | Filings |', '|---|---|'] + [f'| {k} | {v} |' for k, v in st.items()]
-    lines += ['', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
+    narrative = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative.extend(n for n in items if isinstance(n, dict))
+    held_reasons = pd.Series([str(n.get('reason')) for n in narrative
+                              if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    lines += ['', f"AI narrative claims: {sum(bool(n.get('shown')) for n in narrative)} shown; "
+              f"{sum(not bool(n.get('shown')) for n in narrative)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in held_reasons.items()) or 'none'}.",
+              '', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
     lines += [f"| {m} | {e['calls']} | {', '.join(f'{k}: {v}' for k, v in e['by_status'].items())} | "
               f"{e['median_seconds_ok']} |" for m, e in use.get('models', {}).items()]
     read = [r for r in rows if r['status'] == 'read']
     if read:
-        lines += ['', '| Filing | Category | Reader | Seconds | Shown | Held back | Cross-check |',
-                  '|---|---|---|---|---|---|---|']
+        lines += ['', '| Filing | Category | Reader | Seconds | Values shown | Values held | Narrative shown | Narrative held | Cross-check |',
+                  '|---|---|---|---|---|---|---|---|---|']
         lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('seconds')} | "
-                  f"{r.get('shown')} | {r.get('held')} | {r.get('second_reader') or ''} |" for r in read]
+                  f"{r.get('shown')} | {r.get('held')} | {r.get('narrative_shown', 0)} | {r.get('narrative_held', 0)} | "
+                  f"{r.get('second_reader') or ''} |" for r in read]
     lines += [f'- note: {n}' for n in setup]
     return '\n'.join(lines) + '\n'
 
@@ -3429,8 +3450,25 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
               for r in status_rows.to_dict('records')]
     rows += status
     use = usage(clients, lanes)
+    narrative_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative_items.extend(n for n in items if isinstance(n, dict))
+    narrative_holds = pd.Series([str(n.get('reason')) for n in narrative_items
+                                 if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
     ledger.extra.update(counts=counts, outcomes={str(k): int(v) for k, v in
-                                                 pd.Series([r['status'] for r in rows]).value_counts().items()})
+                                                 pd.Series([r['status'] for r in rows]).value_counts().items()},
+                        narrative_claims={'shown': sum(bool(n.get('shown')) for n in narrative_items),
+                                          'held': sum(not bool(n.get('shown')) for n in narrative_items),
+                                          'held_reasons': narrative_holds})
     ledger.write()
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
