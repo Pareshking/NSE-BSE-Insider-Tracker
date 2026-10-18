@@ -3412,8 +3412,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         old = load_archive(r2, READS_PREFIX, today)
         old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
         gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-                            'seconds', 'read_at', 'headline', 'points') if c in old.columns]
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'narrative_shown',
+                            'narrative_held', 'agreed', 'seconds', 'read_at', 'headline', 'points', 'narrative') if c in old.columns]
         to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
         current_candidates = None
         log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
