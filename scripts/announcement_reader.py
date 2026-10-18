@@ -920,7 +920,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
         'margin unless the underlying figures are checked and comparable. Preserve approval/completion status, negation, cancellation, '
         'named parties and direction. Every number must be backed by the union of cited quotes. Current-filing quotes must be verbatim '
         'from DOCUMENT; company_memory quotes must be verbatim from the earlier verified history, including transcript quotes. '
-        'Return no unsupported narrative; use [] if no useful verifiable connection exists.\\n\\n'
+        'Return no unsupported narrative; use [] if no useful verifiable connection exists.\n\n'
     )
     return p.replace('=== DOCUMENT ===', ask + context + rules + narrative_rules + '=== DOCUMENT ===', 1)
 
@@ -2272,7 +2272,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
             f['shown'], f['reason'] = False, 'the filing withdraws this deal: these are the terms of the withdrawn proposal'
-    if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
+    if cat is None and not (fields or metrics or headline or points or any(n.get('shown') for n in narrative)):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
             'headline': headline, 'points': points, 'narrative': narrative, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
