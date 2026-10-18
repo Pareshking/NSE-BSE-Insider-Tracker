@@ -107,6 +107,10 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     cmetrics = {m.casefold() for m in _METRIC.findall(current)}
     if not pmetrics.intersection(cmetrics):
         return "the prior guidance and current result do not identify the same measure"
+    prior_basis = "consolidated" if re.search(r"\bconsolidated\b", prior, re.I) else "standalone" if re.search(r"\bstandalone\b", prior, re.I) else None
+    current_basis = "consolidated" if re.search(r"\bconsolidated\b", current, re.I) else "standalone" if re.search(r"\bstandalone\b", current, re.I) else None
+    if prior_basis != current_basis:
+        return "the prior guidance and current result do not establish the same standalone/consolidated basis"
     if _NO_GUIDANCE.search(prior) or not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
     target_fy = {x.upper().replace(" ", "") for x in re.findall(r"\bFY\s*\d{2,4}\b", prior, re.I)}
@@ -133,11 +137,15 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     if len(pcts) != 1 or len(ccts) != 1:
         return "the target comparison lacks one unambiguous quoted percentage for both target and actual"
     target, actual = pcts[0], ccts[0]
+    if re.search(r"\b(?:up to|at most|maximum|not more than|no more than)\b", prior, re.I):
+        return "the target is an upper bound and needs a separate comparator"
     t = text.casefold()
     if ("missed" in t or "fell short" in t) and actual >= target:
         return "the claim says the margin target was missed, but the quoted actual is at or above the target"
-    if ("met" in t or "achieved" in t or "beat" in t) and actual < target:
+    if ("met" in t or "achieved" in t) and actual < target:
         return "the claim says the margin target was met, but the quoted actual is below the target"
+    if "beat" in t and actual <= target:
+        return "the claim says the target was beaten, but the quoted actual does not exceed it"
     if "exceeded" in t and actual <= target:
         return "the claim says the target was exceeded, but the quoted actual does not exceed it"
     return None
