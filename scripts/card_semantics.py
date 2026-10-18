@@ -102,14 +102,15 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
         return "the prior guidance and current result do not identify the same measure"
     if not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
-    # Do not infer direction for a percentage that is not clearly an EBITDA/operating margin target.
+    # Only compare a directly quoted percentage margin with one unambiguous target and actual.
+    # Other measure types need their own deterministic comparator; do not guess.
     if not re.search(r"\b(?:ebitda|operating|gross|net interest|net)\s+margin\b", prior, re.I):
-        return None
+        return "the target comparison is not a supported deterministic margin comparison"
     pcts = [float(x.replace(",", "")) for x in _PERCENT.findall(prior)]
     ccts = [float(x.replace(",", "")) for x in _PERCENT.findall(current)]
-    if not pcts or not ccts:
-        return "the target comparison lacks a quoted percentage for both the target and the actual result"
-    target, actual = pcts[-1], ccts[-1]
+    if len(pcts) != 1 or len(ccts) != 1:
+        return "the target comparison lacks one unambiguous quoted percentage for both target and actual"
+    target, actual = pcts[0], ccts[0]
     t = text.casefold()
     if ("missed" in t or "fell short" in t) and actual >= target:
         return "the claim says the margin target was missed, but the quoted actual is at or above the target"
