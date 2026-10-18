@@ -51,7 +51,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
-from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- deterministic, number-preserving prompt cleanup
+from card_semantics import semantic_reason, validate_narrative  # noqa: E402 -- deterministic checks for AI-authored card text
+from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- layout-only cleaning before a model sees PDF text
 import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -59,8 +60,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-18' if PROMPT_VARIANT == 'v2' else
-                  'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-20' if PROMPT_VARIANT == 'v2' else
+                  'live-10-ab' if PROMPT_COMPARE else 'live-10')  # narrative plus cleaned input; comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -139,32 +140,13 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'open_loops', 'market_cap_match', 'market_cap')
+           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+           'narrative_shown', 'narrative_held', 'agreed',
+           'seconds', 'read_at', 'headline', 'points', 'narrative', 'open_loops', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
     print(time.strftime('%H:%M:%S'), *parts, flush=True)
-
-
-def clean_document_text(doc: str, subject: str | None = None) -> tuple[str, list[str]]:
-    """Clean extracted text for model input, preserving the raw extraction in the separate text cache."""
-    raw = str(doc or '')
-    if not raw:
-        return raw, []
-    try:
-        cleaned, removed = clean_filing_text(raw, subject)
-    except Exception as exc:  # noqa: BLE001 -- a cleaner bug must never discard a filing
-        return raw, [f'text clean skipped: {type(exc).__name__}']
-    if not cleaned.strip():
-        # Never replace usable source text with an empty cleaner result.
-        return raw, ['text clean skipped: cleaner returned empty text']
-    saved = len(raw) - len(cleaned)
-    notes = []
-    if saved > 0:
-        rules = ', '.join(f'{name}={count}' for name, count in sorted(removed.items()) if count)
-        notes.append(f'text clean: {saved} chars removed' + (f' ({rules})' if rules else ''))
-    return cleaned, notes
 
 
 # --- lanes ---------------------------------------------------------------------------
@@ -910,7 +892,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
         raise ValueError('variant must be baseline or v2')
     ask = CARD_ASK_V2 if selected == 'v2' else CARD_ASK
     memory = str(row.get('_company_memory') or '').strip()
-    context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
+    context = ('Earlier verified company history may support explicitly historical claims; the current filing is the source for current-event claims. '
                'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
     name = str(row.get('company') or '').strip()
     who = (f'The listed company is {name} (exchange symbol {row.get("symbol")}): the headline uses its short name, never the symbol. '
@@ -931,7 +913,19 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'debt = size, coupon, tenure, secured or not; litigation or tax demand = forum, amount, stage, direction, and whether interest is excluded; '
              'rating = agency, action, rating and any change in the facilities; management = the person, role, effective date, reason if given; dividend = per share and record date. '
              'If the filing does not give a size, price or value, the card does not invent one.\n\n')
-    return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
+    narrative_rules = (
+        'Also return "narrative": up to 4 concise investor-useful claims, each as {"text": one sentence, "evidence": '
+        '[{"source": "current_filing" or "company_memory", "quote": exact source words}]}. Use persistent company memory '
+        'to connect previously disclosed management guidance with current results only when the measure, period and basis match; '
+        'surface material forward guidance explicitly disclosed in the current filing. A claim that a target was met, missed or '
+        'exceeded must cite both prior guidance and the current result, identify the same measure, and never guess or calculate a '
+        'margin unless the underlying figures are checked and comparable. Preserve approval/completion status, negation, cancellation, '
+        'named parties and direction. Every number must be backed by the union of cited quotes. Current-filing quotes must be verbatim '
+        'from DOCUMENT; company_memory quotes must be verbatim from the earlier verified history, including transcript quotes. '
+        'The restriction on forecasts means do not invent forecasts; it does not prohibit quoting disclosed management guidance. '
+        'Return no unsupported narrative; use [] if no useful verifiable connection exists.\n\n'
+    )
+    return p.replace('=== DOCUMENT ===', ask + context + rules + narrative_rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
     """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
@@ -1064,7 +1058,7 @@ def status_upgraded(text: str, quote: str) -> bool:
                                                 and not re.search(r'approv', q, re.IGNORECASE)))
 
 
-def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=()) -> dict | None:
+def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=(), names=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
     (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
     does not say approved where its quote says recommended. `more_quotes` is no longer used."""
@@ -1093,7 +1087,7 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
             r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
         reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
-    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc)
+    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc) or semantic_reason(text, quote, doc=doc, issuer_names=names)
     if why:
         reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
@@ -1620,7 +1614,7 @@ ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommen
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     extra = card_numbers(fields, metrics)
-    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra) for x in (out.get('points') or [])[:4]) if p]
+    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra, names=names) for x in (out.get('points') or [])[:4]) if p]
     for pt in points:   # Megamont, Bench Mark, Lloyds: a point never shows an unfilled "{amount}"
         if pt.get('shown') and '{' in str(pt.get('text') or ''):
             pt['text'], tok_reason = fill_tokens(pt['text'], fields, metrics)
@@ -1631,7 +1625,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         for pt in points:
             if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
                 pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
-    headline = check_words(out.get('headline'), doc, extra_numbers=extra)
+    headline = check_words(out.get('headline'), doc, extra_numbers=extra, names=names)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
         if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
@@ -1653,7 +1647,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
-        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra)       # the line under the headline, checked as the headline is
+        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra, names=names)       # the line under the headline, checked as the headline is
         if sub:
             sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
             if sub_reason:
@@ -2252,7 +2246,7 @@ def widen_bare_quotes(out, doc) -> int:
     return n
 
 
-def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
+def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='', memory='', source_url=None) -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
@@ -2268,6 +2262,12 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
+    narrative = validate_narrative(
+        out.get('narrative') if isinstance(out, dict) else None, doc, memory,
+        lambda text, quotes: numbers_backed(text, quotes,
+                                             unit_ok=lambda n, mult: s.table_unit(" ".join(quotes), mult, doc)),
+        current_url=source_url, issuer_names=names,
+        current_quote_check=lambda quote: s.quote_found(quote, doc))
     if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
             and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
         headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
@@ -2279,21 +2279,22 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
             f['shown'], f['reason'] = False, 'the filing withdraws this deal: these are the terms of the withdrawn proposal'
-    if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
+    if cat is None and not (fields or metrics or headline or points or any(n.get('shown') for n in narrative)):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
+            'headline': headline, 'points': points, 'narrative': narrative, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
 
 
-def read_one(lane: Lane, row: dict, doc: str) -> dict:
+def read_one(lane: Lane, row: dict, doc: str, prompt_doc: str | None = None) -> dict:
     """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
     checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
-    prompt = card_prompt(row, doc)
+    prompt = card_prompt(row, prompt_doc if prompt_doc is not None else doc)
     try:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
-    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '',
+                     memory=str(row.get('_company_memory') or ''), source_url=row.get('file_url'))
 
 
 def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.download) -> dict:
@@ -2325,7 +2326,8 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
             return {'ok': False, 'error': 'vision models busy (HTTP 429): the second reading of a card the text could not make safe is deferred'}
         return res
     text, model, secs, usage, note, imgs = got
-    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '',
+                     memory=str(row.get('_company_memory') or ''), source_url=row.get('file_url'))
     clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
     if clash:    # a figure only the subtitle states (Kross 30.6, Bright Outdoor 104) costs the subtitle, not the headline (owner: only improve)
         head_clash = vision.unsupported_numbers(res, vres, subtitle=False)
@@ -2383,7 +2385,7 @@ def batch_prompt(jobs: list[dict]) -> str:
         memory = str(row.get('_company_memory') or '').strip()
         blocks.append(f'=== FILING {k}: {row["exchange"]} {row.get("symbol") or row.get("company")}, subject: '
                       f'{row.get("subject")} ===\n' + (f'Earlier verified company history for this filing only (context, '
-                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job['doc']))
+                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job.get('prompt_doc') or job['doc']))
     return (f'You will read {len(jobs)} separate filings, each starting with a line "=== FILING k: ... ===". Treat every '
             'filing completely on its own: a word or number of one filing is never used for another, and each quote '
             'must come from the filing it belongs to. Answer with only JSON: {"results": [{"id": k, followed by '
@@ -2404,7 +2406,8 @@ def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
     for k, job in enumerate(jobs, 1):
         item = by_id.get(str(k))
         res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name,
-                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '') if item is not None else None)
+                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '',
+                              memory=str(job['row'].get('_company_memory') or ''), source_url=job['row'].get('file_url')) if item is not None else None)
     return res
 
 
@@ -2415,10 +2418,15 @@ def _sha(b) -> str:
 def finish(rec: dict) -> dict:
     """JSON columns and counts for the archive."""
     rec = dict(rec)
+    # Value counts remain fields + metrics; prose claims have their own audit counters.
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
-    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
-        sum(not m['shown'] for m in rec.get('metrics') or [])
-    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'open_loops'):
+    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + sum(not m['shown'] for m in rec.get('metrics') or [])
+    headline = rec.get('headline')
+    rec['headline_shown'] = int(isinstance(headline, dict) and bool(headline.get('shown')))
+    rec['headline_held'] = int(isinstance(headline, dict) and not bool(headline.get('shown')))
+    rec['narrative_shown'] = sum(bool(n.get('shown')) for n in rec.get('narrative') or [])
+    rec['narrative_held'] = sum(not bool(n.get('shown')) for n in rec.get('narrative') or [])
+    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'narrative', 'open_loops'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
     rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
     return {c: rec.get(c) for c in COLUMNS}
@@ -2466,7 +2474,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
         copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
-                                           'points', 'second_reader', 'second_category', 'second_fields', 'agreed')}
+                                           'points', 'narrative', 'headline_shown', 'headline_held', 'narrative_shown', 'narrative_held',
+                                           'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
@@ -2540,11 +2549,6 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
                     content_url = row['file_url']
                     file_sha = _sha(data)
-            # The durable filing_text cache remains raw. Clean only the working copy sent to AI and used for quote checks.
-            doc, cleaning_notes = clean_document_text(doc, row.get('subject'))
-            doc_notes.extend(cleaning_notes)
-            for note in cleaning_notes:
-                log(row.get('symbol'), note)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
@@ -2574,6 +2578,21 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',
                            'reason': f'{cut}; a document longer than the reader limit is not read in part'})
+        # Clean only extracted PDF/ZIP text for the model. Keep doc untouched for exact quote,
+        # numerical, hash, twin and audit checks. Structured XBRL facts are already normalized and
+        # must not pass through the layout cleaner.
+        prompt_doc = doc
+        if source_format != 'xbrl':
+            try:
+                cleaned_doc, removed = clean_filing_text(doc, row.get('subject'))
+                if cleaned_doc.strip():
+                    prompt_doc = cleaned_doc
+                    if removed:
+                        log(row.get('symbol'), 'text cleaning:', json.dumps(removed, ensure_ascii=False, sort_keys=True))
+                else:
+                    log(row.get('symbol'), 'text cleaning returned empty text; original text retained')
+            except Exception as exc:  # noqa: BLE001 -- cleaner failure never changes the source or loses a filing
+                log(row.get('symbol'), f'text cleaning failed; original text retained: {type(exc).__name__}: {exc}')
         with lock:
             twin = by_file.get(base['file_sha256']) or by_text.get(base['text_sha256'])
             if twin is None:
@@ -2585,7 +2604,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 waiting.setdefault(base['text_sha256'], [])
         if twin is not None:
             return copy_of(twin, base)
-        job.update(base=base, doc=doc, pdf=data if source_format == 'pdf' and data else None)
+        job.update(base=base, doc=doc, prompt_doc=prompt_doc, pdf=data if source_format == 'pdf' and data else None)
         return None
 
     def done_reading(job: dict, rec: dict | None) -> list:
@@ -2700,7 +2719,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        res = read_one(lane, job['row'], job['doc'])
+        res = read_one(lane, job['row'], job['doc'], job.get('prompt_doc'))
         finish_read(lane, job, vision_repair(job['row'], job['doc'], job.get('pdf'), res))
 
     def finish_read(lane: Lane, job: dict, res: dict):
@@ -2716,18 +2735,18 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
+                      'headline': res['headline'], 'points': res['points'], 'narrative': res.get('narrative', []), 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
                       'second_reader': res.get('second_reader')})
         with lock:
-            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
+            docs[rec['event_id']] = (job['row'], job['doc'], job.get('prompt_doc', job['doc']), res['fields'], res['metrics'])
         add_row(rec)
         for twin in done_reading(job, rec):
             add_row(copy_of(rec, twin))
         log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
 
     def cross_check(lane: Lane, rec: dict):
-        row, doc, fields, metrics = docs[rec['event_id']]
-        res = read_one(lane, row, doc)
+        row, doc, prompt_doc, fields, metrics = docs[rec['event_id']]
+        res = read_one(lane, row, doc, prompt_doc)
         if not res['ok']:
             return                          # a missing cross-check is not an error; the values stand as read
         agreed = {**agreement(fields, res['fields']), **metric_agreement(metrics, res['metrics'])}
@@ -2769,7 +2788,7 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
     if candidates is None or candidates.empty:
         return candidates
     out = candidates.copy()
-    cache, contexts = {}, []
+    cache, said_cache, contexts = {}, {}, []
     results = None
     try:   # our own XBRL results history: the company's earlier quarters, as verified context for results cards
         import io as _io
@@ -2795,6 +2814,35 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
             summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
             if summary:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
+        # Persistent management-call memory is quote-checked by scripts/management_said.py.
+        # Include only the latest call before this filing and its forward-looking statements.
+        subject = str(row.get('subject') or '')
+        # Transcript context is relevant to results/update cards only. Cache by ISIN so multiple filings
+        # from the same issuer do not trigger repeated R2 reads in this run.
+        if (isin and isin.lower() != 'nan'
+                and re.search(r'result|quarter|half.year|business update|monthly update|operational performance|operating update',
+                              subject, re.IGNORECASE)):
+            try:
+                if isin not in said_cache:
+                    said_raw = get(r2, f'archive/management_said/{isin}.json')
+                    try:
+                        said_cache[isin] = json.loads(said_raw) if said_raw else {}
+                    except (TypeError, ValueError):
+                        said_cache[isin] = {}
+                said_doc = said_cache[isin]
+                from insiders_clean import said as said_rules
+                calls = [call for call in (said_doc.get('calls') or [])
+                         if str(call.get('call_date') or call.get('filed') or '') < current_date]
+                if calls:
+                    call = sorted(calls, key=lambda item: str(item.get('call_date') or item.get('filed')))[-1]
+                    call_date = str(call.get('call_date') or call.get('filed') or '')[:10]
+                    for fact in said_rules.forward_facts(call.get('facts') or [])[:6]:
+                        quote = re.sub(r'\s+', ' ', str(fact.get('quote') or '')).strip()
+                        statement = re.sub(r'\s+', ' ', str(fact.get('statement') or '')).strip()
+                        if quote and statement:
+                            lines.append(f"- management call {call_date} [{call.get('event_id')}]: {statement} | exact transcript quote: {quote} (source: {call.get('source_url')})")
+            except Exception as exc:  # noqa: BLE001 -- historical transcript memory is optional
+                log(f'management-call memory not loaded for {row.get("symbol")}: {type(exc).__name__}')
         lines = xbrl_context_lines(results, isin, row.get('broadcast_at') or current_date) + lines
         contexts.append('\n'.join(lines))
     out['_company_memory'] = contexts
@@ -3163,15 +3211,50 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
              '| Outcome | Filings |', '|---|---|'] + [f'| {k} | {v} |' for k, v in st.items()]
-    lines += ['', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
+    narrative = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative.extend(n for n in items if isinstance(n, dict))
+    held_reasons = pd.Series([str(n.get('reason')) for n in narrative
+                              if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    headlines = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headlines.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headlines
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
+    lines += ['', f"Headlines: {sum(bool(h.get('shown')) for h in headlines)} shown; "
+              f"{sum(not bool(h.get('shown')) for h in headlines)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in headline_holds.items()) or 'none'}.",
+              f"AI narrative claims: {sum(bool(n.get('shown')) for n in narrative)} shown; "
+              f"{sum(not bool(n.get('shown')) for n in narrative)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in held_reasons.items()) or 'none'}.",
+              '', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
     lines += [f"| {m} | {e['calls']} | {', '.join(f'{k}: {v}' for k, v in e['by_status'].items())} | "
               f"{e['median_seconds_ok']} |" for m, e in use.get('models', {}).items()]
     read = [r for r in rows if r['status'] == 'read']
     if read:
-        lines += ['', '| Filing | Category | Reader | Seconds | Shown | Held back | Cross-check |',
-                  '|---|---|---|---|---|---|---|']
+        lines += ['', '| Filing | Category | Reader | Seconds | Values shown | Values held | Headline shown | Headline held | Narrative shown | Narrative held | Cross-check |',
+                  '|---|---|---|---|---|---|---|---|---|---|---|']
         lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('seconds')} | "
-                  f"{r.get('shown')} | {r.get('held')} | {r.get('second_reader') or ''} |" for r in read]
+                  f"{r.get('shown')} | {r.get('held')} | {r.get('headline_shown', 0)} | {r.get('headline_held', 0)} | "
+                  f"{r.get('narrative_shown', 0)} | {r.get('narrative_held', 0)} | {r.get('second_reader') or ''} |" for r in read]
     lines += [f'- note: {n}' for n in setup]
     return '\n'.join(lines) + '\n'
 
@@ -3350,8 +3433,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         old = load_archive(r2, READS_PREFIX, today)
         old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
         gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-                            'seconds', 'read_at', 'headline', 'points') if c in old.columns]
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+                            'narrative_shown', 'narrative_held', 'agreed', 'seconds', 'read_at', 'headline', 'points', 'narrative') if c in old.columns]
         to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
         current_candidates = None
         log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
@@ -3388,8 +3471,42 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
               for r in status_rows.to_dict('records')]
     rows += status
     use = usage(clients, lanes)
+    narrative_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative_items.extend(n for n in items if isinstance(n, dict))
+    narrative_holds = pd.Series([str(n.get('reason')) for n in narrative_items
+                                 if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    headline_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headline_items.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headline_items
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
     ledger.extra.update(counts=counts, outcomes={str(k): int(v) for k, v in
-                                                 pd.Series([r['status'] for r in rows]).value_counts().items()})
+                                                 pd.Series([r['status'] for r in rows]).value_counts().items()},
+                        headline_claims={'shown': sum(bool(h.get('shown')) for h in headline_items),
+                                         'held': sum(not bool(h.get('shown')) for h in headline_items),
+                                         'held_reasons': headline_holds},
+                        narrative_claims={'shown': sum(bool(n.get('shown')) for n in narrative_items),
+                                          'held': sum(not bool(n.get('shown')) for n in narrative_items),
+                                          'held_reasons': narrative_holds})
     ledger.write()
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
