@@ -920,6 +920,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
         'margin unless the underlying figures are checked and comparable. Preserve approval/completion status, negation, cancellation, '
         'named parties and direction. Every number must be backed by the union of cited quotes. Current-filing quotes must be verbatim '
         'from DOCUMENT; company_memory quotes must be verbatim from the earlier verified history, including transcript quotes. '
+        'The restriction on forecasts means do not invent forecasts; it does not prohibit quoting disclosed management guidance. '
         'Return no unsupported narrative; use [] if no useful verifiable connection exists.\n\n'
     )
     return p.replace('=== DOCUMENT ===', ask + context + rules + narrative_rules + '=== DOCUMENT ===', 1)
