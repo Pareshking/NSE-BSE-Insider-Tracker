@@ -2347,15 +2347,21 @@ def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
 
 
 def test_reader_cleans_prompt_text_but_keeps_material_figures_and_reports_savings():
-    raw = (
-        "ACME LIMITED\nRegistered Office: 12 Mill Road, Pune 411001\n"
-        "To,\nThe Manager - Listing Department\nBSE Limited\n"
-        "Phiroze Jeejeebhoy Towers, Dalal Street\nMumbai - 400 001\n\n"
-        "Subject: Allotment of 1,81,10,473 equity shares at Rs. 165.65 per share\n\n"
-        "The Board approved allotment on 13 October 2026.\n"
-        "Particulars                       FY26          FY25\n"
-        "Revenue from operations        1,234.50       1,100.25\n"
-    )
+    raw = """ACME LIMITED
+Registered Office: 12 Mill Road, Pune 411001
+CIN: L12345MH2001PLC000001
+To,
+The Manager - Listing Department
+BSE Limited
+Phiroze Jeejeebhoy Towers, Dalal Street
+Mumbai - 400 001
+
+Subject: Allotment of 1,81,10,473 equity shares at Rs. 165.65 per share
+
+The Board approved allotment on 13 October 2026.
+Particulars                       FY26          FY25
+Revenue from operations        1,234.50       1,100.25
+"""
     cleaned, notes = ar.clean_document_text(raw, 'Allotment of Securities')
     assert 'Phiroze Jeejeebhoy' not in cleaned and 'Registered Office:' not in cleaned
     assert 'The Board approved allotment on 13 October 2026.' in cleaned
