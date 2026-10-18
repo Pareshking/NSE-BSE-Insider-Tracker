@@ -60,8 +60,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-19' if PROMPT_VARIANT == 'v2' else
-                  'live-10-ab' if PROMPT_COMPARE else 'live-10')  # cleaned input; comparison reads are dry-run only
+PROMPT_VERSION = ('live-20' if PROMPT_VARIANT == 'v2' else
+                  'live-10-ab' if PROMPT_COMPARE else 'live-10')  # narrative plus cleaned input; comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
