@@ -71,11 +71,11 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
     # listing status), while the same filing establishes that the exemption is
     # only about the Regulation 27 report. Use the full source document to detect
     # that scope; never let a partial headline quote hide a scope mismatch.
-    scope_proof = f"{proof}\\n{doc}"
+    scope_proof = f"{proof}\n{doc}"
     scope_proof_folded = scope_proof.casefold()
     evidence_is_specific = bool(
-        re.search(r"\\bcorporate\\s+governance\\s+report\\b", scope_proof_folded)
-        or re.search(r"\\breg(?:ulation)?\\.?\\s*27\\b", scope_proof_folded)
+        re.search(r"\bcorporate\s+governance\s+report\b", scope_proof_folded)
+        or re.search(r"\breg(?:ulation)?\.?\s*27\b", scope_proof_folded)
     )
     if broad_governance_exemption and evidence_is_specific and not claim_scoped:
         return "the claim drops the specific Corporate Governance Report/Regulation 27 scope and overstates the exemption as covering corporate governance generally"
