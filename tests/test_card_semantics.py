@@ -178,3 +178,15 @@ def test_narrative_keeps_causal_explanation_when_quote_supports_it():
         "", lambda text, quotes: True,
     )
     assert out[0]["shown"]
+
+
+def test_record_revenue_achievement_is_not_misclassified_as_guidance():
+    out = cs.validate_narrative(
+        [{"text": "Rossari Biotech achieved record quarterly revenue of Rs. 697.6 crores in Q2 FY27, growing 19.0% year-on-year.",
+          "evidence": [{"source": "current_filing",
+                        "quote": "Highest-ever quarterly revenue of Rs. 697.6 crores, a 19.0% growth on y-o-y basis"}]}],
+        "Highest-ever quarterly revenue of Rs. 697.6 crores, a 19.0% growth on y-o-y basis",
+        "", lambda text, quotes: True,
+        issuer_names=("Rossari Biotech",),
+    )
+    assert out[0]["shown"]
