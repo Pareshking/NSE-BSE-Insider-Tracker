@@ -542,16 +542,43 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     insiders = getattr(ctx, 'eligible', None)
     results = getattr(ctx, 'results', None)
 
+    # Index the shared tables once per render. Previously before_this filtered and sorted the entire
+    # announcement/insider/results DataFrames separately for every card, making render cost scale as
+    # cards × all historical rows. Group slices are reused for every card of the same company.
+    empty_reads = reads.iloc[0:0] if reads is not None else None
+    empty_insiders = insiders.iloc[0:0] if insiders is not None else None
+    empty_results = results.iloc[0:0] if results is not None else None
+    reads_by_isin, reads_by_symbol, insiders_by_isin, results_by_isin = {}, {}, {}, {}
+    if reads is not None and not reads.empty:
+        if 'isin' in reads:
+            valid = reads[reads['isin'].notna()]
+            reads_by_isin = {str(k): g for k, g in valid.groupby(valid['isin'].astype(str), sort=False)}
+        if 'symbol' in reads:
+            valid = reads[reads['symbol'].notna()]
+            reads_by_symbol = {str(k): g for k, g in valid.groupby(valid['symbol'].astype(str), sort=False)}
+    if insiders is not None and not insiders.empty and 'isin' in insiders:
+        valid = insiders[insiders['isin'].notna()]
+        insiders_by_isin = {str(k): g for k, g in valid.groupby(valid['isin'].astype(str), sort=False)}
+    if results is not None and not results.empty and 'isin' in results:
+        valid = results[results['isin'].notna()]
+        results_by_isin = {str(k): g for k, g in valid.groupby(valid['isin'].astype(str), sort=False)}
+
     def card(x):
-        p = by_isin.get(x.get('isin'))
+        isin, symbol = x.get('isin'), x.get('symbol')
+        p = by_isin.get(isin)
         box = ''
-        if x.get('category') in ('financial_results', 'business_update') and x.get('isin'):
+        if x.get('category') in ('financial_results', 'business_update') and isin:
             try:
                 from data import store
-                box = said_html(x, store.said(x.get('isin')))
+                box = said_html(x, store.said(isin))
             except Exception:   # the call words are an extra: a card never fails for them
                 box = ''
-        return card_html(x, p, history, before_this(x, reads, p, holdings.get(x.get('isin')), insiders, results), box)
+        company_reads = (reads_by_isin.get(str(isin), empty_reads) if isin and 'isin' in (reads.columns if reads is not None else ())
+                         else reads_by_symbol.get(str(symbol), empty_reads))
+        company_insiders = insiders_by_isin.get(str(isin), empty_insiders) if isin else empty_insiders
+        company_results = results_by_isin.get(str(isin), empty_results) if isin else empty_results
+        return card_html(x, p, history,
+                         before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 
