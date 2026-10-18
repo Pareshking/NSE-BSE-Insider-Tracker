@@ -44,11 +44,11 @@ def test_narrative_rejects_quote_not_in_memory():
 
 
 def test_guidance_claim_requires_both_sources_and_checks_direction():
-    memory = '- 2026-04-20: management expects consolidated EBITDA margin to reach 18% (source: https://example.com/call)'
+    memory = '- 2026-04-20: management expects consolidated EBITDA margin to reach 18% in Q2 FY27 (source: https://example.com/call)'
     doc = "Consolidated EBITDA margin for the quarter was 16%."
     out = cs.validate_narrative(
         [{"text": "The company achieved its 18% EBITDA margin target at 16%.", "evidence": [
-            {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18%"},
+            {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18% in Q2 FY27"},
             {"source": "current_filing", "quote": "Consolidated EBITDA margin for the quarter was 16%."}]}],
         doc, memory, lambda text, quotes: True,
     )
@@ -68,11 +68,11 @@ def test_narrative_requires_number_backing():
 
 
 def test_valid_margin_guidance_comparison_is_allowed():
-    memory = '- management call 2026-04-20: management expects consolidated EBITDA margin to reach 18% (source: https://example.com/call)'
+    memory = '- management call 2026-04-20: management expects consolidated EBITDA margin to reach 18% in Q2 FY27 (source: https://example.com/call)'
     doc = "Consolidated EBITDA margin for Q2 FY27 was 19%."
     out = cs.validate_narrative(
         [{"text": "The company exceeded its 18% EBITDA margin target at 19%.", "evidence": [
-            {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18%"},
+            {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18% in Q2 FY27"},
             {"source": "current_filing", "quote": "Consolidated EBITDA margin for Q2 FY27 was 19%."}]}],
         doc, memory, lambda text, quotes: True,
     )
