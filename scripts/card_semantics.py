@@ -74,6 +74,23 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
     if broad_governance_exemption and evidence_is_specific and not claim_scoped:
         return "the claim drops the specific Corporate Governance Report/Regulation 27 scope and overstates the exemption as covering corporate governance generally"
 
+    # A causal explanation is a separate claim. Do not show it merely because the
+    # headline number or the event itself is supported by a different part of the quote.
+    causal = re.search(
+        r"\b(?:driven\s+by|due\s+to|because\s+of|attributed\s+to|reflecting|led\s+by|supported\s+by)\s+([^.;:]{4,140})",
+        claim, re.I,
+    )
+    if causal:
+        stop = {"about", "after", "also", "among", "and", "are", "been", "being", "because", "by",
+                "due", "for", "from", "have", "into", "its", "more", "not", "of", "on", "over",
+                "that", "the", "their", "them", "there", "these", "this", "those", "through", "to",
+                "was", "were", "with", "within"}
+        cause_terms = {w for w in re.findall(r"[a-z]{4,}", causal.group(1).casefold()) if w not in stop}
+        proof_terms = set(re.findall(r"[a-z]{4,}", q))
+        missing = sorted(cause_terms - proof_terms)
+        if len(cause_terms) >= 2 and len(missing) >= 2:
+            return "the causal explanation is not supported by the cited quote: " + ", ".join(missing[:4])
+
     if (_NEGATIVE_EVENT.search(proof) or _NEGATED_ACTION.search(proof)) and _POSITIVE_EVENT.search(claim) and not _CANCEL_WORD.search(claim):
         return "the quote negates or reverses the event, but the claim states a positive action"
     if _NEGATIVE_EVENT.search(claim) or _NEGATED_ACTION.search(claim):
