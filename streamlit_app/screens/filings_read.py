@@ -535,12 +535,17 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     if reads is not None and not reads.empty:
         ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable')
         if 'isin' in ordered_reads:
-            for key, group in ordered_reads[ordered_reads['isin'].notna()].groupby('isin', sort=False):
-                read_index[('isin', str(key))] = group.copy()
-        if 'symbol' in ordered_reads:
-            for key, group in ordered_reads.groupby('symbol', sort=False, dropna=False):
-                if pd.notna(key):
-                    read_index[('symbol', str(key))] = group.copy()
+            isins = ordered_reads['isin']
+            has_isin = isins.notna() & isins.astype(str).str.strip().ne('')
+            company_keys = pd.Series(
+                np.where(has_isin, 'isin:' + isins.astype(str), 'symbol:' + ordered_reads['symbol'].astype(str)),
+                index=ordered_reads.index)
+        else:
+            company_keys = 'symbol:' + ordered_reads['symbol'].astype(str)
+        # One index per company identity (ISIN where available, otherwise symbol), not two
+        # full copies of the archive. The key rule matches before_this()'s prior identity selection.
+        for key, group in ordered_reads.groupby(company_keys, sort=False):
+            read_index[str(key)] = group
 
     insider_index = {}
     if insiders is not None and not insiders.empty and 'isin' in insiders:
@@ -562,7 +567,7 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
             except Exception:   # the call words are an extra: a card never fails for them
                 box = ''
         isin = x.get('isin')
-        key = ('isin', str(isin)) if pd.notna(isin) and str(isin).strip() else ('symbol', str(x.get('symbol')))
+        key = f'isin:{isin}' if pd.notna(isin) and str(isin).strip() else f'symbol:{x.get("symbol")}'
         company_reads = read_index.get(key, pd.DataFrame(columns=reads.columns if reads is not None else []))
         has_isin = pd.notna(isin) and bool(str(isin).strip())
         company_insiders = insider_index.get(str(isin)) if has_isin else None
