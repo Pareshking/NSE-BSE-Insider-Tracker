@@ -346,9 +346,9 @@ def test_cards_html_preindexes_company_history_instead_of_passing_the_full_archi
     observed = []
     original = fr.before_this
 
-    def spy(item, company_reads, price, holding, insiders, results=None):
-        observed.append((len(company_reads), company_reads.attrs.get('_before_this_sorted', False)))
-        return original(item, company_reads, price, holding, insiders, results)
+    def spy(item, company_reads, price, holding, insiders, results=None, reads_sorted=False):
+        observed.append((len(company_reads), reads_sorted))
+        return original(item, company_reads, price, holding, insiders, results, reads_sorted=reads_sorted)
 
     monkeypatch.setattr(fr, 'before_this', spy)
     html = fr.cards_html(cards, reads, ctx=SimpleNamespace())
