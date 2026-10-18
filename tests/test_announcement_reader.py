@@ -2353,3 +2353,24 @@ def test_recurring_production_chain_enables_bounded_gemini_batching():
     reader_source = Path(ar.__file__).read_text()
     assert "BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'" in reader_source
     assert ar.BATCH_MAX <= 4
+
+def test_pdf_cleaning_changes_only_the_model_input_and_keeps_raw_quote_validation(monkeypatch):
+    raw_doc = ('To,\\nThe Manager - Listing Department\\nBSE Limited\\n'
+               'Phiroze Jeejeebhoy Towers, Dalal Street\\nMumbai - 400 001\\n\\n' + DOC)
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (raw_doc, []))
+    lanes, client = _gemini_lane([QIP])
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda url: b'pdf bytes', idle_wait=0.01)
+    assert len(rows) == 1 and rows[0]['status'] == 'read'
+    assert 'Phiroze Jeejeebhoy Towers' not in client.asked[0]
+    assert rows[0]['text_chars'] == len(raw_doc)
+    assert rows[0]['text_sha256'] == ar._sha(re.sub(r'\\s+', ' ', raw_doc).strip())
+
+
+def test_structured_xbrl_text_is_not_passed_through_pdf_layout_cleaner(monkeypatch):
+    called = []
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, ['xbrl: standalone XML; 12 structured facts']))
+    monkeypatch.setattr(ar, 'clean_filing_text', lambda text, subject=None: (called.append(text) or text, {}))
+    lanes, _ = _gemini_lane([QIP])
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda url: b'<xbrl/>', idle_wait=0.01)
+    assert len(rows) == 1 and rows[0]['status'] == 'read'
+    assert called == []
