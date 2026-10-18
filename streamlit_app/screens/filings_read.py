@@ -443,6 +443,7 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
     out, isin, sym = [], r.get('isin'), r.get('symbol')
+    has_isin = pd.notna(isin) and bool(str(isin).strip()) and str(isin).strip().lower() not in ('nan', 'none')
     at = pd.to_datetime(r.get('broadcast_at'), errors='coerce', utc=True)
     fields = {f['name']: f for f in _json(r.get('fields'), []) if f.get('shown')}
     price = price or {}
@@ -486,7 +487,7 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
             pl = (f', <b>{esc(kit.pct(pledge, 1))}</b> of it pledged' if pledge is not None and pledge == pledge and pledge > 0
                   else ', none of it pledged' if pledge == 0 else '')
             out.append(f'Promoters hold <b>{esc(kit.pct(pct, 1))}</b>{esc(q)}{pl}.')
-    if insiders is not None and not insiders.empty and isin:
+    if insiders is not None and not insiders.empty and has_isin:
         t = insiders[(insiders['isin'] == isin) & (insiders['seen'] >= (at.tz_convert(None).normalize() if pd.notna(at) else
                      pd.Timestamp.now()) - np.timedelta64(INSIDER_DAYS, 'D'))]
         for side, word in (('BUY', 'bought'), ('SELL', 'sold')):
@@ -497,7 +498,7 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
     if reads is not None and not reads.empty and pd.notna(at):
         # cards_html passes a per-company slice sorted newest-first once for the whole render.
         # Keep this function independently usable by tests and other callers with the old full-frame input.
-        e = reads[((reads['isin'] == isin) if isin and 'isin' in reads else (reads['symbol'] == sym))
+        e = reads[((reads['isin'] == isin) if has_isin and 'isin' in reads else (reads['symbol'] == sym))
                   & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
                   & reads['event_id'].ne(r.get('event_id'))]
         t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
@@ -571,7 +572,7 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         company_reads = read_index.get(key, pd.DataFrame(columns=reads.columns if reads is not None else []))
         has_isin = pd.notna(isin) and bool(str(isin).strip())
         company_insiders = insider_index.get(str(isin)) if has_isin else None
-        company_results = results_index.get(str(isin)) if has_isin else results
+        company_results = results_index.get(str(isin)) if has_isin else None
         return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results, reads_sorted=True), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
