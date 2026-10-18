@@ -127,7 +127,8 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     return None
 
 
-def validate_narrative(items, doc: str, memory: str, number_check, current_url: str | None = None) -> list[dict]:
+def validate_narrative(items, doc: str, memory: str, number_check, current_url: str | None = None,
+                       issuer_names=()) -> list[dict]:
     """Validate each narrative claim against verbatim current-filing or persistent-memory evidence."""
     if not isinstance(items, list):
         return []
@@ -163,7 +164,7 @@ def validate_narrative(items, doc: str, memory: str, number_check, current_url: 
         if evidence and not number_check(text, quotes):
             errors.append("a number in the narrative is not backed by its cited evidence")
         if evidence:
-            why = semantic_reason(text, " ".join(quotes))
+            why = semantic_reason(text, " ".join(quotes), issuer_names=issuer_names)
             if why:
                 errors.append(why)
             compare_why = _guidance_comparison_reason(text, evidence)
