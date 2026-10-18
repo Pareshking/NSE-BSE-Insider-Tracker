@@ -59,7 +59,7 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-18' if PROMPT_VARIANT == 'v2' else
+PROMPT_VERSION = ('live-19' if PROMPT_VARIANT == 'v2' else
                   'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
@@ -890,7 +890,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
         raise ValueError('variant must be baseline or v2')
     ask = CARD_ASK_V2 if selected == 'v2' else CARD_ASK
     memory = str(row.get('_company_memory') or '').strip()
-    context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
+    context = ('Earlier verified company history may support explicitly historical claims; the current filing is the source for current-event claims. '
                'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
     name = str(row.get('company') or '').strip()
     who = (f'The listed company is {name} (exchange symbol {row.get("symbol")}): the headline uses its short name, never the symbol. '
