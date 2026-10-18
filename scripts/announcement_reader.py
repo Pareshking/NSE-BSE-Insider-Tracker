@@ -63,6 +63,9 @@ PROMPT_VERSION = ('live-18' if PROMPT_VARIANT == 'v2' else
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
+HISTORY_KEY = 'clean/current/announcement_reads_history.parquet'   # reads older than READ_DAYS, for the site's "From the start" period
+HISTORY_FROM = date(2025, 10, 8)   # product window start (insiders_clean/pipeline.py)
+SHOWN_STATUSES = ('read', 'same_file', 'same_text')
 READ_DAYS = 60
 COLLECT_DAYS = 2              # yesterday too: a filing made public after the nightly collection (22:45) and
                               # before midnight is read the same night; BSE stops at its first known page
@@ -2887,6 +2890,43 @@ def write(r2, rows: list[dict], run_date: str, today: date) -> int:
     return added
 
 
+def history_slim(arch: pd.DataFrame, today: date) -> pd.DataFrame:
+    """Reads older than READ_DAYS for the site's full-history view. A row the site would show keeps every column;
+    any other keeps its id, date, status and category, which is all the coverage line counts."""
+    if arch is None or arch.empty:
+        return pd.DataFrame()
+    day = pd.to_datetime(arch['broadcast_date'], errors='coerce')
+    old = arch[day < pd.Timestamp(today - timedelta(days=READ_DAYS))].copy()
+    if old.empty:
+        return old
+    shown = (old['status'].isin(SHOWN_STATUSES) & old['category'].notna() & old['category'].ne('routine')
+             & pd.to_numeric(old['shown'], errors='coerce').fillna(0).gt(0))
+    keep = [c for c in ('event_id', 'broadcast_date', 'status', 'category') if c in old]
+    other = [c for c in old.columns if c not in keep]
+    old.loc[~shown, other] = None
+    return old.drop_duplicates('event_id', keep='last').reset_index(drop=True)
+
+
+def write_history(r2, today: date) -> int:
+    """clean/current/announcement_reads_history.parquet from every monthly reads archive since HISTORY_FROM.
+    Once a run, not with every save: it reads all months. Returns the rows written."""
+    from clean_writer import put_parquet, read_parquet
+    frames, d = [], HISTORY_FROM.replace(day=1)
+    while d <= today:
+        f = read_parquet(r2, f'{READS_PREFIX}year={d.year}/month={d.month:02d}.parquet')
+        if f is not None and not f.empty:
+            frames.append(f)
+        d = (d.replace(day=28) + timedelta(days=4)).replace(day=1)
+    if not frames:
+        return 0
+    out = history_slim(pd.concat(frames, ignore_index=True), today)
+    if out.empty:
+        return 0
+    out, _ = apply_holds(out, holds_of(HOLDS_FILE.read_text(encoding='utf-8')) if HOLDS_FILE.exists() else {})
+    put_parquet(r2, HISTORY_KEY, out)
+    return len(out)
+
+
 class Saver:
     """Rows written to R2 as the run reads them (at most one write every `every` seconds), so a filing reaches
     the site minutes after it is read and a run cut short keeps what it has read. A write that fails keeps its
@@ -3337,6 +3377,12 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     else:
         log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
             f'live queue counts={json.dumps(live_counts, default=str)}')
+
+    if r2 is not None and not args.dry_run:
+        try:
+            log(f'reads history for the site: {write_history(r2, today)} rows (older than {READ_DAYS} days)')
+        except Exception as exc:  # noqa: BLE001 -- the site's history view never costs a run
+            log(f'reads history not written: {type(exc).__name__}: {exc}'[:300])
 
     ledger.extra['added'] = saver.added
     return 0

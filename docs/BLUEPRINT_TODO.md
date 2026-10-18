@@ -365,3 +365,7 @@ What is stored for context: every read in the reads archive (headline, fields, m
 - **Limits (written down, not hidden):** the pairing knows four measures; growth, deal and demand statements stay unpaired. A transcript not yet in the text cache waits. A fact's topic and speaker are the model's, only the quote and its numbers are checked. The page block appears only where a transcript has been read: at first TCS-type large companies with a Q2 result, filling night by night.
 - **Open:** pair more measures (revenue growth against a stated growth, TCV); read investor presentations the same way; a "said vs delivered" table for the company page; the Q2 call read when it is filed, to pair next quarter; confirm the first overnight run saved files (`archive/management_said/`).
 
+
+### 12.28 History on the site (18 Oct 2026)
+- Old reads sat in `archive/announcement_reads/` only; the site's table holds 60 days. The reader now writes `clean/current/announcement_reads_history.parquet` once a run (reads older than 60 days since 8 Oct 2025; shown rows whole, other rows id/date/status/category for the coverage line). Filings read page has a "From the start" period that loads it; the log line "reads history for the site: N rows" gives the count.
+- Open: if the history table grows too large for the site's memory, split it by month.

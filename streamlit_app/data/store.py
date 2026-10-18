@@ -20,7 +20,7 @@ TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings'
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
 TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
-TABLES += ('announcement_reads',)   # filings read by scripts/announcement_reader.py, values checked
+TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 
 
 def _local() -> Path | None:

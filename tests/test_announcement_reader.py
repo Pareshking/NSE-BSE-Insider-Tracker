@@ -2293,3 +2293,16 @@ def test_subtitle_only_clash_does_not_hold_the_headline():
 def test_auditor_review_headline_is_not_a_results_headline():
     assert ar.AUDITOR_HEADLINE.search('Statutory auditors issued an unmodified review report on the financial results')
     assert not ar.AUDITOR_HEADLINE.search('Kross Q2 FY27 results: revenue ₹235 Cr; profit after tax ₹19.7 Cr')
+
+
+def test_history_table_keeps_old_shown_rows_whole_and_counts_the_rest():
+    today = date(2026, 10, 18)
+    arch = pd.DataFrame([
+        {'event_id': 'a', 'broadcast_date': '2026-01-17', 'status': 'read', 'category': 'order_win', 'shown': 1, 'headline': 'H'},
+        {'event_id': 'b', 'broadcast_date': '2026-01-17', 'status': 'no_text', 'category': None, 'shown': 0, 'headline': 'X'},
+        {'event_id': 'c', 'broadcast_date': '2026-10-10', 'status': 'read', 'category': 'order_win', 'shown': 1, 'headline': 'new'},
+    ])
+    out = ar.history_slim(arch, today).set_index('event_id')
+    assert list(out.index) == ['a', 'b']                           # c is inside the live table's 60 days
+    assert out.loc['a', 'headline'] == 'H'
+    assert pd.isna(out.loc['b', 'headline']) and out.loc['b', 'status'] == 'no_text'
