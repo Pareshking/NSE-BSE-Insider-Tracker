@@ -1651,7 +1651,9 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                                         category=str(out.get('category') or ''), doc=doc, issuer_names=names)
         if semantic_hold:
             headline['shown'] = False
-            headline['reason'] = '; '.join(x for x in (headline.get('reason'), semantic_hold) if x)
+            existing_reason = str(headline.get('reason') or '')
+            if semantic_hold not in existing_reason:
+                headline['reason'] = '; '.join(x for x in (existing_reason, semantic_hold) if x)
         sub = check_words(out.get('subtitle'), doc, extra_numbers=extra, names=names)       # the line under the headline, checked as the headline is
         if sub:
             sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
