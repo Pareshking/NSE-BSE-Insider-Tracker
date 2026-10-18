@@ -118,3 +118,18 @@ def test_clean_with_lines_names_the_removed_lines_by_rule():
     from insiders_clean.text_clean import clean_with_lines
     _, _, lines = clean_with_lines(LETTER, 'Allotment of Securities')
     assert any('Phiroze' in x for x in lines['exchange address']) and any('CIN:' in x for x in lines['letterhead contacts'])
+
+
+def test_exchange_terms_in_the_body_are_not_removed_as_letterhead():
+    body = (
+        "ACME LIMITED\\nTo,\\nThe Manager - Listing Department\\nBSE Limited\\n"
+        "Phiroze Jeejeebhoy Towers, Dalal Street\\nMumbai - 400 001\\n"
+        "Subject: Material litigation update\\n\\n"
+        "The Listing Department issued an order against the company.\\n"
+        "The company also leases an office on Dalal Street.\\n"
+    )
+    text, removed = clean(body, 'Material litigation update')
+    assert 'Listing Department issued an order' in text
+    assert 'leases an office on Dalal Street' in text
+    assert 'Phiroze Jeejeebhoy Towers' not in text
+    assert 'Listing Department' in ' '.join(removed.get('exchange address', []))
