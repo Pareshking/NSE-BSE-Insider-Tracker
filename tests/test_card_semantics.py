@@ -87,3 +87,29 @@ def test_forward_fy_guidance_can_be_shown_without_claiming_achievement():
         doc, "", lambda text, quotes: True,
     )
     assert out[0]["shown"]
+
+
+def test_annual_target_is_not_judged_against_an_earlier_quarter():
+    memory = '- management call 2026-04-20: management targets consolidated EBITDA margin of 28% by FY28 (source: https://example.com/call)'
+    doc = "Consolidated EBITDA margin for Q2 FY27 was 19%."
+    out = cs.validate_narrative(
+        [{"text": "The company missed its FY28 EBITDA margin target of 28% at 19%.", "evidence": [
+            {"source": "company_memory", "quote": "management targets consolidated EBITDA margin of 28% by FY28"},
+            {"source": "current_filing", "quote": "Consolidated EBITDA margin for Q2 FY27 was 19%."}]}],
+        doc, memory, lambda text, quotes: True,
+    )
+    assert not out[0]["shown"]
+    assert "different fiscal years" in out[0]["reason"]
+
+
+def test_guidance_comparison_is_held_when_accounting_basis_differs():
+    memory = '- management call 2026-04-20: management expects consolidated EBITDA margin to reach 18% in Q2 FY27 (source: https://example.com/call)'
+    doc = "Standalone EBITDA margin for Q2 FY27 was 19%."
+    out = cs.validate_narrative(
+        [{"text": "The company exceeded its 18% EBITDA margin target at 19%.", "evidence": [
+            {"source": "company_memory", "quote": "management expects consolidated EBITDA margin to reach 18% in Q2 FY27"},
+            {"source": "current_filing", "quote": "Standalone EBITDA margin for Q2 FY27 was 19%."}]}],
+        doc, memory, lambda text, quotes: True,
+    )
+    assert not out[0]["shown"]
+    assert "basis" in out[0]["reason"]
