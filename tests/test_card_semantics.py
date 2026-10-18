@@ -65,3 +65,25 @@ def test_narrative_requires_number_backing():
     )
     assert not out[0]["shown"]
     assert "number" in out[0]["reason"]
+
+
+def test_valid_margin_guidance_comparison_is_allowed():
+    memory = '- management call 2026-04-20: management expects EBITDA margin to reach 18% (source: https://example.com/call)'
+    doc = "EBITDA margin for Q2 FY27 was 19%."
+    out = cs.validate_narrative(
+        [{"text": "The company exceeded its 18% EBITDA margin target at 19%.", "evidence": [
+            {"source": "company_memory", "quote": "management expects EBITDA margin to reach 18%"},
+            {"source": "current_filing", "quote": "EBITDA margin for Q2 FY27 was 19%."}]}],
+        doc, memory, lambda text, quotes: True,
+    )
+    assert out[0]["shown"]
+
+
+def test_forward_fy_guidance_can_be_shown_without_claiming_achievement():
+    doc = "Management targets an EBITDA margin of 28% by FY28."
+    out = cs.validate_narrative(
+        [{"text": "Management has set a FY28 EBITDA margin target of 28%.", "evidence": [
+            {"source": "current_filing", "quote": doc}]}],
+        doc, "", lambda text, quotes: True,
+    )
+    assert out[0]["shown"]
