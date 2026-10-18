@@ -2260,7 +2260,7 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
     narrative = validate_narrative(out.get('narrative') if isinstance(out, dict) else None, doc, memory,
-                                   lambda text, quotes: numbers_backed(text, quotes), current_url=source_url)
+                                   lambda text, quotes: numbers_backed(text, quotes), current_url=source_url, issuer_names=names)
     if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
             and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
         headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
