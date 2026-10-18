@@ -154,3 +154,27 @@ def test_regulation_27_scope_is_preserved_when_headline_names_it():
         "Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015.",
         issuer_names=("ANB Metal Cast",),
     ) is None
+
+
+def test_narrative_holds_unsupported_causal_explanation():
+    out = cs.validate_narrative(
+        [{"text": "Rossari Biotech achieved record quarterly revenue of Rs. 698 crores, driven by domestic business momentum and international expansion.",
+          "evidence": [{"source": "current_filing",
+                        "quote": "We delivered robust consolidated growth of 19% YoY in Q2FY27, achieving a record quarterly revenue of Rs. 698 crores."}]}],
+        "We delivered robust consolidated growth of 19% YoY in Q2FY27, achieving a record quarterly revenue of Rs. 698 crores.",
+        "", lambda text, quotes: True,
+        issuer_names=("Rossari Biotech",),
+    )
+    assert not out[0]["shown"]
+    assert "causal explanation" in out[0]["reason"]
+
+
+def test_narrative_keeps_causal_explanation_when_quote_supports_it():
+    out = cs.validate_narrative(
+        [{"text": "Revenue rose due to stronger domestic demand and international expansion.",
+          "evidence": [{"source": "current_filing",
+                        "quote": "Revenue rose due to stronger domestic demand and international expansion."}]}],
+        "Revenue rose due to stronger domestic demand and international expansion.",
+        "", lambda text, quotes: True,
+    )
+    assert out[0]["shown"]
