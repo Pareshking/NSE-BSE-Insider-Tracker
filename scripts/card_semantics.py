@@ -129,7 +129,10 @@ def _contains(haystack: str, needle: str) -> bool:
 
 def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     """Require both historical guidance and current evidence; check simple percentage margin comparisons arithmetically."""
-    if not _RESULT_VERB.search(text):
+    # Words like "achieved a record" describe a reported result; they do not
+    # claim that prior guidance was met. Run the comparison only when the claim
+    # explicitly refers to a target, guidance, outlook, forecast, or commitment.
+    if not _RESULT_VERB.search(text) or not re.search(r"\b(?:guidance|targets?|outlook|forecast|goal|commitment)\b", text, re.I):
         return None
     memory_quotes = [str(e.get("quote") or "") for e in evidence if e.get("source") == "company_memory"]
     current_quotes = [str(e.get("quote") or "") for e in evidence if e.get("source") == "current_filing"]
