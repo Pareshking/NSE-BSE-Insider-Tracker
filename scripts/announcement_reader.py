@@ -52,6 +52,7 @@ sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
 from card_semantics import semantic_reason, validate_narrative  # noqa: E402 -- deterministic checks for AI-authored card text
+from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- layout-only cleaning before a model sees PDF text
 import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -2260,8 +2261,12 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
-    narrative = validate_narrative(out.get('narrative') if isinstance(out, dict) else None, doc, memory,
-                                   lambda text, quotes: numbers_backed(text, quotes), current_url=source_url, issuer_names=names)
+    narrative = validate_narrative(
+        out.get('narrative') if isinstance(out, dict) else None, doc, memory,
+        lambda text, quotes: numbers_backed(text, quotes,
+                                             unit_ok=lambda n, mult: s.table_unit(" ".join(quotes), mult, doc)),
+        current_url=source_url, issuer_names=names,
+        current_quote_check=lambda quote: s.quote_found(quote, doc))
     if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
             and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
         headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
@@ -2279,10 +2284,10 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
             'headline': headline, 'points': points, 'narrative': narrative, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
 
 
-def read_one(lane: Lane, row: dict, doc: str) -> dict:
+def read_one(lane: Lane, row: dict, doc: str, prompt_doc: str | None = None) -> dict:
     """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
     checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
-    prompt = card_prompt(row, doc)
+    prompt = card_prompt(row, prompt_doc if prompt_doc is not None else doc)
     try:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
@@ -2379,7 +2384,7 @@ def batch_prompt(jobs: list[dict]) -> str:
         memory = str(row.get('_company_memory') or '').strip()
         blocks.append(f'=== FILING {k}: {row["exchange"]} {row.get("symbol") or row.get("company")}, subject: '
                       f'{row.get("subject")} ===\n' + (f'Earlier verified company history for this filing only (context, '
-                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job['doc']))
+                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job.get('prompt_doc') or job['doc']))
     return (f'You will read {len(jobs)} separate filings, each starting with a line "=== FILING k: ... ===". Treat every '
             'filing completely on its own: a word or number of one filing is never used for another, and each quote '
             'must come from the filing it belongs to. Answer with only JSON: {"results": [{"id": k, followed by '
@@ -2566,6 +2571,21 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',
                            'reason': f'{cut}; a document longer than the reader limit is not read in part'})
+        # Clean only extracted PDF/ZIP text for the model. Keep doc untouched for exact quote,
+        # numerical, hash, twin and audit checks. Structured XBRL facts are already normalized and
+        # must not pass through the layout cleaner.
+        prompt_doc = doc
+        if source_format != 'xbrl':
+            try:
+                cleaned_doc, removed = clean_filing_text(doc, row.get('subject'))
+                if cleaned_doc.strip():
+                    prompt_doc = cleaned_doc
+                    if removed:
+                        log(row.get('symbol'), 'text cleaning:', json.dumps(removed, ensure_ascii=False, sort_keys=True))
+                else:
+                    log(row.get('symbol'), 'text cleaning returned empty text; original text retained')
+            except Exception as exc:  # noqa: BLE001 -- cleaner failure never changes the source or loses a filing
+                log(row.get('symbol'), f'text cleaning failed; original text retained: {type(exc).__name__}: {exc}')
         with lock:
             twin = by_file.get(base['file_sha256']) or by_text.get(base['text_sha256'])
             if twin is None:
@@ -2577,7 +2597,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 waiting.setdefault(base['text_sha256'], [])
         if twin is not None:
             return copy_of(twin, base)
-        job.update(base=base, doc=doc, pdf=data if source_format == 'pdf' and data else None)
+        job.update(base=base, doc=doc, prompt_doc=prompt_doc, pdf=data if source_format == 'pdf' and data else None)
         return None
 
     def done_reading(job: dict, rec: dict | None) -> list:
@@ -2692,7 +2712,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        res = read_one(lane, job['row'], job['doc'])
+        res = read_one(lane, job['row'], job['doc'], job.get('prompt_doc'))
         finish_read(lane, job, vision_repair(job['row'], job['doc'], job.get('pdf'), res))
 
     def finish_read(lane: Lane, job: dict, res: dict):
@@ -2711,15 +2731,15 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                       'headline': res['headline'], 'points': res['points'], 'narrative': res.get('narrative', []), 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
                       'second_reader': res.get('second_reader')})
         with lock:
-            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
+            docs[rec['event_id']] = (job['row'], job['doc'], job.get('prompt_doc', job['doc']), res['fields'], res['metrics'])
         add_row(rec)
         for twin in done_reading(job, rec):
             add_row(copy_of(rec, twin))
         log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
 
     def cross_check(lane: Lane, rec: dict):
-        row, doc, fields, metrics = docs[rec['event_id']]
-        res = read_one(lane, row, doc)
+        row, doc, prompt_doc, fields, metrics = docs[rec['event_id']]
+        res = read_one(lane, row, doc, prompt_doc)
         if not res['ok']:
             return                          # a missing cross-check is not an error; the values stand as read
         agreed = {**agreement(fields, res['fields']), **metric_agreement(metrics, res['metrics'])}
