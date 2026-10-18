@@ -190,3 +190,13 @@ def test_record_revenue_achievement_is_not_misclassified_as_guidance():
         issuer_names=("Rossari Biotech",),
     )
     assert out[0]["shown"]
+
+def test_broad_exemption_is_held_when_headline_quote_is_only_sme_listing():
+    reason = cs.semantic_reason(
+        "ANB Metal Cast is exempt from corporate governance provisions because its securities are listed on the SME Platform",
+        "The company has listed its specified securities on SME Platform of National Stock Exchange of India Limited.",
+        doc=("Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27. "
+             "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026."),
+        issuer_names=("ANB Metal Cast",),
+    )
+    assert reason and "overstates the exemption" in reason
