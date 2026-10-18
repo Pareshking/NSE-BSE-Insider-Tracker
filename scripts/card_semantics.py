@@ -58,10 +58,21 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
     c, q = claim.casefold(), proof.casefold()
 
     # A filing-specific exemption is not a blanket exemption from the underlying
-    # governance obligation. Keep the scope ("report") in the headline.
-    if (re.search(r"\bexempt\s+from\s+corporate\s+governance\b", c)
-            and re.search(r"\bnot\s+required\s+to\s+submit\b.{0,80}\bcorporate\s+governance\s+report\b", q)):
-        return "the claim turns an exemption from filing a corporate-governance report into a blanket exemption from corporate governance"
+    # governance obligation. Keep the legal/reporting scope in the headline.
+    broad_governance_exemption = re.search(
+        r"\b(?:exempt\s+from|non[- ]applicability\s+of|non[- ]applicable\s+to|not\s+applicable\s+to)\s+corporate\s+governance\b",
+        c,
+    )
+    claim_scoped = bool(
+        re.search(r"\bcorporate\s+governance\s+report(?:ing)?\b", c)
+        or (re.search(r"\bprovisions?\b", c) and re.search(r"\breg(?:ulation)?\.?\s*27\b", c))
+    )
+    evidence_is_specific = bool(
+        re.search(r"\bcorporate\s+governance\s+report\b", q)
+        or re.search(r"\breg(?:ulation)?\.?\s*27\b", q)
+    )
+    if broad_governance_exemption and evidence_is_specific and not claim_scoped:
+        return "the claim drops the specific Corporate Governance Report/Regulation 27 scope and overstates the exemption as covering corporate governance generally"
 
     if (_NEGATIVE_EVENT.search(proof) or _NEGATED_ACTION.search(proof)) and _POSITIVE_EVENT.search(claim) and not _CANCEL_WORD.search(claim):
         return "the quote negates or reverses the event, but the claim states a positive action"
