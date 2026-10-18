@@ -72,8 +72,15 @@ Code:
   refused (HTTP 401) ... renew the GitHub secret"), `ZAI_API_KEY`. Never in the repo or Streamlit secrets,
   so models cannot be called from a laptop.
 - Only public filing text goes in a prompt; nothing personal. Models get extracted text
-  (`pdftotext -layout`, ZIPs opened), never PDFs.
-- Every value must carry a quote found in the PDF text, and prices and counts must have their digits in
+  (`pdftotext -layout`, ZIPs opened), never PDFs. For PDF/ZIP text, the reader applies
+  `insiders_clean.text_clean.clean` to the model input to remove repeated page furniture, exchange address
+  lines and letterhead padding. The original extracted text remains untouched for quote validation, number/unit
+  checks, hashes and duplicate detection. Structured XBRL facts bypass this layout cleaner; a cleaner failure
+  or empty result falls back to the original text and is logged.
+- The recurring production chain enables bounded Gemini batching for short filings (up to four per request).
+  Each response is validated against its own filing; a missing/invalid batch answer and a long filing fall back
+  to individual reads. Manual runs remain configurable.
+- Every value must carry a quote found in the original extracted filing text, and prices and counts must have their digits in
   the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
   our code converts (lakh, crore, million, billion) and computes every % change.
 - Use free limits up to 95%, through the day (every 15 minutes), not only at night; today's filings first.
@@ -426,6 +433,12 @@ steps. Subscribe to PR #56 and keep CI green."
 5. Sorter for `to_sort` filings from the subject plus the first ~1,500 characters (with the regulation
    cited there), so routine board outcomes are not read in full.
 6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.
+
+### Evidence-backed card narrative (18 Oct 2026)
+
+Each new read may include a short narrative in addition to the checked headline, points, fields and metrics. The narrative can connect a previously verified management-call statement or company event with the current filing, and can surface explicit forward guidance from the current filing. Every narrative sentence must cite verbatim evidence from the current filing or persistent company memory; the reader verifies source membership and number support before it is stored or shown. Claims that guidance was met/missed require both historical and current evidence for the same measure, and simple percentage-margin comparisons are checked deterministically. Unsupported claims are held back. The prompt version is bumped so eligible recent filings are reread once.
+
+The deterministic semantic gate also holds claims that turn a cancellation into a win, promote a proposal to an approval/completion, reverse the direction of a measure, or name a counterparty absent from the supporting quote. It is deliberately conservative and must be judged on false positives as well as false negatives in the reviewed card set.
 
 ### Headline format (16 Oct, owner's rule)
 
