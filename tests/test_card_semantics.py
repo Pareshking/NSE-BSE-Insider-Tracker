@@ -138,3 +138,19 @@ def test_precisely_scoped_report_exemption_is_not_flagged():
         "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026.",
         issuer_names=("ANB Metal Cast",),
     ) is None
+
+
+def test_non_applicability_headline_must_preserve_regulation_scope():
+    assert "overstates the exemption" in cs.semantic_reason(
+        "ANB Metal Cast certifies non-applicability of corporate governance",
+        "Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015.",
+        issuer_names=("ANB Metal Cast",),
+    )
+
+
+def test_regulation_27_scope_is_preserved_when_headline_names_it():
+    assert cs.semantic_reason(
+        "ANB Metal Cast confirms Regulation 27 corporate governance provisions are not applicable",
+        "Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015.",
+        issuer_names=("ANB Metal Cast",),
+    ) is None
