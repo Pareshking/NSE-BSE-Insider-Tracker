@@ -30,6 +30,11 @@ import announcement_sample as sample  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
 START_DEFAULT = date(2026, 1, 1)
+# Subjects history does not read (owner, 18 Oct: "you decide"): the catch-all lines of both exchanges, which are mostly
+# notices of no card value and hold a result or an order only now and then. Live still reads them; history reads every
+# other non-routine kind (board outcomes and results, orders, deals, fund raising, buybacks, takeover disclosures,
+# ratings, management and director changes, litigation, presentations, press releases).
+HISTORY_SKIP_SUBJECTS = frozenset({'General Updates', 'Updates', 'Others', 'General'})
 HISTORY_END = date(2026, 10, 18)   # hard stop (owner, 18 Oct): history is 1 Jan to 18 Oct 2026, from there the reader is live only
 MEMORY_PREFIX = 'archive/company_memory/'
 STATE_KEY = 'archive/announcement_backfill/state.json'
@@ -607,6 +612,13 @@ def _month_range(start: date, end: date) -> list[str]:
 
 
 
+def worth_reading_in_history(candidates: pd.DataFrame) -> pd.DataFrame:
+    """`candidates` without the catch-all subjects (HISTORY_SKIP_SUBJECTS); live reading is not narrowed."""
+    if candidates is None or candidates.empty or 'subject' not in candidates:
+        return candidates
+    return candidates[~candidates['subject'].fillna('').astype(str).str.strip().isin(HISTORY_SKIP_SUBJECTS)].copy()
+
+
 def filter_target_company_history(candidates: pd.DataFrame, target_isins: set[str],
                                   start: date, end: date) -> pd.DataFrame:
     """Restrict historical AI candidates to target ISINs and an inclusive date range."""
@@ -649,7 +661,7 @@ def run_targeted_company_backfill(r2, target_isins: set[str], today: date, maste
         if nse.empty and bse.empty:
             continue
         frame = ar.candidates(nse, bse, master)
-        frame = filter_target_company_history(frame, clean_isins, start, end)
+        frame = worth_reading_in_history(filter_target_company_history(frame, clean_isins, start, end))
         if frame.empty:
             continue
         candidates_parts.append(frame)
@@ -725,8 +737,11 @@ def read_history_by_date(r2, today: date, master, lanes: dict, setup: list[str],
         if nse.empty and bse.empty:
             continue
         candidates = ar.candidates(nse, bse, master)
+        kept = worth_reading_in_history(candidates)
+        skipped = 0 if candidates is None or candidates.empty else int(((candidates['group'] != 'routine')).sum() - (kept['group'] != 'routine').sum())
         reads = month_parquet(r2, ar.READS_PREFIX, month)
-        to_read, status_rows, counts = ar.choose(candidates, reads, today, date_from=START_DEFAULT, date_to=end)
+        to_read, status_rows, counts = ar.choose(kept, reads, today, date_from=START_DEFAULT, date_to=end)
+        counts['catch_all_subjects_skipped'] = skipped
         if to_read.empty:
             continue
         to_read = to_read.sort_values(['broadcast_date', 'broadcast_at']).head(min(batch_size, left))

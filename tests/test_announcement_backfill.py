@@ -496,3 +496,16 @@ def test_history_stops_at_the_hard_stop_and_is_marked_complete(monkeypatch):
     # once marked complete, the stage does nothing: live only from then on
     saved['s'] = {'history_complete': '2026-10-19T00:00:00+00:00'}
     assert backfill.unified_company_history_stage(r2, {'INE000A01001'}, date(2026, 11, 5), None, {}, {}, [])['history'] == 'complete'
+
+
+def test_history_leaves_out_the_catch_all_subjects_only():
+    df = pd.DataFrame([
+        _candidate('a', '2026-01-05') | {'subject': 'General Updates'},
+        _candidate('b', '2026-01-05') | {'subject': 'Outcome of Board Meeting'},
+        _candidate('c', '2026-01-05') | {'subject': 'Press Release / Media Release'},
+        _candidate('d', '2026-01-05') | {'subject': 'Others'},
+        _candidate('e', '2026-01-05') | {'subject': None},
+    ])
+    out = backfill.worth_reading_in_history(df)
+    assert list(out['event_id']) == ['b', 'c', 'e']
+    assert backfill.worth_reading_in_history(pd.DataFrame()).empty
