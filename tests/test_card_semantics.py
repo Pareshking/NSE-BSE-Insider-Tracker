@@ -136,4 +136,5 @@ def test_precisely_scoped_report_exemption_is_not_flagged():
     assert cs.semantic_reason(
         "ANB Metal Cast not required to file Corporate Governance Report",
         "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026.",
+        issuer_names=("ANB Metal Cast",),
     ) is None
