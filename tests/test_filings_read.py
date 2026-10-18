@@ -332,3 +332,27 @@ def test_pages_hold_50_or_100_cards_and_return_to_the_first_when_filters_change(
     assert filings.page_of(230, ('b',)) == (100, 0, 3)        # another page size starts again
     state['fl_page'] = 9
     assert filings.page_of(60, ('b',)) == (100, 0, 1)         # a short list has one page
+
+
+def test_cards_html_preindexes_company_history_instead_of_passing_the_full_archive(monkeypatch):
+    # A large archive with many issuers should give each card only its own pre-sorted history slice.
+    from types import SimpleNamespace
+    reads = pd.DataFrame([
+        row(event_id=f'nse:{i}', symbol=f'SYM{i % 2}', isin=None,
+            broadcast_at=f'2026-10-{13 - (i % 3):02d}T10:15:00+05:30')
+        for i in range(120)
+    ])
+    cards = reads[reads['event_id'].isin(['nse:0', 'nse:1'])].copy()
+    observed = []
+    original = fr.before_this
+
+    def spy(item, company_reads, price, holding, insiders, results=None):
+        observed.append((len(company_reads), company_reads.attrs.get('_before_this_sorted', False)))
+        return original(item, company_reads, price, holding, insiders, results)
+
+    monkeypatch.setattr(fr, 'before_this', spy)
+    html = fr.cards_html(cards, reads, ctx=SimpleNamespace())
+    assert html.count('<article class="rc">') == 2
+    assert len(observed) == 2
+    assert all(n == 60 and sorted_ for n, sorted_ in observed)
+    assert all(n < len(reads) for n, _ in observed)
