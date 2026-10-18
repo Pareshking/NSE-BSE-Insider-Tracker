@@ -112,10 +112,10 @@ def clean_with_lines(text: str, subject: str | None = None) -> tuple[str, dict, 
     # appear in substantive filings (e.g. a listing-department action or a property on Dalal Street),
     # so never remove them from the body. Prefer the explicit Subject boundary; without one, keep the
     # fallback window deliberately short and anchored at a recognisable "To"/manager line.
-    subject_idx = next((i for i, ln in enumerate(flat) if re.match(r'^\\s*subject\\s*:', ln, re.IGNORECASE)), None)
+    subject_idx = next((i for i, ln in enumerate(flat) if re.match(r'^\s*subject\s*:', ln, re.IGNORECASE)), None)
     search_end = subject_idx if subject_idx is not None else min(len(flat), 40)
     to_idx = next((i for i, ln in enumerate(flat[:search_end])
-                   if re.match(r'^\\s*(?:to\\s*,?|to\\s+the\\s+manager|the\\s+manager\\b)', ln, re.IGNORECASE)), None)
+                   if re.match(r'^\s*(?:to\s*,?|to\s+the\s+manager|the\s+manager\b)', ln, re.IGNORECASE)), None)
     address_end = subject_idx if subject_idx is not None else min(len(flat), (to_idx + 16) if to_idx is not None else 0)
     for i, ln in enumerate(flat):
         in_addressee = to_idx is not None and to_idx <= i < address_end
