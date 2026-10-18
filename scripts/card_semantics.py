@@ -156,7 +156,7 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
 
 
 def validate_narrative(items, doc: str, memory: str, number_check, current_url: str | None = None,
-                       issuer_names=()) -> list[dict]:
+                       issuer_names=(), current_quote_check=None) -> list[dict]:
     """Validate each narrative claim against verbatim current-filing or persistent-memory evidence."""
     if not isinstance(items, list):
         return []
@@ -176,7 +176,9 @@ def validate_narrative(items, doc: str, memory: str, number_check, current_url: 
                 errors.append("evidence source or quote is missing")
                 continue
             corpus = doc if source == "current_filing" else memory
-            if not _contains(corpus, quote):
+            found = (bool(current_quote_check(quote)) if source == "current_filing" and current_quote_check
+                     else _contains(corpus, quote))
+            if not found:
                 errors.append("the quoted evidence is not found in its stated source")
                 continue
             source_url = current_url if source == "current_filing" else None
