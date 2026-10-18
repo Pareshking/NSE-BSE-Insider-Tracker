@@ -21,7 +21,7 @@ _NEGATIVE_EVENT = re.compile(
     r"not launched|did not launch|not commenced|did not commence)\b", re.I)
 _NEGATED_ACTION = re.compile(
     r"\b(?:not|never|no|did not|does not|has not|have not|was not|were not|is not|isn't|wasn't|weren't)\b"
-    r".{0,35}\b(?:win|award|approve|complete|acquire|receive|launch|commence|start|pay|increase|rise|grow)\\w*\\b", re.I)
+    r".{0,35}\b(?:win|award|approve|complete|acquire|receive|launch|commence|start|pay|increase|rise|grow)\w*\b", re.I)
 _POSITIVE_EVENT = re.compile(
     r"\b(?:wins?|won|awarded|secures?|secured|bags?|bagged|receives?|received|"
     r"approved|approves|completes?|completed|acquires?|acquired|launches?|launched|"
