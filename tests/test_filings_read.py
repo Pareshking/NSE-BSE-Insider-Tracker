@@ -332,3 +332,37 @@ def test_pages_hold_50_or_100_cards_and_return_to_the_first_when_filters_change(
     assert filings.page_of(230, ('b',)) == (100, 0, 3)        # another page size starts again
     state['fl_page'] = 9
     assert filings.page_of(60, ('b',)) == (100, 0, 1)         # a short list has one page
+
+
+def test_cards_html_preindexes_shared_context_tables_and_passes_only_company_rows(monkeypatch):
+    from types import SimpleNamespace
+
+    first = row(event_id='nse:1', isin='INE001', symbol='AAA')
+    second = row(event_id='nse:2', isin='INE002', symbol='BBB', category='capex')
+    unrelated = row(event_id='nse:3', isin='INE003', symbol='CCC')
+    reads = pd.DataFrame([first, second, unrelated])
+    ctx = SimpleNamespace(
+        prices=pd.DataFrame([{'isin': 'INE001', 'latest_close': 10.0}, {'isin': 'INE002', 'latest_close': 20.0}]),
+        shareholding=pd.DataFrame(columns=['isin', 'quarter_end']),
+        eligible=pd.DataFrame([{'isin': 'INE001', 'seen': pd.Timestamp('2026-10-01')},
+                               {'isin': 'INE002', 'seen': pd.Timestamp('2026-10-02')},
+                               {'isin': 'INE003', 'seen': pd.Timestamp('2026-10-03')}]),
+        results=pd.DataFrame([{'isin': 'INE001', 'period_end': '2026-03-31'},
+                              {'isin': 'INE002', 'period_end': '2026-06-30'},
+                              {'isin': 'INE003', 'period_end': '2026-09-30'}]),
+    )
+    seen = []
+
+    def capture(card, company_reads, price, holding, company_insiders, company_results=None):
+        seen.append((card['isin'], set(company_reads['isin']) if company_reads is not None else set(),
+                     set(company_insiders['isin']) if company_insiders is not None else set(),
+                     set(company_results['isin']) if company_results is not None else set()))
+        return []
+
+    monkeypatch.setattr(fr, 'before_this', capture)
+    html = fr.cards_html(pd.DataFrame([first, second]), reads, ctx)
+    assert html.count('<article class="rc">') == 2
+    assert seen == [
+        ('INE001', {'INE001'}, {'INE001'}, {'INE001'}),
+        ('INE002', {'INE002'}, {'INE002'}, {'INE002'}),
+    ]
