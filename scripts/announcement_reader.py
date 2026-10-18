@@ -140,7 +140,8 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'narrative_shown', 'narrative_held', 'agreed',
+           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+           'narrative_shown', 'narrative_held', 'agreed',
            'seconds', 'read_at', 'headline', 'points', 'narrative', 'open_loops', 'market_cap_match', 'market_cap')
 
 
@@ -2420,6 +2421,9 @@ def finish(rec: dict) -> dict:
     # Value counts remain fields + metrics; prose claims have their own audit counters.
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
     rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + sum(not m['shown'] for m in rec.get('metrics') or [])
+    headline = rec.get('headline')
+    rec['headline_shown'] = int(isinstance(headline, dict) and bool(headline.get('shown')))
+    rec['headline_held'] = int(isinstance(headline, dict) and not bool(headline.get('shown')))
     rec['narrative_shown'] = sum(bool(n.get('shown')) for n in rec.get('narrative') or [])
     rec['narrative_held'] = sum(not bool(n.get('shown')) for n in rec.get('narrative') or [])
     for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'narrative', 'open_loops'):
@@ -2470,7 +2474,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
         copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
-                                           'points', 'narrative', 'narrative_shown', 'narrative_held',
+                                           'points', 'narrative', 'headline_shown', 'headline_held', 'narrative_shown', 'narrative_held',
                                            'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
@@ -3221,7 +3225,24 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
             narrative.extend(n for n in items if isinstance(n, dict))
     held_reasons = pd.Series([str(n.get('reason')) for n in narrative
                               if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
-    lines += ['', f"AI narrative claims: {sum(bool(n.get('shown')) for n in narrative)} shown; "
+    headlines = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headlines.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headlines
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
+    lines += ['', f"Headlines: {sum(bool(h.get('shown')) for h in headlines)} shown; "
+              f"{sum(not bool(h.get('shown')) for h in headlines)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in headline_holds.items()) or 'none'}.",
+              f"AI narrative claims: {sum(bool(n.get('shown')) for n in narrative)} shown; "
               f"{sum(not bool(n.get('shown')) for n in narrative)} held. "
               f"Held reasons: {', '.join(f'{k} ({v})' for k, v in held_reasons.items()) or 'none'}.",
               '', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
@@ -3229,11 +3250,11 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
               f"{e['median_seconds_ok']} |" for m, e in use.get('models', {}).items()]
     read = [r for r in rows if r['status'] == 'read']
     if read:
-        lines += ['', '| Filing | Category | Reader | Seconds | Values shown | Values held | Narrative shown | Narrative held | Cross-check |',
-                  '|---|---|---|---|---|---|---|---|---|']
+        lines += ['', '| Filing | Category | Reader | Seconds | Values shown | Values held | Headline shown | Headline held | Narrative shown | Narrative held | Cross-check |',
+                  '|---|---|---|---|---|---|---|---|---|---|---|']
         lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('seconds')} | "
-                  f"{r.get('shown')} | {r.get('held')} | {r.get('narrative_shown', 0)} | {r.get('narrative_held', 0)} | "
-                  f"{r.get('second_reader') or ''} |" for r in read]
+                  f"{r.get('shown')} | {r.get('held')} | {r.get('headline_shown', 0)} | {r.get('headline_held', 0)} | "
+                  f"{r.get('narrative_shown', 0)} | {r.get('narrative_held', 0)} | {r.get('second_reader') or ''} |" for r in read]
     lines += [f'- note: {n}' for n in setup]
     return '\n'.join(lines) + '\n'
 
@@ -3412,8 +3433,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         old = load_archive(r2, READS_PREFIX, today)
         old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
         gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'narrative_shown',
-                            'narrative_held', 'agreed', 'seconds', 'read_at', 'headline', 'points', 'narrative') if c in old.columns]
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+                            'narrative_shown', 'narrative_held', 'agreed', 'seconds', 'read_at', 'headline', 'points', 'narrative') if c in old.columns]
         to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
         current_candidates = None
         log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
@@ -3464,8 +3485,25 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             narrative_items.extend(n for n in items if isinstance(n, dict))
     narrative_holds = pd.Series([str(n.get('reason')) for n in narrative_items
                                  if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    headline_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headline_items.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headline_items
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
     ledger.extra.update(counts=counts, outcomes={str(k): int(v) for k, v in
                                                  pd.Series([r['status'] for r in rows]).value_counts().items()},
+                        headline_claims={'shown': sum(bool(h.get('shown')) for h in headline_items),
+                                         'held': sum(not bool(h.get('shown')) for h in headline_items),
+                                         'held_reasons': headline_holds},
                         narrative_claims={'shown': sum(bool(n.get('shown')) for n in narrative_items),
                                           'held': sum(not bool(n.get('shown')) for n in narrative_items),
                                           'held_reasons': narrative_holds})
