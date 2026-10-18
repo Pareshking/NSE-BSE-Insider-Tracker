@@ -122,9 +122,9 @@ def test_clean_with_lines_names_the_removed_lines_by_rule():
 
 def test_exchange_terms_in_the_body_are_not_removed_as_letterhead():
     body = (
-        "ACME LIMITED\\nTo,\\nThe Manager - Listing Department\\nBSE Limited\\n"
-        "Phiroze Jeejeebhoy Towers, Dalal Street\\nMumbai - 400 001\\n"
-        "Subject: Material litigation update\\n\\n"
+        "ACME LIMITED\nTo,\nThe Manager - Listing Department\nBSE Limited\n"
+        "Phiroze Jeejeebhoy Towers, Dalal Street\nMumbai - 400 001\n"
+        "Subject: Material litigation update\n\n"
         "The Listing Department issued an order against the company.\\n"
         "The company also leases an office on Dalal Street.\\n"
     )
