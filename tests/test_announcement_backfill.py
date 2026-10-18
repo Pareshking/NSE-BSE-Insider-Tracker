@@ -448,3 +448,32 @@ def test_memory_context_puts_each_earlier_event_on_its_own_line():
     lines = frame.iloc[0]['_company_memory'].split('\n')
     assert len(lines) == 3 and all(line.startswith('- 2026-01-0') for line in lines)
     assert '\\n' not in frame.iloc[0]['_company_memory']
+
+
+def test_by_date_reading_takes_the_oldest_collected_filings_within_the_daily_cap(monkeypatch):
+    today = date(2026, 10, 18)
+    r2 = FakeR2()
+    state = {'collection_next_date': '2026-01-20', 'target_isins': []}
+    saved = {}
+    monkeypatch.setattr(backfill, 'read_pipeline_state', lambda _r: dict(saved.get('s', state)))
+    monkeypatch.setattr(backfill, 'save_pipeline_state', lambda _r, s: saved.update(s=s))
+    monkeypatch.setattr(backfill, 'month_parquet', lambda _r, prefix, month: pd.DataFrame({'x': [1]}) if month == '2026-01' and 'announcements' in prefix else pd.DataFrame())
+    cands = pd.DataFrame([_candidate(f'e{d}', f'2026-01-{d:02d}') for d in (3, 9, 5, 25)])
+    monkeypatch.setattr(ar, 'candidates', lambda nse, bse, master: cands)
+    asked = {}
+
+    def fake_run(to_read, lanes, reads, seconds, max_filings=None, on_row=None, text_cache=None):
+        asked.update(ids=list(to_read['event_id']), max=max_filings)
+        return [{'event_id': e, 'status': 'read'} for e in to_read['event_id']], []
+    monkeypatch.setattr(ar, 'run', fake_run)
+    monkeypatch.setattr(ar, 'Saver', lambda *a, **k: type('S', (), {'pending': [], 'flush': lambda self, final=False: None, 'add': None})())
+    monkeypatch.setattr(backfill, 'add_memory_context', lambda r2, df: df)
+    monkeypatch.setattr(backfill, 'upsert_company_memories', lambda r2, rows: 0)
+    monkeypatch.setattr(backfill, '_text_cache', lambda r2: None)
+
+    out = backfill.read_history_by_date(r2, today, None, {}, [], cap=3, batch_size=40, batch_minutes=1)
+    assert asked['ids'] == ['e3', 'e5', 'e9']            # oldest first, e25 is past the collected days (pointer 20 Jan)
+    assert asked['max'] == 3 and out['taken'] == 3 and out['left_today'] == 0
+    assert backfill.read_history_by_date(r2, today, None, {}, [], cap=3, batch_size=40, batch_minutes=1)['by_date'] == 'daily cap reached'
+    tomorrow = backfill.history_left_today(saved['s'], today + timedelta(days=1), 3)
+    assert tomorrow == 3                                   # the count restarts with the day
