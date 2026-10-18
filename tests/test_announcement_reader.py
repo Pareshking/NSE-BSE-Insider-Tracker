@@ -2308,12 +2308,11 @@ def test_history_table_keeps_old_shown_rows_whole_and_counts_the_rest():
     assert pd.isna(out.loc['b', 'headline']) and out.loc['b', 'status'] == 'no_text'
 
 
-def test_live_passes_are_two_on_trading_days_one_on_off_days():
+def test_off_day_live_passes_are_one_and_seven():
     def ist(h, m=0):
-        return datetime(2026, 10, 19, h, m, tzinfo=timezone(timedelta(hours=5, minutes=30))).astimezone(timezone.utc)
+        return datetime(2026, 10, 18, h, m, tzinfo=timezone(timedelta(hours=5, minutes=30))).astimezone(timezone.utc)
     assert ar.live_open(ist(13, 0)) and ar.live_open(ist(13, 59)) and not ar.live_open(ist(14, 0))
     assert ar.live_open(ist(19, 30)) and not ar.live_open(ist(11, 0)) and not ar.live_open(ist(23, 0))
-    assert not ar.live_open(ist(13, 30), off=True) and ar.live_open(ist(19, 30), off=True)
 
 
 def test_off_days_are_weekends_and_listed_holidays(monkeypatch):

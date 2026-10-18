@@ -3203,10 +3203,10 @@ def in_history_window(now=None):
     return minutes >= 22 * 60 + 30 or minutes < 9 * 60
 
 
-# Live reading in the scheduled chain (owner, 18 Oct): two passes a day, the rest of the time is history.
-# IST minutes; every pass covers today and yesterday, so nothing falls between two of them.
-LIVE_SLOTS = {'trading': ((13 * 60, 14 * 60), (19 * 60, 20 * 60)),   # 1 PM and 7 PM
-              'off': ((19 * 60, 20 * 60),)}                          # weekends and NSE holidays: 7 PM only
+# Weekends and NSE holidays (owner, 18 Oct): two live passes, 1 PM and 7 PM IST; the rest of the day is history.
+# Every pass covers today and yesterday, so nothing falls between two of them. Monday to Friday keep the earlier
+# schedule: live all day, history 22:30-09:00 (in_history_window).
+LIVE_SLOTS = ((13 * 60, 14 * 60), (19 * 60, 20 * 60))   # IST minutes
 CALENDAR_KEY = 'reference/nse_calendar.json'
 HISTORY_BATCH, HISTORY_MINUTES = 40, 12.0   # a history run reads up to 40 old filings in 12 minutes (a live-slot run: 8 in 2)
 
@@ -3224,11 +3224,11 @@ def off_day(day: date, r2=None) -> bool:
         return False
 
 
-def live_open(now=None, off=False) -> bool:
-    """True while a live pass is due: 13:00-14:00 and 19:00-20:00 IST on trading days, 19:00-20:00 on off days."""
+def live_open(now=None) -> bool:
+    """True while an off-day live pass is due: 13:00-14:00 and 19:00-20:00 IST."""
     ist = (now or datetime.now(timezone.utc)).astimezone(IST)
     minutes = ist.hour * 60 + ist.minute
-    return any(a <= minutes < b for a, b in LIVE_SLOTS['off' if off else 'trading'])
+    return any(a <= minutes < b for a, b in LIVE_SLOTS)
 
 
 def main(argv=None):
@@ -3311,14 +3311,16 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         to_read, status_rows, counts = choose(current_candidates, done, today)
 
     history_mode = os.environ.get('READER_HISTORY', '1')
-    live_now = True   # supervised runs always read live; the scheduled chain (READER_HISTORY=night) reads live in its slots only
+    history_run = False   # an off-day run between the live passes: no live reading, history only
+    window_only = False   # Monday to Friday in the scheduled chain: history only in the overnight window
     if history_mode == 'night' and not getattr(args, 'replay', None):
-        off = off_day(today, r2)
-        live_now = live_open(off=off)
-        if not live_now:
-            to_read = to_read.iloc[0:0]
-            log(f'live pass not due ({"off day" if off else "trading day"}: live at '
-                + ', '.join(f'{a // 60}:{a % 60:02d}' for a, _ in LIVE_SLOTS['off' if off else 'trading']) + ' IST): this run is history')
+        if off_day(today, r2):
+            history_run = not live_open()
+            if history_run:
+                to_read = to_read.iloc[0:0]
+                log('off day, live pass not due (live at 13:00 and 19:00 IST): this run is history')
+        else:
+            window_only = True
 
     # Live-first: read and persist eligible current filings before spending any model capacity
     # on company-history enrichment. Historical work is gated again after the live results are saved.
@@ -3366,7 +3368,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             import io
             import management_said as ms
             from clean_writer import get
-            night = not live_now   # a history run: more transcripts and a longer deadline
+            night = history_run or (window_only and in_history_window())   # a history run: more transcripts, a longer deadline
             res_isins = set()
             try:
                 body = get(r2, 'clean/current/results.parquet')
@@ -3387,7 +3389,9 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
     live_remaining, _, live_counts = choose(current_candidates, done_after_live, today)
     if history_mode not in ('1', 'night'):
         log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
-    elif live_now and not live_remaining.empty:
+    elif window_only and not in_history_window():
+        log('company-history stage waits for the overnight window (22:30-09:00 IST): Monday to Friday daytime reads live filings only')
+    elif not history_run and not live_remaining.empty:
         log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
             f'live queue counts={json.dumps(live_counts, default=str)}')
     else:
@@ -3405,7 +3409,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         try:
             history_result = unified_company_history_stage(
                 r2, current_isins, today, master, lanes, clients, setup,
-                batch_size=HISTORY_BATCH if not live_now else 8, batch_minutes=HISTORY_MINUTES if not live_now else 2.0,
+                batch_size=HISTORY_BATCH if history_run else 8, batch_minutes=HISTORY_MINUTES if history_run else 2.0,
             )
             log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
         except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards
