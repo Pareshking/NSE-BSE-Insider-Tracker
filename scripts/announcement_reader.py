@@ -297,12 +297,17 @@ def lanes_exhausted(lanes: dict) -> bool:
     return bool(lanes) and not any(lane.models() or lane.cooling() for lane in lanes.values())
 
 
-def report_quota(exhausted: bool) -> None:
-    """Tell the workflow whether the AI quota is used up, so the chain waits an hour instead of ten minutes."""
+def report_output(name: str, value: bool) -> None:
+    """A 0/1 job output for the workflow's chain (no file outside Actions)."""
     out = os.environ.get('GITHUB_OUTPUT')
     if out:
         with open(out, 'a', encoding='utf-8') as f:
-            f.write(f'quota_exhausted={1 if exhausted else 0}\n')
+            f.write(f'{name}={1 if value else 0}\n')
+
+
+def report_quota(exhausted: bool) -> None:
+    """Tell the workflow whether the AI quota is used up, so the chain waits an hour instead of ten minutes."""
+    report_output('quota_exhausted', exhausted)
 
 
 def configure_rate_limit_circuit_breaker(lanes: dict[str, Lane], r2, run_date: str) -> None:
@@ -3439,6 +3444,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
                 by_date_cap=HISTORY_OFFDAY_CAP if history_run else (HISTORY_DAILY_CAP if window_only else 0),
             )
             log('unified company-history stage (live queue clear)', json.dumps(history_result, default=str))
+            report_output('history_done', history_run and history_result.get('history') == 'complete')   # nothing to read between live passes
         except Exception as exc:  # noqa: BLE001 -- history must never suppress current-day cards
             message = f'unified company-history stage failed: {type(exc).__name__}: {exc}'[:500]
             setup.append(message)

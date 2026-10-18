@@ -383,3 +383,8 @@ What is stored for context: every read in the reads archive (headline, fields, m
 - It reports `quota_exhausted` to the workflow, and the chain's `next` job then waits one hour instead of ten minutes (`gap=3600`), so an exhausted day costs one short run an hour, not one every ten minutes. Gemini's day restarts at midnight Pacific; the others count a rolling 24 hours, so the chain starts reading again by itself.
 - Filings left unread are `quota_deferred` or simply not yet chosen; the first run with quota reads them (newest first).
 - Open: the daily limits in `DAILY_CALLS` are the free-tier figures we hold (Z.ai lists none), so Z.ai alone keeps the reader running until it answers with a quota error.
+
+### 12.31 History ends on 18 Oct 2026 (owner, 18 Oct)
+- History is 1 Jan to 18 Oct 2026 (`HISTORY_END`, scripts/announcement_backfill.py), whole history of every eligible company, oldest first, day after day. Nothing past it is collected or read as history: the source collection, the queued-company reads and the by-date reads all stop at 18 Oct. From then on the reader is live only.
+- The by-date reader answers `done` when every day through the hard stop is collected and read; the stage then stores `history_complete` in `archive/announcement_pipeline/state.json` and returns at once on later runs. On an off day a run between the live passes then has no history to do and the chain waits 30 minutes (inside the 60-minute live windows) instead of ten.
+- The caps are for every date: 1,000 a day on weekends and NSE holidays, 500 Monday to Friday (12.29).

@@ -100,6 +100,7 @@ jobs:
     outputs:
       started: ${{ steps.start.outputs.at }}
       exhausted: ${{ steps.reader.outputs.quota_exhausted }}
+      history_done: ${{ steps.reader.outputs.history_done }}
     steps:
       - id: start
         run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
@@ -198,11 +199,14 @@ jobs:
           STARTED: ${{ needs.read.outputs.started }}
           RESULT: ${{ needs.read.result }}
           EXHAUSTED: ${{ needs.read.outputs.exhausted }}
+          HISTORY_DONE: ${{ needs.read.outputs.history_done }}
         run: |
           now=$(date +%s); started=${STARTED:-$now}
           if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
           # every model out of quota for the day: look again in an hour (source collection continues, no model work)
           if [ "$EXHAUSTED" = "1" ]; then gap=3600; fi
+          # history finished (hard stop 18 Oct 2026) and nothing to do between live passes: half an hour, inside the 60-minute live windows
+          if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
           gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=false -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
