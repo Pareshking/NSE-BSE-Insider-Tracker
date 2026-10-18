@@ -117,6 +117,10 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     actual_fy = {x.upper().replace(" ", "") for x in re.findall(r"\bFY\s*\d{2,4}\b", current, re.I)}
     target_quarters = {re.sub(r"\s+", "", x.upper()) for x in re.findall(r"\bQ[1-4]\s*FY\s*\d{2,4}\b", prior, re.I)}
     actual_quarters = {re.sub(r"\s+", "", x.upper()) for x in re.findall(r"\bQ[1-4]\s*FY\s*\d{2,4}\b", current, re.I)}
+    if not (target_fy or target_quarters):
+        return "the prior guidance quote does not specify a period that can be matched to the current result"
+    if not (actual_fy or actual_quarters):
+        return "the current result quote does not specify a period that can be matched to the guidance"
     if target_fy and not actual_fy:
         return "the current result does not identify the fiscal year needed to assess this target"
     if target_fy and actual_fy and not target_fy.intersection(actual_fy):
