@@ -415,7 +415,7 @@ def text_is_garbled(doc: str) -> bool:
     return bad >= 25 and bad >= 0.04 * max(1, len(toks))
 
 
-PROJECTION = re.compile(r'\b(?:project(?:ed|s|ion)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
+PROJECTION = re.compile(r'\b(?:project(?:ed|ion)|projects\s+(?:to|at|for|by|will)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
 FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)?\s*[\d,.]+(?:\s*/-)?'
                         r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
 NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets|(?:paid[- ]?up|authori[sz]ed|issued)\s+(?:equity\s+)?(?:share\s+)?capital|share\s+capital|voting\s+(?:share\s+)?capital', re.IGNORECASE)
