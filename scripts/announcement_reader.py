@@ -2540,6 +2540,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             # The durable filing_text cache remains raw. Clean only the working copy sent to AI and used for quote checks.
             doc, cleaning_notes = clean_document_text(doc, row.get('subject'))
             doc_notes.extend(cleaning_notes)
+            for note in cleaning_notes:
+                log(row.get('symbol'), note)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
