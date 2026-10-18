@@ -1,5 +1,5 @@
 """Filings read: every filing the announcement reader has read (clean/current/announcement_reads.parquet,
-last 60 days), as the Brief's cards, with filters by heading, period, exchange, company size, search and
+last 60 days, and older reads in announcement_reads_history.parquet for "From the start"), as the Brief's cards, with filters by heading, period, exchange, company size, search and
 "2 readers agree". The page address keeps the heading and period, so a view can be bookmarked."""
 from __future__ import annotations
 
@@ -28,7 +28,8 @@ HEADINGS = {
     'Management & governance': ('auditor_resignation', 'management_change', 'corporate_change', 'pledge'),
 }   # 'deal_or_dispute' (reads before live-3: deals and legal matters in one) goes under Other
 OTHER = 'Other'
-PERIODS = {1: 'Today and yesterday', 7: 'Last 7 days', 30: 'Last 30 days', 60: 'Last 60 days'}
+PERIODS = {1: 'Today and yesterday', 7: 'Last 7 days', 30: 'Last 30 days', 60: 'Last 60 days', 3650: 'From the start'}
+RECENT_DAYS = 60   # the live table's span (scripts/announcement_reader.py READ_DAYS); a longer period adds the history table
 SIZES = ('Large', 'Mid', 'Small', 'Micro')
 LIMIT = 120
 
@@ -69,6 +70,10 @@ def render():
     qp = st.query_params
     days = int(qp.get('days', 7)) if str(qp.get('days', 7)).isdigit() and int(qp.get('days', 7)) in PERIODS else 7
     since = pd.Timestamp.now(tz='Asia/Kolkata').tz_localize(None).normalize() - pd.Timedelta(days=days)
+    if days > RECENT_DAYS:     # loaded only for this period: the older reads are the larger table
+        old = store.table('announcement_reads_history')
+        if not old.empty:
+            reads = pd.concat([reads, old[~old['event_id'].isin(reads['event_id'])]], ignore_index=True)
     r = fr.recent(reads, since)
     counts = r['category'].map(heading_of).value_counts() if not r.empty else pd.Series(dtype=int)
     names = [h for h in [*HEADINGS, OTHER] if counts.get(h, 0)]
