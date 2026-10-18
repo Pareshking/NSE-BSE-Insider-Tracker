@@ -437,7 +437,8 @@ OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_op
 
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
-                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None) -> list[str]:
+                insiders: pd.DataFrame | None, results: pd.DataFrame | None = None,
+                reads_sorted: bool = False) -> list[str]:
     """Context from our own tables, every figure computed here, never by a model: the company's earlier
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
@@ -502,7 +503,7 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
         t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
         e = e[(t < at - np.timedelta64(DEAL_HOURS, 'h')) & (t >= at - np.timedelta64(EARLIER_DAYS, 'D'))]
         # A pre-sorted per-company slice preserves the order; avoid sorting it for every card.
-        if not reads.attrs.get('_before_this_sorted', False):
+        if not reads_sorted:
             e = e.sort_values('broadcast_at', ascending=False)
         for x in e.head(3).to_dict('records'):
             h = _json(x.get('headline'), None)
@@ -535,15 +536,11 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable')
         if 'isin' in ordered_reads:
             for key, group in ordered_reads[ordered_reads['isin'].notna()].groupby('isin', sort=False):
-                group = group.copy()
-                group.attrs['_before_this_sorted'] = True
-                read_index[('isin', str(key))] = group
+                read_index[('isin', str(key))] = group.copy()
         if 'symbol' in ordered_reads:
             for key, group in ordered_reads.groupby('symbol', sort=False, dropna=False):
                 if pd.notna(key):
-                    group = group.copy()
-                    group.attrs['_before_this_sorted'] = True
-                    read_index[('symbol', str(key))] = group
+                    read_index[('symbol', str(key))] = group.copy()
 
     insider_index = {}
     if insiders is not None and not insiders.empty and 'isin' in insiders:
@@ -563,7 +560,7 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         key = ('isin', str(isin)) if pd.notna(isin) and str(isin).strip() else ('symbol', str(x.get('symbol')))
         company_reads = read_index.get(key, pd.DataFrame(columns=reads.columns if reads is not None else []))
         company_insiders = insider_index.get(str(isin)) if pd.notna(isin) and str(isin).strip() else None
-        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, results), box)
+        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, results, reads_sorted=True), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 
