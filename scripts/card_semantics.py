@@ -59,8 +59,8 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
 
     # A filing-specific exemption is not a blanket exemption from the underlying
     # governance obligation. Keep the scope ("report") in the headline.
-    if (re.search(r"\\bexempt\\s+from\\s+corporate\\s+governance\\b", c)
-            and re.search(r"\\bnot\\s+required\\s+to\\s+submit\\b.{0,80}\\bcorporate\\s+governance\\s+report\\b", q)):
+    if (re.search(r"\bexempt\\s+from\\s+corporate\\s+governance\\b", c)
+            and re.search(r"\bnot\\s+required\\s+to\\s+submit\\b.{0,80}\\bcorporate\\s+governance\\s+report\\b", q)):
         return "the claim turns an exemption from filing a corporate-governance report into a blanket exemption from corporate governance"
 
     if (_NEGATIVE_EVENT.search(proof) or _NEGATED_ACTION.search(proof)) and _POSITIVE_EVENT.search(claim) and not _CANCEL_WORD.search(claim):
