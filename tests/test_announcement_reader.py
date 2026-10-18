@@ -2385,9 +2385,11 @@ def test_structured_xbrl_text_is_not_passed_through_pdf_layout_cleaner(monkeypat
 def test_narrative_audit_counts_do_not_inflate_value_counts():
     rec = ar.finish({
         'event_id': 'nse:test', 'fields': [], 'metrics': [],
+        'headline': {'text': 'Held headline', 'shown': False, 'reason': 'quote not found'},
         'narrative': [{'text': 'Supported statement', 'shown': True, 'reason': None},
                       {'text': 'Unsupported statement', 'shown': False, 'reason': 'quote not found'}],
     })
     assert rec['shown'] == 0 and rec['held'] == 0
+    assert rec['headline_shown'] == 0 and rec['headline_held'] == 1
     assert rec['narrative_shown'] == 1 and rec['narrative_held'] == 1
     assert json.loads(rec['narrative'])[1]['reason'] == 'quote not found'
