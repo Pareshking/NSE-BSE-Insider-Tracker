@@ -7,34 +7,33 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from urllib.parse import urlparse
 
 
 def _norm(value: object) -> str:
     value = unicodedata.normalize("NFKC", str(value or ""))
-    return re.sub(r"\\s+", " ", value).strip().casefold()
+    return re.sub(r"\s+", " ", value).strip().casefold()
 
 
 _NEGATIVE_EVENT = re.compile(
-    r"\\b(?:cancel(?:led|ed|lation)?|terminat(?:ed|ion)|withdraw(?:n|al)?|rescinded|"
-    r"revoked|rejected|not awarded|not selected|did not receive|no order was received)\\b", re.I)
+    r"\b(?:cancel(?:led|ed|lation)?|terminat(?:ed|ion)|withdraw(?:n|al)?|rescinded|"
+    r"revoked|rejected|not awarded|not selected|did not receive|no order was received)\b", re.I)
 _POSITIVE_EVENT = re.compile(
-    r"\\b(?:wins?|won|awarded|secures?|secured|bags?|bagged|receives?|received|"
+    r"\b(?:wins?|won|awarded|secures?|secured|bags?|bagged|receives?|received|"
     r"approved|approves|completes?|completed|acquires?|acquired|launches?|launched|"
-    r"commences?|commenced|starts?|started)\\b", re.I)
-_CANCEL_WORD = re.compile(r"\\b(?:cancel|terminat|withdraw|rescind|revoke|reject|not awarded|not selected)\\w*\\b", re.I)
-_APPROVED = re.compile(r"\\b(?:approved|approves|approval granted|sanctioned|authori[sz]ed|cleared)\\b", re.I)
+    r"commences?|commenced|starts?|started)\b", re.I)
+_CANCEL_WORD = re.compile(r"\b(?:cancel|terminat|withdraw|rescind|revoke|reject|not awarded|not selected)\w*\b", re.I)
+_APPROVED = re.compile(r"\b(?:approved|approves|approval granted|sanctioned|authori[sz]ed|cleared)\b", re.I)
 _PENDING = re.compile(
-    r"\\b(?:proposed|recommend(?:ed|ation)?|in-principle|deferred|considered|"
+    r"\b(?:proposed|recommend(?:ed|ation)?|in-principle|deferred|considered|"
     r"subject to (?:shareholder |regulatory |government |board )?approval|"
-    r"seeks? approval|will seek approval|awaiting approval)\\b", re.I)
-_COMPLETED = re.compile(r"\\b(?:completed|closed|concluded|has acquired|acquired|commenced operations)\\b", re.I)
-_RISE = re.compile(r"\\b(?:rose|ris(?:e|es|ing)|increas(?:e|ed|es|ing)|grew|growth|higher|up)\\b", re.I)
-_FALL = re.compile(r"\\b(?:fell|fall(?:s|en|ing)?|declin(?:e|ed|es|ing)|decreas(?:e|ed|es|ing)|lower|down|reduction)\\b", re.I)
-_GUIDANCE = re.compile(r"\\b(?:target|guid(?:e|ance|ed)|expect(?:s|ed)?|aim(?:s|ed)?|outlook|plan(?:s|ned)?|intend(?:s|ed)?|will|commit(?:s|ted)?)\\b", re.I)
-_RESULT_VERB = re.compile(r"\\b(?:met|achieved|exceeded|missed|fell short of|beat)\\b", re.I)
-_PERCENT = re.compile(r"(?<![\\w.])([+-]?\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*%")
-_METRIC = re.compile(r"\\b(ebitda|ebit|operating margin|net interest margin|gross margin|net margin|revenue|sales|pat|net profit|profit|attrition|order book)\\b", re.I)
+    r"seeks? approval|will seek approval|awaiting approval)\b", re.I)
+_COMPLETED = re.compile(r"\b(?:completed|closed|concluded|has acquired|acquired|commenced operations)\b", re.I)
+_RISE = re.compile(r"\b(?:rose|ris(?:e|es|ing)|increas(?:e|ed|es|ing)|grew|growth|higher|up)\b", re.I)
+_FALL = re.compile(r"\b(?:fell|fall(?:s|en|ing)?|declin(?:e|ed|es|ing)|decreas(?:e|ed|es|ing)|lower|down|reduction)\b", re.I)
+_GUIDANCE = re.compile(r"\b(?:target|guid(?:e|ance|ed)|expect(?:s|ed)?|aim(?:s|ed)?|outlook|plan(?:s|ned)?|intend(?:s|ed)?|will|commit(?:s|ted)?)\b", re.I)
+_RESULT_VERB = re.compile(r"\b(?:met|achieved|exceeded|missed|fell short of|beat)\b", re.I)
+_PERCENT = re.compile(r"(?<![\w.])([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*%")
+_METRIC = re.compile(r"\b(ebitda|ebit|operating margin|net interest margin|gross margin|net margin|revenue|sales|pat|net profit|profit|attrition|order book)\b", re.I)
 _GENERIC_CAPITALISED = {
     "annual general meeting", "board meeting", "financial results", "revenue from operations",
     "net profit", "profit after tax", "operating margin", "ebitda margin", "credit rating",
@@ -57,10 +56,10 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
     if _POSITIVE_EVENT.search(proof) and _CANCEL_WORD.search(claim) and not _NEGATIVE_EVENT.search(proof):
         return "the claim says the event was cancelled or terminated but its quote does not support that status"
 
-    if re.search(r"\\b(?:approved|approves|completed|completed the acquisition|closed the deal|commenced operations)\\b", c):
+    if re.search(r"\b(?:approved|approves|completed|completed the acquisition|closed the deal|commenced operations)\b", c):
         if _PENDING.search(proof) and not _APPROVED.search(proof):
             return "the claim upgrades a proposal, recommendation or pending approval to an approved/completed action"
-    if _COMPLETED.search(claim) and re.search(r"\\b(?:subject to|awaiting|pending|will seek|seeks)\\b.{0,45}\\b(?:approval|clearance|consent)\\b", proof, re.I):
+    if _COMPLETED.search(claim) and re.search(r"\b(?:subject to|awaiting|pending|will seek|seeks)\b.{0,45}\b(?:approval|clearance|consent)\b", proof, re.I):
         if not _COMPLETED.search(proof):
             return "the claim says the transaction is completed while its quote says an approval or condition is pending"
 
@@ -71,8 +70,8 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
 
     # Proper-name phrases in the claim must be in the quoted evidence, unless they are the listed issuer itself.
     issuer = {_norm(n) for n in issuer_names if str(n or "").strip()}
-    issuer |= {re.sub(r"\\b(?:limited|ltd|private|pvt)\\b\\.?$", "", x).strip() for x in list(issuer)}
-    for match in re.finditer(r"\\b[A-Z][a-z]+(?:\\s+[A-Z][a-z]+){1,3}\\b", claim):
+    issuer |= {re.sub(r"\b(?:limited|ltd|private|pvt)\b\.?$", "", x).strip() for x in list(issuer)}
+    for match in re.finditer(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}\b", claim):
         phrase = match.group(0)
         pn = _norm(phrase)
         if pn in _GENERIC_CAPITALISED or pn in issuer or any(pn in name or name in pn for name in issuer if name):
@@ -103,7 +102,7 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
     if not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
     # Do not infer direction for a percentage that is not clearly an EBITDA/operating margin target.
-    if not re.search(r"\\b(?:ebitda|operating|gross|net interest|net)\\s+margin\\b", prior, re.I):
+    if not re.search(r"\b(?:ebitda|operating|gross|net interest|net)\s+margin\b", prior, re.I):
         return None
     pcts = [float(x.replace(",", "")) for x in _PERCENT.findall(prior)]
     ccts = [float(x.replace(",", "")) for x in _PERCENT.findall(current)]
@@ -147,7 +146,7 @@ def validate_narrative(items, doc: str, memory: str, number_check, current_url: 
             if source == "company_memory":
                 # Only reuse a URL already present on the exact memory line containing the evidence.
                 line = next((ln for ln in str(memory or "").splitlines() if _contains(ln, quote)), "")
-                m = re.search(r"https?://[^\\s)]+", line)
+                m = re.search(r"https?://[^\s)]+", line)
                 source_url = m.group(0).rstrip(".,") if m else None
             evidence.append({"source": source, "quote": quote, "source_url": source_url})
         if not evidence:
