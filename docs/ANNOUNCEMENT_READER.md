@@ -80,7 +80,7 @@ Code:
 - The recurring production chain enables bounded Gemini batching for short filings (up to four per request).
   Each response is validated against its own filing; a missing/invalid batch answer and a long filing fall back
   to individual reads. Manual runs remain configurable.
-- Every value must carry a quote found in the original PDF text, and prices and counts must have their digits in
+- Every value must carry a quote found in the original extracted filing text, and prices and counts must have their digits in
   the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
   our code converts (lakh, crore, million, billion) and computes every % change.
 - Use free limits up to 95%, through the day (every 15 minutes), not only at night; today's filings first.
