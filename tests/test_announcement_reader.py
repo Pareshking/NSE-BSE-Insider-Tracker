@@ -460,7 +460,11 @@ def _qips(n):
 def test_lanes_read_different_filings_at_once_copy_the_same_file_and_cross_check_when_idle(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC if data != b'empty' else '', ['0.1 MB']))
     files = {'https://f/nse:1.pdf': b'one', 'https://f/nse:2.pdf': b'one', 'https://f/nse:3.pdf': b'empty'}
-    lanes = _lanes(nvidia=[QIP, QIP], zai=[QIP, QIP])
+    answer = json.loads(QIP)
+    answer['narrative'] = [{'text': 'Management has disclosed an investment plan.', 'evidence': [
+        {'source': 'current_filing', 'quote': 'Hyundai plans an investment of USD 15.5 billion by 2030.'}]}]
+    answer = json.dumps(answer)
+    lanes = _lanes(nvidia=[answer, answer], zai=[answer, answer])
     rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=files.__getitem__, idle_wait=0.01)
     by = {r['event_id']: r for r in rows}
     # nse:1 and nse:2 are one file, taken by two lanes at once: the first downloaded is read, the other
@@ -468,6 +472,7 @@ def test_lanes_read_different_filings_at_once_copy_the_same_file_and_cross_check
     read, copy = sorted((by['nse:1'], by['nse:2']), key=lambda r: r['status'] != 'read')
     assert read['status'] == 'read' and read['shown'] == 1 and json.loads(read['fields'])[0]['number'] == 165.65
     assert copy['status'] == 'same_file' and copy['same_as'] == read['event_id'] and copy['fields'] == read['fields']
+    assert copy['narrative'] == read['narrative'] and json.loads(copy['narrative'])[0]['shown']
     assert by['nse:3']['status'] == 'no_text'
     # the idle lane, of the other provider, read it again: its one shown value agrees
     other = ({'nvidia', 'zai'} - {read['reader'].split(':')[0]}).pop()
