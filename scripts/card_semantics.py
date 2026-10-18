@@ -96,8 +96,9 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
         return "a claim that guidance was met or missed needs both prior guidance and current-period evidence"
     prior = " ".join(memory_quotes)
     current = " ".join(current_quotes)
-    pm, cm = _METRIC.search(prior), _METRIC.search(current)
-    if not pm or not cm or pm.group(1).casefold() != cm.group(1).casefold():
+    pmetrics = {m.casefold() for m in _METRIC.findall(prior)}
+    cmetrics = {m.casefold() for m in _METRIC.findall(current)}
+    if not pmetrics.intersection(cmetrics):
         return "the prior guidance and current result do not identify the same measure"
     if not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
