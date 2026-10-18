@@ -2393,3 +2393,11 @@ def test_narrative_audit_counts_do_not_inflate_value_counts():
     assert rec['headline_shown'] == 0 and rec['headline_held'] == 1
     assert rec['narrative_shown'] == 1 and rec['narrative_held'] == 1
     assert json.loads(rec['narrative'])[1]['reason'] == 'quote not found'
+
+
+def test_projection_guard_does_not_misread_projects_as_forecast():
+    assert not ar.PROJECTION.search(
+        "Profit After Tax stood at Rs. 38.9 crores, remained subdued due to higher depreciation arising from investments in long-term projects"
+    )
+    assert ar.PROJECTION.search("Management projected revenue to grow by 15%")
+    assert ar.PROJECTION.search("Management expects revenue to reach Rs. 500 crores")
