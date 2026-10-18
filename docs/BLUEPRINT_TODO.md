@@ -369,3 +369,9 @@ What is stored for context: every read in the reads archive (headline, fields, m
 ### 12.28 History on the site (18 Oct 2026)
 - Old reads sat in `archive/announcement_reads/` only; the site's table holds 60 days. The reader now writes `clean/current/announcement_reads_history.parquet` once a run (reads older than 60 days since 8 Oct 2025; shown rows whole, other rows id/date/status/category for the coverage line). Filings read page has a "From the start" period that loads it; the log line "reads history for the site: N rows" gives the count.
 - Open: if the history table grows too large for the site's memory, split it by month.
+
+### 12.29 Live twice a day, history the rest (18 Oct 2026, replaces the 22:30-09:00 rule of 12.26)
+- Scheduled chain (READER_HISTORY=night): live filings are read only in two passes on trading days, 13:00-14:00 and 19:00-20:00 IST, and one pass, 19:00-20:00, on weekends and NSE holidays (`LIVE_SLOTS`, `off_day` from `reference/nse_calendar.json`). Every pass covers today and yesterday, so nothing falls between passes. The rest of the time a run is a history run: no live reading, up to 40 old filings in 12 minutes (`HISTORY_BATCH`, `HISTORY_MINUTES`), 8 transcripts, a 25-minute deadline.
+- Supervised runs (READER_HISTORY 0 or 1) are unchanged: live always, history when the live queue is clear.
+- History here is the company history stage: it reads the old filings of companies that announced today, so it only has work once such companies are queued; it also advances the source collection one day per run.
+- Cost: a live filing waits up to six hours for its card between passes. Open: if that is too slow in results season, add a 09:30 pass.
