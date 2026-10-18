@@ -108,6 +108,17 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
         return "the prior guidance and current result do not identify the same measure"
     if not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
+    target_fy = {x.upper().replace(" ", "") for x in re.findall(r"\\bFY\\s*\\d{2,4}\\b", prior, re.I)}
+    actual_fy = {x.upper().replace(" ", "") for x in re.findall(r"\\bFY\\s*\\d{2,4}\\b", current, re.I)}
+    target_quarters = {re.sub(r"\\s+", "", x.upper()) for x in re.findall(r"\\bQ[1-4]\\s*FY\\s*\\d{2,4}\\b", prior, re.I)}
+    actual_quarters = {re.sub(r"\\s+", "", x.upper()) for x in re.findall(r"\\bQ[1-4]\\s*FY\\s*\\d{2,4}\\b", current, re.I)}
+    if target_fy and actual_fy and not target_fy.intersection(actual_fy):
+        return "the target and actual refer to different fiscal years"
+    if target_quarters and actual_quarters and not target_quarters.intersection(actual_quarters):
+        return "the target and actual refer to different quarters"
+    if target_fy and actual_quarters and target_fy.intersection(actual_fy) and not target_quarters:
+        if not re.search(r"\\b(?:full[- ]year|year ended|annual results|for the year)\\b", current, re.I):
+            return "an annual target cannot be judged against a quarterly result before the target period ends"
     # Only compare a directly quoted percentage margin with one unambiguous target and actual.
     # Other measure types need their own deterministic comparator; do not guess.
     if not re.search(r"\b(?:ebitda|operating|gross|net interest|net)\s+margin\b", prior, re.I):
