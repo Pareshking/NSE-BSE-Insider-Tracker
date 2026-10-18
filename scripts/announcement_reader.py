@@ -2760,7 +2760,7 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
     if candidates is None or candidates.empty:
         return candidates
     out = candidates.copy()
-    cache, contexts = {}, []
+    cache, said_cache, contexts = {}, {}, []
     results = None
     try:   # our own XBRL results history: the company's earlier quarters, as verified context for results cards
         import io as _io
@@ -2788,10 +2788,20 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
         # Persistent management-call memory is quote-checked by scripts/management_said.py.
         # Include only the latest call before this filing and its forward-looking statements.
-        if isin and isin.lower() != 'nan':
+        subject = str(row.get('subject') or '')
+        # Transcript context is relevant to results/update cards only. Cache by ISIN so multiple filings
+        # from the same issuer do not trigger repeated R2 reads in this run.
+        if (isin and isin.lower() != 'nan'
+                and re.search(r'result|quarter|half.year|business update|monthly update|operational performance|operating update',
+                              subject, re.IGNORECASE)):
             try:
-                said_raw = get(r2, f'archive/management_said/{isin}.json')
-                said_doc = json.loads(said_raw) if said_raw else {}
+                if isin not in said_cache:
+                    said_raw = get(r2, f'archive/management_said/{isin}.json')
+                    try:
+                        said_cache[isin] = json.loads(said_raw) if said_raw else {}
+                    except (TypeError, ValueError):
+                        said_cache[isin] = {}
+                said_doc = said_cache[isin]
                 from insiders_clean import said as said_rules
                 calls = [call for call in (said_doc.get('calls') or [])
                          if str(call.get('call_date') or call.get('filed') or '') < current_date]
