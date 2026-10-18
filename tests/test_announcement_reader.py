@@ -1826,10 +1826,10 @@ def test_subject_line_settles_stake_change_pledge_and_routine():
 
 
 def test_repeated_points_are_dropped_and_a_surviving_point_leads_when_the_headline_is_held():
-    doc = 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026 due to personal reasons.'
+    doc = 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026 due to personal reasons.'
     out = {'category': 'management_change',
-           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
-           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026'},
+           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026'},
                       {'text': 'The reason given is personal reasons', 'quote': 'due to personal reasons'}]}
     cat, fields, metrics = ar.validate(out, doc)
     head, points = ar.card_words(out, doc, fields, metrics)
