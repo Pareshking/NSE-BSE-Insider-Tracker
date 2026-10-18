@@ -262,6 +262,25 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
     body = ''.join(f'<li>{_bold_figures(p["text"])}</li>' for p in points)
     body = f'<ul class="rc-pts">{body}</ul>' if body else ''
 
+    # Narrative claims are rendered only after the reader verifies every cited quote and number.
+    narrative = [n for n in _json(r.get('narrative'), []) if isinstance(n, dict) and n.get('shown')]
+    narrative_items = []
+    for item in narrative:
+        proof = []
+        for ev in item.get('evidence') or []:
+            source = 'Current filing' if ev.get('source') == 'current_filing' else 'Earlier verified company memory'
+            url = str(ev.get('source_url') or '')
+            link = (f' <a href="{esc(url)}" target="_blank" rel="noopener">source ↗</a>'
+                    if url.startswith(('https://', 'http://')) else '')
+            quote = esc(str(ev.get('quote') or ''))
+            if quote:
+                proof.append(f'<li><span>{source}</span>{link}<br><q>{quote}</q></li>')
+        evidence_html = (f'<details class="rc-src"><summary>Evidence for this statement</summary><ul>{"".join(proof)}</ul></details>'
+                         if proof else '')
+        narrative_items.append(f'<li>{_bold_figures(item["text"])}{evidence_html}</li>')
+    narrative_html = (f'<div class="rc-box"><p class="rc-lbl">Company context and guidance</p><ul class="rc-pts">{"".join(narrative_items)}</ul></div>'
+                      if narrative_items else '')
+
     terms = ''.join(
         f'<div><dt>{esc(FIELD[f["name"]])}</dt><dd>{esc(value_text(f))}'
         f'{" " + kit.tag("2 readers agree", "buy") if agreed.get(f["name"]) is True else ""}</dd></div>' for f in fields)
@@ -310,7 +329,7 @@ def card_html(r: dict, price: dict | None = None, history: dict | None = None, b
             f'<span class="rc-cap">{esc(cap)}</span>'
             f'<span class="rc-t">{esc(when.strftime("%d %b, %H:%M")) if when is not None else ""} · {esc(str(r.get("exchange") or ""))}</span></div>'
             f'<div class="rc-tags">{kit.tag(category, "info")}<span class="rc-s">{esc(str(r.get("subject") or ""))}</span></div>'
-            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{figs}{_before_html(before)}{said_box}{terms}{loops_html}{src}'
+            f'<h4 class="rc-h">{esc(title)}</h4>{sub_html}{body}{narrative_html}{figs}{_before_html(before)}{said_box}{terms}{loops_html}{src}'
             f'<div class="rc-foot">{f"<span class=rc-mv>{moves}</span>" if moves else ""}'
             f'{f"<span>Also filed: {also_html}</span>" if also_html else ""}'
             f'<a href="{esc(filing_link(r.get("file_url"), r.get("broadcast_at")) or "#")}" target="_blank" rel="noopener">The filing ↗</a>'
