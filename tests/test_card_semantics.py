@@ -113,3 +113,13 @@ def test_guidance_comparison_is_held_when_accounting_basis_differs():
     )
     assert not out[0]["shown"]
     assert "basis" in out[0]["reason"]
+
+
+def test_cleaned_table_quote_is_checked_against_original_source_with_reader_quote_matcher():
+    out = cs.validate_narrative(
+        [{"text": "Revenue was 1,234.", "evidence": [
+            {"source": "current_filing", "quote": "Revenue | 1,234"}]}],
+        "Revenue       1,234", "", lambda text, quotes: True,
+        current_quote_check=lambda quote: quote == "Revenue | 1,234",
+    )
+    assert out[0]["shown"]
