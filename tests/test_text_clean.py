@@ -132,8 +132,9 @@ Subject: Material litigation update
 The Listing Department issued an order against the company.
 The company also leases an office on Dalal Street.
 """
-    text, removed = clean(body, 'Material litigation update')
+    from insiders_clean.text_clean import clean_with_lines
+    text, removed, lines_removed = clean_with_lines(body, 'Material litigation update')
     assert 'Listing Department issued an order' in text
     assert 'leases an office on Dalal Street' in text
     assert 'Phiroze Jeejeebhoy Towers' not in text
-    assert 'Listing Department' in ' '.join(removed.get('exchange address', []))
+    assert 'Listing Department' in ' '.join(lines_removed.get('exchange address', []))
