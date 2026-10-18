@@ -93,6 +93,12 @@ reader can't get by scrolling the exchange pages:
   the backfill (NSE's new system starts 03 May 2026 and the nightly job
   covers it); bulk and block deals up to the first nightly record. Proceed
   with the data in hand; don't wait for all of it. (08 Oct 2026)
+- **Study universe: Rs 100 Cr market cap and up** (owner, 12 Oct 2026: about 30%
+  of listed companies are ones the owner will never invest in or study). Collection
+  and raw stay complete; the clean step writes `clean/current/universe.parquet` and
+  the site cuts every table to it on read; the track record, forward record and
+  basket use the same list, by latest market cap (owner, 18 Oct)
+  (`insiders_clean/universe.py`).
 - **Morning brief is a page on the site** (owner, 12 Oct 2026): no email or
   messages; the watchlist comes from Streamlit secrets or the page address.
 - **Audience: the owner's own research tool** (owner, 09 Oct 2026). It runs

@@ -50,7 +50,8 @@ def data_dir(tmp_path_factory, real_nse_rows):
     tables['insider_trades'] = trading_window.attach(
         t, meet, Calendar([d.date() for d in pd.bdate_range('2024-01-01', '2026-12-31')]))[0]
     for name, df in tables.items():
-        df.to_parquet(cur / f'{name}.parquet')
+        if name != 'universe':   # fixture market caps cover few companies; the cutoff is tested in test_universe_filter_on_pages
+            df.to_parquet(cur / f'{name}.parquet')
     acts = parsers.parse_corporate_actions(load('corporate_actions.json'))[0]
     tenders = parsers.parse_tender_offers(load('tender_offers_past.json')['data'], load('tender_offers_active.json'))
     bb = buybacks.build(tenders, parsers.parse_daily_buybacks(load('daily_buybacks.json')['data']), acts)[0]
@@ -172,3 +173,31 @@ from screens import {screen}
         out[screen] = ' '.join(e.proto.srcdoc for e in at.get('iframe'))  # tables are drawn in st.iframe
     assert 'after the trading window reopened' in out['insider_trades']
     assert 'Tender offer' in out['capital_raises'] and 'Open market' in out['capital_raises'] and '₹1,800' in out['capital_raises']
+
+
+def test_universe_filter_on_pages(data_dir, monkeypatch, tmp_path):
+    """With a universe table, every page drops companies under Rs 100 Cr (insiders_clean/universe.py)."""
+    import shutil
+    root = tmp_path / 'site'
+    shutil.copytree(data_dir, root)
+    cur = root / 'clean' / 'current'
+    t = pd.read_parquet(cur / 'insider_trades.parquet')
+    isins = list(t['isin'].dropna().unique())
+    keep, drop = isins[0], isins[1:]
+    pd.DataFrame({'isin': isins, 'market_cap': [500e7] + [10e7] * len(drop),
+                  'in_universe': [True] + [False] * len(drop)}).to_parquet(cur / 'universe.parquet')
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(root))
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear()   # earlier tests cached tables from a folder without a universe
+from data import store
+import pandas as pd
+st_t = store.table('insider_trades')
+all_t = pd.read_parquet(store._local() / 'clean' / 'current' / 'insider_trades.parquet')
+import streamlit as st
+st.write(f'{st_t["isin"].nunique()}|{all_t["isin"].nunique()}')
+""", default_timeout=60)
+    at.run()
+    assert not at.exception
+    shown, everything = at.markdown[0].value.split('|')
+    assert shown == '1' and int(everything) == len(isins) > 1

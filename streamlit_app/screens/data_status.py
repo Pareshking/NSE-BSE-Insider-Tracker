@@ -89,6 +89,12 @@ def render():
         kit.Tile('Calendar confirmed to', kit.day((rep.get('calendar') or {}).get('confirmed_through')),
                  'trading sessions for deadlines'),
     ])
+    u = rep.get('universe')
+    if u:
+        kit.note('Study universe.', f"{u['in_universe']:,} of {u['isins']:,} companies have a market cap of ₹{u['min_market_cap'] / 1e7:,.0f} Cr "
+                                    f"or more and are shown; {u['under_cutoff']:,} smaller and {u['no_market_cap']:,} with no market cap are "
+                                    'collected and kept, but left out of every page (insiders_clean/universe.py). The track record '
+                                    "judges each event on that day's market cap.")
     c1, c2 = st.columns(2)
     with c1, kit.card('Removed', 'removed', 'copies or out of the window, counted'):
         for table, v in t.items():

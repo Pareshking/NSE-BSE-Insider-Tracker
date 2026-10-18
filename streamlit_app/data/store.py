@@ -20,6 +20,7 @@ TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings'
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
 TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
+TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 
 
@@ -49,7 +50,7 @@ def configured() -> bool:
 # share of the site's memory (meetings' raw_json alone 22 MB of 35): scripts/site_memory_report.py.
 UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
 ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at'),
-        'promoter_group': ('symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
+        'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
 
 FRESH = ('announcement_reads',)   # rewritten through the day as filings are read: kept for 3 minutes, not 10
@@ -59,13 +60,26 @@ def table(name: str) -> pd.DataFrame:
     return _fresh_table(name) if name in FRESH else _table(name)
 
 
-def _parquet(name: str) -> pd.DataFrame:
+@st.cache_data(ttl=600, show_spinner=False)
+def universe_isins() -> frozenset | None:
+    """ISINs of companies of Rs 100 Cr and up (clean/current/universe.parquet,
+    written by the clean step from insiders_clean/universe.py); None until it exists."""
+    u = _parquet('universe', cut=False)
+    return frozenset(u.loc[u['in_universe'].astype(bool), 'isin'].dropna()) if not u.empty and 'in_universe' in u else None
+
+
+def _parquet(name: str, cut: bool = True) -> pd.DataFrame:
+    """A clean table with the columns pages use, cut to the study universe: a
+    company under Rs 100 Cr (or a row with no ISIN) never reaches a page, nor
+    the site's memory. Tables without an ISIN column are left whole."""
     body = _read(f'clean/current/{name}.parquet')
     if not body:
         return pd.DataFrame()
     names = [c for c in pq.read_schema(io.BytesIO(body)).names if not c.startswith('__index_level_')]
     keep = [c for c in names if c not in UNUSED and (name not in ONLY or c in ONLY[name])]
-    return pd.read_parquet(io.BytesIO(body), columns=keep)
+    df = pd.read_parquet(io.BytesIO(body), columns=keep)
+    uni = universe_isins() if cut and name != 'universe' and 'isin' in df else None
+    return df[df['isin'].isin(uni)].reset_index(drop=True) if uni is not None else df
 
 
 @st.cache_data(ttl=600, show_spinner=False, max_entries=len(TABLES))

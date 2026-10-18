@@ -120,7 +120,7 @@ def test_pipeline_run_produces_tables_and_report(real_nse_rows):
     tables, rep = run(canon, RUN_DATE, seed_state(), vr_master=vr,
                       nse_lists=[pd.read_csv(FIXTURES / 'nse_equity_sample.csv', dtype=str)],
                       market_cap_rows=BSE_ROWS)
-    assert set(tables) == {'insider_trades', 'deals', 'securities'}
+    assert set(tables) == {'insider_trades', 'deals', 'securities', 'universe'}
     t = rep['tables']['insider_trades']
     removed = sum(r['count'] for r in t['removed'].values())
     assert t['input_rows'] == len(real_nse_rows) == t['output_rows'] + removed
