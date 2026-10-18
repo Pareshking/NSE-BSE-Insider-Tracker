@@ -123,3 +123,17 @@ def test_cleaned_table_quote_is_checked_against_original_source_with_reader_quot
         current_quote_check=lambda quote: quote == "Revenue | 1,234",
     )
     assert out[0]["shown"]
+
+
+def test_report_filing_exemption_is_not_a_blanket_governance_exemption():
+    assert "blanket exemption" in cs.semantic_reason(
+        "ANB Metal Cast exempt from corporate governance",
+        "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026.",
+    )
+
+
+def test_precisely_scoped_report_exemption_is_not_flagged():
+    assert cs.semantic_reason(
+        "ANB Metal Cast not required to file Corporate Governance Report",
+        "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026.",
+    ) is None
