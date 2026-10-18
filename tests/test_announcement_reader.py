@@ -2370,3 +2370,11 @@ Revenue from operations        1,234.50       1,100.25
     assert notes and notes[0].startswith('text clean: ')
     # An empty/unsafe cleaner result must never erase usable source text.
     assert ar.clean_document_text('important source text', None)[0]
+
+
+def test_reader_keeps_raw_text_if_cleaner_raises(monkeypatch):
+    monkeypatch.setattr(ar, 'clean_filing_text', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('unexpected input')))
+    raw = 'Material announcement: 1,23,456 shares at Rs. 123.45'
+    cleaned, notes = ar.clean_document_text(raw, 'Allotment')
+    assert cleaned == raw
+    assert notes == ['text clean skipped: RuntimeError']
