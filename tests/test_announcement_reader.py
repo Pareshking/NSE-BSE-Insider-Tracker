@@ -2344,3 +2344,23 @@ def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
     ar.report_quota(True)
     ar.report_quota(False)
     assert out.read_text().split() == ['quota_exhausted=1', 'quota_exhausted=0']
+
+
+def test_reader_cleans_prompt_text_but_keeps_material_figures_and_reports_savings():
+    raw = (
+        "ACME LIMITED\\nRegistered Office: 12 Mill Road, Pune 411001\\n"
+        "To,\\nThe Manager - Listing Department\\nBSE Limited\\n"
+        "Phiroze Jeejeebhoy Towers, Dalal Street\\nMumbai - 400 001\\n\\n"
+        "Subject: Allotment of 1,81,10,473 equity shares at Rs. 165.65 per share\\n\\n"
+        "The Board approved allotment on 13 October 2026.\\n"
+        "Particulars                       FY26          FY25\\n"
+        "Revenue from operations        1,234.50       1,100.25\\n"
+    )
+    cleaned, notes = ar.clean_document_text(raw, 'Allotment of Securities')
+    assert 'Phiroze Jeejeebhoy' not in cleaned and 'Registered Office:' not in cleaned
+    assert 'The Board approved allotment on 13 October 2026.' in cleaned
+    assert 'Revenue from operations | 1,234.50 | 1,100.25' in cleaned
+    assert '1,81,10,473' in cleaned and '165.65' in cleaned
+    assert notes and notes[0].startswith('text clean: ')
+    # An empty/unsafe cleaner result must never erase usable source text.
+    assert ar.clean_document_text('important source text', None)[0]
