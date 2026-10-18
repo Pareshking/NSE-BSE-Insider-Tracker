@@ -70,12 +70,19 @@ def digits(t) -> set[str]:
     return {x.replace(',', '') for x in re.findall(r'\d[\d,]*(?:\.\d+)?', str(t or ''))}
 
 
-def verified_facts(lanes, company: str, filed: str, doc: str, log=print) -> tuple[list[dict], dict]:
+COMPANY_SECONDS = 360  # one transcript never holds the run longer than this; the rest of its parts wait for the next run
+
+
+def verified_facts(lanes, company: str, filed: str, doc: str, log=print, seconds: float = COMPANY_SECONDS) -> tuple[list[dict], dict]:
     """(facts that passed both checks, counts). A section no lane can answer is counted and the rest is still used."""
+    stop = time.monotonic() + seconds
     parts = sections(doc)
     kept, count = [], {'sections': len(parts), 'unanswered': 0, 'quote_not_in_transcript': 0, 'number_not_in_quote': 0}
     for k, part in enumerate(parts, 1):
         raw = None
+        if time.monotonic() > stop:
+            count['unanswered'] += 1
+            continue
         for lane in lanes.values():
             try:
                 text, used, secs = lane.read(fact_prompt(company, filed, part, k, len(parts)))

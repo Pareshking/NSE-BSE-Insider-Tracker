@@ -33,3 +33,20 @@ def test_choose_keeps_forward_looking_first_and_each_statement_once():
              {'topic': 'margins', 'statement': 'We expect margin to rise.', 'quote': 'we expect margin to rise'}]
     out = ms.choose(facts)
     assert [f['statement'] for f in out] == ['We expect margin to rise.', 'Workforce was 5.']
+
+
+def test_a_slow_transcript_stops_at_its_time_budget():
+    class Lane:
+        name = 'x'
+
+        def __init__(self):
+            self.calls = 0
+
+        def read(self, prompt):
+            self.calls += 1
+            return '{"facts": []}', 'm', 0.1
+
+    lane = Lane()
+    doc = ('Management said revenue grew. ' * 700)
+    facts, counts = ms.verified_facts({'x': lane}, 'Co', '2026-01-01', doc, seconds=-1)
+    assert lane.calls == 0 and counts['unanswered'] == counts['sections'] and facts == []
