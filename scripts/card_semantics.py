@@ -109,7 +109,7 @@ def _guidance_comparison_reason(text: str, evidence: list[dict]) -> str | None:
         return "the prior guidance and current result do not identify the same measure"
     prior_basis = "consolidated" if re.search(r"\bconsolidated\b", prior, re.I) else "standalone" if re.search(r"\bstandalone\b", prior, re.I) else None
     current_basis = "consolidated" if re.search(r"\bconsolidated\b", current, re.I) else "standalone" if re.search(r"\bstandalone\b", current, re.I) else None
-    if prior_basis != current_basis:
+    if not prior_basis or not current_basis or prior_basis != current_basis:
         return "the prior guidance and current result do not establish the same standalone/consolidated basis"
     if _NO_GUIDANCE.search(prior) or not _GUIDANCE.search(prior):
         return "the historical evidence does not establish a forward-looking target or guidance"
