@@ -285,8 +285,7 @@ def parse_integrated_xbrl(rows: list[dict], filing_type: str, market: str = 'equ
             'broadcastDateTime': pick('revisedDateTime', 'revisionDateTime', 'broadcastDateTime',
                                       'broadcastDate', 'broadcast_date', 'disseminationDateTime',
                                       'dissemination_time'),
-            'disseminationDateTime': pick('disseminationDateTime', 'broadcastDateTime', 'broadcastDate',
-                                          'broadcast_date'),
+            'disseminationDateTime': pick('disseminationDateTime', 'dissemination_time'),
             'xbrl': direct_url,
             'revision': pick('revision', 'submissionType', 'typeOfSubmission', 'Type of Submission'),
         })
