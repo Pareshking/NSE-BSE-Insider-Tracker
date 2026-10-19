@@ -70,7 +70,7 @@ SHOWN_STATUSES = ('read', 'same_file', 'same_text')
 READ_DAYS = 60
 COLLECT_DAYS = 2              # yesterday too: a filing made public after the nightly collection (22:45) and
                               # before midnight is read the same night; BSE stops at its first known page
-MIN_MCAP = 100 * 1e7          # Rs 100 Cr: smaller companies' PDFs never go to a model
+MIN_MCAP = 500 * 1e7          # strict > Rs 500 Cr, using the latest available market-cap snapshot
 SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
@@ -1848,13 +1848,14 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         return df
     # Prefer the exact ISIN's official cap; if that ISIN is absent from the snapshot, retry the
     # exchange symbol/code mapping. NSE feeds can carry stale ISINs while the listed symbol remains valid.
-    market_caps, cap_matches = [], []
+    market_caps, cap_matches, sme_flags = [], [], []
     def valid_cap(value):
         number = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
         return pd.notna(number) and number > 0
     for row in df.to_dict('records'):
         isin = clean(row.get('isin'))
         record = master.record(isin) if master and isin else None
+        mapped = None
         cap = record.get('market_cap') if record else None
         match = 'isin' if valid_cap(cap) else None
         if not valid_cap(cap) and master:
@@ -1868,8 +1869,12 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                 cap, match = mapped_cap, 'exchange_symbol'
         market_caps.append(cap if valid_cap(cap) else None)
         cap_matches.append(match)
+        sme_flags.append(str(row.get('market') or '').strip().casefold() == 'sme'
+                         or bool((record or {}).get('is_sme', False))
+                         or bool((mapped or {}).get('is_sme', False)))
     df['market_cap'] = market_caps
     df['market_cap_match'] = cap_matches
+    df['is_sme'] = sme_flags
 
     # The upstream hasXbrl boolean is not an attachment URL and can be present on ordinary
     # PDF rows. Never use it as proof that a companion exists or as a prerequisite for pairing.
@@ -2057,11 +2062,22 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         days = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
         c = cands[cands['broadcast_date'].isin(days)].copy()
     counts['candidates'] = len(c)
+    # Exclude SME-board issuers from either exchange. NSE feed rows are explicitly tagged; the
+    # security master also carries ISINs found in the official NSE SME list, so their BSE copies
+    # are excluded too. If an ISIN appears on both lists, the main-board listing wins.
+    market = c.get('market', pd.Series('', index=c.index)).astype(str).str.strip().str.casefold()
+    is_sme = market.eq('sme') | c.get('is_sme', pd.Series(False, index=c.index)).fillna(False).astype(bool)
+    sme_rows = c[is_sme].copy()
+    counts['sme_excluded'] = int(is_sme.sum())
+    status_rows = [{**r, 'status': 'sme_excluded',
+                    'reason': 'SME-board issuer excluded by the current eligibility policy'}
+                   for r in sme_rows.to_dict('records')]
     finished = set()
     tries = {}
     if done is not None and not done.empty:
         # Quota-deferred filings are deliberately retryable without consuming the failure budget.
-        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred'))
+        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred',
+                                          'below_100_cr', 'below_500_cr', 'sme_excluded'))
         failed = done['status'] == 'failed'
         # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
@@ -2071,30 +2087,37 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         # missing-cap rows remain retryable, even if a prior status carried a large tries count.
         finished = set(done.loc[(~retryable & ~stale) | exhausted_failures, 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
+    c = c[~is_sme]
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
-    c = c[keep & ~c['event_id'].isin(finished)]
-    counts['already_done'] = int(keep.sum()) - len(c)
+    c = c[keep].copy()
     c = c.sort_values(['broadcast_date', 'broadcast_at'], ascending=False)
     c['tries'] = c['event_id'].map(tries).fillna(0).astype(int)
-    status_rows, read_rows = [], []
+    read_rows = []
+    already_done = 0
     earlier = [] if done is None or done.empty else done[done['status'].isin(('read',) + COPY_STATUSES)] \
         .to_dict('records')
     for r in c.sort_values('broadcast_at').to_dict('records'):   # oldest first, so the first copy is read
+        # Re-check today's cap and board eligibility before honoring a previous read. This retires
+        # stale cards that no longer meet the live policy, while still avoiding repeat model calls.
         mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
         if pd.isna(mcap) or mcap <= 0:
             status_rows.append({**r, 'status': 'market_cap_unverified',
                                 'reason': 'no verified market-cap value in the latest snapshot dated on or before yesterday'})
             continue
-        if mcap < MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr'})
+        if mcap <= MIN_MCAP:
+            status_rows.append({**r, 'status': 'below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
+            continue
+        if r['event_id'] in finished:
+            already_done += 1
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
             status_rows.append({**r, 'status': 'same_filing_other_exchange', 'same_as': twin['event_id']})
             continue
         read_rows.append(r)
-    counts['below_100_cr'] = sum(x['status'] == 'below_100_cr' for x in status_rows)
+    counts['already_done'] = already_done
+    counts['below_500_cr'] = sum(x['status'] == 'below_500_cr' for x in status_rows)
     counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
@@ -3156,9 +3179,9 @@ class UsageLedger:
 def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, setup: list[str]) -> str:
     st = pd.Series([r['status'] for r in rows]).value_counts().to_dict() if rows else {}
     lines = ['### Announcement reader', '',
-             f"Candidates today and yesterday: {counts.get('candidates', 0)}; routine or no file "
-             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; below Rs 100 Cr "
-             f"{counts.get('below_100_cr', 0)}; same filing on the other exchange "
+             f"Candidates today and yesterday: {counts.get('candidates', 0)}; SME excluded {counts.get('sme_excluded', 0)}; "
+             f"routine or no file {counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; "
+             f"below Rs 500 Cr {counts.get('below_500_cr', 0)}; same filing on the other exchange "
              f"{counts.get('same_filing_other_exchange', 0)}; chosen {counts.get('to_read', 0)}, "
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
@@ -3460,7 +3483,9 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
                                   errors='coerce').fillna(0)
             eligible_today = current_candidates[
-                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps > MIN_MCAP)
+                & current_candidates.get('market', pd.Series('', index=current_candidates.index)).astype(str).str.casefold().ne('sme')
+                & ~current_candidates.get('is_sme', pd.Series(False, index=current_candidates.index)).fillna(False).astype(bool)
             ]
             current_isins.update(eligible_today['isin'].dropna().astype(str))
         try:

@@ -331,7 +331,9 @@ def coverage(reads: pd.DataFrame, since: pd.Timestamp) -> dict:
     r = reads[day >= since.normalize()]
     n = r['status'].value_counts()
     out = {'looked_at': int(len(r)), 'in_full': int(sum(n.get(k, 0) for k in IN_FULL)),
-           'below_100_cr': int(n.get('below_100_cr', 0)), 'not_read': {NOT_READ[k]: int(n[k]) for k in NOT_READ if n.get(k, 0)}}
+           'below_500_cr': int(n.get('below_500_cr', 0) + n.get('below_100_cr', 0)),
+           'sme_excluded': int(n.get('sme_excluded', 0)),
+           'not_read': {NOT_READ[k]: int(n[k]) for k in NOT_READ if n.get(k, 0)}}
     return out if out['looked_at'] else {}
 
 
@@ -341,8 +343,10 @@ def coverage_html(c: dict) -> str:
     parts = [f'<b>{c["in_full"]:,}</b> read in full']
     if c['not_read']:
         parts.append(f'<b>{sum(c["not_read"].values()):,}</b> not read (' + ', '.join(f'{v:,} {esc(k)}' for k, v in c['not_read'].items()) + ')')
-    if c['below_100_cr']:
-        parts.append(f'{c["below_100_cr"]:,} below Rs 100 Cr (not sent to a model)')
+    if c.get('below_500_cr'):
+        parts.append(f'{c["below_500_cr"]:,} at or below Rs 500 Cr (not sent to a model)')
+    if c.get('sme_excluded'):
+        parts.append(f'{c["sme_excluded"]:,} SME-board filings excluded')
     return (f'<p class="evl">Of {c["looked_at"]:,} filings the reader looked at: ' + '; '.join(parts)
             + '. A filing that was not read in full is never summarised from a part.</p>')
 
