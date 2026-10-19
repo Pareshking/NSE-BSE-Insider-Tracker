@@ -218,6 +218,29 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
     assert audit['xbrl_linked'] == 1
     assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
 
+def test_xbrl_audit_exposes_unlinked_cross_exchange_pdf_context():
+    cands = pd.DataFrame([
+        {'event_id': 'nse:xbrl:equities:100779:abc', 'exchange': 'NSE', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'broadcast_date': '2026-10-18', 'file_type': 'xbrl', 'has_xbrl': True,
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CAMLINFINE.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CAMLINFINE.xml',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
+        {'event_id': 'bse:camlin-pdf', 'exchange': 'BSE', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'subject': 'General',
+         'detail': 'Intimation of completion of tenure of Independent Director',
+         'broadcast_date': '2026-10-18', 'file_type': 'pdf', 'has_xbrl': None,
+         'file_url': 'https://www.bseindia.com/filing/CAMLINFINE.pdf',
+         'xbrl_url': None, 'xbrl_source_event_id': None, 'xbrl_source_url': None},
+    ])
+    audit = ar.xbrl_audit(cands)
+    assert audit['xbrl_linked'] == 0  # diagnostic only; never pair on date/issuer alone
+    context = audit['unlinked_xbrl_context'][0]
+    assert context['event_id'] == 'nse:xbrl:equities:100779:abc'
+    assert context['nearby_pdf_candidates'][0]['exchange'] == 'BSE'
+    assert context['nearby_pdf_candidates'][0]['same_normalized_subject'] is False
+
+
 def test_choose_excludes_unverified_market_cap_and_requires_more_than_500_cr():
     today = date(2026, 10, 13)
     c = pd.DataFrame([
