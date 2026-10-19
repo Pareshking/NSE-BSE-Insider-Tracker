@@ -280,9 +280,13 @@ def parse_integrated_xbrl(rows: list[dict], filing_type: str, market: str = 'equ
             'companyName': pick('companyName', 'company', 'Company Name', 'company_name'),
             'subject': f'Integrated Filing - {filing_type.title()}',
             'eventType': f'Integrated Filing - {filing_type.title()}',
-            'broadcastDateTime': pick('broadcastDateTime', 'broadcastDate', 'broadcast_date',
-                                      'disseminationDateTime', 'dissemination_time'),
-            'disseminationDateTime': pick('disseminationDateTime', 'revisedDateTime', 'revisionDateTime'),
+            # A revision is a new filing event for the live-window gate. Prefer its explicit
+            # revision timestamp; otherwise retain the original exchange broadcast timestamp.
+            'broadcastDateTime': pick('revisedDateTime', 'revisionDateTime', 'broadcastDateTime',
+                                      'broadcastDate', 'broadcast_date', 'disseminationDateTime',
+                                      'dissemination_time'),
+            'disseminationDateTime': pick('disseminationDateTime', 'broadcastDateTime', 'broadcastDate',
+                                          'broadcast_date'),
             'xbrl': direct_url,
             'revision': pick('revision', 'submissionType', 'typeOfSubmission', 'Type of Submission'),
         })
