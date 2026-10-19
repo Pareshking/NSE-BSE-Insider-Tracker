@@ -226,6 +226,7 @@ class SecurityMaster:
         return {**rec, 'display_name': display_name(rec['name']), 'sector': sector[0],
                 'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap,
                 'bse_group': bse_group,
+                'is_sme': (isin in self.sme_isins or bse_group in {'M', 'MT', 'MS', 'TS', 'SME', 'BSE SME'}),
                 'is_sme_listing': (isin in self.sme_isins or bse_group in {'M', 'MT', 'MS', 'TS', 'SME', 'BSE SME'})}
 
     def frame(self, isins=None) -> pd.DataFrame:
