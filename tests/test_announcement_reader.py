@@ -2618,3 +2618,28 @@ def test_candidates_exclude_sme_market_aliases_case_insensitively():
     ])
     out = ar.candidates(rows, pd.DataFrame(), None)
     assert set(out['event_id']) == {'nse:2'}
+
+def test_nse_xbrl_retirement_pair_does_not_require_bse_duplicate():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:106821397', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+         'company': 'Camlin Fine Sciences Limited', 'subject': 'Retirement',
+         'text': 'Camlin Fine Sciences Limited has informed the Exchange about Retirement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/CAMLINFINE_18102026110303_Disclosure_under_Reg_30_LODR_-_Completion_of_tenure_of_ID.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-18T11:03:03+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100779:7c6e7d87db', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'XBRL companion metadata',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'broadcast_at': '2026-10-18T10:59:38+05:30', 'broadcast_date': '2026-10-18',
+         'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    pdf = out.loc['nse:106821397']
+    xbrl = out.loc['nse:xbrl:equities:100779:7c6e7d87db']
+    assert pdf['content_url'].endswith('CIM_11353_WebXMLFile_20261018_105938126.xml')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'
+
