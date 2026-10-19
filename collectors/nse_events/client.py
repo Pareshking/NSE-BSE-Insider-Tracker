@@ -7,7 +7,7 @@ from __future__ import annotations
 import random
 import re
 import time
-from datetime import date
+from datetime import date, datetime
 
 import requests
 
@@ -97,13 +97,25 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-share-holdings-master?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
-    def integrated_filing_financials_url(self, symbol: str) -> str:
-        """NSE's dedicated Integrated Filing-Financials API, queried for one live issuer."""
+    def integrated_filing_financials_url(self, symbol: str | None = None,
+                                          quarter_end_date: str | None = None) -> str:
+        """NSE's dedicated Integrated Filing-Financials API, scoped to one issuer or quarter."""
         from urllib.parse import quote
-        symbol = str(symbol or '').strip().upper()
-        if not symbol or not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
-            raise ValueError('a valid NSE symbol is required')
-        return f'{BASE}/api/integrated-filing-financials?index=equities&symbol={quote(symbol, safe="")}'
+        if bool(symbol) == bool(quarter_end_date):
+            raise ValueError('provide exactly one of symbol or quarter_end_date')
+        if symbol:
+            symbol = str(symbol).strip().upper()
+            if not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
+                raise ValueError('a valid NSE symbol is required')
+            query = f'symbol={quote(symbol, safe="")}'
+        else:
+            quarter_end_date = str(quarter_end_date).strip()
+            try:
+                datetime.strptime(quarter_end_date, '%d-%b-%Y')
+            except ValueError as exc:
+                raise ValueError('quarter_end_date must use DD-Mmm-YYYY, e.g. 30-Sep-2026') from exc
+            query = f'quarterEndDate={quote(quarter_end_date, safe="")}'
+        return f'{BASE}/api/integrated-filing-financials?index=equities&{query}'
 
     def corporate_governance_url(self, symbol: str) -> str:
         """NSE's dedicated corporate-governance API; do not infer it from financial filings."""
@@ -123,9 +135,11 @@ class NSEClient:
                 return [row for row in data if isinstance(row, dict)]
         raise RuntimeError('unexpected NSE integrated filing payload shape')
 
-    def integrated_filing_financials(self, symbol: str) -> list[dict]:
-        """Fetch one issuer's financial XBRL filings; caller filters by the live announcement window."""
-        return self._rows(self.get(self.integrated_filing_financials_url(symbol), timeout=10, retries=1))
+    def integrated_filing_financials(self, symbol: str | None = None,
+                                     quarter_end_date: str | None = None) -> list[dict]:
+        """Fetch one issuer's or one quarter's financial filings; caller filters by the live window."""
+        url = self.integrated_filing_financials_url(symbol=symbol, quarter_end_date=quarter_end_date)
+        return self._rows(self.get(url, timeout=10, retries=1))
 
     def corporate_governance(self, symbol: str) -> list[dict]:
         """Fetch one issuer's governance filings through its separate endpoint."""
