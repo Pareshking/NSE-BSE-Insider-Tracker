@@ -2881,3 +2881,26 @@ def test_integrated_companion_fetch_honors_nse_rate_limit_hard_stop(monkeypatch)
     assert result is None
     assert calls == [('financials', 'IOC')]
     assert any('stopped further NSE requests' in note for note in notes)
+
+
+
+def test_security_master_preserves_nse_sme_source_and_main_board_override():
+    from insiders_clean.securities import SecurityMaster, nse_list_frame
+
+    nse = nse_list_frame(pd.DataFrame([
+        {'SYMBOL': 'SMECO', 'NAME OF COMPANY': 'SME Company Limited',
+         'ISIN NUMBER': 'INE000S01000', 'SERIES': 'SM', 'SOURCE MARKET': 'SME'},
+        {'SYMBOL': 'MAINCO', 'NAME OF COMPANY': 'Main Board Company Limited',
+         'ISIN NUMBER': 'INE000A01000', 'SERIES': 'EQ', 'SOURCE MARKET': 'equities'},
+        {'SYMBOL': 'MIGRATED', 'NAME OF COMPANY': 'Migrated Company Limited',
+         'ISIN NUMBER': 'INE000M01000', 'SERIES': 'EQ', 'SOURCE MARKET': 'equities'},
+        {'SYMBOL': 'MIGRATED_SME', 'NAME OF COMPANY': 'Migrated Company Limited',
+         'ISIN NUMBER': 'INE000M01000', 'SERIES': 'SM', 'SOURCE MARKET': 'SME'},
+    ]))
+    assert set(nse['market']) == {'sme', 'equities'}
+    master = SecurityMaster(nse_list=nse)
+    assert master.record('INE000S01000')['is_sme_listing'] is True
+    assert master.record('INE000A01000')['is_sme_listing'] is False
+    # A current main-board NSE listing takes precedence over an old SME listing
+    # carrying the same ISIN.
+    assert master.record('INE000M01000')['is_sme_listing'] is False
