@@ -3617,7 +3617,7 @@ def collect(r2, today: date, dry_run: bool, notes: list):
 
 
 def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date,
-                                  dry_run: bool, notes: list) -> pd.DataFrame | None:
+                                  dry_run: bool, notes: list, max_requests: int = 8) -> pd.DataFrame | None:
     """Fetch separate NSE integrated XBRL only for eligible live filings selected to read.
 
     This is deliberately not a historical crawler: the selected rows have already passed
@@ -3664,10 +3664,15 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
 
     companions = []
     blocked = False
+    requests_made = 0
     wanted_dates = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
     try:
         for symbol, types in sorted(requests_by_symbol.items()):
             for filing_type in sorted(types):
+                if requests_made >= max(0, max_requests):
+                    notes.append(f'NSE integrated companion request cap reached ({max_requests}); remaining symbol/feed pairs deferred')
+                    break
+                requests_made += 1
                 raw_write_error = []
                 if raw is not None:
                     def hook(url, resp, symbol=symbol, filing_type=filing_type):
@@ -3711,7 +3716,7 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
         # Preserve exact source responses before adding normalized rows to the shared archive.
         added, partitions = nann.merge_into_archive(r2, result, today.isoformat())
         notes.append(f'NSE integrated companion archive: {len(result)} current-window XML rows, {added} new, {len(partitions)} partitions')
-    notes.append(f'NSE integrated companion audit: queried {sum(len(v) for v in requests_by_symbol.values())} symbol/feed pairs; '
+    notes.append(f'NSE integrated companion audit: queried {requests_made} symbol/feed pairs (cap {max_requests}); '
                  f'{len(result)} direct XML rows in the live window')
     return result
 
@@ -3855,7 +3860,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         # the operator explicitly supplies --max; quota-deferred runs make no companion calls.
         integrated_limit = args.max if args.max is not None else 8
         integrated_targets = to_read.head(max(0, integrated_limit)) if not out_of_quota else to_read.iloc[0:0]
-        integrated = collect_integrated_companions(integrated_targets, r2, today, args.dry_run, setup)
+        integrated = collect_integrated_companions(integrated_targets, r2, today, args.dry_run, setup,
+                                                   max_requests=max(0, integrated_limit))
         if integrated is not None and not integrated.empty:
             nse = pd.concat([nse, integrated], ignore_index=True) if nse is not None else integrated
             current_candidates = candidates(nse, bse, master)
