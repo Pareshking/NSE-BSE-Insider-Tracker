@@ -6,7 +6,7 @@
 Runs in GitHub Actions through the day (workflow Announcement reader); the site never calls a model, it
 reads clean/current/announcement_reads.parquet. docs/ANNOUNCEMENT_READER.md has the decisions behind it.
 
-1. Collect: yesterday's and today's NSE (main board and SME) and BSE filings into raw_v2/ and the archive,
+1. Collect: yesterday's and today's NSE main-board and BSE filings into raw_v2/ and the archive; NSE SME is out of scope,
    as the nightly collectors do (their count reports are left to the nightly run).
 2. Choose: filings of today and yesterday, newest first, in a reading group (not routine, not concalls),
    with a PDF or ZIP. Read once: a filing already in the reads archive is skipped; the same filing on the
