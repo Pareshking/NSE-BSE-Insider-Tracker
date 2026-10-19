@@ -2660,18 +2660,29 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             else:
                 rest.append(job)
         if len(short) >= 2:
-            log(f'{lane.name}: {len(short)} short filings in one request')
-            for job, res in zip(short, read_batch(lane, short)):
-                try:
-                    if res is not None and res['ok']:
-                        finish_read(lane, job, res)
-                    else:
-                        rest.append(job)
-                except Exception as exc:  # noqa: BLE001
-                    crash(job, exc)
+            # Do not begin another model request after the run-level intake budget. The request itself may
+            # finish after the budget; successful results are kept, while misses are deferred for the next run.
+            if now() - started > budget_seconds:
+                rest.extend(short)
+            else:
+                log(f'{lane.name}: {len(short)} short filings in one request')
+                for job, res in zip(short, read_batch(lane, short)):
+                    try:
+                        if res is not None and res['ok']:
+                            finish_read(lane, job, res)
+                        else:
+                            rest.append(job)
+                    except Exception as exc:  # noqa: BLE001
+                        crash(job, exc)
         else:
             rest = short + rest
         for job in rest:
+            if now() - started > budget_seconds:
+                job['tried'].add(lane.name)
+                with lock:
+                    retry.insert(0, job)
+                log(f"{lane.name}: intake budget exhausted; deferred {job['row'].get('symbol') or job['row'].get('event_id')} for the next run")
+                continue
             try:
                 read_job(lane, job)
             except Exception as exc:  # noqa: BLE001
