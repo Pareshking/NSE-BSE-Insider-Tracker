@@ -220,3 +220,21 @@ def test_corporate_governance_exemption_headline_preserves_report_scope():
         issuer_names=("ANB Metal Cast",),
     )
     assert reason and "overstates the exemption" in reason
+
+
+def test_legal_entity_suffix_is_not_misread_as_an_unsupported_named_party():
+    reason = cs.semantic_reason(
+        "UltraTech Cement approved a corporate guarantee for UHG Holdings IFSC Private Limited",
+        "UltraTech Cement approved a corporate guarantee for UHG Holdings IFSC",
+        issuer_names=("UltraTech Cement",),
+    )
+    assert reason is None
+
+
+def test_management_role_is_not_misread_as_an_unsupported_named_party():
+    reason = cs.semantic_reason(
+        "Kailash Chandra Jhanwar transitions from Managing Director to Non-Executive Vice Chairman",
+        "Kailash Chandra Jhanwar will transition to Non-Executive Vice Chairman effective January 1, 2027",
+        issuer_names=("UltraTech Cement",),
+    )
+    assert reason is None
