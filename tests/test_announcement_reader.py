@@ -195,6 +195,46 @@ def test_candidates_use_exchange_supplied_xbrl_url_directly():
     assert row['xbrl_source_url'].endswith('X.xml')
 
 
+def test_candidates_pairs_xbrl_by_symbol_when_feed_omits_isin():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:camlin', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+         'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'Director change',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/CIM_11353.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-18T10:59:00+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100779:abc', 'symbol': 'CAMLINFINE', 'isin': None,
+         'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'Structured director change',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'broadcast_at': '2026-10-18T10:59:38+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:camlin', 'content_url'].endswith('105938126.xml')
+    assert out.loc['pdf:camlin', 'xbrl_source_event_id'] == 'nse:xbrl:equities:100779:abc'
+    assert out.loc['nse:xbrl:equities:100779:abc', 'group'] == 'routine'
+
+
+def test_candidates_do_not_pair_xbrl_when_both_isins_conflict_even_if_symbol_matches():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results', 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:101:abc', 'symbol': 'X', 'isin': 'INE999Z01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured results',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:01:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:1', 'content_url'].endswith('X.pdf')
+    assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
+
+
 def test_xbrl_audit_reports_flags_attachments_and_links():
     cands = pd.DataFrame([
         {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
