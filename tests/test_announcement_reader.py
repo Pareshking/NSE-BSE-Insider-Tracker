@@ -2401,3 +2401,25 @@ def test_projection_guard_does_not_misread_projects_as_forecast():
     )
     assert ar.PROJECTION.search("Management projected revenue to grow by 15%")
     assert ar.PROJECTION.search("Management expects revenue to reach Rs. 500 crores")
+
+def test_governance_exemption_subtitle_cannot_bypass_scoped_headline_guard():
+    doc = ("Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 "
+           "of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015. "
+           "The company, ANB Metal Cast Limited has listed its specified securities on SME Platform "
+           "of National Stock Exchange of India Limited. Therefore, it is not required to submit "
+           "Corporate Governance Report for the quarter ended September 30, 2026.")
+    out = {
+        'category': 'routine',
+        'headline': {
+            'text': 'ANB Metal Cast files non-applicability of corporate governance',
+            'quote': 'Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015.',
+        },
+        'subtitle': {
+            'text': 'Exempted due to listing on SME Platform',
+            'quote': 'The company, ANB Metal Cast Limited has listed its specified securities on SME Platform of National Stock Exchange of India Limited.',
+        },
+    }
+    headline, _ = ar.card_words(out, doc, [], [], ('ANB Metal Cast', 'ANB Metal Cast Limited'))
+    assert not headline['shown']
+    assert not headline['subtitle']['shown']
+    assert 'overbroad exemption' in headline['subtitle']['reason']
