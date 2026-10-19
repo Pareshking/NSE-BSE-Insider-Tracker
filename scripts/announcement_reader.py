@@ -2017,29 +2017,39 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     used_xbrl = set()
     # the companions and the other PDFs of one issuer, found by its identifier instead of by scanning every row
     structured_by_ident, pdfs_by_ident = {}, {}
+
+    def identity_keys(item):
+        # Index both exchange identifiers: NSE's dedicated XBRL feed can omit ISIN
+        # while the ordinary announcement has one. Pairing still calls same_issuer(),
+        # which rejects conflicting ISINs and permits symbol fallback only when needed.
+        return {value.strip().upper() for field in ('isin', 'symbol')
+                if (value := clean(item.get(field)))}
+
     for xidx, xrow in structured_rows:
-        structured_by_ident.setdefault(
-            str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper(), []).append((xidx, xrow))
+        for key in identity_keys(xrow):
+            structured_by_ident.setdefault(key, []).append((xidx, xrow))
     for pidx, prow in enumerate(records):
         if prow.get('exchange') != 'NSE':
             continue
         if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
             continue
-        pdfs_by_ident.setdefault(
-            str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper(), []).append(pidx)
+        for key in identity_keys(prow):
+            pdfs_by_ident.setdefault(key, []).append(pidx)
     for idx, row in enumerate(records):
         if row.get('exchange') != 'NSE':
             continue
         if str(row.get('file_type') or '').lower() not in ('pdf', 'zip') or not row.get('file_url'):
             continue
-        identifier = str(row.get('isin') or row.get('symbol') or '').strip().upper()
+        identifiers = identity_keys(row)
         subject = subject_base(row.get('subject'))
         broadcast_day = day(row.get('broadcast_date'))
-        if not identifier or not subject or broadcast_day is None:
+        if not identifiers or not subject or broadcast_day is None:
             continue
         matches, nearby_structured = [], []
-        for xidx, xrow in structured_by_ident.get(identifier, ()):
-            if xidx in used_xbrl or xidx == idx:
+        indexed_xbrl = {xidx: xrow for key in identifiers
+                        for xidx, xrow in structured_by_ident.get(key, ())}
+        for xidx, xrow in indexed_xbrl.items():
+            if xidx in used_xbrl or xidx == idx or not same_issuer(row, xrow):
                 continue
             xday = day(xrow.get('broadcast_date'))
             if xday is None or abs((xday - broadcast_day).days) > 1:
@@ -2052,8 +2062,11 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # XBRL payload. Repeated generic subjects are common for separate KMP filings;
         # choosing the first exact-subject match can cross-wire distinct disclosures.
         other_pdfs, other_same_subject_pdfs = [], []
-        for pidx in pdfs_by_ident.get(identifier, ()):
+        indexed_pdfs = {pidx for key in identifiers for pidx in pdfs_by_ident.get(key, ())}
+        for pidx in indexed_pdfs:
             prow = records[pidx]
+            if not same_issuer(row, prow):
+                continue
             if pidx == idx:
                 continue
             pday = day(prow.get('broadcast_date'))
