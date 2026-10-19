@@ -1611,6 +1611,39 @@ ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommen
                                    r'figures for the previous (?:period|year) (?:have been|has been) regrouped', re.IGNORECASE)
 
 
+def ground_claim_quote(item, fields, metrics, doc):
+    """If a headline's number comes from a checked field/table, include that exact evidence in its displayed quote.
+
+    The model may cite an event sentence as the headline quote while taking its amount from a separate table row.
+    The amount can be verified elsewhere in the filing, but must not appear visually unsupported beside the headline.
+    If the checked evidence still cannot support every number, fail closed and hold the claim.
+    """
+    if not isinstance(item, dict) or not item.get('shown'):
+        return item
+    text = str(item.get('text') or '')
+    quote = str(item.get('quote') or '')
+    if not quote or numbers_backed(
+            text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
+        return item
+    quote_parts = [quote]
+    checked = [f for f in (fields or []) + (metrics or [])
+               if isinstance(f, dict) and f.get('shown') and str(f.get('quote') or '').strip()]
+    for field in checked:
+        extra_quote = str(field['quote']).strip()
+        if extra_quote in quote_parts:
+            continue
+        quote_parts.append(extra_quote)
+        if numbers_backed(
+                text, quote_parts,
+                unit_ok=lambda n, mult: any(s.table_unit(q, mult, doc) for q in quote_parts)):
+            item['quote'] = ' ... '.join(quote_parts)
+            return item
+    item['shown'] = False
+    why = 'a number in the headline is not backed by its cited quote or a checked field/metric quote'
+    item['reason'] = '; '.join(x for x in (item.get('reason'), why) if x)
+    return item
+
+
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     extra = card_numbers(fields, metrics)
@@ -1626,6 +1659,7 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
                 pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
     headline = check_words(out.get('headline'), doc, extra_numbers=extra, names=names)
+    headline = ground_claim_quote(headline, fields, metrics, doc)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
         if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
