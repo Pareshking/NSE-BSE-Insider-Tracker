@@ -1661,6 +1661,15 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), sub_reason) if x)
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
+            # A subtitle can imply the same broad exemption as a held headline even
+            # when its own quote only proves SME listing status. Do not let that
+            # narrower quote bypass the full-filing governance-scope safeguard.
+            if semantic_hold and 'overstates the exemption' in semantic_hold \
+                    and re.search(r'\\b(?:exempt(?:ed|ion)?|non[- ]applicab)', str(sub.get('text') or ''), re.I) \
+                    and not re.search(r'\\b(?:corporate\\s+governance\\s+report|reg(?:ulation)?\\.?\\s*27)\\b', str(sub.get('text') or ''), re.I):
+                sub['shown'] = False
+                scope_reason = 'subtitle implies the same overbroad exemption without preserving Regulation 27 / Corporate Governance Report scope'
+                sub['reason'] = '; '.join(x for x in (sub.get('reason'), scope_reason) if x)
             headline['subtitle'] = sub
     if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
         ours = results_headline(metrics, names, doc)
