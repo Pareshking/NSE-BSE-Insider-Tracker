@@ -2822,6 +2822,6 @@ def test_integrated_companion_fetch_is_limited_to_selected_live_issuers_and_date
     result = ar.collect_integrated_companions(selected, None, date(2026, 10, 19), True, notes)
     assert set(calls) == {('financials', 'IOC'), ('governance', 'IOC')}
     assert result is not None
-    assert set(result['event_id'].str.extract(r':([^:]+):')[0]) == {'IOC-FIN', 'IOC-GOV'}
+    assert {event_id.split(':')[3] for event_id in result['event_id']} == {'IOC-FIN', 'IOC-GOV'}
     assert set(result['broadcast_date']) == {'2026-10-19'}
     assert any('2 direct XML rows' in note for note in notes)
