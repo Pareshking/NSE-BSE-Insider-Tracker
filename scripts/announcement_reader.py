@@ -3668,9 +3668,11 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
     wanted_dates = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
     try:
         for symbol, types in sorted(requests_by_symbol.items()):
+            if requests_made >= max(0, max_requests):
+                notes.append(f'NSE integrated companion request cap reached ({max_requests}); remaining symbol/feed pairs deferred')
+                break
             for filing_type in sorted(types):
                 if requests_made >= max(0, max_requests):
-                    notes.append(f'NSE integrated companion request cap reached ({max_requests}); remaining symbol/feed pairs deferred')
                     break
                 requests_made += 1
                 raw_write_error = []
