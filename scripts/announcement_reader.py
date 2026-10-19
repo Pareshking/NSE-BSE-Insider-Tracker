@@ -2090,14 +2090,16 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
     c = c[~is_sme]
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
-    c = c[keep & ~c['event_id'].isin(finished)]
-    counts['already_done'] = int(keep.sum()) - len(c)
+    c = c[keep].copy()
     c = c.sort_values(['broadcast_date', 'broadcast_at'], ascending=False)
     c['tries'] = c['event_id'].map(tries).fillna(0).astype(int)
     read_rows = []
+    already_done = 0
     earlier = [] if done is None or done.empty else done[done['status'].isin(('read',) + COPY_STATUSES)] \
         .to_dict('records')
     for r in c.sort_values('broadcast_at').to_dict('records'):   # oldest first, so the first copy is read
+        # Re-check today's cap and board eligibility before honoring a previous read. This retires
+        # stale cards that no longer meet the live policy, while still avoiding repeat model calls.
         mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
         if pd.isna(mcap) or mcap <= 0:
             status_rows.append({**r, 'status': 'market_cap_unverified',
@@ -2106,11 +2108,15 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         if mcap <= MIN_MCAP:
             status_rows.append({**r, 'status': 'below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
             continue
+        if r['event_id'] in finished:
+            already_done += 1
+            continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
             status_rows.append({**r, 'status': 'same_filing_other_exchange', 'same_as': twin['event_id']})
             continue
         read_rows.append(r)
+    counts['already_done'] = already_done
     counts['below_500_cr'] = sum(x['status'] == 'below_500_cr' for x in status_rows)
     counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
