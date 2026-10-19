@@ -187,7 +187,10 @@ def nse_lists(client, run_day: str, notes: list):
             notes.append(f'{name}: fetch failed, used last stored copy' if body
                          else f'{name}: fetch failed and no stored copy; NSE identity from other sources only')
         if body:
-            frames.append(pd.read_csv(io.BytesIO(body), dtype=str, keep_default_na=False))
+            frame = pd.read_csv(io.BytesIO(body), dtype=str, keep_default_na=False)
+            # Keep the source board explicit: SME rows must not be treated as main-board issuers.
+            frame['source_market'] = 'sme' if name == 'nse_sme_equity.csv' else 'equities'
+            frames.append(frame)
     return frames
 
 
