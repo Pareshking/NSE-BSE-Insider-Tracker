@@ -13,6 +13,18 @@ name: Unified announcement pipeline
 on:
   # Recovery trigger is retained from main, but the reader job below still enforces
   # the production pause until narrative/XBRL acceptance is complete.
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scripts/announcement_reader.py'
+      - 'scripts/card_semantics.py'
+      - 'collectors/nse_events/**'
+      - 'insiders_clean/securities.py'
+      - 'tests/test_announcement_reader.py'
+      - 'tests/test_card_semantics.py'
+      - 'tests/test_announcements.py'
+      - 'tests/test_nse_announcement_parser.py'
+      - '.github/workflows/announcement-reader.yml'
   push:
     branches: [main]
     paths:
