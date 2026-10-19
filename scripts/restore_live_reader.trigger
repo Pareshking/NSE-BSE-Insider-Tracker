@@ -1,4 +1,4 @@
-recovery=2026-10-19T18:53:00Z
-reason=restart stalled production reader; restore verified live announcement processing
+recovery=2026-10-20T00:30:00+05:30
+reason=launch production reader after removing hanging competing-workflow cleanup
 max_filings=25
-reader_minutes=11
+reader_minutes=12
