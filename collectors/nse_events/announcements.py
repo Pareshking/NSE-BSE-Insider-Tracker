@@ -197,7 +197,14 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
     """
     out = []
     for row in rows or []:
-        url = _file(row.get('attachment'))
+        # Feed schemas differ: para-a/para-b/award expose the XML as 'xbrl' and
+        # the human-readable PDF as 'attachment'; the legacy announcements feed
+        # can expose the structured payload under 'attachment'. Always prefer the
+        # explicit XBRL URL, and never ingest the PDF as a companion by mistake.
+        url = _file(row.get('xbrl') or row.get('xbrlUrl') or row.get('ixbrl'))
+        if not url:
+            candidate = _file(row.get('attachment'))
+            url = candidate if file_type(candidate) in ('xml', 'xbrl', 'zip') else None
         if not url:
             continue
         app_id = _text(str(row.get('appId') or row.get('id') or '')) or ''
