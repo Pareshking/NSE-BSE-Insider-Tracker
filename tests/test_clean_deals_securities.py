@@ -16,7 +16,7 @@ from insiders_clean.deals import clean_deals
 from insiders_clean.entities import entity_key
 from insiders_clean.insider import clean_insider
 from insiders_clean.pipeline import run
-from insiders_clean.securities import SecurityMaster, display_name, nse_list_frame
+from insiders_clean.securities import SecurityMaster, bse_list_frame, display_name, nse_list_frame
 
 
 def bse_deal(code, name, client, side, qty, price, day='06/10/2026'):
@@ -242,7 +242,15 @@ def test_security_master_marks_official_sme_isins_and_main_board_listing_wins():
         'ISIN_NUMBER': ['INE000A01002', 'INE000A01003'], 'SERIES': ['SME', 'SME'],
         'source_market': ['sme', 'sme'],
     })
-    master = SecurityMaster(nse_list=nse_list_frame(equity, sme))
+    bse_sme = bse_list_frame([
+        {'symbol': '600001', 'isin': 'INEBSESME1', 'company_name': 'BSE SME M', 'market_cap': 6e9, 'group': 'M'},
+        {'symbol': '600002', 'isin': 'INEBSESME2', 'company_name': 'BSE SME MT', 'market_cap': 6e9, 'group': 'MT'},
+        {'symbol': '600003', 'isin': 'INEBSESME3', 'company_name': 'BSE SME MS', 'market_cap': 6e9, 'group': 'MS'},
+        {'symbol': '600004', 'isin': 'INEBSESME4', 'company_name': 'BSE SME TS', 'market_cap': 6e9, 'group': 'TS'},
+        {'symbol': '600005', 'isin': 'INE000A01003', 'company_name': 'Transferred Co', 'market_cap': 6e9, 'group': 'M'},
+    ])
+    master = SecurityMaster(nse_list=nse_list_frame(equity, sme), bse_list=bse_sme)
     assert master.record('INE000A01002')['is_sme'] is True
     assert master.record('INE000A01001')['is_sme'] is False
     assert master.record('INE000A01003')['is_sme'] is False
+    assert all(master.record(f'INEBSESME{i}')['is_sme'] is True for i in range(1, 5))
