@@ -16,7 +16,7 @@ from insiders_clean.deals import clean_deals
 from insiders_clean.entities import entity_key
 from insiders_clean.insider import clean_insider
 from insiders_clean.pipeline import run
-from insiders_clean.securities import display_name
+from insiders_clean.securities import SecurityMaster, display_name, nse_list_frame
 
 
 def bse_deal(code, name, client, side, qty, price, day='06/10/2026'):
@@ -229,3 +229,20 @@ def test_nightly_csv_module_maps_to_the_json_field_names():
     rows = nd.rows_from_csv(text)
     assert rows and rows[0]['source'] == 'nse_nightly_deals_csv'
     assert set(rows[0]) >= {'BD_DT_DATE', 'BD_SYMBOL', 'BD_CLIENT_NAME', 'BD_BUY_SELL', 'BD_QTY_TRD', 'BD_TP_WATP'}
+
+
+def test_security_master_marks_official_sme_isins_and_main_board_listing_wins():
+    equity = pd.DataFrame({
+        'SYMBOL': ['MAINCO', 'TRANSFER'], 'NAME_OF_COMPANY': ['Main Co', 'Transferred Co'],
+        'ISIN_NUMBER': ['INE000A01001', 'INE000A01003'], 'SERIES': ['EQ', 'EQ'],
+        'source_market': ['equities', 'equities'],
+    })
+    sme = pd.DataFrame({
+        'SYMBOL': ['SMECO', 'TRANSFER'], 'NAME_OF_COMPANY': ['SME Co', 'Transferred Co'],
+        'ISIN_NUMBER': ['INE000A01002', 'INE000A01003'], 'SERIES': ['SME', 'SME'],
+        'source_market': ['sme', 'sme'],
+    })
+    master = SecurityMaster(nse_list=nse_list_frame(equity, sme))
+    assert master.record('INE000A01002')['is_sme'] is True
+    assert master.record('INE000A01001')['is_sme'] is False
+    assert master.record('INE000A01003')['is_sme'] is False
