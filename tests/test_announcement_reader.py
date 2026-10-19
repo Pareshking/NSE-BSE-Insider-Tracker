@@ -2423,3 +2423,39 @@ def test_governance_exemption_subtitle_cannot_bypass_scoped_headline_guard():
     assert not headline['shown']
     assert not headline['subtitle']['shown']
     assert 'overbroad exemption' in headline['subtitle']['reason']
+
+def test_candidates_exclude_sme_listings_before_ai_and_xbrl_pairing():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:sme:pdf:1', 'symbol': 'SMECO', 'isin': 'INE000S01000',
+         'company': 'SME Company Limited', 'subject': 'Financial Results',
+         'text': 'Quarterly results', 'file_url': 'https://nsearchives.nseindia.com/corporate/SMECO_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-19T10:00:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'sme'},
+        {'event_id': 'nse:xbrl:sme:10001:abc', 'symbol': 'SMECO', 'isin': 'INE000S01000',
+         'company': 'SME Company Limited', 'subject': 'Financial Results',
+         'text': 'XBRL companion', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/SMECO.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/SMECO.xml',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+        {'event_id': 'nse:equities:pdf:2', 'symbol': 'MAINCO', 'isin': 'INE000A01000',
+         'company': 'Main Company Limited', 'subject': 'Financial Results',
+         'text': 'Quarterly results', 'file_url': 'https://nsearchives.nseindia.com/corporate/MAINCO_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-19T10:05:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None)
+    assert set(out['event_id']) == {'nse:equities:pdf:2'}
+    assert out.iloc[0]['market'] == 'equities'
+
+
+def test_candidates_exclude_sme_market_aliases_case_insensitively():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:1', 'symbol': 'A', 'subject': 'Update', 'text': 'SME filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/A.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'SME Platform'},
+        {'event_id': 'nse:2', 'symbol': 'B', 'subject': 'Update', 'text': 'Equity filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/B.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None)
+    assert set(out['event_id']) == {'nse:2'}
