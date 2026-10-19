@@ -56,6 +56,7 @@ class FakeNSE:
     def __init__(self, rows, block=False, sme=()):
         self.rows, self.block, self.calls, self.on_response, self.asked = rows, block, 0, None, []
         self.sme = list(sme)
+        self.xbrl_asked = []
 
     def announcements(self, a, b, index='equities'):
         self.calls += 1
@@ -63,6 +64,12 @@ class FakeNSE:
         if self.block:
             raise Blocked('HTTP 403')
         return self.rows if index == 'equities' else self.sme
+
+    def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
+        self.xbrl_asked.append((a, b, index, feed_type))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
 
 
 def test_nightly_run_archives_by_month_and_twice_adds_nothing(monkeypatch):
@@ -100,7 +107,7 @@ def test_backfill_goes_month_by_month_and_refusal_stops():
 
 def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
     class XbrlFakeNSE(FakeNSE):
-        def xbrl_announcements(self, a, b, index='equities', symbol=None):
+        def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
             return [{'appId': 'bad-xbrl', 'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/bad.xml'}]
 
     def broken_parse(*args, **kwargs):
@@ -116,6 +123,35 @@ def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
                           for k in r2.objects if k.startswith(ann.PREFIX)])
     assert len(archived) == 3
     assert not set(archived['file_type']) & {'xml', 'xbrl'}  # failed optional XBRL parse added no synthetic rows
+
+
+def test_nightly_run_collects_all_dedicated_xbrl_feed_types():
+    class ParaBFakeNSE(FakeNSE):
+        def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
+            self.xbrl_asked.append((a, b, index, feed_type))
+            if feed_type == 'para-b':
+                return [{'appId': '100779', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+                         'companyName': 'Camlin Fine Sciences Limited',
+                         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+                         'broadcastDateTime': '18-10-2026 10:59:38',
+                         'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml'}]
+            return []
+
+    r2 = FakeR2()
+    nse = ParaBFakeNSE(ROWS[:1])
+    rep = ann.run(r2, nse, date(2026, 10, 19))
+    assert {feed for _, _, market, feed in nse.xbrl_asked if market == 'equities'} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    assert {call['feed_type'] for call in rep['xbrl_calls']} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xbrl = archived[archived['event_id'].astype(str).str.startswith('nse:xbrl:')]
+    assert len(xbrl) == 1
+    assert xbrl.iloc[0]['file_type'] == 'xbrl'
+    assert xbrl.iloc[0]['xbrl_url'].endswith('105938126.xml')
 
 
 def test_sme_feed_is_not_collected():
