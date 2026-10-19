@@ -1947,6 +1947,27 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             days[key] = None if pd.isna(parsed) else parsed.date()
         return days[key]
 
+    def same_issuer(a, b):
+        ai, bi = clean(a.get('isin')), clean(b.get('isin'))
+        if ai and bi:
+            return ai == bi
+        sa, sb = clean(a.get('symbol')), clean(b.get('symbol'))
+        return bool(sa and sb and sa.upper() == sb.upper())
+
+    def within_minutes(a, b, limit=15):
+        ta = pd.to_datetime(a, errors='coerce', utc=True)
+        tb = pd.to_datetime(b, errors='coerce', utc=True)
+        return not pd.isna(ta) and not pd.isna(tb) and abs((ta - tb).total_seconds()) <= limit * 60
+
+    def management_xbrl(row):
+        subject = subject_base(row.get('subject'))
+        return 'change in directors' in subject and 'auditor' in subject and 'rta' in subject
+
+    def management_pdf_support(row):
+        text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
+        return (re.search(r'\\bindependent director\\b', text, re.IGNORECASE) is not None
+                and re.search(r'\\b(tenure|retirement|cessation|completion)\\b', text, re.IGNORECASE) is not None)
+
     records = df.to_dict('records')
     structured_rows = []
     for idx, row in enumerate(records):
@@ -2027,19 +2048,51 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             id_matches = []
             for item in nearby_structured:
                 app_id = xbrl_app_id(item)
-                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', str(row.get('file_url') or '')):
+                pdf_ref = f"{row.get('file_url') or ''} {row.get('event_id') or ''}"
+                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', pdf_ref):
                     id_matches.append(item)
-            if len(id_matches) != 1:
+            if len(id_matches) == 1:
+                app_id = xbrl_app_id(id_matches[0])
+                id_pdfs = []
+                for pidx in [idx] + other_pdfs:
+                    pdf = records[pidx]
+                    pdf_ref = f"{pdf.get('file_url') or ''} {pdf.get('event_id') or ''}"
+                    if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', pdf_ref):
+                        id_pdfs.append(pidx)
+                if len(id_pdfs) != 1:
+                    continue
+                _, _, xidx, xrow = id_matches[0]
+            elif id_matches:
+                # More than one XBRL payload carries the same appId; never guess.
                 continue
-            app_id = xbrl_app_id(id_matches[0])
-            id_pdfs = []
-            for pidx in [idx] + other_pdfs:
-                purl = str(records[pidx].get('file_url') or '')
-                if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', purl):
-                    id_pdfs.append(pidx)
-            if len(id_pdfs) != 1:
-                continue
-            _, _, xidx, xrow = id_matches[0]
+            else:
+                # Verified semantic alias for a narrow real-world pattern: an NSE "Retirement"
+                # PDF plus its unique BSE copy describing completion of an independent director's
+                # tenure, and one nearby NSE XBRL record explicitly classified as a director/KMP
+                # change. Require exact issuer/date, <=15 minutes between all three records, and
+                # no other NSE PDF for that issuer/date. This is not a general date-only fallback.
+                if (len(nearby_structured) != 1 or other_pdfs or subject != 'retirement'):
+                    continue
+                item = nearby_structured[0]
+                xrow = item[3]
+                if not management_xbrl(xrow) or not within_minutes(row.get('broadcast_at'), xrow.get('broadcast_at')):
+                    continue
+                support = []
+                for candidate_row in records:
+                    if candidate_row.get('exchange') != 'BSE':
+                        continue
+                    if str(clean(candidate_row.get('file_type')) or '').lower() not in ('pdf', 'zip') or not candidate_row.get('file_url'):
+                        continue
+                    if not same_issuer(row, candidate_row) or day(candidate_row.get('broadcast_date')) != broadcast_day:
+                        continue
+                    if not within_minutes(row.get('broadcast_at'), candidate_row.get('broadcast_at')) or not within_minutes(
+                            xrow.get('broadcast_at'), candidate_row.get('broadcast_at')):
+                        continue
+                    if management_pdf_support(candidate_row):
+                        support.append(candidate_row)
+                if len(support) != 1:
+                    continue
+                _, _, xidx, xrow = item
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
