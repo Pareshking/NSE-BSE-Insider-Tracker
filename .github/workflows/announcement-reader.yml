@@ -98,7 +98,7 @@ permissions:
 
 concurrency:
   # One production pipeline; experiments on PRs/branches remain isolated.
-  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
+  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && github.event_name == 'push' && 'nse-announcements-recovery' || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name)) }}
   # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -167,7 +167,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          READER_MINUTES: ${{ inputs.minutes || (github.event_name == 'push' && '40') || '11' }}
+          READER_MINUTES: ${{ inputs.minutes || (github.event_name == 'push' && '12') || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
           READER_BATCH: ${{ inputs.batch == true && '1' || (github.event_name == 'push' && '1') || '0' }}
           READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
@@ -179,7 +179,7 @@ jobs:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '100') || inputs.max || '' }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '25') || inputs.max || '' }}
           CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'v2' }}
           CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
