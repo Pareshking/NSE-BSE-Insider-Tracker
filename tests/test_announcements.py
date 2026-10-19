@@ -196,4 +196,5 @@ def test_run_queries_both_integrated_filing_types_without_treating_pdf_as_xbrl()
                           for k in r2.objects if k.startswith(ann.PREFIX)])
     xml = archived[archived['file_type'] == 'xbrl']
     assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('IOC_results.xml')
-    assert not archived['file_url'].astype(str).str.endswith('.pdf').sum() < 0
+    pdfs = archived[archived['file_url'].astype(str).str.endswith('.pdf')]
+    assert not pdfs.empty and pdfs['file_type'].eq('pdf').all()  # ordinary PDF filings remain PDFs
