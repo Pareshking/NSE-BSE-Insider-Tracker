@@ -250,6 +250,45 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
     return df
 
 
+def parse_integrated_xbrl(rows: list[dict], filing_type: str, market: str = 'equities') -> pd.DataFrame:
+    """Normalize direct XBRL links from the separate Integrated Filing API.
+
+    Link discovery is limited to exchange-supplied fields whose names contain 'xbrl';
+    no URL is synthesized and rows without a direct XML/XBRL URL are not treated as companions.
+    """
+    if filing_type not in {'financials', 'governance'}:
+        raise ValueError(f'unsupported integrated filing type: {filing_type}')
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        direct_url = None
+        for key, value in row.items():
+            if 'xbrl' not in str(key).casefold():
+                continue
+            direct_url = _file(value)
+            if direct_url and file_type(direct_url) in ('xml', 'xbrl'):
+                break
+            direct_url = None
+        if not direct_url:
+            continue
+        def pick(*keys):
+            return next((row[k] for k in keys if row.get(k) not in (None, '')), None)
+        normalized.append({
+            'appId': pick('appId', 'id', 'seq_id', 'submissionId', 'submission_id'),
+            'symbol': pick('symbol', 'Symbol'),
+            'companyName': pick('companyName', 'company', 'Company Name', 'company_name'),
+            'subject': f'Integrated Filing - {filing_type.title()}',
+            'eventType': f'Integrated Filing - {filing_type.title()}',
+            'broadcastDateTime': pick('broadcastDateTime', 'broadcastDate', 'broadcast_date',
+                                      'disseminationDateTime', 'dissemination_time'),
+            'disseminationDateTime': pick('disseminationDateTime', 'revisedDateTime', 'revisionDateTime'),
+            'xbrl': direct_url,
+            'revision': pick('revision', 'submissionType', 'typeOfSubmission', 'Type of Submission'),
+        })
+    return parse_xbrl(normalized, market)
+
+
 def partition(broadcast_date) -> str:
     d = pd.to_datetime(broadcast_date, errors='coerce')
     return 'month=unknown' if pd.isna(d) else f'year={d.year}/month={d.month:02d}'
@@ -425,6 +464,27 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
                     xbrl_frames.append(xdf)
             if blocked:
                 break
+        if blocked:
+            break
+        # Integrated Filing-Financials and Integrated Filing-Governance are separate
+        # NSE tables/APIs, not guaranteed to appear in the ordinary XBRL announcement feeds.
+        # They are optional companions: only direct exchange-supplied XML URLs are retained.
+        for filing_type in ('financials', 'governance'):
+            try:
+                integrated_rows = nse.integrated_filings(a, b, filing_type=filing_type)
+                idf = parse_integrated_xbrl(integrated_rows, filing_type, market)
+                report['xbrl_calls'].append({'market': market, 'feed_type': f'integrated-{filing_type}',
+                                             'from': a.isoformat(), 'to': b.isoformat(),
+                                             'source_rows': len(integrated_rows), 'rows': len(idf)})
+                if not idf.empty:
+                    xbrl_frames.append(idf)
+            except Blocked as exc:
+                report['notes'].append(f'NSE integrated {filing_type} refused ({exc}); ordinary PDF path retained')
+                blocked = True
+                break
+            except Exception as exc:  # noqa: BLE001 -- separate integrated endpoint must not block ordinary PDFs
+                report['notes'].append(
+                    f'NSE integrated {filing_type} {a}..{b}: fetch/parse failed ({type(exc).__name__}: {exc}); PDF path retained')
         if blocked:
             break
     nse.on_response = None
