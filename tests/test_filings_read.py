@@ -265,7 +265,7 @@ def test_coverage_counts_what_was_read_in_full_and_names_why_the_rest_was_not():
         'status': ['read', 'same_file', 'same_filing_other_exchange', 'no_text', 'not_read', 'failed', 'failed',
                    'below_100_cr', 'quota_deferred', 'read']})
     c = fr.coverage(reads, pd.Timestamp('2026-10-10'))
-    assert c == {'looked_at': 9, 'in_full': 3, 'below_100_cr': 1,
+    assert c == {'looked_at': 9, 'in_full': 3, 'below_500_cr': 1, 'sme_excluded': 0,
                  'not_read': {'no text layer': 1, 'longer than the reader limit': 1, 'could not be downloaded': 2,
                               'waiting for model capacity': 1}}
     html = fr.coverage_html(c)
