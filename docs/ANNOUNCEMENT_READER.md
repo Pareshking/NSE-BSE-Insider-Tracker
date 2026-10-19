@@ -8,6 +8,16 @@ engineering log, not the current rollout status. The agreed historical AI backfi
 The live reader prioritizes today/yesterday. After each successful live cycle, the same serialized workflow checks the eligible live queue; only when it is empty does it read at most one historical AI batch. Historical reading progresses month by month as soon as each month has a successful collection checkpoint; it does not wait for all requested months. For the current month, dates older than the live/nightly collection window are collected one day at a time during idle cycles, then read in bounded batches.
 
 Current implementation paths:
+- Dedicated NSE structured filing companions: the reader also queries the separate
+  `/api/integrated-filing-financials` and `/api/corporate-governance` endpoints for issuers
+  already selected from today's/yesterday's eligible live filings. It does not crawl all issuers
+  or perform a separate historical pass through these endpoints. Requests are bounded by the
+  selected read budget (eight selected rows by default, or the explicit `--max`) and skipped when
+  the run is quota-deferred. Only direct exchange-supplied XML/XBRL URLs and records dated today
+  or yesterday enter companion matching; an HTML/iXBRL display page or a generic ZIP is not treated
+  as a structured instance. Raw responses are captured before parsing in live mode. Financial and
+  governance pairings require the corresponding explicit filing semantics, one nearby companion,
+  and no competing issuer filings in the matching window; ambiguous links remain unpaired.
 - Collectors (no model): `collectors/nse_events/announcements.py` and `collectors/bse/announcements.py`;
   both support bounded `--from YYYY-MM-DD --to YYYY-MM-DD` historical windows.
 - Live reader: `scripts/announcement_reader.py`; prompt receives earlier, source-linked company memory.
