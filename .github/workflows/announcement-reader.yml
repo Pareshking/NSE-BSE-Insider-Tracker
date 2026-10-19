@@ -99,6 +99,8 @@ concurrency:
 
 jobs:
   read:
+    # Pause production AI reads until semantic and XBRL acceptance is complete; keep PR/manual dry-runs available.
+    if: ${{ github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 110   # the reader stops starting reads after `minutes` (11 by default; 80 for a supervised 100)
     outputs:
