@@ -104,6 +104,8 @@ concurrency:
 
 jobs:
   read:
+    # Pause production AI reads until narrative/XBRL acceptance gates are cleared. PRs and explicit dry-runs remain available.
+    if: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' || inputs.dry_run == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 60    # bounded reader batches; in-flight OCR/model calls may finish after the intake budget
     outputs:
