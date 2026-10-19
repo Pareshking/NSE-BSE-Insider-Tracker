@@ -200,3 +200,13 @@ def test_broad_exemption_is_held_when_headline_quote_is_only_sme_listing():
         issuer_names=("ANB Metal Cast",),
     )
     assert reason and "overstates the exemption" in reason
+
+def test_generic_exemption_subtitle_is_held_when_filing_only_exempts_report():
+    reason = cs.semantic_reason(
+        "Exemption applies as specified securities are listed on SME Platform of NSE",
+        "The company, ANB Metal Cast Limited has listed its specified securities on SME Platform of National Stock Exchange of India Limited.",
+        doc=("Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27. "
+             "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026."),
+        issuer_names=("ANB Metal Cast",),
+    )
+    assert reason and "overstates the exemption" in reason
