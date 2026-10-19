@@ -2717,3 +2717,42 @@ def test_candidates_exclude_sme_market_aliases_case_insensitively():
     ])
     out = ar.candidates(rows, pd.DataFrame(), None)
     assert set(out['event_id']) == {'nse:2'}
+
+
+
+def test_candidates_pair_integrated_financials_only_with_unique_explicit_results_pdf():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:results', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Financial Results',
+         'text': 'Unaudited financial results for the quarter ended September 30, 2026',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-IOC:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Financials',
+         'text': None, 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:results', 'content_url'].endswith('IOC_results.xml')
+    assert out.loc['pdf:results', 'xbrl_source_event_id'] == 'nse:xbrl:equities:APP-IOC:abcdef1234'
+    assert out.loc['nse:xbrl:equities:APP-IOC:abcdef1234', 'group'] == 'routine'
+
+
+def test_candidates_do_not_pair_integrated_financials_on_issuer_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:generic', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board meeting outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_board.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-IOC:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Financials',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:generic', 'content_url'].endswith('IOC_board.pdf')
+    assert pd.isna(out.loc['pdf:generic', 'xbrl_source_event_id'])
