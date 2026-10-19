@@ -347,12 +347,12 @@ def test_cards_html_preindexes_company_history_instead_of_passing_the_full_archi
     original = fr.before_this
 
     def spy(item, company_reads, price, holding, insiders, results=None, reads_sorted=False):
-        observed.append((len(company_reads), reads_sorted))
+        observed.append((len(company_reads), reads_sorted, '_broadcast_at_utc' in company_reads))
         return original(item, company_reads, price, holding, insiders, results, reads_sorted=reads_sorted)
 
     monkeypatch.setattr(fr, 'before_this', spy)
     html = fr.cards_html(cards, reads, ctx=SimpleNamespace())
     assert html.count('<article class="rc">') == 2
     assert len(observed) == 2
-    assert all(n == 60 and sorted_ for n, sorted_ in observed)
-    assert all(n < len(reads) for n, _ in observed)
+    assert all(n == 60 and sorted_ and parsed for n, sorted_, parsed in observed)
+    assert all(n < len(reads) for n, _, _ in observed)
