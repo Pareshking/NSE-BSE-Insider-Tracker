@@ -129,3 +129,41 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
     )]
     assert client.s.headers['Referer'] == "https://www.nseindia.com/"
     assert 'X-Requested-With' not in client.s.headers
+
+
+
+def test_integrated_filing_client_supports_financials_and_governance_and_pagination():
+    client = NSEClient()
+    assert client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'financials').endswith(
+        'type=Integrated%20Filing-%20Financials&page=1&size=100')
+    assert client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'governance').endswith(
+        'type=Integrated%20Filing-%20Governance&page=1&size=100')
+    with pytest.raises(ValueError):
+        client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'unknown')
+    calls = []
+    payloads = [
+        {'data': [{'symbol': 'IOC'}], 'page': 1, 'size': 1, 'totalCount': 2},
+        {'data': [{'symbol': 'IOC'}], 'page': 2, 'size': 1, 'totalCount': 2},
+    ]
+    client.get = lambda url, **kwargs: calls.append(url) or payloads.pop(0)
+    assert len(client.integrated_filings(date(2026, 10, 15), date(2026, 10, 16), page_size=1)) == 2
+    assert 'page=1&size=1' in calls[0] and 'page=2&size=1' in calls[1]
+
+
+def test_integrated_filing_parser_keeps_only_exchange_supplied_xml_links():
+    from collectors.nse_events.announcements import parse_integrated_xbrl
+    rows = [
+        {'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
+         'broadcastDateTime': '15-Oct-2026 18:43:11',
+         'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml'},
+        {'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
+         'broadcastDateTime': '15-Oct-2026 18:43:11',
+         'details': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'},
+        {'symbol': 'IOC', 'xbrl': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'},
+    ]
+    parsed = parse_integrated_xbrl(rows, 'financials')
+    assert len(parsed) == 1
+    assert parsed.iloc[0]['symbol'] == 'IOC'
+    assert parsed.iloc[0]['file_url'].endswith('IOC_results.xml')
+    assert parsed.iloc[0]['subject'] == 'Integrated Filing - Financials'
+    assert bool(parsed.iloc[0]['has_xbrl']) is True
