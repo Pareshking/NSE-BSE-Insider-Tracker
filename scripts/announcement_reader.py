@@ -1802,6 +1802,43 @@ def same_filing(a: dict, b: dict) -> bool:
     return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= SAME_FILING_WORDS
 
 
+SME_MARKET_LABELS = {'sme', 'nse sme', 'sme platform', 'emerge', 'emerge platform'}
+
+
+def is_nse_sme_row(row: dict) -> bool:
+    """Identify NSE SME rows from the market field or stable event-ID namespace."""
+    market = str(row.get('market') or '').strip().casefold()
+    event_id = str(row.get('event_id') or '').strip().casefold()
+    xbrl_market = re.match(r'^nse:xbrl:([^:]+):', event_id)
+    return (market in SME_MARKET_LABELS
+            or bool(re.match(r'^nse:(?:sme|emerge):', event_id))
+            or bool(xbrl_market and xbrl_market.group(1) in {'sme', 'emerge'}))
+
+
+def is_bse_sme_record(record: dict | None) -> bool:
+    """BSE's official security group M denotes its SME segment; migrated/main-board rows use other groups."""
+    if not record:
+        return False
+    group = str(record.get('bse_group') or '').strip().upper()
+    return group in {'M', 'SME', 'BSE SME'} or record.get('is_sme_listing') is True
+
+
+def sme_exclusion_audit(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> dict:
+    """Count SME rows removed from the current source window, including old archived rows."""
+    nse_rows = nse.to_dict('records') if nse is not None else []
+    bse_rows = bse.to_dict('records') if bse is not None else []
+    bse_excluded = 0
+    for row in bse_rows:
+        code = str(row.get('bse_code') or '').strip()
+        resolved = master.resolve('bse', code) if master and code else None
+        isin = resolved[0] if resolved else None
+        record = master.record(isin) if master and isin else None
+        if is_bse_sme_record(record):
+            bse_excluded += 1
+    return {'nse_sme_rows_excluded': sum(is_nse_sme_row(row) for row in nse_rows),
+            'bse_sme_rows_excluded': bse_excluded}
+
+
 def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd.DataFrame:
     """Normalize NSE/BSE filings and use a verified related NSE XBRL attachment when available."""
     from collectors.bse import announcements as bann
@@ -1820,15 +1857,9 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
-        # The investment universe excludes NSE SME listings entirely. Filter before
-        # XBRL pairing, audit counts, history lookup, or any AI read. Dedicated XBRL
-        # feed rows can encode the segment in their event ID even if market is absent.
-        # Exclude at ingestion; a card-level hold still wastes model calls and risks history contamination.
-        market = str(clean(r.get('market')) or '').strip().casefold()
-        event_id = str(r.get('event_id') or '').strip().casefold()
-        event_market = re.match(r'^nse:xbrl:([^:]+):', event_id)
-        if market in {'sme', 'nse sme', 'sme platform', 'emerge', 'emerge platform'} \
-                or (event_market and event_market.group(1) in {'sme', 'emerge'}):
+        # Filter every archived/new NSE SME row before XBRL pairing, audit counts,
+        # history lookup, or AI reading, even if its old market field is missing.
+        if is_nse_sme_row(r):
             continue
         symbol = clean(r.get('symbol'))
         isin = clean(r.get('isin'))
@@ -1854,11 +1885,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         resolved = master.resolve('bse', bse_code) if master and bse_code else None
         isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
-        # BSE-only SME issuers are identified by the official security-group field in
-        # the daily BSE security snapshot. Exclude before candidate/XBRL processing,
-        # so their rows cannot affect pairing, historical context, audit counts, or AI calls.
-        bse_group = str(rec.get('bse_group') or '').strip().upper()
-        if bse_group in {'M', 'SME', 'BSE SME'} or rec.get('is_sme_listing') is True:
+        # Exclude BSE SME-segment rows before pairing, historical context, audit counts, or AI calls.
+        if is_bse_sme_record(rec):
             continue
         url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
@@ -3230,7 +3258,29 @@ class UsageLedger:
     def close(self, **extra) -> bool:
         self._stop.set()
         self.extra.update(extra)
-        return self.write(force=True)
+        written = self.write(force=True)
+        self.reconciliation = {'attempted': self.r2 is not None, 'write_ok': written,
+                               'key': self.key, 'run_id': self.run_id, 'expected_calls': self.calls()}
+        if self.r2 is not None:
+            try:
+                from clean_writer import get
+                body = get(self.r2, self.key)
+                saved = json.loads(body) if body else None
+                expected = self.calls()
+                saved_calls = sum(int(v.get('calls') or 0)
+                                  for v in (((saved or {}).get('usage') or {}).get('models') or {}).values())
+                minute_calls = sum(int(n) for by_minute in (((saved or {}).get('calls_by_minute') or {}).values())
+                                   for n in by_minute.values())
+                reconciled = bool(saved and saved.get('run_id') == self.run_id
+                                  and saved_calls == expected and minute_calls == expected)
+                self.reconciliation.update({'read_back': bool(body), 'saved_calls': saved_calls,
+                                            'calls_by_minute_total': minute_calls, 'reconciled': reconciled})
+                log('usage ledger read-back reconciliation', json.dumps(self.reconciliation, sort_keys=True))
+            except Exception as exc:  # noqa: BLE001 -- report the audit failure without hiding the run result
+                self.reconciliation.update({'read_back': False, 'reconciled': False,
+                                            'error': f'{type(exc).__name__}: {exc}'})
+                log('usage ledger read-back reconciliation failed', type(exc).__name__, exc)
+        return written
 
 
 def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, setup: list[str]) -> str:
@@ -3432,9 +3482,20 @@ def main(argv=None):
         setup.append(f'no R2 ({type(exc).__name__}); reads before this run not known')
     ledger = UsageLedger(r2, today.isoformat(), clients, lanes, 'dry_run' if args.dry_run else 'live').start()
     try:
-        return read_and_save(args, today, setup, clients, lanes, r2, ledger)
+        result = read_and_save(args, today, setup, clients, lanes, r2, ledger)
     finally:
         ledger.close(notes=setup)
+    if args.dry_run:
+        audit_path = Path('announcement_reader_run_audit.json')
+        audit = json.loads(audit_path.read_text(encoding='utf-8')) if audit_path.exists() else {}
+        audit['usage_ledger'] = {
+            **getattr(ledger, 'reconciliation', {}),
+            'source': ledger.source, 'total_model_calls': ledger.calls(),
+            'usage_by_model': usage(clients, lanes).get('models', {}),
+            'prior_usage_by_model': ledger.extra.get('prior_usage_by_model', {}),
+        }
+        audit_path.write_text(json.dumps(audit, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+    return result
 
 
 def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dict, r2, ledger: UsageLedger) -> int:
@@ -3451,6 +3512,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
         used = used_today(r2, skip_run=ledger.run_id)
+        ledger.extra['prior_usage_by_model'] = used
+        log('quota ledger prior usage for current provider windows', json.dumps(used, sort_keys=True))
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
@@ -3539,7 +3602,9 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
                         narrative_claims={'shown': sum(bool(n.get('shown')) for n in narrative_items),
                                           'held': sum(not bool(n.get('shown')) for n in narrative_items),
                                           'held_reasons': narrative_holds})
-    ledger.write()
+    ledger_write_ok = ledger.write()
+    log(f'usage ledger checkpoint write_ok={ledger_write_ok} run_id={ledger.run_id} '
+        f'key={ledger.key} calls={ledger.calls()}')
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
@@ -3551,8 +3616,15 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         if current_candidates is None:   # a replay has no candidate list to audit
             return 0
         xbrl_report = xbrl_audit(current_candidates)
+        xbrl_report['sme_exclusions'] = sme_exclusion_audit(nse, bse, master)
+        xbrl_report['eligibility'] = {
+            'market_cap_cutoff_cr': 500, 'market_cap_operator': '>',
+            'market_cap_snapshot_as_of': getattr(master, 'market_cap_as_of', None),
+            'max_snapshot_age_days': 7,
+        }
         Path('announcement_reader_xbrl_audit.json').write_text(
             json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+        log('SME exclusion audit', json.dumps(xbrl_report['sme_exclusions'], sort_keys=True))
         log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'direct_xbrl_urls', 'xbrl_attachments', 'xbrl_linked')}))
         return 0
     saver.pending += status
