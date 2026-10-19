@@ -2904,3 +2904,24 @@ def test_security_master_preserves_nse_sme_source_and_main_board_override():
     # A current main-board NSE listing takes precedence over an old SME listing
     # carrying the same ISIN.
     assert master.record('INE000M01000')['is_sme_listing'] is False
+
+
+
+def test_lane_stops_trying_models_when_per_filing_budget_is_exhausted(monkeypatch):
+    now = [0.0]
+
+    class SlowFailClient:
+        def __init__(self):
+            self.asked = []
+
+        def generate(self, models, prompt, kind, json_mode=True):
+            self.asked.extend(models)
+            now[0] += ar.LANE_READ_SECONDS + 1
+            raise RuntimeError('HTTP 503 unavailable')
+
+    client = SlowFailClient()
+    lane = ar.Lane('main', ['nvidia:first', 'nvidia:second'],
+                   {'nvidia': client}, clock=lambda: now[0])
+    with pytest.raises(RuntimeError, match='per-filing model budget'):
+        lane.read('financial filing text')
+    assert client.asked == ['first']
