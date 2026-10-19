@@ -1,4 +1,4 @@
-recovery=2026-10-19T15:12:30Z
-reason=serialize concurrent trigger retries after timeout fix merge
+recovery=2026-10-19T17:54:00Z
+reason=restart live reader after recovery run stalled before verifiable output
 max_filings=25
 reader_minutes=12
