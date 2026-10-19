@@ -92,6 +92,9 @@ def bse_list_frame(market_cap_rows) -> pd.DataFrame:
         'name': df.get('company_name'),
         'isin': df.get('isin'),
         'market_cap': pd.to_numeric(df.get('market_cap'), errors='coerce'),
+        # BSE's official security-group classification is the available segment signal
+        # for BSE-only issuers. Group M is the BSE SME board; preserve it for filtering.
+        'bse_group': df.get('group', pd.Series(index=df.index, dtype=object)).astype(str).str.strip().str.upper(),
     }).drop_duplicates('bse_code')
 
 
@@ -108,6 +111,7 @@ class SecurityMaster:
         self._sector_by_nse: dict[str, tuple] = {}
         self._sector_by_bse: dict[str, tuple] = {}
         self._prefix_cache: dict[str, str | None] = {}
+        self.bse_group_by_code: dict[str, str] = {}
         nse_mcap = {}
         for r in market_cap_rows or []:
             sym = str(r.get('symbol', '')).strip().upper()
@@ -129,6 +133,10 @@ class SecurityMaster:
                     self._put(isin, r.get('security'), 'vr_master', nse=sym or None, bse=code or None)
         if bse_list is not None and not bse_list.empty:
             for r in bse_list.to_dict('records'):
+                code = str(r.get('bse_code') or '').strip()
+                group = str(r.get('bse_group') or '').strip().upper()
+                if code and group and group not in {'NAN', 'NONE', '<NA>'}:
+                    self.bse_group_by_code[code] = group
                 if r.get('isin') and isinstance(r['isin'], str):
                     self._put(r['isin'].strip(), r.get('name'), 'bse_list', bse=r['bse_code'],
                               bse_mcap=r.get('market_cap'))
@@ -200,8 +208,10 @@ class SecurityMaster:
         sector = (self._sector_by_nse.get(rec['nse_symbol'] or '')
                   or self._sector_by_bse.get(rec['bse_code'] or '') or (None, None, None))
         mcap = rec['nse_market_cap'] if rec['nse_market_cap'] is not None else rec['bse_market_cap']
+        bse_group = self.bse_group_by_code.get(str(rec.get('bse_code') or '').strip())
         return {**rec, 'display_name': display_name(rec['name']), 'sector': sector[0],
-                'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap}
+                'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap,
+                'bse_group': bse_group, 'is_sme_listing': bse_group in {'M', 'SME', 'BSE SME'}}
 
     def frame(self, isins=None) -> pd.DataFrame:
         keys = self.records if isins is None else [i for i in dict.fromkeys(isins) if i in self.records]
