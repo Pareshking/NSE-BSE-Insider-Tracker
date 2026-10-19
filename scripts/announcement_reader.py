@@ -2163,7 +2163,7 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
     direct = cands.get('xbrl_url', pd.Series(index=cands.index, dtype=object)).map(
         lambda value: bool(str(value).strip()) and str(value).strip().casefold() not in ('nan', 'none', '<na>'))
     linked = cands.get('xbrl_source_event_id', pd.Series(index=cands.index, dtype=object)).notna()
-    fields = [field for field in ('event_id', 'exchange', 'symbol', 'isin', 'subject', 'detail', 'broadcast_date',
+    fields = [field for field in ('event_id', 'exchange', 'symbol', 'isin', 'subject', 'broadcast_date',
                                   'file_type', 'has_xbrl', 'file_url', 'content_url', 'xbrl_url',
                                   'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
     def sample(mask):
