@@ -52,7 +52,7 @@ Current implementation paths:
 Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
 Code:
-- Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
+- Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board only; SME is out of scope),
   `collectors/bse/announcements.py` (BSE), workflow `announcement-collect.yml` (nightly, 3 days; any range by hand; no model).
 - Live reader: `scripts/announcement_reader.py`, lanes in `scripts/announcement_readers.txt`, workflow
   `announcement-reader.yml` (every 15 minutes on `main`; on a PR a 3-filing dry run, nothing written).
@@ -185,8 +185,9 @@ then 29 seconds); no 429 from any provider in any run. No wrong value passed the
 
 ## NSE and BSE: what each adds (measured 12 Oct 2026)
 
-NSE's SME feed (`index=sme`) has the same fields and numbering as the main board's, and no filing in
-both (6-12 Oct: 3,318 main board, 699 SME). BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
+Historical scope note: NSE's SME feed (`index=sme`) was measured separately (6-12 Oct: 3,318 main-board
+filings, 699 SME), but SME listings are now explicitly out of the investment universe. The collector fetches
+only `index=equities`; the reader also filters SME rows from existing archives before any AI processing. BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
 first, with the day's count; attachments at `www.bseindia.com/xml-data/corpfiling/AttachLive/<name>`
 (confirmed from a machine in India; the runner falls back to the in-page fetch if BSE refuses it).
 
@@ -205,7 +206,7 @@ each is addressed to its own exchange, so file size or hash cannot pair them):
 Same filing on both (347 pairs): BSE first by over a minute 204 times, NSE 89, within a minute 54;
 median BSE ahead by 2.0 minutes (useful filings: 91 pairs, 48 vs 21, median 1.2 minutes); over 30 minutes
 ahead: BSE 13, NSE 3. So both exchanges stay: BSE adds about 120 useful filings a day and is usually a
-minute or two ahead; NSE adds its SME board. Read once: same ISIN, within six hours, subjects alike.
+minute or two ahead. SME counts above are historical context only and are excluded from current collection/reading. Read once: same ISIN, within six hours, subjects alike.
 
 Regulation heads (Reg 30, 74(5) ...) as a filter: NSE's feed names one on 75 of 576 filings, BSE's mostly
 74(5) (already its own subcategory, routine) or 30 (on nearly everything). The subject lines already carry
