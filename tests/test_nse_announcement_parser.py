@@ -174,3 +174,21 @@ def test_integrated_filing_parser_keeps_only_exchange_supplied_xml_links():
     assert parsed.iloc[0]['file_url'].endswith('IOC_results.xml')
     assert parsed.iloc[0]['subject'] == 'Integrated Filing - Financials'
     assert bool(parsed.iloc[0]['has_xbrl']) is True
+
+
+
+def test_integrated_filing_revision_timestamp_controls_live_window_date():
+    from collectors.nse_events.announcements import parse_integrated_xbrl
+
+    parsed = parse_integrated_xbrl([{
+        'appId': 'IOC-REV-1',
+        'symbol': 'IOC',
+        'companyName': 'Indian Oil Corporation Limited',
+        'broadcastDateTime': '01-Oct-2026 10:00:00',
+        'revisedDateTime': '19-Oct-2026 12:15:00',
+        'revision': 'Revised',
+        'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results_revision.xml',
+    }], 'financials')
+    assert len(parsed) == 1
+    assert parsed.iloc[0]['broadcast_date'] == '2026-10-19'
+    assert parsed.iloc[0]['broadcast_at'].startswith('2026-10-19T12:15:00')
