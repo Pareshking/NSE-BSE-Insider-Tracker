@@ -57,6 +57,7 @@ class FakeNSE:
         self.rows, self.block, self.calls, self.on_response, self.asked = rows, block, 0, None, []
         self.sme = list(sme)
         self.xbrl_asked = []
+        self.integrated_asked = []
 
     def announcements(self, a, b, index='equities'):
         self.calls += 1
@@ -67,6 +68,12 @@ class FakeNSE:
 
     def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
         self.xbrl_asked.append((a, b, index, feed_type))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
+
+    def integrated_filings(self, a, b, filing_type='financials', page_size=100, max_pages=100):
+        self.integrated_asked.append((a, b, filing_type))
         if self.block:
             raise Blocked('HTTP 403')
         return []
@@ -166,3 +173,27 @@ def test_sme_feed_is_not_collected():
                       for k in r2.objects if k.startswith(ann.PREFIX)])
     assert set(arch['market']) == {'equities'}
     assert '900000001' not in set(arch['seq_id'])
+
+
+
+def test_run_queries_both_integrated_filing_types_without_treating_pdf_as_xbrl():
+    class IntegratedFakeNSE(FakeNSE):
+        def integrated_filings(self, a, b, filing_type='financials', page_size=100, max_pages=100):
+            self.integrated_asked.append((a, b, filing_type))
+            if filing_type == 'financials':
+                return [{'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
+                         'broadcastDateTime': '30-Sep-2026 18:43:11',
+                         'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml'},
+                        {'symbol': 'IOC', 'details': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'}]
+            return [{'symbol': 'IOC', 'details': 'https://nsearchives.nseindia.com/corporate/IOC_governance.pdf'}]
+
+    nse = IntegratedFakeNSE(ROWS[:2])
+    r2 = FakeR2()
+    rep = ann.run(r2, nse, date(2026, 10, 1))
+    assert [x[2] for x in nse.integrated_asked] == ['financials', 'governance']
+    assert any(x['feed_type'] == 'integrated-financials' and x['rows'] == 1 for x in rep['xbrl_calls'])
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xml = archived[archived['file_type'] == 'xbrl']
+    assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('IOC_results.xml')
+    assert not archived['file_url'].astype(str).str.endswith('.pdf').sum() < 0
