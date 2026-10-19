@@ -1820,6 +1820,15 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
+        # The investment universe excludes NSE SME listings entirely. Filter before
+        # XBRL pairing, audit counts, history lookup, or any AI read. Dedicated XBRL
+        # feed rows can encode the segment in their event ID even if market is absent.
+        market = str(clean(r.get('market')) or '').strip().casefold()
+        event_id = str(r.get('event_id') or '').strip().casefold()
+        event_market = re.match(r'^nse:xbrl:([^:]+):', event_id)
+        if market in {'sme', 'nse sme', 'sme platform', 'emerge', 'emerge platform'} \
+                or (event_market and event_market.group(1) in {'sme', 'emerge'}):
+            continue
         symbol = clean(r.get('symbol'))
         isin = clean(r.get('isin'))
         if not isin and master and symbol:
