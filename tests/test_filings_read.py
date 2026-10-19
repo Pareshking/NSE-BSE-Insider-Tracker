@@ -265,7 +265,7 @@ def test_coverage_counts_what_was_read_in_full_and_names_why_the_rest_was_not():
         'status': ['read', 'same_file', 'same_filing_other_exchange', 'no_text', 'not_read', 'failed', 'failed',
                    'below_100_cr', 'quota_deferred', 'read']})
     c = fr.coverage(reads, pd.Timestamp('2026-10-10'))
-    assert c == {'looked_at': 9, 'in_full': 3, 'below_100_cr': 1,
+    assert c == {'looked_at': 9, 'in_full': 3, 'below_500_cr': 1, 'sme_excluded': 0,
                  'not_read': {'no text layer': 1, 'longer than the reader limit': 1, 'could not be downloaded': 2,
                               'waiting for model capacity': 1}}
     html = fr.coverage_html(c)
@@ -346,13 +346,13 @@ def test_cards_html_preindexes_company_history_instead_of_passing_the_full_archi
     observed = []
     original = fr.before_this
 
-    def spy(item, company_reads, price, holding, insiders, results=None, reads_sorted=False):
-        observed.append((len(company_reads), reads_sorted))
-        return original(item, company_reads, price, holding, insiders, results, reads_sorted=reads_sorted)
+    def spy(item, company_reads, price, holding, insiders, results=None, reads_sorted=False, reads_prepared=False):
+        observed.append((len(company_reads), reads_sorted, reads_prepared, '_broadcast_at_utc' in company_reads))
+        return original(item, company_reads, price, holding, insiders, results, reads_sorted=reads_sorted, reads_prepared=reads_prepared)
 
     monkeypatch.setattr(fr, 'before_this', spy)
     html = fr.cards_html(cards, reads, ctx=SimpleNamespace())
     assert html.count('<article class="rc">') == 2
     assert len(observed) == 2
-    assert all(n == 60 and sorted_ for n, sorted_ in observed)
-    assert all(n < len(reads) for n, _ in observed)
+    assert all(n == 60 and sorted_ and prepared and parsed for n, sorted_, prepared, parsed in observed)
+    assert all(n < len(reads) for n, _, _, _ in observed)

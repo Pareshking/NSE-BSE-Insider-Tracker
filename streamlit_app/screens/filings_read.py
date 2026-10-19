@@ -331,7 +331,9 @@ def coverage(reads: pd.DataFrame, since: pd.Timestamp) -> dict:
     r = reads[day >= since.normalize()]
     n = r['status'].value_counts()
     out = {'looked_at': int(len(r)), 'in_full': int(sum(n.get(k, 0) for k in IN_FULL)),
-           'below_100_cr': int(n.get('below_100_cr', 0)), 'not_read': {NOT_READ[k]: int(n[k]) for k in NOT_READ if n.get(k, 0)}}
+           'below_500_cr': int(n.get('below_500_cr', 0) + n.get('below_100_cr', 0)),
+           'sme_excluded': int(n.get('sme_excluded', 0)),
+           'not_read': {NOT_READ[k]: int(n[k]) for k in NOT_READ if n.get(k, 0)}}
     return out if out['looked_at'] else {}
 
 
@@ -341,8 +343,10 @@ def coverage_html(c: dict) -> str:
     parts = [f'<b>{c["in_full"]:,}</b> read in full']
     if c['not_read']:
         parts.append(f'<b>{sum(c["not_read"].values()):,}</b> not read (' + ', '.join(f'{v:,} {esc(k)}' for k, v in c['not_read'].items()) + ')')
-    if c['below_100_cr']:
-        parts.append(f'{c["below_100_cr"]:,} below Rs 100 Cr (not sent to a model)')
+    if c.get('below_500_cr'):
+        parts.append(f'{c["below_500_cr"]:,} at or below Rs 500 Cr (not sent to a model)')
+    if c.get('sme_excluded'):
+        parts.append(f'{c["sme_excluded"]:,} SME-board filings excluded')
     return (f'<p class="evl">Of {c["looked_at"]:,} filings the reader looked at: ' + '; '.join(parts)
             + '. A filing that was not read in full is never summarised from a part.</p>')
 
@@ -438,7 +442,7 @@ OWN_SHARES = ('preferential', 'qip', 'rights', 'warrant_conversion', 'buyback_op
 
 def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding: dict | None,
                 insiders: pd.DataFrame | None, results: pd.DataFrame | None = None,
-                reads_sorted: bool = False) -> list[str]:
+                reads_sorted: bool = False, reads_prepared: bool = False) -> list[str]:
     """Context from our own tables, every figure computed here, never by a model: the company's earlier
     filings read (last EARLIER_DAYS), the issue price against the last close, the size against market cap,
     promoter holding and pledge (latest quarter), and insiders' open-market trades (last INSIDER_DAYS)."""
@@ -496,12 +500,16 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
                 out.append(f'Insiders {word} <b>{esc(kit.rupees(x["value"].sum()))}</b> on the market in '
                            f'{kit.plural(len(x), "filing")} in the last {INSIDER_DAYS} days.')
     if reads is not None and not reads.empty and pd.notna(at):
-        # cards_html passes a per-company slice sorted newest-first once for the whole render.
-        # Keep this function independently usable by tests and other callers with the old full-frame input.
-        e = reads[((reads['isin'] == isin) if has_isin and 'isin' in reads else (reads['symbol'] == sym))
-                  & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
-                  & reads['event_id'].ne(r.get('event_id'))]
-        t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
+        # cards_html passes eligible per-company reads with UTC timestamps parsed once for the render.
+        # Direct callers keep the full-frame fallback.
+        if reads_prepared:
+            e = reads[reads['event_id'].ne(r.get('event_id'))]
+            t = e['_broadcast_at_utc']
+        else:
+            e = reads[((reads['isin'] == isin) if has_isin and 'isin' in reads else (reads['symbol'] == sym))
+                      & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
+                      & reads['event_id'].ne(r.get('event_id'))]
+            t = e['_broadcast_at_utc'] if '_broadcast_at_utc' in e else pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
         e = e[(t < at - np.timedelta64(DEAL_HOURS, 'h')) & (t >= at - np.timedelta64(EARLIER_DAYS, 'D'))]
         # A pre-sorted per-company slice preserves the order; avoid sorting it for every card.
         if not reads_sorted:
@@ -534,7 +542,12 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     # so before_this() filters a small slice instead of scanning and sorting the whole archive N times.
     read_index = {}
     if reads is not None and not reads.empty:
-        ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable')
+        ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable').copy()
+        # Parse timestamps once, then restrict to rows that can appear in a previous-filing context.
+        ordered_reads['_broadcast_at_utc'] = pd.to_datetime(ordered_reads['broadcast_at'], errors='coerce', utc=True)
+        ordered_reads = ordered_reads[
+            ordered_reads['status'].eq('read') & ordered_reads['category'].notna() & ordered_reads['category'].ne('routine')
+        ]
         if 'isin' in ordered_reads:
             isins = ordered_reads['isin']
             has_isin = isins.notna() & isins.astype(str).str.strip().ne('')
@@ -573,7 +586,7 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
         has_isin = pd.notna(isin) and bool(str(isin).strip())
         company_insiders = insider_index.get(str(isin)) if has_isin else None
         company_results = results_index.get(str(isin)) if has_isin else None
-        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results, reads_sorted=True), box)
+        return card_html(x, p, history, before_this(x, company_reads, p, holdings.get(isin), company_insiders, company_results, reads_sorted=True, reads_prepared=True), box)
     return '<div class="rds">' + ''.join(card(x) for x in r.head(limit).to_dict('records')) + '</div>'
 
 

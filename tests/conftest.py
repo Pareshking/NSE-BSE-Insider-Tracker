@@ -63,8 +63,9 @@ def real_nse_rows():
 def master():
     vr = pd.read_csv(ROOT / 'reference_data' / 'security_master_20260901.csv', dtype=str,
                      keep_default_na=False)
-    nse = nse_list_frame(pd.read_csv(FIXTURES / 'nse_equity_sample.csv', dtype=str),
-                         pd.read_csv(FIXTURES / 'nse_sme_sample.csv', dtype=str))
+    equity = pd.read_csv(FIXTURES / 'nse_equity_sample.csv', dtype=str).assign(source_market='equities')
+    sme = pd.read_csv(FIXTURES / 'nse_sme_sample.csv', dtype=str).assign(source_market='sme')
+    nse = nse_list_frame(equity, sme)
     return SecurityMaster(vr_master=vr, nse_list=nse, bse_list=bse_list_frame(BSE_ROWS),
                           market_cap_rows=BSE_ROWS + [
                               {'symbol': 'ZEEL', 'market_cap': 6.9e10, 'source': 'pr_zip'},
