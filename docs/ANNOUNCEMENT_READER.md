@@ -187,7 +187,7 @@ then 29 seconds); no 429 from any provider in any run. No wrong value passed the
 
 Historical scope note: NSE's SME feed (`index=sme`) was measured separately (6-12 Oct: 3,318 main-board
 filings, 699 SME), but SME listings are now explicitly out of the investment universe. The collector fetches
-only `index=equities`; the reader also filters SME rows from existing archives before any AI processing. BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
+only `index=equities`; the reader filters historical NSE SME rows and BSE SME-group listings before XBRL pairing or AI processing. BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
 first, with the day's count; attachments at `www.bseindia.com/xml-data/corpfiling/AttachLive/<name>`
 (confirmed from a machine in India; the runner falls back to the in-page fetch if BSE refuses it).
 
@@ -198,7 +198,7 @@ each is addressed to its own exchange, so file size or hash cannot pair them):
 | Useful filings, 12 Oct | |
 |---|---|
 | NSE, company also filed on BSE that day | 129 |
-| NSE only: SME board (not on BSE at all) | 37 |
+| SME-board listings excluded from the reading universe | 37 |
 | NSE only: main board | 17 |
 | BSE only: companies not on NSE (354 companies) | 83 |
 | BSE only: codes missing from the 1 Sep security master | 40 |
