@@ -1665,8 +1665,8 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
             # when its own quote only proves SME listing status. Do not let that
             # narrower quote bypass the full-filing governance-scope safeguard.
             if semantic_hold and 'overstates the exemption' in semantic_hold \
-                    and re.search(r'\\b(?:exempt(?:ed|ion)?|non[- ]applicab)', str(sub.get('text') or ''), re.I) \
-                    and not re.search(r'\\b(?:corporate\\s+governance\\s+report|reg(?:ulation)?\\.?\\s*27)\\b', str(sub.get('text') or ''), re.I):
+                    and re.search(r'\b(?:exempt(?:ed|ion)?|non[- ]applicab)', str(sub.get('text') or ''), re.I) \
+                    and not re.search(r'\b(?:corporate\s+governance\s+report|reg(?:ulation)?\.?\s*27)\b', str(sub.get('text') or ''), re.I):
                 sub['shown'] = False
                 scope_reason = 'subtitle implies the same overbroad exemption without preserving Regulation 27 / Corporate Governance Report scope'
                 sub['reason'] = '; '.join(x for x in (sub.get('reason'), scope_reason) if x)
