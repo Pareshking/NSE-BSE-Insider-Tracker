@@ -121,12 +121,14 @@ def merge_into_archive(r2, stream, new: pd.DataFrame, run_date: str) -> tuple[pd
     return (pd.concat(frames, ignore_index=True) if frames else None), added, written
 
 
-def security_master(r2, run_date: str, notes: list) -> SecurityMaster:
+def security_master(r2, run_date: str, notes: list, *, max_age_days: int = 10) -> SecurityMaster:
     vr_path = ROOT / SECURITY_MASTER_PATH
     vr = pd.read_csv(vr_path, dtype=str, keep_default_na=False) if vr_path.exists() else None
     mcap_rows, cap_as_of = [], None
     day = date.fromisoformat(run_date)
-    for back in range(11):
+    if max_age_days < 0:
+        raise ValueError('max_age_days must be non-negative')
+    for back in range(max_age_days + 1):
         candidate_day = day - timedelta(days=back)
         body = get(r2, f'reference/market_cap/{candidate_day.isoformat()}/data.json')
         if body:
