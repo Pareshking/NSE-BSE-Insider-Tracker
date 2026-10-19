@@ -2447,6 +2447,34 @@ def test_candidates_exclude_sme_listings_before_ai_and_xbrl_pairing():
     assert out.iloc[0]['market'] == 'equities'
 
 
+def test_candidates_exclude_bse_sme_group_but_keep_main_board_bse_rows():
+    class Master:
+        market_cap_as_of = '2026-10-18'
+        def resolve(self, exchange, identifier):
+            return (f'ISIN-{identifier}', 'code') if exchange == 'bse' else (None, 'unmatched')
+        def record(self, isin):
+            if isin == 'ISIN-540001':
+                return {'bse_code': '540001', 'bse_group': 'M', 'is_sme_listing': True,
+                        'nse_symbol': None, 'market_cap': 5e9}
+            if isin == 'ISIN-500001':
+                return {'bse_code': '500001', 'bse_group': 'A', 'is_sme_listing': False,
+                        'nse_symbol': 'MAINCO', 'market_cap': 5e10}
+            return None
+
+    rows = pd.DataFrame([
+        {'event_id': 'bse:sme', 'bse_code': '540001', 'company': 'SME issuer Ltd',
+         'subcategory': 'General', 'category': 'Others', 'headline': 'SME event',
+         'file_url': 'https://f/sme.pdf', 'file_type': 'pdf',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+        {'event_id': 'bse:main', 'bse_code': '500001', 'company': 'Main issuer Ltd',
+         'subcategory': 'General', 'category': 'Others', 'headline': 'Main-board event',
+         'file_url': 'https://f/main.pdf', 'file_type': 'pdf',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+    ])
+    out = ar.candidates(pd.DataFrame(), rows, Master())
+    assert set(out['event_id']) == {'bse:main'}
+
+
 def test_candidates_exclude_sme_market_aliases_case_insensitively():
     rows = pd.DataFrame([
         {'event_id': 'nse:1', 'symbol': 'A', 'subject': 'Update', 'text': 'SME filing',
