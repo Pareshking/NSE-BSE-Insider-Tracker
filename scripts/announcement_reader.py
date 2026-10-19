@@ -3522,13 +3522,20 @@ def collect(r2, today: date, dry_run: bool, notes: list):
         # Respect NSE's hard-stop rule on 401/403/429; never probe another endpoint after a block.
         if not nse_blocked:
             for market in nann.FEEDS:
-                try:
-                    frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
-                except Blocked as exc:
-                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                for feed_type in ('announcements', 'para-a', 'para-b', 'award'):
+                    try:
+                        xbrl_rows = nse.xbrl_announcements(
+                            yesterday, today, market, feed_type=feed_type)
+                        frames.append(nann.parse_xbrl(xbrl_rows, market))
+                    except Blocked as exc:
+                        notes.append(
+                            f'NSE XBRL {market}/{feed_type}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                        nse_blocked = True
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        notes.append(f'NSE XBRL {market}/{feed_type}: {type(exc).__name__}: {exc}'[:200])
+                if nse_blocked:
                     break
-                except Exception as exc:  # noqa: BLE001
-                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
         bse, bframes = BSEClient(), []
         try:
             for day in (today, yesterday):
