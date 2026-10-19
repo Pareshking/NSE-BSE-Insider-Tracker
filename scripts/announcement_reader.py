@@ -3273,8 +3273,31 @@ class UsageLedger:
                                    for n in by_minute.values())
                 reconciled = bool(saved and saved.get('run_id') == self.run_id
                                   and saved_calls == expected and minute_calls == expected)
-                self.reconciliation.update({'read_back': bool(body), 'saved_calls': saved_calls,
-                                            'calls_by_minute_total': minute_calls, 'reconciled': reconciled})
+                now = datetime.now(timezone.utc)
+                other_usage = used_today(self.r2, now, skip_run=self.run_id)
+                total_usage = used_today(self.r2, now)
+                own_window = {}
+                for model, minutes in self.by_minute.items():
+                    provider = model.split(':', 1)[0]
+                    starts_at = window_start(provider, now)
+                    for at, n in minutes.items():
+                        stamp = pd.Timestamp(at)
+                        stamp = stamp.tz_localize(timezone.utc) if stamp.tzinfo is None else stamp.tz_convert(timezone.utc)
+                        if stamp.to_pydatetime() >= starts_at:
+                            own_window[model] = own_window.get(model, 0) + int(n)
+                models = set(other_usage) | set(own_window) | set(total_usage)
+                expected_usage = {model: int(other_usage.get(model, 0)) + int(own_window.get(model, 0))
+                                  for model in models}
+                totals_reconciled = all(int(total_usage.get(model, 0)) == expected_usage[model]
+                                        for model in models)
+                self.reconciliation.update({
+                    'read_back': bool(body), 'saved_calls': saved_calls,
+                    'calls_by_minute_total': minute_calls, 'ledger_file_reconciled': reconciled,
+                    'other_runs_usage_by_model': other_usage, 'own_calls_in_current_windows': own_window,
+                    'total_usage_by_model': total_usage, 'expected_usage_by_model': expected_usage,
+                    'usage_totals_reconciled': totals_reconciled,
+                    'reconciled': reconciled and totals_reconciled,
+                })
                 log('usage ledger read-back reconciliation', json.dumps(self.reconciliation, sort_keys=True))
             except Exception as exc:  # noqa: BLE001 -- report the audit failure without hiding the run result
                 self.reconciliation.update({'read_back': False, 'reconciled': False,
