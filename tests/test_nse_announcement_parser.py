@@ -132,22 +132,23 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
 
 
 
-def test_integrated_filing_client_supports_financials_and_governance_and_pagination():
+def test_integrated_filing_client_uses_distinct_official_symbol_scoped_endpoints():
     client = NSEClient()
-    assert client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'financials').endswith(
-        'type=Integrated%20Filing-%20Financials&page=1&size=100')
-    assert client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'governance').endswith(
-        'type=Integrated%20Filing-%20Governance&page=1&size=100')
+    assert client.integrated_filing_financials_url('IOC') == (
+        'https://www.nseindia.com/api/integrated-filing-financials?index=equities&symbol=IOC')
+    assert client.corporate_governance_url('IOC') == (
+        'https://www.nseindia.com/api/corporate-governance?index=equities&symbol=IOC')
     with pytest.raises(ValueError):
-        client.integrated_filing_url(date(2026, 10, 15), date(2026, 10, 16), 'unknown')
-    calls = []
-    payloads = [
-        {'data': [{'symbol': 'IOC'}], 'page': 1, 'size': 1, 'totalCount': 2},
-        {'data': [{'symbol': 'IOC'}], 'page': 2, 'size': 1, 'totalCount': 2},
-    ]
-    client.get = lambda url, **kwargs: calls.append(url) or payloads.pop(0)
-    assert len(client.integrated_filings(date(2026, 10, 15), date(2026, 10, 16), page_size=1)) == 2
-    assert 'page=1&size=1' in calls[0] and 'page=2&size=1' in calls[1]
+        client.integrated_filing_financials_url('')
+    with pytest.raises(ValueError):
+        client.corporate_governance_url('IOC;bad')
+    requested = []
+    client.get = lambda url, **kwargs: requested.append((url, kwargs)) or {'data': [{'symbol': 'IOC'}]}
+    assert client.integrated_filing_financials('IOC') == [{'symbol': 'IOC'}]
+    assert client.corporate_governance('IOC') == [{'symbol': 'IOC'}]
+    assert [x[0] for x in requested] == [
+        client.integrated_filing_financials_url('IOC'), client.corporate_governance_url('IOC')]
+    assert all(x[1] == {'timeout': 10, 'retries': 1} for x in requested)
 
 
 def test_integrated_filing_parser_keeps_only_exchange_supplied_xml_links():
