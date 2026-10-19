@@ -286,6 +286,22 @@ def test_old_below_100_cr_status_is_rechecked_under_the_new_current_cap_cutoff()
     assert counts['to_read'] == 1
 
 
+def test_lane_stops_trying_models_when_per_filing_budget_is_exhausted(monkeypatch):
+    now = [0.0]
+    class SlowFailClient:
+        def __init__(self):
+            self.asked = []
+        def generate(self, models, prompt, kind, json_mode=True):
+            self.asked.extend(models)
+            now[0] += ar.LANE_READ_SECONDS + 1
+            raise RuntimeError('HTTP 503 unavailable')
+    client = SlowFailClient()
+    lane = ar.Lane('main', ['nvidia:first', 'nvidia:second'], {'nvidia': client}, clock=lambda: now[0])
+    with pytest.raises(RuntimeError, match='per-filing model budget'):
+        lane.read('financial filing text')
+    assert client.asked == ['first']
+
+
 def test_permanent_missing_document_is_retired_after_one_attempt():
     today = date(2026, 10, 13)
     candidate = pd.DataFrame([_cand('bse:missing', 'BSE', 'INE404',

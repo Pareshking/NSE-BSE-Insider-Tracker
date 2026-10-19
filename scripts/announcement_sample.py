@@ -49,7 +49,7 @@ READERS = ('gemini-3.5-flash-lite', 'gemini-3.1-flash-lite')
 SORTERS = ('gemma-4-26b-a4b-it', 'gemma-4-31b-it')   # ids as listed by the API on 13 Oct 2026
 PACE = {'read': 6.0, 'sort': 3.0, 'groq:read': 62.0, 'nvidia:read': 10.0, 'zai:read': 3.0}   # Groq: 8K tokens a minute   # seconds between calls: 15 and 30 requests a minute allow 4 and 2
 PER_FILING_SECONDS = 600           # one filing never holds up the rest
-CALL_SECONDS = 180                 # Flash-Lite took 55-110 s a filing on 13 Oct
+CALL_SECONDS = int(os.environ.get('ANNOUNCEMENT_CALL_SECONDS', '180'))  # reader sets 120s; other jobs keep 180s
 RUN_SECONDS = int(os.environ.get('SAMPLE_MINUTES', '24')) * 60   # stop taking new filings before the job's limit
 MAX_CHARS = 300_000                 # about 75K tokens, under Flash-Lite's 250K a minute
 def log(*parts):
