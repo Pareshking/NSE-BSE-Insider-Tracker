@@ -1,4 +1,4 @@
-recovery=2026-10-19T15:10Z
-reason=run with merged per-filing model deadline and strict eligibility; supersede slow in-flight recovery
+recovery=2026-10-19T15:12Z
+reason=retry trigger after per-filing deadline merged
 max_filings=25
 reader_minutes=12
