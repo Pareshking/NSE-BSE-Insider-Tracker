@@ -97,6 +97,24 @@ def test_dedicated_xbrl_feed_ignores_rows_without_an_xml_attachment():
     assert parsed.empty
 
 
+def test_para_feed_prefers_xml_xbrl_field_over_pdf_and_ixbrl_display_links():
+    parsed = parse_xbrl([{
+        "appId": "APP-PARA",
+        "symbol": "MARATHON",
+        "subject": "Financial Results",
+        "broadcastDateTime": "15-Oct-2026 10:00:00",
+        "xbrl": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_results.xml",
+        "attachment": "https://nsearchives.nseindia.com/corporate/MARATHON_results.pdf",
+        "ixbrl": "https://nsearchives.nseindia.com/corporate/ixbrl/MARATHON_results.html",
+    }], "equities")
+    assert len(parsed) == 1
+    row = parsed.iloc[0]
+    assert row["file_url"].endswith("MARATHON_results.xml")
+    assert row["xbrl_url"] == row["file_url"]
+    assert row["file_type"] == "xbrl"
+    assert bool(row["has_xbrl"]) is True
+
+
 
 def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch):
     requested = []
