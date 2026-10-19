@@ -3991,6 +3991,11 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
     elif window_only and not in_history_window():
         log('company-history stage waits for the overnight window (22:30-09:00 IST): Monday to Friday daytime reads live filings only')
+    elif any('stopped further NSE requests' in note for note in setup):
+        # A 401/403/429 from any NSE feed is a hard stop for the entire run, not
+        # merely the current feed loop. Live card reading can finish from already-fetched rows,
+        # but no company-history stage may issue another NSE request this run.
+        log('company-history stage skipped: NSE hard-stop response observed earlier in this run')
     elif not history_run and not live_remaining.empty:
         log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
             f'live queue counts={json.dumps(live_counts, default=str)}')
