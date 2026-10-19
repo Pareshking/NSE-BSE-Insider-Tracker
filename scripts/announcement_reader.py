@@ -2118,15 +2118,25 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                 # Pair only when the ordinary PDF itself explicitly says financial results,
                 # there is exactly one structured row and no other filing for this issuer in the
                 # +/- one-day window. Issuer/date alone is never sufficient.
+                nearby_subject = subject_base(nearby_structured[0][3].get('subject')) if len(nearby_structured) == 1 else ''
+                filing_text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
                 integrated_financials = (
                     len(nearby_structured) == 1 and not other_pdfs
-                    and subject_base(nearby_structured[0][3].get('subject')) == 'integrated filing financials'
+                    and nearby_subject == 'integrated filing financials'
                     and re.search(
                         r'financial results?|results? for (?:the )?(?:quarter|period|year)|'
                         r'(?:quarterly|half.year) results?|audited financial|unaudited financial',
-                        f"{row.get('subject') or ''} {row.get('detail') or ''}", re.IGNORECASE)
+                        filing_text, re.IGNORECASE)
                 )
-                if integrated_financials:
+                integrated_governance = (
+                    len(nearby_structured) == 1 and not other_pdfs
+                    and nearby_subject == 'integrated filing governance'
+                    and re.search(
+                        r'corporate governance|secretarial compliance|'
+                        r'regulation\s*13\s*\(\s*3\s*\)|regulation\s*27\s*\(\s*2\s*\)',
+                        filing_text, re.IGNORECASE)
+                )
+                if integrated_financials or integrated_governance:
                     _, _, xidx, xrow = nearby_structured[0]
                 else:
                     # Verified semantic alias for a narrow real-world pattern: an NSE "Retirement"
@@ -3682,7 +3692,7 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
                 break
     finally:
         client.on_response = None
-        client.close()
+        client.s.close()
     if not companions:
         return None
     result = pd.concat(companions, ignore_index=True).drop_duplicates('event_id', keep='last')
