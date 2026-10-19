@@ -2038,8 +2038,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         else:
             # Never pair solely because issuer/date match: a company can file unrelated disclosures
             # on the same day, and the XBRL feed often uses a broad event category. If subjects differ,
-            # require the XBRL appId to appear as a whole numeric token in this PDF/ZIP URL, and require
-            # that exactly one eligible PDF for this issuer/date carries that appId.
+            # require the XBRL appId as a whole token in the PDF/ZIP URL or event ID, or the narrow
+            # three-record management-change corroboration rule below.
             def xbrl_app_id(item):
                 event_id = str(item[3].get('event_id') or '')
                 match = re.match(r'^nse:xbrl:[^:]+:([^:]+):', event_id)
