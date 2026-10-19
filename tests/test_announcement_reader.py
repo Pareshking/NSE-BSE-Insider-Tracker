@@ -2756,3 +2756,72 @@ def test_candidates_do_not_pair_integrated_financials_on_issuer_date_alone():
     out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
     assert out.loc['pdf:generic', 'content_url'].endswith('IOC_board.pdf')
     assert pd.isna(out.loc['pdf:generic', 'xbrl_source_event_id'])
+
+
+
+def test_candidates_pair_integrated_governance_only_with_unique_explicit_governance_filing():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:governance', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Corporate Governance Compliance',
+         'text': 'Quarterly corporate governance compliance under Regulation 27(2)',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_governance.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-GOV:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Governance',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:governance', 'content_url'].endswith('IOC_governance.xml')
+    assert out.loc['pdf:governance', 'xbrl_source_event_id'] == 'nse:xbrl:equities:APP-GOV:abcdef1234'
+
+
+def test_integrated_companion_fetch_is_limited_to_selected_live_issuers_and_dates(monkeypatch):
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class FakeSession:
+        def close(self):
+            pass
+
+    class FakeNSE:
+        def __init__(self):
+            self.s = FakeSession()
+            self.on_response = None
+
+        def integrated_filing_financials(self, symbol=None, quarter_end_date=None):
+            calls.append(('financials', symbol))
+            return [
+                {'appId': 'IOC-FIN', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                 'broadcastDateTime': '19-Oct-2026 10:00:00',
+                 'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_financials.xml'},
+                {'appId': 'IOC-OLD', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                 'broadcastDateTime': '17-Oct-2026 10:00:00',
+                 'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_old.xml'},
+            ]
+
+        def corporate_governance(self, symbol):
+            calls.append(('governance', symbol))
+            return [{'appId': 'IOC-GOV', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                     'broadcastDateTime': '19-Oct-2026 10:30:00',
+                     'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml'}]
+
+    monkeypatch.setattr(nse_client, 'NSEClient', FakeNSE)
+    selected = pd.DataFrame([
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Financial Results',
+         'detail': 'Unaudited financial results for the quarter'},
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Corporate Governance Compliance',
+         'detail': 'Regulation 27(2) filing'},
+        {'exchange': 'BSE', 'symbol': 'ABC', 'subject': 'Financial Results',
+         'detail': 'This row must not cause an NSE API lookup'},
+    ])
+    notes = []
+    result = ar.collect_integrated_companions(selected, None, date(2026, 10, 19), True, notes)
+    assert set(calls) == {('financials', 'IOC'), ('governance', 'IOC')}
+    assert result is not None
+    assert set(result['event_id'].str.extract(r':([^:]+):')[0]) == {'IOC-FIN', 'IOC-GOV'}
+    assert set(result['broadcast_date']) == {'2026-10-19'}
+    assert any('2 direct XML rows' in note for note in notes)
