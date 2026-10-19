@@ -286,6 +286,36 @@ def test_old_below_100_cr_status_is_rechecked_under_the_new_current_cap_cutoff()
     assert counts['to_read'] == 1
 
 
+def test_batch_fallback_defers_unread_filings_after_run_budget(monkeypatch):
+    now = [0.0]
+    class FakeClient:
+        def __init__(self):
+            self.asked = []
+        def generate(self, models, prompt, kind, json_mode=True):
+            self.asked.extend(models)
+            return '{"results": []}', models[0], 0.01
+    client = FakeClient()
+    lane = ar.Lane('nvidia', ['nvidia:first'], {'nvidia': client}, clock=lambda: now[0])
+    monkeypatch.setattr(ar, 'BATCH_ON', True)
+    monkeypatch.setattr(ar, 'BATCH_MAX', 2)
+    monkeypatch.setattr(ar, 'BATCH_DOC_CHARS', 10000)
+    monkeypatch.setattr(ar, 'BATCH_TOTAL_CHARS', 20000)
+    monkeypatch.setattr(ar, 'BATCH_PROVIDERS', {'nvidia'})
+    rows = pd.DataFrame([
+        _cand('batch-1', 'NSE', 'INEB1', '2026-10-13T10:00:00+05:30', 'Buyback'),
+        _cand('batch-2', 'NSE', 'INEB2', '2026-10-13T10:01:00+05:30', 'Buyback'),
+    ])
+    def cached_text(row):
+        now[0] += 0.1
+        return {'text': ('The company announced a business update and entered a contract to supply components. ' * 6),
+                'notes': ''}
+    result, notes = ar.run(rows, {'nvidia': lane}, None, budget_seconds=0.05,
+                           now=lambda: now[0], text_cache=cached_text, idle_wait=0.001)
+    assert client.asked == []
+    assert result == []
+    assert notes['not_reached'] == 2
+
+
 def test_lane_stops_trying_models_when_per_filing_budget_is_exhausted(monkeypatch):
     now = [0.0]
     class SlowFailClient:
