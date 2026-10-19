@@ -842,7 +842,7 @@ def test_dry_run_collect_queries_all_four_nse_xbrl_feeds(monkeypatch):
     assert {feed for market, feed in calls if market == 'equities'} == {
         'announcements', 'para-a', 'para-b', 'award'
     }
-    assert nse is not None and 'nse:xbrl:equities:100779:' in set(nse['event_id'])
+    assert nse is not None and any(str(event_id).startswith('nse:xbrl:equities:100779:') for event_id in nse['event_id'])
     assert nse['event_id'].is_unique  # same XML from two feed types must not create duplicate companions
     assert nse['event_id'].astype(str).str.startswith('nse:xbrl:').sum() == 1
     assert bse is not None and bse.empty
