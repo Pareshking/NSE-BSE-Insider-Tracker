@@ -391,34 +391,40 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
         if blocked:
             break
 
-        # The dedicated XBRL endpoint is queried after the normal feed. A refusal only disables
-        # further XBRL lookups this cycle; ordinary PDF announcements already collected remain usable.
+        # NSE's dedicated XBRL page has four distinct feeds. Query all of them: the
+        # legacy "announcements" feed alone omits Para A/Para B and award records.
+        # A refusal is a hard stop for further NSE requests; ordinary PDF filings remain usable.
         for market in FEEDS:
-            if raw is not None:
-                def xbrl_hook(url, resp, a=a, b=b, market=market):
-                    raw.put('nse', 'announcements_xbrl', resp.content, url=url, status=resp.status_code,
-                            content_type=resp.headers.get('Content-Type'),
-                            covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market})
-                nse.on_response = xbrl_hook
-            try:
-                xrows = nse.xbrl_announcements(a, b, market)
-            except Blocked as exc:
-                report['notes'].append(f'NSE XBRL feed refused ({exc}); PDF path remains available')
-                blocked = True
+            for feed_type in ('announcements', 'para-a', 'para-b', 'award'):
+                if raw is not None:
+                    def xbrl_hook(url, resp, a=a, b=b, market=market, feed_type=feed_type):
+                        raw.put('nse', 'announcements_xbrl', resp.content, url=url, status=resp.status_code,
+                                content_type=resp.headers.get('Content-Type'),
+                                covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
+                                        'feed_type': feed_type})
+                    nse.on_response = xbrl_hook
+                try:
+                    xrows = nse.xbrl_announcements(a, b, market, feed_type=feed_type)
+                except Blocked as exc:
+                    report['notes'].append(f'NSE XBRL {market}/{feed_type} feed refused ({exc}); PDF path remains available')
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional XBRL fast path; PDF fallback remains
+                    report['notes'].append(
+                        f'{market} XBRL/{feed_type} {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
+                    continue
+                try:
+                    xdf = parse_xbrl(xrows, market)
+                except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
+                    report['notes'].append(
+                        f'{market} XBRL/{feed_type} {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
+                    continue
+                report['xbrl_calls'].append({'market': market, 'feed_type': feed_type,
+                                             'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(xdf)})
+                if not xdf.empty:
+                    xbrl_frames.append(xdf)
+            if blocked:
                 break
-            except Exception as exc:  # noqa: BLE001 -- XBRL is an optional fast path; PDF fallback remains
-                report['notes'].append(f'{market} XBRL {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
-                continue
-            try:
-                xdf = parse_xbrl(xrows, market)
-            except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
-                report['notes'].append(
-                    f'{market} XBRL {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
-                continue
-            report['xbrl_calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(),
-                                         'rows': len(xdf)})
-            if not xdf.empty:
-                xbrl_frames.append(xdf)
         if blocked:
             break
     nse.on_response = None
