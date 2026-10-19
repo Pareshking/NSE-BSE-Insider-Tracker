@@ -3645,11 +3645,13 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
         if not symbol:
             continue
         text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
-        types = requests_by_symbol.setdefault(symbol, set())
+        types = set()
         if financial_re.search(text):
             types.add('financials')
         if governance_re.search(text):
             types.add('governance')
+        if types:
+            requests_by_symbol.setdefault(symbol, set()).update(types)
     if not requests_by_symbol:
         return None
 
@@ -3666,12 +3668,17 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
     try:
         for symbol, types in sorted(requests_by_symbol.items()):
             for filing_type in sorted(types):
+                raw_write_error = []
                 if raw is not None:
                     def hook(url, resp, symbol=symbol, filing_type=filing_type):
-                        raw.put('nse', 'announcements_integrated', resp.content, url=url,
-                                status=resp.status_code, content_type=resp.headers.get('Content-Type'),
-                                covers={'symbol': symbol, 'filing_type': filing_type,
-                                        'live_window': sorted(wanted_dates)})
+                        try:
+                            raw.put('nse', 'announcements_integrated', resp.content, url=url,
+                                    status=resp.status_code, content_type=resp.headers.get('Content-Type'),
+                                    covers={'symbol': symbol, 'filing_type': filing_type,
+                                            'live_window': sorted(wanted_dates)})
+                        except Exception as exc:  # raw capture failure must not be silently downgraded
+                            raw_write_error.append(exc)
+                            raise
                     client.on_response = hook
                 try:
                     source_rows = (client.integrated_filing_financials(symbol=symbol)
@@ -3683,10 +3690,14 @@ def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date
                         if not parsed.empty:
                             companions.append(parsed)
                 except Blocked as exc:
+                    if raw_write_error:
+                        raise raw_write_error[0]
                     notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:220])
                     blocked = True
                     break
                 except Exception as exc:  # noqa: BLE001 -- optional companion feed never blocks PDF reading
+                    if raw_write_error:
+                        raise raw_write_error[0]
                     notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; PDF path retained'[:220])
             if blocked:
                 break
