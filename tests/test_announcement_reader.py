@@ -325,6 +325,24 @@ def test_security_master_uses_latest_market_cap_snapshot_not_after_requested_dat
                             'reference/market_cap/2026-10-14/data.json']
 
 
+def test_reader_market_cap_snapshot_window_rejects_stale_values(monkeypatch):
+    import collectors.nse_events.run_daily as run_daily
+    requests = []
+    payload = [{'symbol': '500325', 'isin': 'INE002A01018', 'company_name': 'ACME',
+                'market_cap': 900_000_000, 'source': 'bse_list_securities'}]
+    def get_snapshot(_r2, key):
+        requests.append(key)
+        # Eight days old: outside the reader's seven-day freshness window.
+        return json.dumps(payload).encode() if key.endswith('/2026-10-07/data.json') else None
+    monkeypatch.setattr(run_daily, 'get', get_snapshot)
+    monkeypatch.setattr(run_daily, 'nse_lists', lambda *_: (pd.DataFrame(), pd.DataFrame()))
+    master = run_daily.security_master(object(), '2026-10-15', [], max_age_days=7)
+    assert master.market_cap_as_of is None
+    assert master.records == {}
+    assert len(requests) == 8
+    assert requests[-1] == 'reference/market_cap/2026-10-08/data.json'
+
+
 class FakeClient:
     def __init__(self, replies):
         self.replies, self.attempts, self.asked = list(replies), [], []
