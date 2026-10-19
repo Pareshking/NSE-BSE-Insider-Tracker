@@ -116,6 +116,7 @@ class SecurityMaster:
         self._prefix_cache: dict[str, str | None] = {}
         self.bse_group_by_code: dict[str, str] = {}
         self.sme_isins: set[str] = set()
+        self.main_board_isins: set[str] = set()
         nse_sme_isins, main_isins, bse_sme_isins = set(), set(), set()
         if nse_list is not None and not nse_list.empty and 'market' in nse_list:
             market = nse_list['market'].astype(str).str.strip().str.casefold()
@@ -124,7 +125,9 @@ class SecurityMaster:
         if bse_list is not None and not bse_list.empty and {'bse_group', 'isin'} <= set(bse_list.columns):
             groups = bse_list['bse_group'].astype(str).str.strip().str.upper()
             bse_sme_isins = set(bse_list.loc[groups.isin({'M', 'MT', 'MS', 'TS'}), 'isin'].astype(str).str.strip()) - {''}
-        # A main-board NSE listing wins when the same ISIN also appears on an SME list.
+        # A main-board NSE listing wins when the same ISIN also appears on an SME list
+        # or carries a stale BSE SME group after migration.
+        self.main_board_isins = main_isins
         self.sme_isins = (nse_sme_isins | bse_sme_isins) - main_isins
         nse_mcap = {}
         for r in market_cap_rows or []:
@@ -223,11 +226,11 @@ class SecurityMaster:
                   or self._sector_by_bse.get(rec['bse_code'] or '') or (None, None, None))
         mcap = rec['nse_market_cap'] if rec['nse_market_cap'] is not None else rec['bse_market_cap']
         bse_group = self.bse_group_by_code.get(str(rec.get('bse_code') or '').strip())
+        bse_sme_group = bse_group in {'M', 'MT', 'MS', 'TS', 'SME', 'BSE SME'}
+        is_sme = isin in self.sme_isins or (bse_sme_group and isin not in self.main_board_isins)
         return {**rec, 'display_name': display_name(rec['name']), 'sector': sector[0],
                 'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap,
-                'bse_group': bse_group,
-                'is_sme': (isin in self.sme_isins or bse_group in {'M', 'MT', 'MS', 'TS', 'SME', 'BSE SME'}),
-                'is_sme_listing': (isin in self.sme_isins or bse_group in {'M', 'MT', 'MS', 'TS', 'SME', 'BSE SME'})}
+                'bse_group': bse_group, 'is_sme': is_sme, 'is_sme_listing': is_sme}
 
     def frame(self, isins=None) -> pd.DataFrame:
         keys = self.records if isins is None else [i for i in dict.fromkeys(isins) if i in self.records]
