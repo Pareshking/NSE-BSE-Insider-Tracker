@@ -201,7 +201,7 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
         # the human-readable PDF as 'attachment'; the legacy announcements feed
         # can expose the structured payload under 'attachment'. Always prefer the
         # explicit XBRL URL, and never ingest the PDF as a companion by mistake.
-        url = _file(row.get('xbrl') or row.get('xbrlUrl') or row.get('ixbrl'))
+        url = _file(row.get('xbrl') or row.get('xbrlUrl'))
         if not url:
             candidate = _file(row.get('attachment'))
             url = candidate if file_type(candidate) in ('xml', 'xbrl', 'zip') else None
