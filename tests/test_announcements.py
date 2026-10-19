@@ -72,8 +72,14 @@ class FakeNSE:
             raise Blocked('HTTP 403')
         return []
 
-    def integrated_filings(self, a, b, filing_type='financials', page_size=100, max_pages=100):
-        self.integrated_asked.append((a, b, filing_type))
+    def integrated_filing_financials(self, symbol):
+        self.integrated_asked.append((symbol, 'financials'))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
+
+    def corporate_governance(self, symbol):
+        self.integrated_asked.append((symbol, 'governance'))
         if self.block:
             raise Blocked('HTTP 403')
         return []
@@ -176,25 +182,32 @@ def test_sme_feed_is_not_collected():
 
 
 
-def test_run_queries_both_integrated_filing_types_without_treating_pdf_as_xbrl():
-    class IntegratedFakeNSE(FakeNSE):
-        def integrated_filings(self, a, b, filing_type='financials', page_size=100, max_pages=100):
-            self.integrated_asked.append((a, b, filing_type))
-            if filing_type == 'financials':
-                return [{'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
-                         'broadcastDateTime': '30-Sep-2026 18:43:11',
-                         'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml'},
-                        {'symbol': 'IOC', 'details': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'}]
-            return [{'symbol': 'IOC', 'details': 'https://nsearchives.nseindia.com/corporate/IOC_governance.pdf'}]
+def test_run_queries_symbol_scoped_integrated_financials_only_for_live_results():
+    result_pdf = {
+        'seq_id': 'LIVE-RESULTS', 'symbol': 'IOC', 'sm_isin': 'INE242A01010',
+        'sm_name': 'Indian Oil Corporation Limited', 'desc': 'Financial Results',
+        'attchmntText': 'Unaudited financial results for the quarter ended September 30, 2026',
+        'attchmntFile': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf',
+        'an_dt': '30-Sep-2026 18:43:00', 'exchdisstime': '30-Sep-2026 18:43:01',
+    }
 
-    nse = IntegratedFakeNSE(ROWS[:2])
+    class IntegratedFakeNSE(FakeNSE):
+        def integrated_filing_financials(self, symbol):
+            self.integrated_asked.append((symbol, 'financials'))
+            return [{
+                'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                'broadcastDateTime': '30-Sep-2026 18:43:11',
+                'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+            }]
+
+    nse = IntegratedFakeNSE([result_pdf])
     r2 = FakeR2()
     rep = ann.run(r2, nse, date(2026, 10, 1))
-    assert [x[2] for x in nse.integrated_asked] == ['financials', 'governance']
+    assert nse.integrated_asked == [('IOC', 'financials')]
     assert any(x['feed_type'] == 'integrated-financials' and x['rows'] == 1 for x in rep['xbrl_calls'])
     archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
                           for k in r2.objects if k.startswith(ann.PREFIX)])
     xml = archived[archived['file_type'] == 'xbrl']
     assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('IOC_results.xml')
     pdfs = archived[archived['file_url'].astype(str).str.endswith('.pdf')]
-    assert not pdfs.empty and pdfs['file_type'].eq('pdf').all()  # ordinary PDF filings remain PDFs
+    assert not pdfs.empty and pdfs['file_type'].eq('pdf').all()
