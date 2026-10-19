@@ -1823,6 +1823,7 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # The investment universe excludes NSE SME listings entirely. Filter before
         # XBRL pairing, audit counts, history lookup, or any AI read. Dedicated XBRL
         # feed rows can encode the segment in their event ID even if market is absent.
+        # Exclude at ingestion; a card-level hold still wastes model calls and risks history contamination.
         market = str(clean(r.get('market')) or '').strip().casefold()
         event_id = str(r.get('event_id') or '').strip().casefold()
         event_market = re.match(r'^nse:xbrl:([^:]+):', event_id)
