@@ -1,4 +1,7 @@
-# Announcement reader: state and plan (updated 14 Oct 2026)
+# Announcement reader: state and plan (updated 19 Oct 2026)
+
+> **Current rollout status (19 Oct):** NSE SME is excluded at source collection; BSE SME-group rows and archived NSE SME rows are excluded before candidate processing. Only companies with a verified market cap **strictly above ₹500 crore** from a snapshot no more than seven days old can reach AI reading. The latest successful PR dry-run used the 16 Oct 2026 snapshot, excluded 7 BSE SME rows, rejected 26 rows at or below ₹500 crore and 5 with unverified market cap, and produced 3 read cards. One XBRL companion (CAMLINFINE) was linked using strict issuer/date/subject checks. The run's provider usage ledger reconciled successfully. Production AI reading remains paused; a green dry-run alone does not authorize reactivation.
+
 
 This document records the live reader and the historical AI backfill. Older dated notes below are an
 engineering log, not the current rollout status. The agreed historical AI backfill starts **01 Jan 2026**.
