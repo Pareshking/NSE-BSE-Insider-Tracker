@@ -68,14 +68,17 @@ def nse_list_frame(*frames: pd.DataFrame) -> pd.DataFrame:
         if f is None or f.empty:
             continue
         f = _clean_cols(f)
+        market = (f['SOURCE_MARKET'].astype(str).str.strip().str.lower()
+                  if 'SOURCE_MARKET' in f else pd.Series('equities', index=f.index))
         out.append(pd.DataFrame({
             'nse_symbol': f['SYMBOL'].astype(str).str.strip().str.upper(),
             'name': f['NAME_OF_COMPANY'].astype(str).str.strip(),
             'isin': f['ISIN_NUMBER'].astype(str).str.strip(),
             'series': f['SERIES'].astype(str).str.strip(),
+            'market': market,
         }))
     if not out:
-        return pd.DataFrame(columns=['nse_symbol', 'name', 'isin', 'series'])
+        return pd.DataFrame(columns=['nse_symbol', 'name', 'isin', 'series', 'market'])
     return pd.concat(out, ignore_index=True).drop_duplicates('nse_symbol')
 
 
@@ -108,6 +111,13 @@ class SecurityMaster:
         self._sector_by_nse: dict[str, tuple] = {}
         self._sector_by_bse: dict[str, tuple] = {}
         self._prefix_cache: dict[str, str | None] = {}
+        self.sme_isins: set[str] = set()
+        if nse_list is not None and not nse_list.empty and 'market' in nse_list:
+            market = nse_list['market'].astype(str).str.strip().str.casefold()
+            sme_isins = set(nse_list.loc[market.eq('sme'), 'isin'].astype(str).str.strip()) - {''}
+            main_isins = set(nse_list.loc[market.ne('sme'), 'isin'].astype(str).str.strip()) - {''}
+            # If a security has transferred to the main board, the main-board listing wins.
+            self.sme_isins = sme_isins - main_isins
         nse_mcap = {}
         for r in market_cap_rows or []:
             sym = str(r.get('symbol', '')).strip().upper()
@@ -201,7 +211,8 @@ class SecurityMaster:
                   or self._sector_by_bse.get(rec['bse_code'] or '') or (None, None, None))
         mcap = rec['nse_market_cap'] if rec['nse_market_cap'] is not None else rec['bse_market_cap']
         return {**rec, 'display_name': display_name(rec['name']), 'sector': sector[0],
-                'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap}
+                'industry': sector[1], 'mcap_category': sector[2], 'market_cap': mcap,
+                'is_sme': isin in self.sme_isins}
 
     def frame(self, isins=None) -> pd.DataFrame:
         keys = self.records if isins is None else [i for i in dict.fromkeys(isins) if i in self.records]
