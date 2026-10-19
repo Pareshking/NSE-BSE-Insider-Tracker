@@ -470,6 +470,18 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
         # NSE tables/APIs, not guaranteed to appear in the ordinary XBRL announcement feeds.
         # They are optional companions: only direct exchange-supplied XML URLs are retained.
         for filing_type in ('financials', 'governance'):
+            raw_write_error = []
+            if raw is not None:
+                def integrated_hook(url, resp, a=a, b=b, market=market, filing_type=filing_type):
+                    try:
+                        raw.put('nse', 'announcements_integrated', resp.content, url=url, status=resp.status_code,
+                                content_type=resp.headers.get('Content-Type'),
+                                covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
+                                        'filing_type': filing_type})
+                    except Exception as exc:  # preserve the write-once raw-source invariant
+                        raw_write_error.append(exc)
+                        raise
+                nse.on_response = integrated_hook
             try:
                 integrated_rows = nse.integrated_filings(a, b, filing_type=filing_type)
                 idf = parse_integrated_xbrl(integrated_rows, filing_type, market)
@@ -479,10 +491,14 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
                 if not idf.empty:
                     xbrl_frames.append(idf)
             except Blocked as exc:
+                if raw_write_error:
+                    raise raw_write_error[0]
                 report['notes'].append(f'NSE integrated {filing_type} refused ({exc}); ordinary PDF path retained')
                 blocked = True
                 break
             except Exception as exc:  # noqa: BLE001 -- separate integrated endpoint must not block ordinary PDFs
+                if raw_write_error:
+                    raise raw_write_error[0]
                 report['notes'].append(
                     f'NSE integrated {filing_type} {a}..{b}: fetch/parse failed ({type(exc).__name__}: {exc}); PDF path retained')
         if blocked:
