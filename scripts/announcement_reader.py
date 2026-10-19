@@ -2081,6 +2081,52 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
                                   'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
     def sample(mask):
         return cands.loc[mask, fields].head(50).to_dict('records')
+
+    # Explain why a real XML/XBRL URL did not pair. In particular, retain nearby
+    # same-issuer/date PDFs from either exchange so cross-exchange omissions are visible,
+    # but do not automatically pair on issuer/date alone.
+    linked_source_ids = set(cands.loc[linked, 'xbrl_source_event_id'].dropna().astype(str))
+    records = cands.to_dict('records')
+    def normalized_subject(value):
+        return re.sub(r'[^a-z0-9]+', ' ', str(value or '').casefold()).strip()
+    unlinked_context = []
+    for xrow in records:
+        xid = str(xrow.get('event_id') or '')
+        xtype = str(xrow.get('file_type') or '').strip().lower()
+        xurl = str(xrow.get('file_url') or '')
+        xhint = re.search(r'\bxbrl\b', f"{xrow.get('subject') or ''} {xurl}", re.IGNORECASE)
+        if xid in linked_source_ids or not (xtype in ('xml', 'xbrl') or (xtype == 'zip' and xhint)):
+            continue
+        xday = pd.to_datetime(xrow.get('broadcast_date'), errors='coerce')
+        if pd.isna(xday):
+            continue
+        nearby = []
+        for prow in records:
+            ptype = str(prow.get('file_type') or '').strip().lower()
+            if prow.get('event_id') == xrow.get('event_id') or ptype not in ('pdf', 'zip') or not prow.get('file_url'):
+                continue
+            xis, pis = str(xrow.get('isin') or '').strip(), str(prow.get('isin') or '').strip()
+            xsym, psym = str(xrow.get('symbol') or '').strip().upper(), str(prow.get('symbol') or '').strip().upper()
+            same_issuer = (xis == pis) if xis and pis else bool(xsym and psym and xsym == psym)
+            if not same_issuer:
+                continue
+            pday = pd.to_datetime(prow.get('broadcast_date'), errors='coerce')
+            if pd.isna(pday) or abs((xday.date() - pday.date()).days) > 1:
+                continue
+            nearby.append({
+                'event_id': prow.get('event_id'), 'exchange': prow.get('exchange'),
+                'symbol': prow.get('symbol'), 'broadcast_date': prow.get('broadcast_date'),
+                'subject': prow.get('subject'), 'detail': str(prow.get('detail') or '')[:240],
+                'file_url': prow.get('file_url'),
+                'same_normalized_subject': normalized_subject(xrow.get('subject')) ==
+                                           normalized_subject(prow.get('subject')),
+            })
+        unlinked_context.append({
+            'event_id': xid, 'exchange': xrow.get('exchange'), 'symbol': xrow.get('symbol'),
+            'isin': xrow.get('isin'), 'broadcast_date': xrow.get('broadcast_date'),
+            'subject': xrow.get('subject'), 'file_url': xurl,
+            'nearby_pdf_candidates': nearby[:20],
+        })
     return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
             # These are diagnostics, not proof of XBRL availability: the upstream boolean can be
             # true while its row only exposes a PDF and no direct XBRL URL.
@@ -2094,7 +2140,7 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
             'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
             'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
             'structured_samples': sample(structured_attachment), 'zip_samples': sample(zip_attachment),
-            'linked_samples': sample(linked)}
+            'linked_samples': sample(linked), 'unlinked_xbrl_context': unlinked_context[:20]}
 
 
 def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
