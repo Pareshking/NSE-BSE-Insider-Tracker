@@ -3,16 +3,17 @@
     python -m collectors.nse_events.announcements                     # nightly: last 3 days
     python -m collectors.nse_events.announcements --from 2026-09-01   # history, one month per call
 
-Week one of the announcement reader (docs/TODO.md item 29): collect every
-announcement NSE broadcasts and count it by subject, so the volume and the
-share of filings worth reading are known before any model reads a PDF.
+Week one of the announcement reader (docs/TODO.md item 29): collect main-board
+NSE equity announcements and count them by subject, so the volume and the share
+of filings worth reading are known before any model reads a PDF. SME listings are
+outside the investment universe and are not collected or read.
 
 Each answer is stored byte for byte in raw_v2/nse/announcements/ first (a
 failed raw write fails the run, rule 5). Rows are merged into
 archive/announcements/nse/year=YYYY/month=MM.parquet by event_id (NSE's
 seq_id), so re-fetching never adds a filing twice; the month is the
-broadcast date's (IST). Two feeds, `market` equities (main board) and sme
-(SME board; 6-12 Oct 2026: 3,318 and 699 filings, no seq_id in both).
+broadcast date's (IST). Only `market=equities` (the NSE main board) is fetched;
+SME is deliberately excluded.
 Concall announcements (CONCALL) are archived like the rest since 15 Oct (owner:
 everything is captured) and counted in the report. Nothing goes to clean/current/: no
 page reads this yet. clean/reports/announcements/{date}.json counts the
@@ -44,7 +45,7 @@ from collectors.nse_events.client import Blocked, NSEClient
 IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 3   # late broadcasts of the last two days are picked up again
 PREFIX = 'archive/announcements/nse/'
-FEEDS = ('equities', 'sme')   # NSE's index= values; stored as `market`
+FEEDS = ('equities',)   # main-board investment universe only; SME listings are excluded
 COLUMNS = ('event_id', 'seq_id', 'market', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
            'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'xbrl_url', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
