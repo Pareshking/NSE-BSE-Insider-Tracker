@@ -96,46 +96,39 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-share-holdings-master?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
-    INTEGRATED_FILING_TYPES = {
-        'financials': 'Integrated Filing- Financials',
-        'governance': 'Integrated Filing- Governance',
-    }
-
-    def integrated_filing_url(self, start: date, end: date, filing_type: str = 'financials',
-                              page: int = 1, size: int = 100) -> str:
-        """NSE's separate Integrated Filing tables; preserve type and pagination explicitly."""
-        try:
-            label = self.INTEGRATED_FILING_TYPES[filing_type]
-        except KeyError as exc:
-            raise ValueError(f'unsupported integrated filing type: {filing_type}') from exc
+    def integrated_filing_financials_url(self, symbol: str) -> str:
+        """NSE's dedicated Integrated Filing-Financials API, queried for one live issuer."""
         from urllib.parse import quote
-        return (f'{BASE}/api/integrated-filing-results?index=equities&from_date={self._d(start)}'
-                f'&to_date={self._d(end)}&type={quote(label, safe="")}&page={page}&size={size}')
+        symbol = str(symbol or '').strip().upper()
+        if not symbol or not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
+            raise ValueError('a valid NSE symbol is required')
+        return f'{BASE}/api/integrated-filing-financials?index=equities&symbol={quote(symbol, safe="")}'
 
-    # Backwards-compatible name retained for existing callers.
-    def integrated_results_url(self, start: date, end: date, page: int = 1, size: int = 100) -> str:
-        return self.integrated_filing_url(start, end, 'financials', page, size)
+    def corporate_governance_url(self, symbol: str) -> str:
+        """NSE's dedicated corporate-governance API; do not infer it from financial filings."""
+        from urllib.parse import quote
+        symbol = str(symbol or '').strip().upper()
+        if not symbol or not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
+            raise ValueError('a valid NSE symbol is required')
+        return f'{BASE}/api/corporate-governance?index=equities&symbol={quote(symbol, safe="")}'
 
-    def integrated_filings(self, start: date, end: date, filing_type: str = 'financials',
-                           page_size: int = 100, max_pages: int = 100) -> list[dict]:
-        """Fetch a bounded, paginated integrated-filing window; fail rather than silently truncating."""
-        rows = []
-        for page in range(1, max_pages + 1):
-            payload = self.get(self.integrated_filing_url(start, end, filing_type, page, page_size),
-                               timeout=10, retries=1)
-            if isinstance(payload, list):
-                data, total = payload, None
-            elif isinstance(payload, dict):
-                data = payload.get('data') or []
-                total = payload.get('totalCount')
-            else:
-                raise RuntimeError(f'unexpected NSE integrated filing payload: {type(payload).__name__}')
-            if not isinstance(data, list):
-                raise RuntimeError('unexpected NSE integrated filing data shape')
-            rows.extend(x for x in data if isinstance(x, dict))
-            if not data or len(data) < page_size or (total is not None and len(rows) >= int(total)):
-                return rows
-        raise RuntimeError(f'NSE integrated filing pagination exceeded {max_pages} pages')
+    @staticmethod
+    def _rows(payload) -> list[dict]:
+        if isinstance(payload, list):
+            return [row for row in payload if isinstance(row, dict)]
+        if isinstance(payload, dict):
+            data = payload.get('data', [])
+            if isinstance(data, list):
+                return [row for row in data if isinstance(row, dict)]
+        raise RuntimeError('unexpected NSE integrated filing payload shape')
+
+    def integrated_filing_financials(self, symbol: str) -> list[dict]:
+        """Fetch one issuer's financial XBRL filings; caller filters by the live announcement window."""
+        return self._rows(self.get(self.integrated_filing_financials_url(symbol), timeout=10, retries=1))
+
+    def corporate_governance(self, symbol: str) -> list[dict]:
+        """Fetch one issuer's governance filings through its separate endpoint."""
+        return self._rows(self.get(self.corporate_governance_url(symbol), timeout=10, retries=1))
 
     def xbrl(self, url: str) -> str:
         return self.get(url, as_json=False)
