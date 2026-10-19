@@ -1012,6 +1012,9 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     assert ledger.reconciliation['reconciled'] is True
     assert ledger.reconciliation['saved_calls'] == 3
     assert ledger.reconciliation['calls_by_minute_total'] == 3
+    assert ledger.reconciliation['ledger_file_reconciled'] is True
+    assert ledger.reconciliation['usage_totals_reconciled'] is True
+    assert ledger.reconciliation['total_usage_by_model'] == {'nvidia:m': 3}
 
 
 def _run_file(store, day, run, minutes):
