@@ -71,7 +71,7 @@ SHOWN_STATUSES = ('read', 'same_file', 'same_text')
 READ_DAYS = 60
 COLLECT_DAYS = 2              # yesterday too: a filing made public after the nightly collection (22:45) and
                               # before midnight is read the same night; BSE stops at its first known page
-MIN_MCAP = 100 * 1e7          # Rs 100 Cr: smaller companies' PDFs never go to a model
+MIN_MCAP = 500 * 1e7          # Strictly more than Rs 500 Cr; use the latest verified weekly snapshot
 SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
@@ -2110,17 +2110,17 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
         if pd.isna(mcap) or mcap <= 0:
             status_rows.append({**r, 'status': 'market_cap_unverified',
-                                'reason': 'no verified market-cap value in the latest snapshot dated on or before yesterday'})
+                                'reason': 'no verified market-cap value in a recent snapshot from this week or last week'})
             continue
-        if mcap < MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_100_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr'})
+        if mcap <= MIN_MCAP:
+            status_rows.append({**r, 'status': 'below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
             status_rows.append({**r, 'status': 'same_filing_other_exchange', 'same_as': twin['event_id']})
             continue
         read_rows.append(r)
-    counts['below_100_cr'] = sum(x['status'] == 'below_100_cr' for x in status_rows)
+    counts['below_500_cr'] = sum(x['status'] == 'below_500_cr' for x in status_rows)
     counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
@@ -3237,8 +3237,8 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
     st = pd.Series([r['status'] for r in rows]).value_counts().to_dict() if rows else {}
     lines = ['### Announcement reader', '',
              f"Candidates today and yesterday: {counts.get('candidates', 0)}; routine or no file "
-             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; below Rs 100 Cr "
-             f"{counts.get('below_100_cr', 0)}; same filing on the other exchange "
+             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; below Rs 500 Cr "
+             f"{counts.get('below_500_cr', 0)}; same filing on the other exchange "
              f"{counts.get('same_filing_other_exchange', 0)}; chosen {counts.get('to_read', 0)}, "
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
@@ -3609,7 +3609,7 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
             caps = pd.to_numeric(current_candidates.get('market_cap', pd.Series(index=current_candidates.index, dtype=float)),
                                   errors='coerce').fillna(0)
             eligible_today = current_candidates[
-                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps >= MIN_MCAP)
+                (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps > MIN_MCAP)
             ]
             current_isins.update(eligible_today['isin'].dropna().astype(str))
         try:
