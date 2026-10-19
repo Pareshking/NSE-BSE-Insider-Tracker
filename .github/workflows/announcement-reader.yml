@@ -4,7 +4,7 @@ name: Unified announcement pipeline
 # chain=true ends by starting the next one (10 minutes after it began, 30 after a failure), reads the newest filings first
 # (up to `max`, for `minutes`), saves what it reads to R2 as it goes, and uses the page-image second reading and PaddleOCR for scanned pages.
 # Company history (old announcements) runs only 22:30-09:00 IST, after the live queue is clear; by day the chain reads live filings only. TO STOP: cancel the running run, or run it by hand with chain=false; nothing else starts it.
-# The initial run is manually dispatched; chain=true continues the live queue and the next run starts automatically. No scheduled run starts a chain.
+# (Supervised mode of 16 Oct, kept in docs/BLUEPRINT_TODO.md 12.22: no schedule, no self-dispatch.)
 
 # One serialized workflow handles current NSE/BSE announcements and targeted company history.
 # Historical AI reads are triggered only by eligible companies with current announcements; source collection
@@ -64,10 +64,10 @@ on:
         required: false
         default: ''
       chain:
-        description: 'Continue the live queue after this run; cancel the active run to stop the chain'
+        description: 'Start the next run when this one ends (off in supervised mode)'
         required: true
         type: boolean
-        default: true
+        default: false
   pull_request:
     paths:
       - 'scripts/announcement_reader.py'
@@ -99,7 +99,8 @@ concurrency:
 
 jobs:
   read:
-    # Acceptance gates passed: PR events remain dry-runs; main workflow_dispatch can run production.
+    # Pause production AI reads until semantic and XBRL acceptance is complete; keep PR/manual dry-runs available.
+    if: ${{ github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 110   # the reader stops starting reads after `minutes` (11 by default; 80 for a supervised 100)
     outputs:
@@ -156,8 +157,8 @@ jobs:
           exit 1
       - name: Read unified pipeline
         id: reader
-        # PR runs always pass DRY=--dry-run; main workflow_dispatch follows the user's dry_run input.
-        if: steps.changed.outputs.go == '1'
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
