@@ -3445,8 +3445,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         try:
             cap_as_of = today - timedelta(days=1)  # last available exchange snapshot on or before yesterday
             master = security_master(r2, cap_as_of.isoformat(), setup, max_age_days=7)
-            log(f'market-cap eligibility snapshot requested as of {cap_as_of.isoformat()} or earlier; '
-                f'actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
+            log(f'market-cap gate: strictly above Rs 500 Cr; snapshot requested as of {cap_as_of.isoformat()} '
+                f'with max age 7 days; actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
