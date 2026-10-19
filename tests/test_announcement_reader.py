@@ -789,6 +789,44 @@ def test_the_live_reader_asks_for_the_split_categories_and_still_knows_the_old_o
     assert ar.validate({'category': 'deal_or_dispute'}, 'DOC')[0] == 'deal_or_dispute'   # older reads
 
 
+def test_dry_run_collect_queries_all_four_nse_xbrl_feeds(monkeypatch):
+    import collectors.bse.announcements as bann
+    import collectors.bse.client as bse_client
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class NSE:
+        def announcements(self, start, end, index='equities'):
+            return []
+
+        def xbrl_announcements(self, start, end, index='equities', symbol=None, feed_type='announcements'):
+            calls.append((index, feed_type))
+            if feed_type == 'para-b':
+                return [{'appId': '100779', 'symbol': 'CAMLINFINE', 'companyName': 'Camlin Fine Sciences Limited',
+                         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+                         'broadcastDateTime': '18-10-2026 10:59:38',
+                         'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml'}]
+            return []
+
+    class BSE:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(nse_client, 'NSEClient', NSE)
+    monkeypatch.setattr(bse_client, 'BSEClient', BSE)
+    monkeypatch.setattr(bann, 'fetch_day', lambda client, day: ([], {}))
+    monkeypatch.setattr(bann, 'parse', lambda rows: pd.DataFrame())
+
+    notes = []
+    nse, bse = ar.collect(object(), date(2026, 10, 19), True, notes)
+    assert {feed for market, feed in calls if market == 'equities'} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    assert nse is not None and 'nse:xbrl:equities:100779:' in set(nse['event_id'])
+    assert bse is not None and bse.empty
+
+
 def test_live_collect_surfaces_bse_report_warnings(monkeypatch):
     import collectors.bse.announcements as bann
     import collectors.bse.client as bse_client
