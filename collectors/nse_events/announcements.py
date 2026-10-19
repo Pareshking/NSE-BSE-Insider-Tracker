@@ -3,16 +3,17 @@
     python -m collectors.nse_events.announcements                     # nightly: last 3 days
     python -m collectors.nse_events.announcements --from 2026-09-01   # history, one month per call
 
-Week one of the announcement reader (docs/TODO.md item 29): collect every
-announcement NSE broadcasts and count it by subject, so the volume and the
-share of filings worth reading are known before any model reads a PDF.
+Week one of the announcement reader (docs/TODO.md item 29): collect main-board
+NSE equity announcements and count them by subject, so the volume and the share
+of filings worth reading are known before any model reads a PDF. SME listings are
+outside the investment universe and are not collected or read.
 
 Each answer is stored byte for byte in raw_v2/nse/announcements/ first (a
 failed raw write fails the run, rule 5). Rows are merged into
 archive/announcements/nse/year=YYYY/month=MM.parquet by event_id (NSE's
 seq_id), so re-fetching never adds a filing twice; the month is the
-broadcast date's (IST). Two feeds, `market` equities (main board) and sme
-(SME board; 6-12 Oct 2026: 3,318 and 699 filings, no seq_id in both).
+broadcast date's (IST). Only `market=equities` (the NSE main board) is fetched;
+SME is deliberately excluded.
 Concall announcements (CONCALL) are archived like the rest since 15 Oct (owner:
 everything is captured) and counted in the report. Nothing goes to clean/current/: no
 page reads this yet. clean/reports/announcements/{date}.json counts the
@@ -44,7 +45,7 @@ from collectors.nse_events.client import Blocked, NSEClient
 IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 3   # late broadcasts of the last two days are picked up again
 PREFIX = 'archive/announcements/nse/'
-FEEDS = ('equities', 'sme')   # NSE's index= values; stored as `market`
+FEEDS = ('equities',)   # main-board investment universe only; SME listings are excluded
 COLUMNS = ('event_id', 'seq_id', 'market', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
            'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'xbrl_url', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
@@ -196,7 +197,14 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
     """
     out = []
     for row in rows or []:
-        url = _file(row.get('attachment'))
+        # Feed schemas differ: para-a/para-b/award expose the XML as 'xbrl' and
+        # the human-readable PDF as 'attachment'; the legacy announcements feed
+        # can expose the structured payload under 'attachment'. Always prefer the
+        # explicit XBRL URL, and never ingest the PDF as a companion by mistake.
+        url = _file(row.get('xbrl') or row.get('xbrlUrl'))
+        if not url:
+            candidate = _file(row.get('attachment'))
+            url = candidate if file_type(candidate) in ('xml', 'xbrl', 'zip') else None
         if not url:
             continue
         app_id = _text(str(row.get('appId') or row.get('id') or '')) or ''
@@ -240,6 +248,48 @@ def parse_xbrl(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
     df['file_bytes'] = df['file_bytes'].astype('Int64')
     df['has_xbrl'] = df['has_xbrl'].astype('boolean')
     return df
+
+
+def parse_integrated_xbrl(rows: list[dict], filing_type: str, market: str = 'equities') -> pd.DataFrame:
+    """Normalize direct XBRL links from the separate Integrated Filing API.
+
+    Link discovery is limited to exchange-supplied fields whose names contain 'xbrl';
+    no URL is synthesized and rows without a direct XML/XBRL URL are not treated as companions.
+    """
+    if filing_type not in {'financials', 'governance'}:
+        raise ValueError(f'unsupported integrated filing type: {filing_type}')
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        direct_url = None
+        for key, value in row.items():
+            if 'xbrl' not in str(key).casefold():
+                continue
+            direct_url = _file(value)
+            if direct_url and file_type(direct_url) in ('xml', 'xbrl'):
+                break
+            direct_url = None
+        if not direct_url:
+            continue
+        def pick(*keys):
+            return next((row[k] for k in keys if row.get(k) not in (None, '')), None)
+        normalized.append({
+            'appId': pick('appId', 'id', 'seq_id', 'submissionId', 'submission_id'),
+            'symbol': pick('symbol', 'Symbol'),
+            'companyName': pick('companyName', 'company', 'Company Name', 'company_name'),
+            'subject': f'Integrated Filing - {filing_type.title()}',
+            'eventType': f'Integrated Filing - {filing_type.title()}',
+            # A revision is a new filing event for the live-window gate. Prefer its explicit
+            # revision timestamp; otherwise retain the original exchange broadcast timestamp.
+            'broadcastDateTime': pick('revisedDateTime', 'revisionDateTime', 'broadcastDateTime',
+                                      'broadcastDate', 'broadcast_date', 'disseminationDateTime',
+                                      'dissemination_time'),
+            'disseminationDateTime': pick('disseminationDateTime', 'dissemination_time'),
+            'xbrl': direct_url,
+            'revision': pick('revision', 'submissionType', 'typeOfSubmission', 'Type of Submission'),
+        })
+    return parse_xbrl(normalized, market)
 
 
 def partition(broadcast_date) -> str:
@@ -342,6 +392,7 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     frames, xbrl_frames = [], []
     blocked = False
     for a, b in (month_chunks(start, end) if backfill_from else [(start, end)]):
+        chunk_standard = None
         for market in FEEDS:
             def make_hook(x, y, market=market):   # exact bytes before parsing; a failed write stops the run
                 def hook(url, resp):
@@ -377,40 +428,108 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
             except Exception as exc:  # noqa: BLE001 -- the check must not lose the window it checks
                 report['notes'].append(f'{market} {a}..{b}: cross-check failed ({type(exc).__name__}: {exc})')
             report['calls'].append(call)
+            chunk_standard = df.copy()
             frames.append(df)
             if blocked:
                 break
         if blocked:
             break
 
-        # The dedicated XBRL endpoint is queried after the normal feed. A refusal only disables
-        # further XBRL lookups this cycle; ordinary PDF announcements already collected remain usable.
+        # NSE's dedicated XBRL page has four distinct feeds. Query all of them: the
+        # legacy "announcements" feed alone omits Para A/Para B and award records.
+        # A refusal is a hard stop for further NSE requests; ordinary PDF filings remain usable.
         for market in FEEDS:
-            if raw is not None:
-                def xbrl_hook(url, resp, a=a, b=b, market=market):
-                    raw.put('nse', 'announcements_xbrl', resp.content, url=url, status=resp.status_code,
-                            content_type=resp.headers.get('Content-Type'),
-                            covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market})
-                nse.on_response = xbrl_hook
-            try:
-                xrows = nse.xbrl_announcements(a, b, market)
-            except Blocked as exc:
-                report['notes'].append(f'NSE XBRL feed refused ({exc}); PDF path remains available')
-                blocked = True
+            for feed_type in ('announcements', 'para-a', 'para-b', 'award'):
+                if raw is not None:
+                    def xbrl_hook(url, resp, a=a, b=b, market=market, feed_type=feed_type):
+                        raw.put('nse', 'announcements_xbrl', resp.content, url=url, status=resp.status_code,
+                                content_type=resp.headers.get('Content-Type'),
+                                covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
+                                        'feed_type': feed_type})
+                    nse.on_response = xbrl_hook
+                try:
+                    xrows = nse.xbrl_announcements(a, b, market, feed_type=feed_type)
+                except Blocked as exc:
+                    report['notes'].append(f'NSE XBRL {market}/{feed_type} feed refused ({exc}); PDF path remains available')
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional XBRL fast path; PDF fallback remains
+                    report['notes'].append(
+                        f'{market} XBRL/{feed_type} {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
+                    continue
+                try:
+                    xdf = parse_xbrl(xrows, market)
+                except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
+                    report['notes'].append(
+                        f'{market} XBRL/{feed_type} {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
+                    continue
+                report['xbrl_calls'].append({'market': market, 'feed_type': feed_type,
+                                             'from': a.isoformat(), 'to': b.isoformat(), 'rows': len(xdf)})
+                if not xdf.empty:
+                    xbrl_frames.append(xdf)
+            if blocked:
                 break
-            except Exception as exc:  # noqa: BLE001 -- XBRL is an optional fast path; PDF fallback remains
-                report['notes'].append(f'{market} XBRL {a}..{b}: fetch failed ({type(exc).__name__}: {exc})')
-                continue
-            try:
-                xdf = parse_xbrl(xrows, market)
-            except Exception as exc:  # noqa: BLE001 -- optional fast path must not block PDF archiving
-                report['notes'].append(
-                    f'{market} XBRL {a}..{b}: parse failed ({type(exc).__name__}: {exc}); PDF archive retained')
-                continue
-            report['xbrl_calls'].append({'market': market, 'from': a.isoformat(), 'to': b.isoformat(),
-                                         'rows': len(xdf)})
-            if not xdf.empty:
-                xbrl_frames.append(xdf)
+        if blocked:
+            break
+        # Integrated Financials and Governance have their own symbol-scoped APIs.
+        # Query only issuers with a relevant live filing in this window; never issue an
+        # unbounded historical scan or guess that Governance is a Financials query type.
+        relevant_symbols = {}
+        if chunk_standard is not None and not chunk_standard.empty:
+            for row in chunk_standard.to_dict('records'):
+                symbol = str(row.get('symbol') or '').strip().upper()
+                if not symbol:
+                    continue
+                context = f"{row.get('subject') or ''} {row.get('text') or ''}"
+                if re.search(r'financial results?|results? for (?:the )?(?:quarter|period|year)|integrated filing\s*[-–:]?\s*financial', context, re.IGNORECASE):
+                    relevant_symbols.setdefault(symbol, set()).add('financials')
+                if re.search(r'integrated filing\s*[-–:]?\s*governance|corporate governance|investor grievance', context, re.IGNORECASE):
+                    relevant_symbols.setdefault(symbol, set()).add('governance')
+        for symbol, filing_types in relevant_symbols.items():
+            for filing_type in sorted(filing_types):
+                raw_write_error = []
+                if raw is not None:
+                    def integrated_hook(url, resp, a=a, b=b, market=market, filing_type=filing_type, symbol=symbol):
+                        try:
+                            raw.put('nse', 'announcements_integrated', resp.content, url=url, status=resp.status_code,
+                                    content_type=resp.headers.get('Content-Type'),
+                                    covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
+                                            'filing_type': filing_type, 'symbol': symbol})
+                        except Exception as exc:  # preserve the write-once raw-source invariant
+                            raw_write_error.append(exc)
+                            raise
+                    nse.on_response = integrated_hook
+                try:
+                    if filing_type == 'financials':
+                        integrated_rows = nse.integrated_filing_financials(symbol)
+                    else:
+                        integrated_rows = nse.corporate_governance(symbol)
+                    idf = parse_integrated_xbrl(integrated_rows, filing_type, market)
+                    if not idf.empty:
+                        parsed_dates = pd.to_datetime(idf['broadcast_date'], errors='coerce').dt.date
+                        # Symbol endpoints can return prior filings. Only archive companion
+                        # rows whose exchange broadcast date falls inside this exact window.
+                        idf = idf[parsed_dates.map(lambda value: value is not None and a <= value <= b)].copy()
+                    report['xbrl_calls'].append({'market': market, 'feed_type': f'integrated-{filing_type}',
+                                                 'symbol': symbol, 'from': a.isoformat(), 'to': b.isoformat(),
+                                                 'source_rows': len(integrated_rows), 'rows': len(idf)})
+                    if not idf.empty:
+                        xbrl_frames.append(idf)
+                except Blocked as exc:
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    report['notes'].append(
+                        f'NSE integrated {filing_type}/{symbol} refused ({exc}); ordinary PDF path retained')
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional structured source must not block PDFs
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    report['notes'].append(
+                        f'NSE integrated {filing_type}/{symbol} {a}..{b}: fetch/parse failed '
+                        f'({type(exc).__name__}: {exc}); PDF path retained')
+            if blocked:
+                break
         if blocked:
             break
     nse.on_response = None

@@ -5,8 +5,9 @@ for longer)."""
 from __future__ import annotations
 
 import random
+import re
 import time
-from datetime import date
+from datetime import date, datetime
 
 import requests
 
@@ -96,11 +97,53 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-share-holdings-master?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
-    def integrated_results_url(self, start: date, end: date, page: int = 1, size: int = 100) -> str:
-        """Financial results filed as NSE's integrated filing, newest first, `size` a page
-        (confirmed 15 Oct 2026: {'data', 'size', 'page', 'totalCount'}; page=2 is the second page)."""
-        return (f'{BASE}/api/integrated-filing-results?index=equities&from_date={self._d(start)}'
-                f'&to_date={self._d(end)}&type=Integrated%20Filing-%20Financials&page={page}&size={size}')
+    def integrated_filing_financials_url(self, symbol: str | None = None,
+                                          quarter_end_date: str | None = None) -> str:
+        """NSE's dedicated Integrated Filing-Financials API, scoped to one issuer or quarter."""
+        from urllib.parse import quote
+        if bool(symbol) == bool(quarter_end_date):
+            raise ValueError('provide exactly one of symbol or quarter_end_date')
+        if symbol:
+            symbol = str(symbol).strip().upper()
+            if not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
+                raise ValueError('a valid NSE symbol is required')
+            query = f'symbol={quote(symbol, safe="")}'
+        else:
+            quarter_end_date = str(quarter_end_date).strip()
+            try:
+                datetime.strptime(quarter_end_date, '%d-%b-%Y')
+            except ValueError as exc:
+                raise ValueError('quarter_end_date must use DD-Mmm-YYYY, e.g. 30-Sep-2026') from exc
+            query = f'quarterEndDate={quote(quarter_end_date, safe="")}'
+        return f'{BASE}/api/integrated-filing-financials?index=equities&{query}'
+
+    def corporate_governance_url(self, symbol: str) -> str:
+        """NSE's dedicated corporate-governance API; do not infer it from financial filings."""
+        from urllib.parse import quote
+        symbol = str(symbol or '').strip().upper()
+        if not symbol or not re.fullmatch(r'[A-Z0-9&._-]{1,32}', symbol):
+            raise ValueError('a valid NSE symbol is required')
+        return f'{BASE}/api/corporate-governance?index=equities&symbol={quote(symbol, safe="")}'
+
+    @staticmethod
+    def _rows(payload) -> list[dict]:
+        if isinstance(payload, list):
+            return [row for row in payload if isinstance(row, dict)]
+        if isinstance(payload, dict):
+            data = payload.get('data', [])
+            if isinstance(data, list):
+                return [row for row in data if isinstance(row, dict)]
+        raise RuntimeError('unexpected NSE integrated filing payload shape')
+
+    def integrated_filing_financials(self, symbol: str | None = None,
+                                     quarter_end_date: str | None = None) -> list[dict]:
+        """Fetch one issuer's or one quarter's financial filings; caller filters by the live window."""
+        url = self.integrated_filing_financials_url(symbol=symbol, quarter_end_date=quarter_end_date)
+        return self._rows(self.get(url, timeout=10, retries=1))
+
+    def corporate_governance(self, symbol: str) -> list[dict]:
+        """Fetch one issuer's governance filings through its separate endpoint."""
+        return self._rows(self.get(self.corporate_governance_url(symbol), timeout=10, retries=1))
 
     def xbrl(self, url: str) -> str:
         return self.get(url, as_json=False)
@@ -141,14 +184,17 @@ class NSEClient:
         return j if isinstance(j, list) else j.get('data', [])
 
     def xbrl_announcements(self, start: date, end: date, index: str = 'equities',
-                           symbol: str | None = None) -> list[dict]:
-        """Dedicated NSE Announcement XBRL feed; returns rows carrying attachment/ixbrl URLs.
+                           symbol: str | None = None, feed_type: str = 'announcements') -> list[dict]:
+        """Fetch one NSE XBRL-announcement feed type: announcements, para-a, para-b, or award.
 
-        This is separate from the normal announcements endpoint: its hasXbrl flag alone is
-        not a URL. The official XBRL page uses /api/XBRL-announcements with type=announcements.
+        NSE exposes multiple feed types. The legacy announcements feed alone misses Para A/Para B
+        records; para-b carries post-20-Jun-2026 material events, while award preserves the legacy
+        order-award feed. A row's xbrl URL may differ from its ordinary PDF attachment URL.
         """
+        if feed_type not in {'announcements', 'para-a', 'para-b', 'award'}:
+            raise ValueError(f'unsupported NSE XBRL feed type: {feed_type}')
         query = (f'index={index}&from_date={self._d(start)}&to_date={self._d(end)}'
-                 '&type=announcements')
+                 f'&type={feed_type}')
         if symbol:
             query += f'&symbol={symbol}'
         self.warm_up()

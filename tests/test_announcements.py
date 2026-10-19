@@ -56,6 +56,8 @@ class FakeNSE:
     def __init__(self, rows, block=False, sme=()):
         self.rows, self.block, self.calls, self.on_response, self.asked = rows, block, 0, None, []
         self.sme = list(sme)
+        self.xbrl_asked = []
+        self.integrated_asked = []
 
     def announcements(self, a, b, index='equities'):
         self.calls += 1
@@ -63,6 +65,24 @@ class FakeNSE:
         if self.block:
             raise Blocked('HTTP 403')
         return self.rows if index == 'equities' else self.sme
+
+    def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
+        self.xbrl_asked.append((a, b, index, feed_type))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
+
+    def integrated_filing_financials(self, symbol):
+        self.integrated_asked.append((symbol, 'financials'))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
+
+    def corporate_governance(self, symbol):
+        self.integrated_asked.append((symbol, 'governance'))
+        if self.block:
+            raise Blocked('HTTP 403')
+        return []
 
 
 def test_nightly_run_archives_by_month_and_twice_adds_nothing(monkeypatch):
@@ -87,19 +107,20 @@ def test_backfill_goes_month_by_month_and_refusal_stops():
     ann.run(r2, nse, date(2026, 10, 5), backfill_from=date(2026, 8, 20))
     months = [(date(2026, 8, 20), date(2026, 8, 31)), (date(2026, 9, 1), date(2026, 9, 30)),
               (date(2026, 10, 1), date(2026, 10, 5))]
-    # per month and market: the whole window, then the cross-check's two halves (each half asked for itself)
-    wholes = [(a, b, m) for a, b in months for m in ('equities', 'sme')]
+    # Main-board only: the whole window and the cross-check's two halves.
+    wholes = [(a, b, 'equities') for a, b in months]
     assert [x for x in nse.asked if x in wholes] == wholes
+    assert all(market == 'equities' for _, _, market in nse.asked)
     for a, b in months:
         mid = a + (b - a) // 2
-        assert (a, mid, 'equities') in nse.asked and (mid + timedelta(days=1), b, 'sme') in nse.asked
+        assert (a, mid, 'equities') in nse.asked and (mid + timedelta(days=1), b, 'equities') in nse.asked
     rep = ann.run(FakeR2(), FakeNSE(ROWS, block=True), date(2026, 10, 5), backfill_from=date(2026, 8, 20))
     assert rep['calls'] == [] and rep['added'] == 0 and 'refused' in rep['notes'][0]
 
 
 def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
     class XbrlFakeNSE(FakeNSE):
-        def xbrl_announcements(self, a, b, index='equities', symbol=None):
+        def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
             return [{'appId': 'bad-xbrl', 'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/bad.xml'}]
 
     def broken_parse(*args, **kwargs):
@@ -117,17 +138,106 @@ def test_xbrl_parse_failure_never_prevents_standard_pdf_archive(monkeypatch):
     assert not set(archived['file_type']) & {'xml', 'xbrl'}  # failed optional XBRL parse added no synthetic rows
 
 
-def test_sme_feed_is_archived_with_its_market_and_old_rows_count_as_equities():
+def test_nightly_run_collects_all_dedicated_xbrl_feed_types():
+    class ParaBFakeNSE(FakeNSE):
+        def xbrl_announcements(self, a, b, index='equities', symbol=None, feed_type='announcements'):
+            self.xbrl_asked.append((a, b, index, feed_type))
+            if feed_type == 'para-b':
+                return [{'appId': '100779', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+                         'companyName': 'Camlin Fine Sciences Limited',
+                         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+                         'broadcastDateTime': '18-10-2026 10:59:38',
+                         'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml'}]
+            return []
+
+    r2 = FakeR2()
+    nse = ParaBFakeNSE(ROWS[:1])
+    rep = ann.run(r2, nse, date(2026, 10, 19))
+    assert {feed for _, _, market, feed in nse.xbrl_asked if market == 'equities'} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    assert {call['feed_type'] for call in rep['xbrl_calls']} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xbrl = archived[archived['event_id'].astype(str).str.startswith('nse:xbrl:')]
+    assert len(xbrl) == 1
+    assert xbrl.iloc[0]['file_type'] == 'xbrl'
+    assert xbrl.iloc[0]['xbrl_url'].endswith('105938126.xml')
+
+
+def test_sme_feed_is_not_collected():
     r2 = FakeR2()
     sme = [dict(ROWS[0], seq_id='900000001', symbol='SMEX', desc='Preferential issue')]
-    rep = ann.run(r2, FakeNSE(ROWS[:3]), date(2026, 10, 1))
-    for k in [k for k in r2.objects if k.startswith(ann.PREFIX)]:   # an archive written before the market column
-        old = pd.read_parquet(io.BytesIO(r2.objects[k])).drop(columns='market')
-        buf = io.BytesIO(); old.to_parquet(buf); r2.objects[k] = buf.getvalue()
-    rep = ann.run(r2, FakeNSE(ROWS[:3], sme=sme), date(2026, 10, 1))
-    assert rep['added'] == 1 and [c['market'] for c in rep['calls']] == ['equities', 'sme']
-    assert rep['window_counts']['by_market'] == {'equities': 3, 'sme': 1}
-    arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k])) for k in r2.objects if k.startswith(ann.PREFIX)])
-    assert arch.set_index('seq_id')['market'].to_dict() == {
-        **{r['seq_id']: 'equities' for r in ROWS[:3]}, '900000001': 'sme'}
-    assert 'sme 1' in ann.summary_markdown(rep)
+    nse = FakeNSE(ROWS[:3], sme=sme)
+    rep = ann.run(r2, nse, date(2026, 10, 1))
+    assert rep['added'] == 3
+    assert [c['market'] for c in rep['calls']] == ['equities']
+    assert all(market == 'equities' for _, _, market in nse.asked)
+    arch = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                      for k in r2.objects if k.startswith(ann.PREFIX)])
+    assert set(arch['market']) == {'equities'}
+    assert '900000001' not in set(arch['seq_id'])
+
+
+
+def test_run_queries_symbol_scoped_integrated_financials_only_for_live_results():
+    result_pdf = {
+        'seq_id': 'LIVE-RESULTS', 'symbol': 'IOC', 'sm_isin': 'INE242A01010',
+        'sm_name': 'Indian Oil Corporation Limited', 'desc': 'Financial Results',
+        'attchmntText': 'Unaudited financial results for the quarter ended September 30, 2026',
+        'attchmntFile': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf',
+        'an_dt': '30-Sep-2026 18:43:00', 'exchdisstime': '30-Sep-2026 18:43:01',
+    }
+
+    class IntegratedFakeNSE(FakeNSE):
+        def integrated_filing_financials(self, symbol):
+            self.integrated_asked.append((symbol, 'financials'))
+            return [{
+                'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                'broadcastDateTime': '30-Sep-2026 18:43:11',
+                'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+            }]
+
+    nse = IntegratedFakeNSE([result_pdf])
+    r2 = FakeR2()
+    rep = ann.run(r2, nse, date(2026, 10, 1))
+    assert nse.integrated_asked == [('IOC', 'financials')]
+    assert any(x['feed_type'] == 'integrated-financials' and x['rows'] == 1 for x in rep['xbrl_calls'])
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xml = archived[archived['file_type'] == 'xbrl']
+    assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('IOC_results.xml')
+    pdfs = archived[archived['file_url'].astype(str).str.endswith('.pdf')]
+    assert not pdfs.empty and pdfs['file_type'].eq('pdf').all()
+
+
+
+def test_run_queries_separate_governance_api_only_for_live_governance_filing():
+    governance_pdf = {
+        'seq_id': 'LIVE-GOV', 'symbol': 'NCLIND', 'sm_isin': 'INE732C01016',
+        'sm_name': 'NCL Industries Limited', 'desc': 'Integrated Filing- Governance',
+        'attchmntText': 'Integrated filing governance report',
+        'attchmntFile': 'https://nsearchives.nseindia.com/corporate/NCLIND_governance.pdf',
+        'an_dt': '05-Oct-2026 09:55:00', 'exchdisstime': '05-Oct-2026 09:55:01',
+    }
+
+    class GovernanceFakeNSE(FakeNSE):
+        def corporate_governance(self, symbol):
+            self.integrated_asked.append((symbol, 'governance'))
+            return [{
+                'symbol': symbol, 'companyName': 'NCL Industries Limited',
+                'broadcastDateTime': '05-Oct-2026 09:55:11',
+                'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/CG_199585_05102026095531_WEB.xml',
+            }]
+
+    nse = GovernanceFakeNSE([governance_pdf])
+    r2 = FakeR2()
+    rep = ann.run(r2, nse, date(2026, 10, 5))
+    assert nse.integrated_asked == [('NCLIND', 'governance')]
+    assert any(x['feed_type'] == 'integrated-governance' and x['rows'] == 1 for x in rep['xbrl_calls'])
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xml = archived[archived['file_type'] == 'xbrl']
+    assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('CG_199585_05102026095531_WEB.xml')

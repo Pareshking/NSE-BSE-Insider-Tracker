@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import threading
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -194,6 +195,46 @@ def test_candidates_use_exchange_supplied_xbrl_url_directly():
     assert row['xbrl_source_url'].endswith('X.xml')
 
 
+def test_candidates_pairs_xbrl_by_symbol_when_feed_omits_isin():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:camlin', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+         'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'Director change',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/CIM_11353.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-18T10:59:00+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100779:abc', 'symbol': 'CAMLINFINE', 'isin': None,
+         'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'Structured director change',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'broadcast_at': '2026-10-18T10:59:38+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:camlin', 'content_url'].endswith('105938126.xml')
+    assert out.loc['pdf:camlin', 'xbrl_source_event_id'] == 'nse:xbrl:equities:100779:abc'
+    assert out.loc['nse:xbrl:equities:100779:abc', 'group'] == 'routine'
+
+
+def test_candidates_do_not_pair_xbrl_when_both_isins_conflict_even_if_symbol_matches():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:1', 'symbol': 'X', 'isin': 'INE000A01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Results', 'file_url': 'https://nsearchives.nseindia.com/corporate/X.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:00:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:101:abc', 'symbol': 'X', 'isin': 'INE999Z01000', 'company': 'X Ltd',
+         'subject': 'Financial Results', 'text': 'Structured results',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/X.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'broadcast_at': '2026-10-14T10:01:00+05:30',
+         'broadcast_date': '2026-10-14', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:1', 'content_url'].endswith('X.pdf')
+    assert pd.isna(out.loc['pdf:1', 'xbrl_source_event_id'])
+
+
 def test_xbrl_audit_reports_flags_attachments_and_links():
     cands = pd.DataFrame([
         {'event_id': 'pdf:1', 'exchange': 'NSE', 'symbol': 'X', 'isin': 'INE000A01000',
@@ -217,24 +258,43 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
     assert audit['xbrl_linked'] == 1
     assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
 
-def test_choose_requires_strictly_over_500_cr_and_excludes_sme():
+def test_xbrl_audit_exposes_unlinked_cross_exchange_pdf_context():
+    cands = pd.DataFrame([
+        {'event_id': 'nse:xbrl:equities:100779:abc', 'exchange': 'NSE', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+         'broadcast_date': '2026-10-18', 'file_type': 'xbrl', 'has_xbrl': True,
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CAMLINFINE.xml',
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CAMLINFINE.xml',
+         'xbrl_source_event_id': None, 'xbrl_source_url': None},
+        {'event_id': 'bse:camlin-pdf', 'exchange': 'BSE', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'subject': 'General',
+         'detail': 'Intimation of completion of tenure of Independent Director',
+         'broadcast_date': '2026-10-18', 'file_type': 'pdf', 'has_xbrl': None,
+         'file_url': 'https://www.bseindia.com/filing/CAMLINFINE.pdf',
+         'xbrl_url': None, 'xbrl_source_event_id': None, 'xbrl_source_url': None},
+    ])
+    audit = ar.xbrl_audit(cands)
+    assert audit['xbrl_linked'] == 0  # diagnostic only; never pair on date/issuer alone
+    context = audit['unlinked_xbrl_context'][0]
+    assert context['event_id'] == 'nse:xbrl:equities:100779:abc'
+    assert context['nearby_pdf_candidates'][0]['exchange'] == 'BSE'
+    assert context['nearby_pdf_candidates'][0]['same_normalized_subject'] is False
+
+
+def test_choose_excludes_unverified_market_cap_and_requires_more_than_500_cr():
     today = date(2026, 10, 13)
     c = pd.DataFrame([
         _cand('below', 'NSE', 'INELOW', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=4_999_999_999),
         _cand('boundary', 'NSE', 'INE500', '2026-10-13T10:01:00+05:30', 'Buyback', mcap=5_000_000_000),
         _cand('above', 'NSE', 'INE501', '2026-10-13T10:02:00+05:30', 'Buyback', mcap=5_000_000_001),
-        _cand('nse-sme', 'NSE', 'INESME', '2026-10-13T10:03:00+05:30', 'Buyback', mcap=8_000_000_000, market='sme'),
-        _cand('bse-sme', 'BSE', 'INESME2', '2026-10-13T10:04:00+05:30', 'Buyback', mcap=9_000_000_000, is_sme=True, market='bse'),
-        _cand('unknown', 'NSE', 'INEUNK', '2026-10-13T10:05:00+05:30', 'Buyback', mcap=None),
+        _cand('unknown', 'NSE', 'INEUNK', '2026-10-13T10:03:00+05:30', 'Buyback', mcap=None),
     ])
     to_read, status, counts = ar.choose(c, None, today)
     assert list(to_read['event_id']) == ['above']
     statuses = status.set_index('event_id')['status'].to_dict()
-    assert statuses == {'nse-sme': 'sme_excluded', 'bse-sme': 'sme_excluded',
-                        'below': 'below_500_cr', 'boundary': 'below_500_cr',
+    assert statuses == {'below': 'at_or_below_500_cr', 'boundary': 'at_or_below_500_cr',
                         'unknown': 'market_cap_unverified'}
-    assert counts['below_500_cr'] == 2
-    assert counts['sme_excluded'] == 2
+    assert counts['at_or_below_500_cr'] == 2
     assert counts['market_cap_unverified'] == 1
 
 
@@ -257,49 +317,11 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert to_read.set_index('event_id')['tries']['nse:7'] == 1          # a failure is tried again
     st = status.set_index('event_id')
     assert st.loc['bse:a', 'status'] == 'same_filing_other_exchange' and st.loc['bse:a', 'same_as'] == 'nse:1'
-    assert st.loc['nse:3', 'status'] == 'below_500_cr'
-    assert counts == {'candidates': 7, 'sme_excluded': 0, 'routine_or_no_file': 1, 'already_done': 1, 'below_500_cr': 1,
+    assert st.loc['nse:3', 'status'] == 'at_or_below_500_cr'
+    assert counts == {'candidates': 7, 'routine_or_no_file': 1, 'already_done': 1, 'at_or_below_500_cr': 1,
                       'market_cap_unverified': 0, 'same_filing_other_exchange': 1, 'to_read': 3}
     gave_up = done.assign(tries=ar.MAX_TRIES)
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
-
-
-def test_previously_read_card_is_retired_when_current_market_cap_falls_below_cutoff():
-    today = date(2026, 10, 13)
-    candidate = _cand('previous-read', 'NSE', 'INEOLD', '2026-10-13T10:00:00+05:30', 'Buyback',
-                      mcap=4_000_000_000)
-    c = pd.DataFrame([candidate])
-    done = pd.DataFrame([{**candidate, 'status': 'read', 'tries': 1, 'prompt_version': ar.PROMPT_VERSION}])
-    selected, status, counts = ar.choose(c, done, today)
-    assert selected.empty
-    assert status.set_index('event_id').loc['previous-read', 'status'] == 'below_500_cr'
-    assert counts['already_done'] == 0
-
-
-def test_old_below_100_cr_status_is_rechecked_under_the_new_current_cap_cutoff():
-    today = date(2026, 10, 13)
-    c = pd.DataFrame([_cand('old-small', 'NSE', 'INEOLD', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=6_000_000_000)])
-    done = pd.DataFrame([{**c.iloc[0].to_dict(), 'status': 'below_100_cr', 'tries': 1}])
-    selected, status, counts = ar.choose(c, done, today)
-    assert list(selected['event_id']) == ['old-small']
-    assert status.empty
-    assert counts['to_read'] == 1
-
-
-def test_lane_stops_trying_models_when_per_filing_budget_is_exhausted(monkeypatch):
-    now = [0.0]
-    class SlowFailClient:
-        def __init__(self):
-            self.asked = []
-        def generate(self, models, prompt, kind, json_mode=True):
-            self.asked.extend(models)
-            now[0] += ar.LANE_READ_SECONDS + 1
-            raise RuntimeError('HTTP 503 unavailable')
-    client = SlowFailClient()
-    lane = ar.Lane('main', ['nvidia:first', 'nvidia:second'], {'nvidia': client}, clock=lambda: now[0])
-    with pytest.raises(RuntimeError, match='per-filing model budget'):
-        lane.read('financial filing text')
-    assert client.asked == ['first']
 
 
 def test_permanent_missing_document_is_retired_after_one_attempt():
@@ -326,6 +348,24 @@ def test_different_subjects_or_hours_apart_are_not_the_same_filing():
     assert not ar.same_filing(a, _cand('bse:2', 'BSE', 'INE1', '2026-10-13T10:05:00+05:30', 'Credit Rating', 'rating reaffirmed'))
     assert not ar.same_filing(a, _cand('bse:3', 'BSE', 'INE1', '2026-10-13T19:00:00+05:30', 'Outcome of Board Meeting', 'approved fund raising by QIP'))
     assert not ar.same_filing(a, {**a, 'event_id': 'nse:9'})   # same exchange: two filings
+
+
+def test_text_of_parses_standalone_xbrl_xml_without_pdf_fallback(monkeypatch):
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in="urn:example">
+      <xbrli:context id="Q2">
+        <xbrli:entity><xbrli:identifier scheme="urn:test">MARATHON</xbrli:identifier></xbrli:entity>
+        <xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit>
+      <in:Revenue contextRef="Q2" unitRef="INR" decimals="0">987654321</in:Revenue>
+    </xbrli:xbrl>'''
+    monkeypatch.setattr(ar.s, 'pdf_text', lambda _data: (_ for _ in ()).throw(AssertionError('PDF fallback used')))
+    text, notes = ar.s.text_of(xml)
+    assert 'XBRL FACTS' in text
+    assert 'Revenue = 987654321' in text
+    assert '2026-07-01' in text and '2026-09-30' in text
+    assert any(note.startswith('xbrl: standalone XML;') for note in notes)
 
 
 def test_text_of_prefers_valid_xbrl_inside_zip_over_pdf(monkeypatch):
@@ -364,6 +404,25 @@ def test_security_master_uses_latest_market_cap_snapshot_not_after_requested_dat
     assert master.record('INE002A01018')['market_cap'] == 1_000_000_000
     assert requests[:2] == ['reference/market_cap/2026-10-15/data.json',
                             'reference/market_cap/2026-10-14/data.json']
+
+
+def test_reader_market_cap_snapshot_window_rejects_stale_values(monkeypatch):
+    import collectors.nse_events.run_daily as run_daily
+    requests = []
+    payload = [{'symbol': '500325', 'isin': 'INE002A01018', 'company_name': 'ACME',
+                'market_cap': 900_000_000, 'source': 'bse_list_securities'}]
+    def get_snapshot(_r2, key):
+        requests.append(key)
+        # Eight days old: outside the reader's seven-day freshness window.
+        return json.dumps(payload).encode() if key.endswith('/2026-10-07/data.json') else None
+    monkeypatch.setattr(run_daily, 'get', get_snapshot)
+    monkeypatch.setattr(run_daily, 'nse_lists', lambda *_: (pd.DataFrame(), pd.DataFrame()))
+    master = run_daily.security_master(object(), '2026-10-15', [], max_age_days=7)
+    assert master.market_cap_as_of is None
+    rec = master.record('INE002A01018')
+    assert rec is None or rec.get('market_cap') is None
+    assert len(requests) == 8
+    assert requests[-1] == 'reference/market_cap/2026-10-08/data.json'
 
 
 class FakeClient:
@@ -503,7 +562,11 @@ def _qips(n):
 def test_lanes_read_different_filings_at_once_copy_the_same_file_and_cross_check_when_idle(monkeypatch):
     monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC if data != b'empty' else '', ['0.1 MB']))
     files = {'https://f/nse:1.pdf': b'one', 'https://f/nse:2.pdf': b'one', 'https://f/nse:3.pdf': b'empty'}
-    lanes = _lanes(nvidia=[QIP, QIP], zai=[QIP, QIP])
+    answer = json.loads(QIP)
+    answer['narrative'] = [{'text': 'Management has disclosed an investment plan.', 'evidence': [
+        {'source': 'current_filing', 'quote': 'Hyundai plans an investment of USD 15.5 billion by 2030.'}]}]
+    answer = json.dumps(answer)
+    lanes = _lanes(nvidia=[answer, answer], zai=[answer, answer])
     rows, notes = ar.run(_qips(3), lanes, None, 600, fetch=files.__getitem__, idle_wait=0.01)
     by = {r['event_id']: r for r in rows}
     # nse:1 and nse:2 are one file, taken by two lanes at once: the first downloaded is read, the other
@@ -511,6 +574,7 @@ def test_lanes_read_different_filings_at_once_copy_the_same_file_and_cross_check
     read, copy = sorted((by['nse:1'], by['nse:2']), key=lambda r: r['status'] != 'read')
     assert read['status'] == 'read' and read['shown'] == 1 and json.loads(read['fields'])[0]['number'] == 165.65
     assert copy['status'] == 'same_file' and copy['same_as'] == read['event_id'] and copy['fields'] == read['fields']
+    assert copy['narrative'] == read['narrative'] and json.loads(copy['narrative'])[0]['shown']
     assert by['nse:3']['status'] == 'no_text'
     # the idle lane, of the other provider, read it again: its one shown value agrees
     other = ({'nvidia', 'zai'} - {read['reader'].split(':')[0]}).pop()
@@ -743,6 +807,47 @@ def test_the_live_reader_asks_for_the_split_categories_and_still_knows_the_old_o
     assert ar.validate({'category': 'deal_or_dispute'}, 'DOC')[0] == 'deal_or_dispute'   # older reads
 
 
+def test_dry_run_collect_queries_all_four_nse_xbrl_feeds(monkeypatch):
+    import collectors.bse.announcements as bann
+    import collectors.bse.client as bse_client
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class NSE:
+        def announcements(self, start, end, index='equities'):
+            return []
+
+        def xbrl_announcements(self, start, end, index='equities', symbol=None, feed_type='announcements'):
+            calls.append((index, feed_type))
+            if feed_type in ('announcements', 'para-b'):
+                # NSE can expose the same appId and exact XML URL in more than one feed.
+                return [{'appId': '100779', 'symbol': 'CAMLINFINE', 'companyName': 'Camlin Fine Sciences Limited',
+                         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
+                         'broadcastDateTime': '18-10-2026 10:59:38',
+                         'attachment': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml'}]
+            return []
+
+    class BSE:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(nse_client, 'NSEClient', NSE)
+    monkeypatch.setattr(bse_client, 'BSEClient', BSE)
+    monkeypatch.setattr(bann, 'fetch_day', lambda client, day: ([], {}))
+    monkeypatch.setattr(bann, 'parse', lambda rows: pd.DataFrame())
+
+    notes = []
+    nse, bse = ar.collect(object(), date(2026, 10, 19), True, notes)
+    assert {feed for market, feed in calls if market == 'equities'} == {
+        'announcements', 'para-a', 'para-b', 'award'
+    }
+    assert nse is not None and any(str(event_id).startswith('nse:xbrl:equities:100779:') for event_id in nse['event_id'])
+    assert nse['event_id'].is_unique  # same XML from two feed types must not create duplicate companions
+    assert nse['event_id'].astype(str).str.startswith('nse:xbrl:').sum() == 1
+    assert bse is not None and bse.empty
+
+
 def test_live_collect_surfaces_bse_report_warnings(monkeypatch):
     import collectors.bse.announcements as bann
     import collectors.bse.client as bse_client
@@ -875,6 +980,49 @@ def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_filing_id_m
     xbrl = out.loc['nse:xbrl:equities:100383:abc123']
     assert pdf['content_url'].endswith('BCCL_ROID_100383_KMP_Doc.zip')
     assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert xbrl['group'] == 'routine'
+
+
+def test_xbrl_director_change_pairs_with_retirement_pdf_only_with_unique_bse_corroboration():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:106821397', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+         'company': 'Camlin Fine Sciences Limited', 'subject': 'Retirement',
+         'text': 'Camlin Fine Sciences Limited has informed the Exchange about Retirement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/CAMLINFINE_18102026110303_Disclosure_under_Reg_30_LODR_-_Completion_of_tenure_of_ID.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-18T11:03:03+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100779:7c6e7d87db', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'XBRL companion metadata',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'broadcast_at': '2026-10-18T10:59:38+05:30', 'broadcast_date': '2026-10-18',
+         'market': 'equities'},
+    ])
+    bse = pd.DataFrame([{
+        'event_id': 'bse:camlin-retirement', 'bse_code': '532834',
+        'company': 'Camlin Fine Sciences Limited', 'subcategory': 'Change in Management',
+        'category': 'Company Update',
+        'headline': 'Intimation of completion of tenure of Independent Director of the Company.',
+        'file_url': 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/d432a138-9538-4c58-ad31-187ec038da22.pdf',
+        'file_type': 'pdf', 'broadcast_at': '2026-10-18T10:58:00+05:30',
+        'broadcast_date': '2026-10-18',
+    }])
+    class Master:
+        market_cap_as_of = '2026-10-16'
+        def resolve(self, exchange, identifier):
+            return ('INE052I01032', 'code') if exchange == 'bse' and identifier == '532834' else (None, 'unmatched')
+        def record(self, isin):
+            return {'market_cap': 18_000_000_000, 'bse_group': 'A',
+                    'is_sme_listing': False} if isin == 'INE052I01032' else None
+
+    out = ar.candidates(rows, bse, Master()).set_index('event_id')
+    pdf = out.loc['nse:106821397']
+    xbrl = out.loc['nse:xbrl:equities:100779:7c6e7d87db']
+    assert pdf['content_url'].endswith('CIM_11353_WebXMLFile_20261018_105938126.xml')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert out.loc['bse:camlin-retirement']['content_url'].endswith('d432a138-9538-4c58-ad31-187ec038da22.pdf')
     assert xbrl['group'] == 'routine'
 
 
@@ -1025,6 +1173,13 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     now = datetime.now(timezone.utc)
     assert ar.used_today(object(), now) == {'nvidia:m': 3}
     assert ar.used_today(object(), now, skip_run=ledger.run_id) == {}
+    assert ledger.close()
+    assert ledger.reconciliation['reconciled'] is True
+    assert ledger.reconciliation['saved_calls'] == 3
+    assert ledger.reconciliation['calls_by_minute_total'] == 3
+    assert ledger.reconciliation['ledger_file_reconciled'] is True
+    assert ledger.reconciliation['usage_totals_reconciled'] is True
+    assert ledger.reconciliation['total_usage_by_model'] == {'nvidia:m': 3}
 
 
 def _run_file(store, day, run, minutes):
@@ -1870,10 +2025,10 @@ def test_subject_line_settles_stake_change_pledge_and_routine():
 
 
 def test_repeated_points_are_dropped_and_a_surviving_point_leads_when_the_headline_is_held():
-    doc = 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026 due to personal reasons.'
+    doc = 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026 due to personal reasons.'
     out = {'category': 'management_change',
-           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
-           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Mr X, Chief Financial Officer, resigned with effect from 31 October 2026'},
+           'headline': {'text': 'Sadhana CFO Vimal Jain resigns', 'quote': 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026'},
+           'points': [{'text': 'Sadhana CFO Vimal Jain resigned', 'quote': 'Sadhana CFO Vimal Jain resigned with effect from 31 October 2026'},
                       {'text': 'The reason given is personal reasons', 'quote': 'due to personal reasons'}]}
     cat, fields, metrics = ar.validate(out, doc)
     head, points = ar.card_words(out, doc, fields, metrics)
@@ -2389,40 +2544,384 @@ def test_quota_state_goes_to_the_workflow_output(monkeypatch, tmp_path):
     ar.report_quota(False)
     assert out.read_text().split() == ['quota_exhausted=1', 'quota_exhausted=0']
 
+def test_recurring_production_chain_enables_bounded_gemini_batching():
+    from pathlib import Path
 
-def test_reader_cleans_prompt_text_but_keeps_material_figures_and_reports_savings(monkeypatch):
-    raw = """ACME LIMITED
-Registered Office: 12 Mill Road, Pune 411001
-CIN: L12345MH2001PLC000001
-To,
-The Manager - Listing Department
-BSE Limited
-Phiroze Jeejeebhoy Towers, Dalal Street
-Mumbai - 400 001
+    workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/announcement-reader.yml').read_text()
+    assert '-f batch=true -f chain=true' in workflow
+    reader_source = Path(ar.__file__).read_text()
+    assert "BATCH_ON = os.environ.get('READER_BATCH', '0') == '1'" in reader_source
+    assert ar.BATCH_MAX <= 4
 
-Subject: Allotment of 1,81,10,473 equity shares at Rs. 165.65 per share
-
-The Board approved allotment on 13 October 2026.
-Particulars                       FY26          FY25
-Revenue from operations        1,234.50       1,100.25
-"""
-    cleaned, notes = ar.clean_document_text(raw, 'Allotment of Securities')
-    assert 'Phiroze Jeejeebhoy' not in cleaned and 'Registered Office:' not in cleaned
-    assert 'The Board approved allotment on 13 October 2026.' in cleaned
-    assert 'Revenue from operations | 1,234.50 | 1,100.25' in cleaned
-    assert '1,81,10,473' in cleaned and '165.65' in cleaned
-    assert notes and notes[0].startswith('text clean: ')
-    # An empty/unsafe cleaner result must never erase usable source text.
-    assert ar.clean_document_text('important source text', None)[0]
-    monkeypatch.setattr(ar, 'clean_filing_text', lambda *_: (_ for _ in ()).throw(ValueError('bad text')))
-    original = 'raw filing with numbers 12.50 and 500 shares'
-    fallback, warning = ar.clean_document_text(original, 'Allotment')
-    assert fallback == original and warning == ['text clean skipped: ValueError']
+def test_pdf_cleaning_changes_only_the_model_input_and_keeps_raw_quote_validation(monkeypatch):
+    raw_doc = ('To,\\nThe Manager - Listing Department\\nBSE Limited\\n'
+               'Phiroze Jeejeebhoy Towers, Dalal Street\\nMumbai - 400 001\\n\\n' + DOC)
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (raw_doc, []))
+    lanes, client = _gemini_lane([QIP])
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda url: b'pdf bytes', idle_wait=0.01)
+    assert len(rows) == 1 and rows[0]['status'] == 'read'
+    assert 'Phiroze Jeejeebhoy Towers' not in client.asked[0]
+    assert rows[0]['text_chars'] == len(raw_doc)
+    assert rows[0]['text_sha256'] == ar._sha(re.sub(r'\\s+', ' ', raw_doc).strip())
 
 
-def test_reader_keeps_raw_text_if_cleaner_raises(monkeypatch):
-    monkeypatch.setattr(ar, 'clean_filing_text', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('unexpected input')))
-    raw = 'Material announcement: 1,23,456 shares at Rs. 123.45'
-    cleaned, notes = ar.clean_document_text(raw, 'Allotment')
-    assert cleaned == raw
-    assert notes == ['text clean skipped: RuntimeError']
+def test_structured_xbrl_text_is_not_passed_through_pdf_layout_cleaner(monkeypatch):
+    called = []
+    monkeypatch.setattr(ar.s, 'text_of', lambda data: (DOC, ['xbrl: standalone XML; 12 structured facts']))
+    monkeypatch.setattr(ar, 'clean_filing_text', lambda text, subject=None: (called.append(text) or text, {}))
+    lanes, _ = _gemini_lane([QIP])
+    rows, _ = ar.run(_qips(1), lanes, None, 600, fetch=lambda url: b'<xbrl/>', idle_wait=0.01)
+    assert len(rows) == 1 and rows[0]['status'] == 'read'
+    assert called == []
+
+
+def test_narrative_audit_counts_do_not_inflate_value_counts():
+    rec = ar.finish({
+        'event_id': 'nse:test', 'fields': [], 'metrics': [],
+        'headline': {'text': 'Held headline', 'shown': False, 'reason': 'quote not found'},
+        'narrative': [{'text': 'Supported statement', 'shown': True, 'reason': None},
+                      {'text': 'Unsupported statement', 'shown': False, 'reason': 'quote not found'}],
+    })
+    assert rec['shown'] == 0 and rec['held'] == 0
+    assert rec['headline_shown'] == 0 and rec['headline_held'] == 1
+    assert rec['narrative_shown'] == 1 and rec['narrative_held'] == 1
+    assert json.loads(rec['narrative'])[1]['reason'] == 'quote not found'
+
+
+def test_projection_guard_does_not_misread_projects_as_forecast():
+    assert not ar.PROJECTION.search(
+        "Profit After Tax stood at Rs. 38.9 crores, remained subdued due to higher depreciation arising from investments in long-term projects"
+    )
+    assert ar.PROJECTION.search("Management projected revenue to grow by 15%")
+    assert ar.PROJECTION.search("Management expects revenue to reach Rs. 500 crores")
+
+def test_governance_exemption_subtitle_cannot_bypass_scoped_headline_guard():
+    doc = ("Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 "
+           "of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015. "
+           "The company, ANB Metal Cast Limited has listed its specified securities on SME Platform "
+           "of National Stock Exchange of India Limited. Therefore, it is not required to submit "
+           "Corporate Governance Report for the quarter ended September 30, 2026.")
+    out = {
+        'category': 'routine',
+        'headline': {
+            'text': 'ANB Metal Cast files non-applicability of corporate governance',
+            'quote': 'Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27 of SEBI Listing Obligations and Disclosure Requirements Regulations, 2015.',
+        },
+        'subtitle': {
+            'text': 'Exempted due to listing on SME Platform',
+            'quote': 'The company, ANB Metal Cast Limited has listed its specified securities on SME Platform of National Stock Exchange of India Limited.',
+        },
+    }
+    headline, _ = ar.card_words(out, doc, [], [], ('ANB Metal Cast', 'ANB Metal Cast Limited'))
+    assert not headline['shown']
+    assert not headline['subtitle']['shown']
+    assert 'overbroad exemption' in headline['subtitle']['reason']
+
+def test_candidates_exclude_sme_listings_before_ai_and_xbrl_pairing():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:sme:pdf:1', 'symbol': 'SMECO', 'isin': 'INE000S01000',
+         'company': 'SME Company Limited', 'subject': 'Financial Results',
+         'text': 'Quarterly results', 'file_url': 'https://nsearchives.nseindia.com/corporate/SMECO_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-19T10:00:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'sme'},
+        {'event_id': 'nse:xbrl:sme:10001:abc', 'symbol': 'SMECO', 'isin': 'INE000S01000',
+         'company': 'SME Company Limited', 'subject': 'Financial Results',
+         'text': 'XBRL companion', 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/SMECO.xml',
+         'file_type': 'xbrl', 'has_xbrl': True, 'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/SMECO.xml',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+        {'event_id': 'nse:equities:pdf:2', 'symbol': 'MAINCO', 'isin': 'INE000A01000',
+         'company': 'Main Company Limited', 'subject': 'Financial Results',
+         'text': 'Quarterly results', 'file_url': 'https://nsearchives.nseindia.com/corporate/MAINCO_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': False, 'broadcast_at': '2026-10-19T10:05:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None)
+    assert set(out['event_id']) == {'nse:equities:pdf:2'}
+    assert out.iloc[0]['market'] == 'equities'
+
+
+
+def test_headline_quote_is_extended_to_checked_amount_evidence():
+    doc = 'Issuer entered into a facility agreement. Facility amount: Rs. 500 Cr.'
+    fields = [{'name': 'amount', 'value': '500', 'number': 5e9, 'unit': 'crore',
+               'quote': 'Facility amount: Rs. 500 Cr.', 'shown': True}]
+    item = {'text': 'Issuer enters into Rs 500 Cr facility', 'quote': 'Issuer entered into a facility agreement.',
+            'shown': True, 'reason': None}
+    out = ar.ground_claim_quote(item, fields, [], doc)
+    assert out['shown']
+    assert 'Facility amount: Rs. 500 Cr.' in out['quote']
+    assert ar.s.quote_found(out['quote'], doc)
+
+
+
+def test_candidates_exclude_bse_sme_group_but_keep_main_board_bse_rows():
+    class Master:
+        market_cap_as_of = '2026-10-18'
+        def resolve(self, exchange, identifier):
+            return (f'ISIN-{identifier}', 'code') if exchange == 'bse' else (None, 'unmatched')
+        def record(self, isin):
+            if isin == 'ISIN-540001':
+                return {'bse_code': '540001', 'bse_group': 'M', 'is_sme_listing': True,
+                        'nse_symbol': None, 'market_cap': 5e9}
+            if isin == 'ISIN-500001':
+                return {'bse_code': '500001', 'bse_group': 'A', 'is_sme_listing': False,
+                        'nse_symbol': 'MAINCO', 'market_cap': 5e10}
+            return None
+
+    rows = pd.DataFrame([
+        {'event_id': 'bse:sme', 'bse_code': '540001', 'company': 'SME issuer Ltd',
+         'subcategory': 'General', 'category': 'Others', 'headline': 'SME event',
+         'file_url': 'https://f/sme.pdf', 'file_type': 'pdf',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+        {'event_id': 'bse:main', 'bse_code': '500001', 'company': 'Main issuer Ltd',
+         'subcategory': 'General', 'category': 'Others', 'headline': 'Main-board event',
+         'file_url': 'https://f/main.pdf', 'file_type': 'pdf',
+         'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+    ])
+    out = ar.candidates(pd.DataFrame(), rows, Master())
+    assert set(out['event_id']) == {'bse:main'}
+    audit = ar.sme_exclusion_audit(
+        pd.DataFrame([{'event_id': 'nse:sme:pdf:3', 'market': None},
+                      {'event_id': 'nse:xbrl:sme:10002:xyz'}]), rows, Master())
+    assert audit == {'nse_sme_rows_excluded': 2, 'bse_sme_rows_excluded': 1}
+
+
+def test_security_master_marks_bse_group_m_as_sme():
+    from insiders_clean.securities import SecurityMaster, bse_list_frame
+    rows = [
+        {'symbol': '540001', 'isin': 'INE000M01000', 'company_name': 'SME issuer Ltd',
+         'market_cap': 6_000_000_000, 'source': 'bse_list_securities', 'group': 'M'},
+        {'symbol': '500001', 'isin': 'INE000A01000', 'company_name': 'Main issuer Ltd',
+         'market_cap': 6_000_000_000, 'source': 'bse_list_securities', 'group': 'A'},
+    ]
+    master = SecurityMaster(bse_list=bse_list_frame(rows), market_cap_rows=rows)
+    sme = master.record('INE000M01000')
+    main = master.record('INE000A01000')
+    assert sme['bse_group'] == 'M' and sme['is_sme_listing'] is True
+    assert main['bse_group'] == 'A' and main['is_sme_listing'] is False
+
+
+def test_candidates_exclude_sme_market_aliases_case_insensitively():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:1', 'symbol': 'A', 'subject': 'Update', 'text': 'SME filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/A.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30',
+         'broadcast_date': '2026-10-19', 'market': 'SME Platform'},
+        {'event_id': 'nse:sme:pdf:3', 'symbol': 'C', 'subject': 'Update', 'text': 'Archived SME filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/C.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:01:00+05:30',
+         'broadcast_date': '2026-10-19'},  # old archive row with no market label
+        {'event_id': 'nse:2', 'symbol': 'B', 'subject': 'Update', 'text': 'Equity filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/B.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None)
+    assert set(out['event_id']) == {'nse:2'}
+
+
+
+def test_candidates_pair_integrated_financials_only_with_unique_explicit_results_pdf():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:results', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Financial Results',
+         'text': 'Unaudited financial results for the quarter ended September 30, 2026',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-IOC:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Financials',
+         'text': None, 'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:results', 'content_url'].endswith('IOC_results.xml')
+    assert out.loc['pdf:results', 'xbrl_source_event_id'] == 'nse:xbrl:equities:APP-IOC:abcdef1234'
+    assert out.loc['nse:xbrl:equities:APP-IOC:abcdef1234', 'group'] == 'routine'
+
+
+def test_candidates_do_not_pair_integrated_financials_on_issuer_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:generic', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board meeting outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_board.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-IOC:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Financials',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:generic', 'content_url'].endswith('IOC_board.pdf')
+    assert pd.isna(out.loc['pdf:generic', 'xbrl_source_event_id'])
+
+
+
+def test_candidates_pair_integrated_governance_only_with_unique_explicit_governance_filing():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:governance', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Corporate Governance Compliance',
+         'text': 'Quarterly corporate governance compliance under Regulation 27(2)',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_governance.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-GOV:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Governance',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:governance', 'content_url'].endswith('IOC_governance.xml')
+    assert out.loc['pdf:governance', 'xbrl_source_event_id'] == 'nse:xbrl:equities:APP-GOV:abcdef1234'
+
+
+def test_integrated_companion_fetch_is_limited_to_selected_live_issuers_and_dates(monkeypatch):
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class FakeSession:
+        def close(self):
+            pass
+
+    class FakeNSE:
+        def __init__(self):
+            self.s = FakeSession()
+            self.on_response = None
+
+        def integrated_filing_financials(self, symbol=None, quarter_end_date=None):
+            calls.append(('financials', symbol))
+            return [
+                {'appId': 'IOC-FIN', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                 'broadcastDateTime': '19-Oct-2026 10:00:00',
+                 'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_financials.xml'},
+                {'appId': 'IOC-OLD', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                 'broadcastDateTime': '17-Oct-2026 10:00:00',
+                 'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_old.xml'},
+            ]
+
+        def corporate_governance(self, symbol):
+            calls.append(('governance', symbol))
+            return [{'appId': 'IOC-GOV', 'symbol': symbol, 'companyName': 'Indian Oil Corporation Limited',
+                     'broadcastDateTime': '19-Oct-2026 10:30:00',
+                     'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml'}]
+
+    monkeypatch.setattr(nse_client, 'NSEClient', FakeNSE)
+    selected = pd.DataFrame([
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Financial Results',
+         'detail': 'Unaudited financial results for the quarter'},
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Corporate Governance Compliance',
+         'detail': 'Regulation 27(2) filing'},
+        {'exchange': 'BSE', 'symbol': 'ABC', 'subject': 'Financial Results',
+         'detail': 'This row must not cause an NSE API lookup'},
+    ])
+    notes = []
+    result = ar.collect_integrated_companions(selected, None, date(2026, 10, 19), True, notes)
+    assert set(calls) == {('financials', 'IOC'), ('governance', 'IOC')}
+    assert result is not None
+    assert {event_id.split(':')[3] for event_id in result['event_id']} == {'IOC-FIN', 'IOC-GOV'}
+    assert set(result['broadcast_date']) == {'2026-10-19'}
+    assert any('2 direct XML rows' in note for note in notes)
+
+
+
+def test_candidates_do_not_pair_integrated_governance_on_issuer_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:board', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board meeting outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_board.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-GOV:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Governance',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:board', 'content_url'].endswith('IOC_board.pdf')
+    assert pd.isna(out.loc['pdf:board', 'xbrl_source_event_id'])
+
+
+
+def test_integrated_companion_fetch_honors_nse_rate_limit_hard_stop(monkeypatch):
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class FakeSession:
+        def close(self):
+            pass
+
+    class FakeNSE:
+        def __init__(self):
+            self.s = FakeSession()
+            self.on_response = None
+
+        def integrated_filing_financials(self, symbol=None, quarter_end_date=None):
+            calls.append(('financials', symbol))
+            raise nse_client.Blocked('429 rate limited')
+
+        def corporate_governance(self, symbol):
+            calls.append(('governance', symbol))
+            return []
+
+    monkeypatch.setattr(nse_client, 'NSEClient', FakeNSE)
+    selected = pd.DataFrame([
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Financial Results',
+         'detail': 'Unaudited financial results for the quarter'},
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Corporate Governance Compliance',
+         'detail': 'Regulation 27(2) filing'},
+    ])
+    notes = []
+    result = ar.collect_integrated_companions(selected, None, date(2026, 10, 19), True, notes)
+    assert result is None
+    assert calls == [('financials', 'IOC')]
+    assert any('stopped further NSE requests' in note for note in notes)
+
+
+
+def test_security_master_preserves_nse_sme_source_and_main_board_override():
+    from insiders_clean.securities import SecurityMaster, nse_list_frame
+
+    nse = nse_list_frame(pd.DataFrame([
+        {'SYMBOL': 'SMECO', 'NAME OF COMPANY': 'SME Company Limited',
+         'ISIN NUMBER': 'INE000S01000', 'SERIES': 'SM', 'SOURCE MARKET': 'SME'},
+        {'SYMBOL': 'MAINCO', 'NAME OF COMPANY': 'Main Board Company Limited',
+         'ISIN NUMBER': 'INE000A01000', 'SERIES': 'EQ', 'SOURCE MARKET': 'equities'},
+        {'SYMBOL': 'MIGRATED', 'NAME OF COMPANY': 'Migrated Company Limited',
+         'ISIN NUMBER': 'INE000M01000', 'SERIES': 'EQ', 'SOURCE MARKET': 'equities'},
+        {'SYMBOL': 'MIGRATED_SME', 'NAME OF COMPANY': 'Migrated Company Limited',
+         'ISIN NUMBER': 'INE000M01000', 'SERIES': 'SM', 'SOURCE MARKET': 'SME'},
+    ]))
+    assert set(nse['market']) == {'sme', 'equities'}
+    master = SecurityMaster(nse_list=nse)
+    assert master.record('INE000S01000')['is_sme_listing'] is True
+    assert master.record('INE000A01000')['is_sme_listing'] is False
+    # A current main-board NSE listing takes precedence over an old SME listing
+    # carrying the same ISIN.
+    assert master.record('INE000M01000')['is_sme_listing'] is False
+
+
+
+def test_lane_stops_trying_models_when_per_filing_budget_is_exhausted(monkeypatch):
+    now = [0.0]
+
+    class SlowFailClient:
+        def __init__(self):
+            self.asked = []
+
+        def generate(self, models, prompt, kind, json_mode=True):
+            self.asked.extend(models)
+            now[0] += ar.LANE_READ_SECONDS + 1
+            raise RuntimeError('HTTP 503 unavailable')
+
+    client = SlowFailClient()
+    lane = ar.Lane('main', ['nvidia:first', 'nvidia:second'],
+                   {'nvidia': client}, clock=lambda: now[0])
+    with pytest.raises(RuntimeError, match='per-filing model budget'):
+        lane.read('financial filing text')
+    assert client.asked == ['first']

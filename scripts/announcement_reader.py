@@ -6,12 +6,12 @@
 Runs in GitHub Actions through the day (workflow Announcement reader); the site never calls a model, it
 reads clean/current/announcement_reads.parquet. docs/ANNOUNCEMENT_READER.md has the decisions behind it.
 
-1. Collect: yesterday's and today's NSE (main board and SME) and BSE filings into raw_v2/ and the archive,
+1. Collect: yesterday's and today's NSE main-board and BSE filings into raw_v2/ and the archive; NSE SME is out of scope,
    as the nightly collectors do (their count reports are left to the nightly run).
 2. Choose: filings of today and yesterday, newest first, in a reading group (not routine, not concalls),
    with a PDF or ZIP. Read once: a filing already in the reads archive is skipped; the same filing on the
    other exchange (same ISIN, within six hours, subjects alike; the two copies are different files) and a
-   file or text read before are copied, not read again. A company below Rs 100 Cr market cap is not sent.
+   file or text read before are copied, not read again. Only companies strictly above Rs 500 Cr market cap, using a recent verified snapshot, are sent.
 3. Read: each lane of scripts/announcement_readers.txt reads every chosen filing, the lanes side by side.
    Within a lane the next model takes over when one is busy, refused or timing out; a model timing out
    twice running is left out for the rest of the run.
@@ -51,7 +51,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 import announcement_sample as s  # noqa: E402 -- prompts, model clients, document text and checks
-from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- deterministic, number-preserving prompt cleanup
+from card_semantics import semantic_reason, validate_narrative  # noqa: E402 -- deterministic checks for AI-authored card text
+from insiders_clean.text_clean import clean as clean_filing_text  # noqa: E402 -- layout-only cleaning before a model sees PDF text
 import announcement_vision as vision  # noqa: E402 -- page images for a card the text read could not make safe
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -59,8 +60,8 @@ PROMPT_VARIANT = os.environ.get('CARD_PROMPT_VARIANT', 'baseline').strip().lower
 if PROMPT_VARIANT not in ('baseline', 'v2'):
     raise ValueError('CARD_PROMPT_VARIANT must be baseline or v2')
 PROMPT_COMPARE = os.environ.get('CARD_PROMPT_COMPARE', '0').strip() == '1'
-PROMPT_VERSION = ('live-18' if PROMPT_VARIANT == 'v2' else
-                  'live-9-ab' if PROMPT_COMPARE else 'live-9')  # comparison reads are dry-run only
+PROMPT_VERSION = ('live-20' if PROMPT_VARIANT == 'v2' else
+                  'live-10-ab' if PROMPT_COMPARE else 'live-10')  # narrative plus cleaned input; comparison reads are dry-run only
 LANES_FILE = HERE / 'announcement_readers.txt'
 READS_PREFIX = 'archive/announcement_reads/'
 CLEAN_KEY = 'clean/current/announcement_reads.parquet'
@@ -70,7 +71,7 @@ SHOWN_STATUSES = ('read', 'same_file', 'same_text')
 READ_DAYS = 60
 COLLECT_DAYS = 2              # yesterday too: a filing made public after the nightly collection (22:45) and
                               # before midnight is read the same night; BSE stops at its first known page
-MIN_MCAP = 500 * 1e7          # strict > Rs 500 Cr, using the latest available market-cap snapshot
+MIN_MCAP = 500 * 1e7          # Strictly more than Rs 500 Cr; use the latest verified weekly snapshot
 SAME_FILING_HOURS = 6
 SAME_FILING_WORDS = 0.4       # share of the shorter subject's words found in the other
 MAX_TRIES = 3                 # a filing that failed this often is left (counted in the report)
@@ -139,32 +140,13 @@ COLUMNS = ('event_id', 'exchange', 'market', 'isin', 'symbol', 'company', 'subje
            'broadcast_at', 'broadcast_date', 'file_url', 'content_url', 'xbrl_url', 'xbrl_source_event_id', 'xbrl_source_url',
            'has_xbrl', 'market_cap_as_of', 'source_format', 'file_sha256', 'text_sha256', 'text_chars', 'status',
            'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-           'seconds', 'read_at', 'headline', 'points', 'open_loops', 'market_cap_match', 'market_cap')
+           'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+           'narrative_shown', 'narrative_held', 'agreed',
+           'seconds', 'read_at', 'headline', 'points', 'narrative', 'open_loops', 'market_cap_match', 'market_cap')
 
 
 def log(*parts):
     print(time.strftime('%H:%M:%S'), *parts, flush=True)
-
-
-def clean_document_text(doc: str, subject: str | None = None) -> tuple[str, list[str]]:
-    """Clean extracted text for model input, preserving the raw extraction in the separate text cache."""
-    raw = str(doc or '')
-    if not raw:
-        return raw, []
-    try:
-        cleaned, removed = clean_filing_text(raw, subject)
-    except Exception as exc:  # noqa: BLE001 -- a cleaner bug must never discard a filing
-        return raw, [f'text clean skipped: {type(exc).__name__}']
-    if not cleaned.strip():
-        # Never replace usable source text with an empty cleaner result.
-        return raw, ['text clean skipped: cleaner returned empty text']
-    saved = len(raw) - len(cleaned)
-    notes = []
-    if saved > 0:
-        rules = ', '.join(f'{name}={count}' for name, count in sorted(removed.items()) if count)
-        notes.append(f'text clean: {saved} chars removed' + (f' ({rules})' if rules else ''))
-    return cleaned, notes
 
 
 # A lane must not spend an unbounded time cycling through unavailable models for one filing.
@@ -440,7 +422,7 @@ def text_is_garbled(doc: str) -> bool:
     return bad >= 25 and bad >= 0.04 * max(1, len(toks))
 
 
-PROJECTION = re.compile(r'\b(?:project(?:ed|s|ion)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
+PROJECTION = re.compile(r'\b(?:project(?:ed|ion)|projects\s+(?:to|at|for|by|will)|estimat(?:ed|es?)|expect(?:ed|s)|anticipat(?:ed|es?)|forecast(?:ed|s)?|potential(?:ly)?|likely)\b', re.IGNORECASE)
 FACE_VALUE = re.compile(r'\b(?:face|par|nominal)\s+value\s+(?:of\s+)?(?:Rs\.?|INR|₹|US\$|USD|\$)?\s*[\d,.]+(?:\s*/-)?'
                         r'|\bshares?\s+of\s+(?:Rs\.?|INR|₹)\s*[\d,.]+(?:\s*/-)?\s+each\b', re.IGNORECASE)
 NOT_A_DEAL_SIZE = re.compile(r'turn\s?over|net\s*worth|revenue|\bprofit|\bincome\b|total\s+assets|(?:paid[- ]?up|authori[sz]ed|issued)\s+(?:equity\s+)?(?:share\s+)?capital|share\s+capital|voting\s+(?:share\s+)?capital', re.IGNORECASE)
@@ -917,7 +899,7 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
         raise ValueError('variant must be baseline or v2')
     ask = CARD_ASK_V2 if selected == 'v2' else CARD_ASK
     memory = str(row.get('_company_memory') or '').strip()
-    context = ('Earlier verified company history (use only as context; the current filing remains the source for every new claim). '
+    context = ('Earlier verified company history may support explicitly historical claims; the current filing is the source for current-event claims. '
                'Each prior item includes its date, filing ID and source URL:\n' + memory + '\n\n') if memory else ''
     name = str(row.get('company') or '').strip()
     who = (f'The listed company is {name} (exchange symbol {row.get("symbol")}): the headline uses its short name, never the symbol. '
@@ -938,7 +920,19 @@ def card_prompt(row: dict, doc: str, variant: str | None = None) -> str:
              'debt = size, coupon, tenure, secured or not; litigation or tax demand = forum, amount, stage, direction, and whether interest is excluded; '
              'rating = agency, action, rating and any change in the facilities; management = the person, role, effective date, reason if given; dividend = per share and record date. '
              'If the filing does not give a size, price or value, the card does not invent one.\n\n')
-    return p.replace('=== DOCUMENT ===', ask + context + rules + '=== DOCUMENT ===', 1)
+    narrative_rules = (
+        'Also return "narrative": up to 4 concise investor-useful claims, each as {"text": one sentence, "evidence": '
+        '[{"source": "current_filing" or "company_memory", "quote": exact source words}]}. Use persistent company memory '
+        'to connect previously disclosed management guidance with current results only when the measure, period and basis match; '
+        'surface material forward guidance explicitly disclosed in the current filing. A claim that a target was met, missed or '
+        'exceeded must cite both prior guidance and the current result, identify the same measure, and never guess or calculate a '
+        'margin unless the underlying figures are checked and comparable. Preserve approval/completion status, negation, cancellation, '
+        'named parties and direction. Every number must be backed by the union of cited quotes. Current-filing quotes must be verbatim '
+        'from DOCUMENT; company_memory quotes must be verbatim from the earlier verified history, including transcript quotes. '
+        'The restriction on forecasts means do not invent forecasts; it does not prohibit quoting disclosed management guidance. '
+        'Return no unsupported narrative; use [] if no useful verifiable connection exists.\n\n'
+    )
+    return p.replace('=== DOCUMENT ===', ask + context + rules + narrative_rules + '=== DOCUMENT ===', 1)
 
 def numbers_in(text) -> list[tuple[float, float]]:
     """Each number of a text as (as written, times its unit word when it has one): '120 Cr' -> (120, 1.2e9)."""
@@ -1071,7 +1065,7 @@ def status_upgraded(text: str, quote: str) -> bool:
                                                 and not re.search(r'approv', q, re.IGNORECASE)))
 
 
-def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=()) -> dict | None:
+def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_numbers=(), names=()) -> dict | None:
     """A headline or point: shown only when its quote is in the filing, every number in it is in that same quote
     (never in another quote of the card: the reader of a card takes the quote beside a claim as its proof), and it
     does not say approved where its quote says recommended. `more_quotes` is no longer used."""
@@ -1100,7 +1094,7 @@ def check_words(item, doc: str, more_quotes=(), keep_up_to: bool = False, extra_
     if re.search(r'\b(?:up|down)grad\w*', text, re.IGNORECASE) and not re.search(
             r'(?:up|down)grad|\bfrom\s+\S[^.]{0,40}\bto\b|\braised\b|\blowered\b|\brevised\b|\bimproved\b', str(quote or ''), re.IGNORECASE):
         reasons.append('says upgraded or downgraded where its quote states no change (an ESG score, a first rating)')
-    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc)
+    why = direction_reason(text) or overstatement_reason(text, quote) or payer_reason(text, doc) or multi_item_reason(text, doc) or semantic_reason(text, quote, doc=doc, issuer_names=names)
     if why:
         reasons.append(why)
     return {'text': text, 'quote': quote, 'evidence': qf or None, 'shown': not reasons,
@@ -1624,10 +1618,43 @@ ROUTINE_RESULTS_POINT = re.compile(r'reviewed by the statutory auditors|recommen
                                    r'figures for the previous (?:period|year) (?:have been|has been) regrouped', re.IGNORECASE)
 
 
+def ground_claim_quote(item, fields, metrics, doc):
+    """If a headline's number comes from a checked field/table, include that exact evidence in its displayed quote.
+
+    The model may cite an event sentence as the headline quote while taking its amount from a separate table row.
+    The amount can be verified elsewhere in the filing, but must not appear visually unsupported beside the headline.
+    If the checked evidence still cannot support every number, fail closed and hold the claim.
+    """
+    if not isinstance(item, dict) or not item.get('shown'):
+        return item
+    text = str(item.get('text') or '')
+    quote = str(item.get('quote') or '')
+    if not quote or numbers_backed(
+            text, [quote], unit_ok=lambda n, mult: s.table_unit(quote, mult, doc)):
+        return item
+    quote_parts = [quote]
+    checked = [f for f in (fields or []) + (metrics or [])
+               if isinstance(f, dict) and f.get('shown') and str(f.get('quote') or '').strip()]
+    for field in checked:
+        extra_quote = str(field['quote']).strip()
+        if extra_quote in quote_parts:
+            continue
+        quote_parts.append(extra_quote)
+        if numbers_backed(
+                text, quote_parts,
+                unit_ok=lambda n, mult: any(s.table_unit(q, mult, doc) for q in quote_parts)):
+            item['quote'] = ' ... '.join(quote_parts)
+            return item
+    item['shown'] = False
+    why = 'a number in the headline is not backed by its cited quote or a checked field/metric quote'
+    item['reason'] = '; '.join(x for x in (item.get('reason'), why) if x)
+    return item
+
+
 def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=()) -> tuple[dict | None, list[dict]]:
     out = out if isinstance(out, dict) else {}
     extra = card_numbers(fields, metrics)
-    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra) for x in (out.get('points') or [])[:4]) if p]
+    points = [p for p in (check_words(x, doc, keep_up_to=True, extra_numbers=extra, names=names) for x in (out.get('points') or [])[:4]) if p]
     for pt in points:   # Megamont, Bench Mark, Lloyds: a point never shows an unfilled "{amount}"
         if pt.get('shown') and '{' in str(pt.get('text') or ''):
             pt['text'], tok_reason = fill_tokens(pt['text'], fields, metrics)
@@ -1638,7 +1665,8 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         for pt in points:
             if pt.get('shown') and ROUTINE_RESULTS_POINT.search(str(pt.get('text') or '') + ' ' + str(pt.get('quote') or '')):
                 pt['shown'], pt['reason'] = False, 'a statement made in every results filing, not news'
-    headline = check_words(out.get('headline'), doc, extra_numbers=extra)
+    headline = check_words(out.get('headline'), doc, extra_numbers=extra, names=names)
+    headline = ground_claim_quote(headline, fields, metrics, doc)
     if headline:
         headline['text'], token_reason = fill_tokens(headline['text'], fields, metrics)
         if str(out.get('category') or '').startswith('rating_') and FACILITY_CHANGE.search(doc) \
@@ -1660,13 +1688,29 @@ def card_words(out, doc: str, fields: list[dict], metrics: list[dict], names=())
         if quality_reason:
             headline['shown'] = False
             headline['reason'] = '; '.join(x for x in (headline.get('reason'), quality_reason) if x)
-        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra)       # the line under the headline, checked as the headline is
+        semantic_hold = semantic_reason(headline.get('text'), headline.get('quote'),
+                                        category=str(out.get('category') or ''), doc=doc, issuer_names=names)
+        if semantic_hold:
+            headline['shown'] = False
+            existing_reason = str(headline.get('reason') or '')
+            if semantic_hold not in existing_reason:
+                headline['reason'] = '; '.join(x for x in (existing_reason, semantic_hold) if x)
+        sub = check_words(out.get('subtitle'), doc, extra_numbers=extra, names=names)       # the line under the headline, checked as the headline is
         if sub:
             sub['text'], sub_reason = fill_tokens(sub['text'], fields, metrics)
             if sub_reason:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), sub_reason) if x)
             if len(sub['text']) > 120:
                 sub['shown'], sub['reason'] = False, '; '.join(x for x in (sub.get('reason'), 'longer than a line') if x)
+            # A subtitle can imply the same broad exemption as a held headline even
+            # when its own quote only proves SME listing status. Do not let that
+            # narrower quote bypass the full-filing governance-scope safeguard.
+            if semantic_hold and 'overstates the exemption' in semantic_hold \
+                    and re.search(r'\b(?:exempt(?:ed|ion)?|non[- ]applicab)', str(sub.get('text') or ''), re.I) \
+                    and not re.search(r'\b(?:corporate\s+governance\s+report|reg(?:ulation)?\.?\s*27)\b', str(sub.get('text') or ''), re.I):
+                sub['shown'] = False
+                scope_reason = 'subtitle implies the same overbroad exemption without preserving Regulation 27 / Corporate Governance Report scope'
+                sub['reason'] = '; '.join(x for x in (sub.get('reason'), scope_reason) if x)
             headline['subtitle'] = sub
     if results_filing:   # the headline of a results filing is ours, from the table, when it has both revenue and profit (or the model's has no figure)
         ours = results_headline(metrics, names, doc)
@@ -1799,6 +1843,43 @@ def same_filing(a: dict, b: dict) -> bool:
     return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= SAME_FILING_WORDS
 
 
+SME_MARKET_LABELS = {'sme', 'nse sme', 'sme platform', 'emerge', 'emerge platform'}
+
+
+def is_nse_sme_row(row: dict) -> bool:
+    """Identify NSE SME rows from the market field or stable event-ID namespace."""
+    market = str(row.get('market') or '').strip().casefold()
+    event_id = str(row.get('event_id') or '').strip().casefold()
+    xbrl_market = re.match(r'^nse:xbrl:([^:]+):', event_id)
+    return (market in SME_MARKET_LABELS
+            or bool(re.match(r'^nse:(?:sme|emerge):', event_id))
+            or bool(xbrl_market and xbrl_market.group(1) in {'sme', 'emerge'}))
+
+
+def is_bse_sme_record(record: dict | None) -> bool:
+    """BSE's official security group M denotes its SME segment; migrated/main-board rows use other groups."""
+    if not record:
+        return False
+    group = str(record.get('bse_group') or '').strip().upper()
+    return group in {'M', 'SME', 'BSE SME'} or record.get('is_sme_listing') is True
+
+
+def sme_exclusion_audit(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> dict:
+    """Count SME rows removed from the current source window, including old archived rows."""
+    nse_rows = nse.to_dict('records') if nse is not None else []
+    bse_rows = bse.to_dict('records') if bse is not None else []
+    bse_excluded = 0
+    for row in bse_rows:
+        code = str(row.get('bse_code') or '').strip()
+        resolved = master.resolve('bse', code) if master and code else None
+        isin = resolved[0] if resolved else None
+        record = master.record(isin) if master and isin else None
+        if is_bse_sme_record(record):
+            bse_excluded += 1
+    return {'nse_sme_rows_excluded': sum(is_nse_sme_row(row) for row in nse_rows),
+            'bse_sme_rows_excluded': bse_excluded}
+
+
 def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd.DataFrame:
     """Normalize NSE/BSE filings and use a verified related NSE XBRL attachment when available."""
     from collectors.bse import announcements as bann
@@ -1817,6 +1898,10 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 
     rows = []
     for r in (nse.to_dict('records') if nse is not None else []):
+        # Filter every archived/new NSE SME row before XBRL pairing, audit counts,
+        # history lookup, or AI reading, even if its old market field is missing.
+        if is_nse_sme_row(r):
+            continue
         symbol = clean(r.get('symbol'))
         isin = clean(r.get('isin'))
         if not isin and master and symbol:
@@ -1841,6 +1926,9 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         resolved = master.resolve('bse', bse_code) if master and bse_code else None
         isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
+        # Exclude BSE SME-segment rows before pairing, historical context, audit counts, or AI calls.
+        if is_bse_sme_record(rec):
+            continue
         url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
                      'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
@@ -1855,14 +1943,13 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         return df
     # Prefer the exact ISIN's official cap; if that ISIN is absent from the snapshot, retry the
     # exchange symbol/code mapping. NSE feeds can carry stale ISINs while the listed symbol remains valid.
-    market_caps, cap_matches, sme_flags = [], [], []
+    market_caps, cap_matches = [], []
     def valid_cap(value):
         number = pd.to_numeric(pd.Series([value]), errors='coerce').iloc[0]
         return pd.notna(number) and number > 0
     for row in df.to_dict('records'):
         isin = clean(row.get('isin'))
         record = master.record(isin) if master and isin else None
-        mapped = None
         cap = record.get('market_cap') if record else None
         match = 'isin' if valid_cap(cap) else None
         if not valid_cap(cap) and master:
@@ -1876,12 +1963,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                 cap, match = mapped_cap, 'exchange_symbol'
         market_caps.append(cap if valid_cap(cap) else None)
         cap_matches.append(match)
-        sme_flags.append(str(row.get('market') or '').strip().casefold() == 'sme'
-                         or bool((record or {}).get('is_sme', False))
-                         or bool((mapped or {}).get('is_sme', False)))
     df['market_cap'] = market_caps
     df['market_cap_match'] = cap_matches
-    df['is_sme'] = sme_flags
 
     # The upstream hasXbrl boolean is not an attachment URL and can be present on ordinary
     # PDF rows. Never use it as proof that a companion exists or as a prerequisite for pairing.
@@ -1905,6 +1988,27 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             days[key] = None if pd.isna(parsed) else parsed.date()
         return days[key]
 
+    def same_issuer(a, b):
+        ai, bi = clean(a.get('isin')), clean(b.get('isin'))
+        if ai and bi:
+            return ai == bi
+        sa, sb = clean(a.get('symbol')), clean(b.get('symbol'))
+        return bool(sa and sb and sa.upper() == sb.upper())
+
+    def within_minutes(a, b, limit=15):
+        ta = pd.to_datetime(a, errors='coerce', utc=True)
+        tb = pd.to_datetime(b, errors='coerce', utc=True)
+        return not pd.isna(ta) and not pd.isna(tb) and abs((ta - tb).total_seconds()) <= limit * 60
+
+    def management_xbrl(row):
+        subject = subject_base(row.get('subject'))
+        return 'change in directors' in subject and 'auditor' in subject and 'rta' in subject
+
+    def management_pdf_support(row):
+        text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
+        return (re.search(r'\bindependent director\b', text, re.IGNORECASE) is not None
+                and re.search(r'\b(tenure|retirement|cessation|completion)\b', text, re.IGNORECASE) is not None)
+
     records = df.to_dict('records')
     structured_rows = []
     for idx, row in enumerate(records):
@@ -1920,29 +2024,39 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
     used_xbrl = set()
     # the companions and the other PDFs of one issuer, found by its identifier instead of by scanning every row
     structured_by_ident, pdfs_by_ident = {}, {}
+
+    def identity_keys(item):
+        # Index both exchange identifiers: NSE's dedicated XBRL feed can omit ISIN
+        # while the ordinary announcement has one. Pairing still calls same_issuer(),
+        # which rejects conflicting ISINs and permits symbol fallback only when needed.
+        return {value.strip().upper() for field in ('isin', 'symbol')
+                if (value := clean(item.get(field)))}
+
     for xidx, xrow in structured_rows:
-        structured_by_ident.setdefault(
-            str(clean(xrow.get('isin')) or clean(xrow.get('symbol')) or '').strip().upper(), []).append((xidx, xrow))
+        for key in identity_keys(xrow):
+            structured_by_ident.setdefault(key, []).append((xidx, xrow))
     for pidx, prow in enumerate(records):
         if prow.get('exchange') != 'NSE':
             continue
         if str(clean(prow.get('file_type')) or '').lower() not in ('pdf', 'zip') or not prow.get('file_url'):
             continue
-        pdfs_by_ident.setdefault(
-            str(clean(prow.get('isin')) or clean(prow.get('symbol')) or '').strip().upper(), []).append(pidx)
+        for key in identity_keys(prow):
+            pdfs_by_ident.setdefault(key, []).append(pidx)
     for idx, row in enumerate(records):
         if row.get('exchange') != 'NSE':
             continue
         if str(row.get('file_type') or '').lower() not in ('pdf', 'zip') or not row.get('file_url'):
             continue
-        identifier = str(row.get('isin') or row.get('symbol') or '').strip().upper()
+        identifiers = identity_keys(row)
         subject = subject_base(row.get('subject'))
         broadcast_day = day(row.get('broadcast_date'))
-        if not identifier or not subject or broadcast_day is None:
+        if not identifiers or not subject or broadcast_day is None:
             continue
         matches, nearby_structured = [], []
-        for xidx, xrow in structured_by_ident.get(identifier, ()):
-            if xidx in used_xbrl or xidx == idx:
+        indexed_xbrl = {xidx: xrow for key in identifiers
+                        for xidx, xrow in structured_by_ident.get(key, ())}
+        for xidx, xrow in indexed_xbrl.items():
+            if xidx in used_xbrl or xidx == idx or not same_issuer(row, xrow):
                 continue
             xday = day(xrow.get('broadcast_date'))
             if xday is None or abs((xday - broadcast_day).days) > 1:
@@ -1955,8 +2069,11 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         # XBRL payload. Repeated generic subjects are common for separate KMP filings;
         # choosing the first exact-subject match can cross-wire distinct disclosures.
         other_pdfs, other_same_subject_pdfs = [], []
-        for pidx in pdfs_by_ident.get(identifier, ()):
+        indexed_pdfs = {pidx for key in identifiers for pidx in pdfs_by_ident.get(key, ())}
+        for pidx in indexed_pdfs:
             prow = records[pidx]
+            if not same_issuer(row, prow):
+                continue
             if pidx == idx:
                 continue
             pday = day(prow.get('broadcast_date'))
@@ -1975,8 +2092,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         else:
             # Never pair solely because issuer/date match: a company can file unrelated disclosures
             # on the same day, and the XBRL feed often uses a broad event category. If subjects differ,
-            # require the XBRL appId to appear as a whole numeric token in this PDF/ZIP URL, and require
-            # that exactly one eligible PDF for this issuer/date carries that appId.
+            # require the XBRL appId as a whole token in the PDF/ZIP URL or event ID, or the narrow
+            # three-record management-change corroboration rule below.
             def xbrl_app_id(item):
                 event_id = str(item[3].get('event_id') or '')
                 match = re.match(r'^nse:xbrl:[^:]+:([^:]+):', event_id)
@@ -1985,19 +2102,77 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
             id_matches = []
             for item in nearby_structured:
                 app_id = xbrl_app_id(item)
-                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', str(row.get('file_url') or '')):
+                pdf_ref = f"{row.get('file_url') or ''} {row.get('event_id') or ''}"
+                if app_id and re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', pdf_ref):
                     id_matches.append(item)
-            if len(id_matches) != 1:
+            if len(id_matches) == 1:
+                app_id = xbrl_app_id(id_matches[0])
+                id_pdfs = []
+                for pidx in [idx] + other_pdfs:
+                    pdf = records[pidx]
+                    pdf_ref = f"{pdf.get('file_url') or ''} {pdf.get('event_id') or ''}"
+                    if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', pdf_ref):
+                        id_pdfs.append(pidx)
+                if len(id_pdfs) != 1:
+                    continue
+                _, _, xidx, xrow = id_matches[0]
+            elif id_matches:
+                # More than one XBRL payload carries the same appId; never guess.
                 continue
-            app_id = xbrl_app_id(id_matches[0])
-            id_pdfs = []
-            for pidx in [idx] + other_pdfs:
-                purl = str(records[pidx].get('file_url') or '')
-                if re.search(rf'(?<![A-Za-z0-9]){re.escape(app_id)}(?![A-Za-z0-9])', purl):
-                    id_pdfs.append(pidx)
-            if len(id_pdfs) != 1:
-                continue
-            _, _, xidx, xrow = id_matches[0]
+            else:
+                # Narrow alias for NSE's separate Integrated Filing-Financials table: it often
+                # carries the same results filing as an XML row with a different table label.
+                # Pair only when the ordinary PDF itself explicitly says financial results,
+                # there is exactly one structured row and no other filing for this issuer in the
+                # +/- one-day window. Issuer/date alone is never sufficient.
+                nearby_subject = subject_base(nearby_structured[0][3].get('subject')) if len(nearby_structured) == 1 else ''
+                filing_text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
+                integrated_financials = (
+                    len(nearby_structured) == 1 and not other_pdfs
+                    and nearby_subject == 'integrated filing financials'
+                    and re.search(
+                        r'financial results?|results? for (?:the )?(?:quarter|period|year)|'
+                        r'(?:quarterly|half.year) results?|audited financial|unaudited financial',
+                        filing_text, re.IGNORECASE)
+                )
+                integrated_governance = (
+                    len(nearby_structured) == 1 and not other_pdfs
+                    and nearby_subject == 'integrated filing governance'
+                    and re.search(
+                        r'corporate governance|secretarial compliance|'
+                        r'regulation\s*13\s*\(\s*3\s*\)|regulation\s*27\s*\(\s*2\s*\)',
+                        filing_text, re.IGNORECASE)
+                )
+                if integrated_financials or integrated_governance:
+                    _, _, xidx, xrow = nearby_structured[0]
+                else:
+                    # Verified semantic alias for a narrow real-world pattern: an NSE "Retirement"
+                    # PDF plus its unique BSE copy describing completion of an independent director's
+                    # tenure, and one nearby NSE XBRL record explicitly classified as a director/KMP
+                    # change. Require exact issuer/date, <=15 minutes between all three records, and
+                    # no other NSE PDF for that issuer/date. This is not a general date-only fallback.
+                    if (len(nearby_structured) != 1 or other_pdfs or subject != 'retirement'):
+                        continue
+                    item = nearby_structured[0]
+                    xrow = item[3]
+                    if not management_xbrl(xrow) or not within_minutes(row.get('broadcast_at'), xrow.get('broadcast_at')):
+                        continue
+                    support = []
+                    for candidate_row in records:
+                        if candidate_row.get('exchange') != 'BSE':
+                            continue
+                        if str(clean(candidate_row.get('file_type')) or '').lower() not in ('pdf', 'zip') or not candidate_row.get('file_url'):
+                            continue
+                        if not same_issuer(row, candidate_row) or day(candidate_row.get('broadcast_date')) != broadcast_day:
+                            continue
+                        if not within_minutes(row.get('broadcast_at'), candidate_row.get('broadcast_at')) or not within_minutes(
+                                xrow.get('broadcast_at'), candidate_row.get('broadcast_at')):
+                            continue
+                        if management_pdf_support(candidate_row):
+                            support.append(candidate_row)
+                    if len(support) != 1:
+                        continue
+                    _, _, xidx, xrow = item
         row['content_url'] = xrow['file_url']
         row['xbrl_source_event_id'] = xrow.get('event_id')
         row['xbrl_source_url'] = xrow['file_url']
@@ -2039,6 +2214,52 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
                                   'xbrl_source_event_id', 'xbrl_source_url') if field in cands]
     def sample(mask):
         return cands.loc[mask, fields].head(50).to_dict('records')
+
+    # Explain why a real XML/XBRL URL did not pair. In particular, retain nearby
+    # same-issuer/date PDFs from either exchange so cross-exchange omissions are visible,
+    # but do not automatically pair on issuer/date alone.
+    linked_source_ids = set(cands.loc[linked, 'xbrl_source_event_id'].dropna().astype(str))
+    records = cands.to_dict('records')
+    def normalized_subject(value):
+        return re.sub(r'[^a-z0-9]+', ' ', str(value or '').casefold()).strip()
+    unlinked_context = []
+    for xrow in records:
+        xid = str(xrow.get('event_id') or '')
+        xtype = str(xrow.get('file_type') or '').strip().lower()
+        xurl = str(xrow.get('file_url') or '')
+        xhint = re.search(r'\bxbrl\b', f"{xrow.get('subject') or ''} {xurl}", re.IGNORECASE)
+        if xid in linked_source_ids or not (xtype in ('xml', 'xbrl') or (xtype == 'zip' and xhint)):
+            continue
+        xday = pd.to_datetime(xrow.get('broadcast_date'), errors='coerce')
+        if pd.isna(xday):
+            continue
+        nearby = []
+        for prow in records:
+            ptype = str(prow.get('file_type') or '').strip().lower()
+            if prow.get('event_id') == xrow.get('event_id') or ptype not in ('pdf', 'zip') or not prow.get('file_url'):
+                continue
+            xis, pis = str(xrow.get('isin') or '').strip(), str(prow.get('isin') or '').strip()
+            xsym, psym = str(xrow.get('symbol') or '').strip().upper(), str(prow.get('symbol') or '').strip().upper()
+            same_issuer = (xis == pis) if xis and pis else bool(xsym and psym and xsym == psym)
+            if not same_issuer:
+                continue
+            pday = pd.to_datetime(prow.get('broadcast_date'), errors='coerce')
+            if pd.isna(pday) or abs((xday.date() - pday.date()).days) > 1:
+                continue
+            nearby.append({
+                'event_id': prow.get('event_id'), 'exchange': prow.get('exchange'),
+                'symbol': prow.get('symbol'), 'broadcast_date': prow.get('broadcast_date'),
+                'subject': prow.get('subject'), 'detail': str(prow.get('detail') or '')[:240],
+                'file_url': prow.get('file_url'),
+                'same_normalized_subject': normalized_subject(xrow.get('subject')) ==
+                                           normalized_subject(prow.get('subject')),
+            })
+        unlinked_context.append({
+            'event_id': xid, 'exchange': xrow.get('exchange'), 'symbol': xrow.get('symbol'),
+            'isin': xrow.get('isin'), 'broadcast_date': xrow.get('broadcast_date'),
+            'subject': xrow.get('subject'), 'file_url': xurl,
+            'nearby_pdf_candidates': nearby[:20],
+        })
     return {'candidates': int(len(cands)), 'has_xbrl_flagged': int(has_flag.sum()),
             # These are diagnostics, not proof of XBRL availability: the upstream boolean can be
             # true while its row only exposes a PDF and no direct XBRL URL.
@@ -2052,7 +2273,7 @@ def xbrl_audit(cands: pd.DataFrame | None) -> dict:
             'xbrl_linked': int(linked.sum()), 'flagged_samples': sample(has_flag),
             'direct_xbrl_samples': sample(direct), 'attachment_samples': sample(attachment),
             'structured_samples': sample(structured_attachment), 'zip_samples': sample(zip_attachment),
-            'linked_samples': sample(linked)}
+            'linked_samples': sample(linked), 'unlinked_xbrl_context': unlinked_context[:20]}
 
 
 def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
@@ -2069,22 +2290,11 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         days = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
         c = cands[cands['broadcast_date'].isin(days)].copy()
     counts['candidates'] = len(c)
-    # Exclude SME-board issuers from either exchange. NSE feed rows are explicitly tagged; the
-    # security master also carries ISINs found in the official NSE SME list, so their BSE copies
-    # are excluded too. If an ISIN appears on both lists, the main-board listing wins.
-    market = c.get('market', pd.Series('', index=c.index)).astype(str).str.strip().str.casefold()
-    is_sme = market.eq('sme') | c.get('is_sme', pd.Series(False, index=c.index)).fillna(False).astype(bool)
-    sme_rows = c[is_sme].copy()
-    counts['sme_excluded'] = int(is_sme.sum())
-    status_rows = [{**r, 'status': 'sme_excluded',
-                    'reason': 'SME-board issuer excluded by the current eligibility policy'}
-                   for r in sme_rows.to_dict('records')]
     finished = set()
     tries = {}
     if done is not None and not done.empty:
         # Quota-deferred filings are deliberately retryable without consuming the failure budget.
-        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred',
-                                          'below_100_cr', 'below_500_cr', 'sme_excluded'))
+        retryable = done['status'].isin(('failed', 'market_cap_unverified', 'quota_deferred'))
         failed = done['status'] == 'failed'
         # A read with an older prompt is reread once; missing cap data is re-evaluated next run, not retired.
         stale = done['status'].isin(('read', 'same_file', 'same_text')) & \
@@ -2094,37 +2304,30 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
         # missing-cap rows remain retryable, even if a prior status carried a large tries count.
         finished = set(done.loc[(~retryable & ~stale) | exhausted_failures, 'event_id'])
         tries = done.loc[failed].set_index('event_id')['tries'].to_dict()
-    c = c[~is_sme]
     keep = c['group'].ne('routine') & c['file_url'].notna() & c['file_type'].isin(['pdf', 'zip', 'xml', 'xbrl'])
     counts['routine_or_no_file'] = int((~keep).sum())
-    c = c[keep].copy()
+    c = c[keep & ~c['event_id'].isin(finished)]
+    counts['already_done'] = int(keep.sum()) - len(c)
     c = c.sort_values(['broadcast_date', 'broadcast_at'], ascending=False)
     c['tries'] = c['event_id'].map(tries).fillna(0).astype(int)
-    read_rows = []
-    already_done = 0
+    status_rows, read_rows = [], []
     earlier = [] if done is None or done.empty else done[done['status'].isin(('read',) + COPY_STATUSES)] \
         .to_dict('records')
     for r in c.sort_values('broadcast_at').to_dict('records'):   # oldest first, so the first copy is read
-        # Re-check today's cap and board eligibility before honoring a previous read. This retires
-        # stale cards that no longer meet the live policy, while still avoiding repeat model calls.
         mcap = pd.to_numeric(pd.Series([r.get('market_cap')]), errors='coerce').iloc[0]
         if pd.isna(mcap) or mcap <= 0:
             status_rows.append({**r, 'status': 'market_cap_unverified',
-                                'reason': 'no verified market-cap value in the latest snapshot dated on or before yesterday'})
+                                'reason': 'no verified market-cap value in a recent snapshot from this week or last week'})
             continue
         if mcap <= MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
-            continue
-        if r['event_id'] in finished:
-            already_done += 1
+            status_rows.append({**r, 'status': 'at_or_below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
             status_rows.append({**r, 'status': 'same_filing_other_exchange', 'same_as': twin['event_id']})
             continue
         read_rows.append(r)
-    counts['already_done'] = already_done
-    counts['below_500_cr'] = sum(x['status'] == 'below_500_cr' for x in status_rows)
+    counts['at_or_below_500_cr'] = sum(x['status'] == 'at_or_below_500_cr' for x in status_rows)
     counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
@@ -2282,7 +2485,7 @@ def widen_bare_quotes(out, doc) -> int:
     return n
 
 
-def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='') -> dict:
+def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), subject='', memory='', source_url=None) -> dict:
     """A parsed model answer for one filing, every value checked against that filing's own text: the same dict
     as read_one's, or {'ok': False, 'error'} when there is no answer."""
     if out is None:
@@ -2298,6 +2501,12 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     if len(raw) == len(metrics):
         metrics = [with_previous(m, r, doc) for m, r in zip(metrics, raw)]
     headline, points = card_words({**out, 'category': cat} if isinstance(out, dict) else out, doc, fields, metrics, names)
+    narrative = validate_narrative(
+        out.get('narrative') if isinstance(out, dict) else None, doc, memory,
+        lambda text, quotes: numbers_backed(text, quotes,
+                                             unit_ok=lambda n, mult: s.table_unit(" ".join(quotes), mult, doc)),
+        current_url=source_url, issuer_names=names,
+        current_quote_check=lambda quote: s.quote_found(quote, doc))
     if cat_before == 'financial_results' and cat == 'routine' and isinstance(headline, dict) and headline.get('shown') \
             and RESULTS_WORDS.search(str(headline.get('text'))) and not re.search(r'recording|call|transcript|advert|newspaper', str(headline.get('text')), re.IGNORECASE):
         headline = {**headline, 'shown': False, 'reason': 'a call recording or newspaper copy: it does not carry the results (Karur Vysya, Tips Music)'}
@@ -2309,21 +2518,22 @@ def result_of(out, doc: str, used: str, secs: float, lane_name: str, names=(), s
     for f in fields if withdrawn else []:
         if f['name'] in DEAL_FIELDS and f.get('shown'):
             f['shown'], f['reason'] = False, 'the filing withdraws this deal: these are the terms of the withdrawn proposal'
-    if cat is None and not (fields or metrics or headline or points):   # a long scan answered with nothing: another lane reads it
+    if cat is None and not (fields or metrics or headline or points or any(n.get('shown') for n in narrative)):   # a long scan answered with nothing: another lane reads it
         return {'ok': False, 'error': f'{lane_name}: {used}: the answer had no category and nothing to show'}
     return {'ok': True, 'reader': used, 'seconds': secs, 'category': cat, 'fields': fields, 'metrics': metrics,
-            'headline': headline, 'points': points, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
+            'headline': headline, 'points': points, 'narrative': narrative, 'open_loops': extract_open_loops(doc) + gaps_of(cat, fields, doc)}
 
 
-def read_one(lane: Lane, row: dict, doc: str) -> dict:
+def read_one(lane: Lane, row: dict, doc: str, prompt_doc: str | None = None) -> dict:
     """One lane's read of one filing: {'ok': True, reader, seconds, category, fields, metrics} with every value
     checked, or {'ok': False, 'error'} (every model of the lane busy, refused, too slow, or the reply not JSON)."""
-    prompt = card_prompt(row, doc)
+    prompt = card_prompt(row, prompt_doc if prompt_doc is not None else doc)
     try:
         text, used, secs = lane.read(prompt)
     except RuntimeError as exc:
         return {'ok': False, 'error': f'{lane.name}: {exc}'[:300]}
-    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    return result_of(s.parse_json(text), doc, used, secs, lane.name, (row.get('symbol'), row.get('company')), row.get('subject') or '',
+                     memory=str(row.get('_company_memory') or ''), source_url=row.get('file_url'))
 
 
 def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.download) -> dict:
@@ -2355,7 +2565,8 @@ def vision_repair(row: dict, doc: str, data: bytes | None, res: dict, fetch=s.do
             return {'ok': False, 'error': 'vision models busy (HTTP 429): the second reading of a card the text could not make safe is deferred'}
         return res
     text, model, secs, usage, note, imgs = got
-    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '')
+    vres = result_of(s.parse_json(text), doc, f'vision:{model}', secs, 'vision', (row.get('symbol'), row.get('company')), row.get('subject') or '',
+                     memory=str(row.get('_company_memory') or ''), source_url=row.get('file_url'))
     clash = vision.unsupported_numbers(res, vres) if vres.get('ok') and (res.get('headline') or {}).get('shown') else []
     if clash:    # a figure only the subtitle states (Kross 30.6, Bright Outdoor 104) costs the subtitle, not the headline (owner: only improve)
         head_clash = vision.unsupported_numbers(res, vres, subtitle=False)
@@ -2413,7 +2624,7 @@ def batch_prompt(jobs: list[dict]) -> str:
         memory = str(row.get('_company_memory') or '').strip()
         blocks.append(f'=== FILING {k}: {row["exchange"]} {row.get("symbol") or row.get("company")}, subject: '
                       f'{row.get("subject")} ===\n' + (f'Earlier verified company history for this filing only (context, '
-                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job['doc']))
+                      f'not a source for any value):\n{memory}\n' if memory else '') + str(job.get('prompt_doc') or job['doc']))
     return (f'You will read {len(jobs)} separate filings, each starting with a line "=== FILING k: ... ===". Treat every '
             'filing completely on its own: a word or number of one filing is never used for another, and each quote '
             'must come from the filing it belongs to. Answer with only JSON: {"results": [{"id": k, followed by '
@@ -2434,7 +2645,8 @@ def read_batch(lane: Lane, jobs: list[dict]) -> list[dict | None]:
     for k, job in enumerate(jobs, 1):
         item = by_id.get(str(k))
         res.append(result_of(item, job['doc'], used, round(secs / len(jobs), 1), lane.name,
-                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '') if item is not None else None)
+                             (job['row'].get('symbol'), job['row'].get('company')), job['row'].get('subject') or '',
+                              memory=str(job['row'].get('_company_memory') or ''), source_url=job['row'].get('file_url')) if item is not None else None)
     return res
 
 
@@ -2445,10 +2657,15 @@ def _sha(b) -> str:
 def finish(rec: dict) -> dict:
     """JSON columns and counts for the archive."""
     rec = dict(rec)
+    # Value counts remain fields + metrics; prose claims have their own audit counters.
     rec['shown'] = sum(f['shown'] for f in rec.get('fields') or []) + sum(m['shown'] for m in rec.get('metrics') or [])
-    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + \
-        sum(not m['shown'] for m in rec.get('metrics') or [])
-    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'open_loops'):
+    rec['held'] = sum(not f['shown'] for f in rec.get('fields') or []) + sum(not m['shown'] for m in rec.get('metrics') or [])
+    headline = rec.get('headline')
+    rec['headline_shown'] = int(isinstance(headline, dict) and bool(headline.get('shown')))
+    rec['headline_held'] = int(isinstance(headline, dict) and not bool(headline.get('shown')))
+    rec['narrative_shown'] = sum(bool(n.get('shown')) for n in rec.get('narrative') or [])
+    rec['narrative_held'] = sum(not bool(n.get('shown')) for n in rec.get('narrative') or [])
+    for k in ('fields', 'metrics', 'second_fields', 'agreed', 'points', 'narrative', 'open_loops'):
         rec[k] = json.dumps(rec.get(k) or ([] if k != 'agreed' else {}), ensure_ascii=False, default=str)
     rec['headline'] = json.dumps(rec['headline'], ensure_ascii=False, default=str) if rec.get('headline') else None
     return {c: rec.get(c) for c in COLUMNS}
@@ -2496,7 +2713,8 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
     def copy_of(twin: dict, base: dict) -> dict:
         status = 'same_file' if twin.get('file_sha256') == base['file_sha256'] else 'same_text'
         copied = {k: twin.get(k) for k in ('reader', 'reader_lane', 'category', 'fields', 'metrics', 'headline',
-                                           'points', 'second_reader', 'second_category', 'second_fields', 'agreed')}
+                                           'points', 'narrative', 'headline_shown', 'headline_held', 'narrative_shown', 'narrative_held',
+                                           'second_reader', 'second_category', 'second_fields', 'agreed')}
         return {c: {**base, **copied, 'status': status, 'same_as': twin['event_id'],
                     'shown': twin.get('shown'), 'held': twin.get('held')}.get(c) for c in COLUMNS}
 
@@ -2570,11 +2788,6 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                     data, doc, doc_notes = fallback_data, fallback_doc, [f'XBRL fallback to original attachment ({xbrl_error})', *fallback_notes]
                     content_url = row['file_url']
                     file_sha = _sha(data)
-            # The durable filing_text cache remains raw. Clean only the working copy sent to AI and used for quote checks.
-            doc, cleaning_notes = clean_document_text(doc, row.get('subject'))
-            doc_notes.extend(cleaning_notes)
-            for note in cleaning_notes:
-                log(row.get('symbol'), note)
         except Exception as exc:  # noqa: BLE001 -- one filing failing never stops the run
             reason = f'download: {type(exc).__name__}: {exc}'[:300]
             # A missing document is not a transient model/network failure. Retire it now rather than
@@ -2604,6 +2817,21 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
         if cut:   # half a document must not become a card: it is held back, with the reason
             return finish({**base, 'status': 'not_read',
                            'reason': f'{cut}; a document longer than the reader limit is not read in part'})
+        # Clean only extracted PDF/ZIP text for the model. Keep doc untouched for exact quote,
+        # numerical, hash, twin and audit checks. Structured XBRL facts are already normalized and
+        # must not pass through the layout cleaner.
+        prompt_doc = doc
+        if source_format != 'xbrl':
+            try:
+                cleaned_doc, removed = clean_filing_text(doc, row.get('subject'))
+                if cleaned_doc.strip():
+                    prompt_doc = cleaned_doc
+                    if removed:
+                        log(row.get('symbol'), 'text cleaning:', json.dumps(removed, ensure_ascii=False, sort_keys=True))
+                else:
+                    log(row.get('symbol'), 'text cleaning returned empty text; original text retained')
+            except Exception as exc:  # noqa: BLE001 -- cleaner failure never changes the source or loses a filing
+                log(row.get('symbol'), f'text cleaning failed; original text retained: {type(exc).__name__}: {exc}')
         with lock:
             twin = by_file.get(base['file_sha256']) or by_text.get(base['text_sha256'])
             if twin is None:
@@ -2615,7 +2843,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
                 waiting.setdefault(base['text_sha256'], [])
         if twin is not None:
             return copy_of(twin, base)
-        job.update(base=base, doc=doc, pdf=data if source_format == 'pdf' and data else None)
+        job.update(base=base, doc=doc, prompt_doc=prompt_doc, pdf=data if source_format == 'pdf' and data else None)
         return None
 
     def done_reading(job: dict, rec: dict | None) -> list:
@@ -2730,7 +2958,7 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             if out is not None:
                 add_row(out)
                 return
-        res = read_one(lane, job['row'], job['doc'])
+        res = read_one(lane, job['row'], job['doc'], job.get('prompt_doc'))
         finish_read(lane, job, vision_repair(job['row'], job['doc'], job.get('pdf'), res))
 
     def finish_read(lane: Lane, job: dict, res: dict):
@@ -2746,18 +2974,18 @@ def run(to_read: pd.DataFrame, lanes: dict[str, Lane], earlier: pd.DataFrame | N
             return
         rec = finish({**job['base'], 'status': 'read', 'reader': res['reader'], 'reader_lane': lane.name,
                       'category': res['category'], 'fields': res['fields'], 'metrics': res['metrics'],
-                      'headline': res['headline'], 'points': res['points'], 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
+                      'headline': res['headline'], 'points': res['points'], 'narrative': res.get('narrative', []), 'open_loops': res.get('open_loops'), 'seconds': res['seconds'],
                       'second_reader': res.get('second_reader')})
         with lock:
-            docs[rec['event_id']] = (job['row'], job['doc'], res['fields'], res['metrics'])
+            docs[rec['event_id']] = (job['row'], job['doc'], job.get('prompt_doc', job['doc']), res['fields'], res['metrics'])
         add_row(rec)
         for twin in done_reading(job, rec):
             add_row(copy_of(rec, twin))
         log(job['row'].get('symbol'), 'read', res['reader'], f"shown {rec.get('shown')}, held {rec.get('held')}")
 
     def cross_check(lane: Lane, rec: dict):
-        row, doc, fields, metrics = docs[rec['event_id']]
-        res = read_one(lane, row, doc)
+        row, doc, prompt_doc, fields, metrics = docs[rec['event_id']]
+        res = read_one(lane, row, doc, prompt_doc)
         if not res['ok']:
             return                          # a missing cross-check is not an error; the values stand as read
         agreed = {**agreement(fields, res['fields']), **metric_agreement(metrics, res['metrics'])}
@@ -2799,7 +3027,7 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
     if candidates is None or candidates.empty:
         return candidates
     out = candidates.copy()
-    cache, contexts = {}, []
+    cache, said_cache, contexts = {}, {}, []
     results = None
     try:   # our own XBRL results history: the company's earlier quarters, as verified context for results cards
         import io as _io
@@ -2825,6 +3053,35 @@ def with_company_memory(r2, candidates: pd.DataFrame) -> pd.DataFrame:
             summary = headline.get('text') or '; '.join(p.get('text', '') for p in event.get('points', [])[:2] if p.get('text'))
             if summary:
                 lines.append(f"- {event.get('date')} [{event.get('event_id')}] {summary} (source: {event.get('source_url')})")
+        # Persistent management-call memory is quote-checked by scripts/management_said.py.
+        # Include only the latest call before this filing and its forward-looking statements.
+        subject = str(row.get('subject') or '')
+        # Transcript context is relevant to results/update cards only. Cache by ISIN so multiple filings
+        # from the same issuer do not trigger repeated R2 reads in this run.
+        if (isin and isin.lower() != 'nan'
+                and re.search(r'result|quarter|half.year|business update|monthly update|operational performance|operating update',
+                              subject, re.IGNORECASE)):
+            try:
+                if isin not in said_cache:
+                    said_raw = get(r2, f'archive/management_said/{isin}.json')
+                    try:
+                        said_cache[isin] = json.loads(said_raw) if said_raw else {}
+                    except (TypeError, ValueError):
+                        said_cache[isin] = {}
+                said_doc = said_cache[isin]
+                from insiders_clean import said as said_rules
+                calls = [call for call in (said_doc.get('calls') or [])
+                         if str(call.get('call_date') or call.get('filed') or '') < current_date]
+                if calls:
+                    call = sorted(calls, key=lambda item: str(item.get('call_date') or item.get('filed')))[-1]
+                    call_date = str(call.get('call_date') or call.get('filed') or '')[:10]
+                    for fact in said_rules.forward_facts(call.get('facts') or [])[:6]:
+                        quote = re.sub(r'\s+', ' ', str(fact.get('quote') or '')).strip()
+                        statement = re.sub(r'\s+', ' ', str(fact.get('statement') or '')).strip()
+                        if quote and statement:
+                            lines.append(f"- management call {call_date} [{call.get('event_id')}]: {statement} | exact transcript quote: {quote} (source: {call.get('source_url')})")
+            except Exception as exc:  # noqa: BLE001 -- historical transcript memory is optional
+                log(f'management-call memory not loaded for {row.get("symbol")}: {type(exc).__name__}')
         lines = xbrl_context_lines(results, isin, row.get('broadcast_at') or current_date) + lines
         contexts.append('\n'.join(lines))
     out['_company_memory'] = contexts
@@ -3180,28 +3437,108 @@ class UsageLedger:
     def close(self, **extra) -> bool:
         self._stop.set()
         self.extra.update(extra)
-        return self.write(force=True)
+        written = self.write(force=True)
+        self.reconciliation = {'attempted': self.r2 is not None, 'write_ok': written,
+                               'key': self.key, 'run_id': self.run_id, 'expected_calls': self.calls()}
+        if self.r2 is not None:
+            try:
+                from clean_writer import get
+                body = get(self.r2, self.key)
+                saved = json.loads(body) if body else None
+                expected = self.calls()
+                saved_calls = sum(int(v.get('calls') or 0)
+                                  for v in (((saved or {}).get('usage') or {}).get('models') or {}).values())
+                minute_calls = sum(int(n) for by_minute in (((saved or {}).get('calls_by_minute') or {}).values())
+                                   for n in by_minute.values())
+                reconciled = bool(saved and saved.get('run_id') == self.run_id
+                                  and saved_calls == expected and minute_calls == expected)
+                now = datetime.now(timezone.utc)
+                other_usage = used_today(self.r2, now, skip_run=self.run_id)
+                total_usage = used_today(self.r2, now)
+                own_window = {}
+                for model, minutes in self.by_minute.items():
+                    provider = model.split(':', 1)[0]
+                    starts_at = window_start(provider, now)
+                    for at, n in minutes.items():
+                        stamp = pd.Timestamp(at)
+                        stamp = stamp.tz_localize(timezone.utc) if stamp.tzinfo is None else stamp.tz_convert(timezone.utc)
+                        if stamp.to_pydatetime() >= starts_at:
+                            own_window[model] = own_window.get(model, 0) + int(n)
+                models = set(other_usage) | set(own_window) | set(total_usage)
+                expected_usage = {model: int(other_usage.get(model, 0)) + int(own_window.get(model, 0))
+                                  for model in models}
+                totals_reconciled = all(int(total_usage.get(model, 0)) == expected_usage[model]
+                                        for model in models)
+                self.reconciliation.update({
+                    'read_back': bool(body), 'saved_calls': saved_calls,
+                    'calls_by_minute_total': minute_calls, 'ledger_file_reconciled': reconciled,
+                    'other_runs_usage_by_model': other_usage, 'own_calls_in_current_windows': own_window,
+                    'total_usage_by_model': total_usage, 'expected_usage_by_model': expected_usage,
+                    'usage_totals_reconciled': totals_reconciled,
+                    'reconciled': reconciled and totals_reconciled,
+                })
+                log('usage ledger read-back reconciliation', json.dumps(self.reconciliation, sort_keys=True))
+            except Exception as exc:  # noqa: BLE001 -- report the audit failure without hiding the run result
+                self.reconciliation.update({'read_back': False, 'reconciled': False,
+                                            'error': f'{type(exc).__name__}: {exc}'})
+                log('usage ledger read-back reconciliation failed', type(exc).__name__, exc)
+        return written
 
 
 def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, setup: list[str]) -> str:
     st = pd.Series([r['status'] for r in rows]).value_counts().to_dict() if rows else {}
     lines = ['### Announcement reader', '',
-             f"Candidates today and yesterday: {counts.get('candidates', 0)}; SME excluded {counts.get('sme_excluded', 0)}; "
-             f"routine or no file {counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; "
-             f"below Rs 500 Cr {counts.get('below_500_cr', 0)}; same filing on the other exchange "
+             f"Candidates today and yesterday: {counts.get('candidates', 0)}; routine or no file "
+             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; at or below Rs 500 Cr "
+             f"{counts.get('at_or_below_500_cr', 0)}; same filing on the other exchange "
              f"{counts.get('same_filing_other_exchange', 0)}; chosen {counts.get('to_read', 0)}, "
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
              '| Outcome | Filings |', '|---|---|'] + [f'| {k} | {v} |' for k, v in st.items()]
-    lines += ['', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
+    narrative = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative.extend(n for n in items if isinstance(n, dict))
+    held_reasons = pd.Series([str(n.get('reason')) for n in narrative
+                              if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    headlines = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headlines.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headlines
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
+    lines += ['', f"Headlines: {sum(bool(h.get('shown')) for h in headlines)} shown; "
+              f"{sum(not bool(h.get('shown')) for h in headlines)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in headline_holds.items()) or 'none'}.",
+              f"AI narrative claims: {sum(bool(n.get('shown')) for n in narrative)} shown; "
+              f"{sum(not bool(n.get('shown')) for n in narrative)} held. "
+              f"Held reasons: {', '.join(f'{k} ({v})' for k, v in held_reasons.items()) or 'none'}.",
+              '', '| Model | Calls | Answers | Median seconds |', '|---|---|---|---|']
     lines += [f"| {m} | {e['calls']} | {', '.join(f'{k}: {v}' for k, v in e['by_status'].items())} | "
               f"{e['median_seconds_ok']} |" for m, e in use.get('models', {}).items()]
     read = [r for r in rows if r['status'] == 'read']
     if read:
-        lines += ['', '| Filing | Category | Reader | Seconds | Shown | Held back | Cross-check |',
-                  '|---|---|---|---|---|---|---|']
+        lines += ['', '| Filing | Category | Reader | Seconds | Values shown | Values held | Headline shown | Headline held | Narrative shown | Narrative held | Cross-check |',
+                  '|---|---|---|---|---|---|---|---|---|---|---|']
         lines += [f"| {r['exchange']} {r.get('symbol')} | {r.get('category')} | {r.get('reader')} | {r.get('seconds')} | "
-                  f"{r.get('shown')} | {r.get('held')} | {r.get('second_reader') or ''} |" for r in read]
+                  f"{r.get('shown')} | {r.get('held')} | {r.get('headline_shown', 0)} | {r.get('headline_held', 0)} | "
+                  f"{r.get('narrative_shown', 0)} | {r.get('narrative_held', 0)} | {r.get('second_reader') or ''} |" for r in read]
     lines += [f'- note: {n}' for n in setup]
     return '\n'.join(lines) + '\n'
 
@@ -3231,13 +3568,20 @@ def collect(r2, today: date, dry_run: bool, notes: list):
         # Respect NSE's hard-stop rule on 401/403/429; never probe another endpoint after a block.
         if not nse_blocked:
             for market in nann.FEEDS:
-                try:
-                    frames.append(nann.parse_xbrl(nse.xbrl_announcements(yesterday, today, market), market))
-                except Blocked as exc:
-                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                for feed_type in ('announcements', 'para-a', 'para-b', 'award'):
+                    try:
+                        xbrl_rows = nse.xbrl_announcements(
+                            yesterday, today, market, feed_type=feed_type)
+                        frames.append(nann.parse_xbrl(xbrl_rows, market))
+                    except Blocked as exc:
+                        notes.append(
+                            f'NSE XBRL {market}/{feed_type}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:200])
+                        nse_blocked = True
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        notes.append(f'NSE XBRL {market}/{feed_type}: {type(exc).__name__}: {exc}'[:200])
+                if nse_blocked:
                     break
-                except Exception as exc:  # noqa: BLE001
-                    notes.append(f'NSE XBRL {market}: {type(exc).__name__}: {exc}'[:200])
         bse, bframes = BSEClient(), []
         try:
             for day in (today, yesterday):
@@ -3246,7 +3590,15 @@ def collect(r2, today: date, dry_run: bool, notes: list):
             notes.append(f'BSE: {type(exc).__name__}: {exc}'[:200])
         finally:
             bse.close()
-        return (pd.concat(frames, ignore_index=True) if frames else None),             (pd.concat(bframes, ignore_index=True) if bframes else None)
+        nse_rows = pd.concat(frames, ignore_index=True) if frames else None
+        # The same structured filing may be advertised by more than one XBRL feed.
+        # parse_xbrl deliberately derives a stable event ID from the filing itself,
+        # not the feed name; collapse those repeated observations before companion
+        # matching so one XML cannot make an otherwise unique match look ambiguous.
+        if nse_rows is not None and not nse_rows.empty and 'event_id' in nse_rows:
+            nse_rows = nse_rows.drop_duplicates('event_id', keep='last').reset_index(drop=True)
+        bse_rows = pd.concat(bframes, ignore_index=True) if bframes else None
+        return nse_rows, bse_rows
     from insiders_clean.raw_store import RawStore
     from r2_writer import BUCKET
     try:
@@ -3269,6 +3621,113 @@ def collect(r2, today: date, dry_run: bool, notes: list):
         bse.close()
     return load_archive(r2, nann.PREFIX, today), load_archive(r2, bann.PREFIX, today)
 
+
+
+def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date,
+                                  dry_run: bool, notes: list, max_requests: int = 8) -> pd.DataFrame | None:
+    """Fetch separate NSE integrated XBRL only for eligible live filings selected to read.
+
+    This is deliberately not a historical crawler: the selected rows have already passed
+    the SME, recent-market-cap (> Rs 500 Cr), date, category, and duplicate gates.
+    """
+    if selected is None or selected.empty:
+        return None
+    import re
+    from collectors.nse_events import announcements as nann
+    from collectors.nse_events.client import Blocked, NSEClient
+
+    financial_re = re.compile(
+        r'financial results?|results? for (?:the )?(?:quarter|period|year)|'
+        r'(?:quarterly|half.year) results?|audited financial|unaudited financial',
+        re.IGNORECASE)
+    governance_re = re.compile(
+        r'corporate governance|integrated filing.{0,20}governance|secretarial compliance|'
+        r'regulation\s*13\s*\(\s*3\s*\)|regulation\s*27\s*\(\s*2\s*\)',
+        re.IGNORECASE)
+    requests_by_symbol: dict[str, set[str]] = {}
+    for row in selected.to_dict('records'):
+        if str(row.get('exchange') or '').upper() != 'NSE':
+            continue
+        symbol = str(row.get('symbol') or '').strip().upper()
+        if not symbol:
+            continue
+        text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
+        types = set()
+        if financial_re.search(text):
+            types.add('financials')
+        if governance_re.search(text):
+            types.add('governance')
+        if types:
+            requests_by_symbol.setdefault(symbol, set()).update(types)
+    if not requests_by_symbol:
+        return None
+
+    client = NSEClient()
+    raw = None
+    if not dry_run and r2 is not None:
+        from insiders_clean.raw_store import RawStore
+        raw = RawStore(r2, bucket=__import__('r2_writer').BUCKET,
+                       collector='nse_integrated_filings')
+
+    companions = []
+    blocked = False
+    requests_made = 0
+    wanted_dates = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
+    try:
+        for symbol, types in sorted(requests_by_symbol.items()):
+            if requests_made >= max(0, max_requests):
+                notes.append(f'NSE integrated companion request cap reached ({max_requests}); remaining symbol/feed pairs deferred')
+                break
+            for filing_type in sorted(types):
+                if requests_made >= max(0, max_requests):
+                    break
+                requests_made += 1
+                raw_write_error = []
+                if raw is not None:
+                    def hook(url, resp, symbol=symbol, filing_type=filing_type):
+                        try:
+                            raw.put('nse', 'announcements_integrated', resp.content, url=url,
+                                    status=resp.status_code, content_type=resp.headers.get('Content-Type'),
+                                    covers={'symbol': symbol, 'filing_type': filing_type,
+                                            'live_window': sorted(wanted_dates)})
+                        except Exception as exc:  # raw capture failure must not be silently downgraded
+                            raw_write_error.append(exc)
+                            raise
+                    client.on_response = hook
+                try:
+                    source_rows = (client.integrated_filing_financials(symbol=symbol)
+                                   if filing_type == 'financials'
+                                   else client.corporate_governance(symbol))
+                    parsed = nann.parse_integrated_xbrl(source_rows, filing_type)
+                    if not parsed.empty:
+                        parsed = parsed[parsed['broadcast_date'].isin(wanted_dates)]
+                        if not parsed.empty:
+                            companions.append(parsed)
+                except Blocked as exc:
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:220])
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional companion feed never blocks PDF reading
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; PDF path retained'[:220])
+            if blocked:
+                break
+    finally:
+        client.on_response = None
+        client.s.close()
+    if not companions:
+        return None
+    result = pd.concat(companions, ignore_index=True).drop_duplicates('event_id', keep='last')
+    if not dry_run and r2 is not None:
+        # Preserve exact source responses before adding normalized rows to the shared archive.
+        added, partitions = nann.merge_into_archive(r2, result, today.isoformat())
+        notes.append(f'NSE integrated companion archive: {len(result)} current-window XML rows, {added} new, {len(partitions)} partitions')
+    notes.append(f'NSE integrated companion audit: queried {requests_made} symbol/feed pairs (cap {max_requests}); '
+                 f'{len(result)} direct XML rows in the live window')
+    return result
 
 def in_history_window(now=None):
     """True from 22:30 to 09:00 IST, the hours the owner reserved for old announcements."""
@@ -3347,9 +3806,20 @@ def main(argv=None):
         setup.append(f'no R2 ({type(exc).__name__}); reads before this run not known')
     ledger = UsageLedger(r2, today.isoformat(), clients, lanes, 'dry_run' if args.dry_run else 'live').start()
     try:
-        return read_and_save(args, today, setup, clients, lanes, r2, ledger)
+        result = read_and_save(args, today, setup, clients, lanes, r2, ledger)
     finally:
         ledger.close(notes=setup)
+    if args.dry_run:
+        audit_path = Path('announcement_reader_run_audit.json')
+        audit = json.loads(audit_path.read_text(encoding='utf-8')) if audit_path.exists() else {}
+        audit['usage_ledger'] = {
+            **getattr(ledger, 'reconciliation', {}),
+            'source': ledger.source, 'total_model_calls': ledger.calls(),
+            'usage_by_model': usage(clients, lanes).get('models', {}),
+            'prior_usage_by_model': ledger.extra.get('prior_usage_by_model', {}),
+        }
+        audit_path.write_text(json.dumps(audit, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+    return result
 
 
 def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dict, r2, ledger: UsageLedger) -> int:
@@ -3359,13 +3829,15 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         from collectors.nse_events.run_daily import security_master
         try:
             cap_as_of = today - timedelta(days=1)  # last available exchange snapshot on or before yesterday
-            master = security_master(r2, cap_as_of.isoformat(), setup)
-            log(f'market-cap eligibility snapshot requested as of {cap_as_of.isoformat()} or earlier; '
-                f'actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
+            master = security_master(r2, cap_as_of.isoformat(), setup, max_age_days=7)
+            log(f'market-cap gate: strictly above Rs 500 Cr; snapshot requested as of {cap_as_of.isoformat()} '
+                f'with max age 7 days; actual snapshot={getattr(master, "market_cap_as_of", None) or "unavailable"}')
         except Exception as exc:  # noqa: BLE001
             setup.append(f'no security master ({type(exc).__name__}); market cap and BSE-NSE links unknown')
     if r2 is not None:
         used = used_today(r2, skip_run=ledger.run_id)
+        ledger.extra['prior_usage_by_model'] = used
+        log('quota ledger prior usage for current provider windows', json.dumps(used, sort_keys=True))
         for lane in lanes.values():
             lane.used_today = used
         configure_rate_limit_circuit_breaker(lanes, r2, today.isoformat())
@@ -3380,8 +3852,8 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         old = load_archive(r2, READS_PREFIX, today)
         old = old[old['event_id'].isin(ids)].drop_duplicates('event_id', keep='last')
         gone = [c for c in ('status', 'same_as', 'tries', 'reason', 'reader', 'reader_lane', 'prompt_version', 'category', 'fields',
-                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'agreed',
-                            'seconds', 'read_at', 'headline', 'points') if c in old.columns]
+                            'metrics', 'second_reader', 'second_category', 'second_fields', 'shown', 'held', 'headline_shown', 'headline_held',
+                            'narrative_shown', 'narrative_held', 'agreed', 'seconds', 'read_at', 'headline', 'points', 'narrative') if c in old.columns]
         to_read, done, status_rows, counts = old.drop(columns=gone), None, pd.DataFrame(), {'replay': len(old)}
         current_candidates = None
         log(f'replay: {len(old)} of {len(ids)} filings found in the reads archive')
@@ -3390,6 +3862,19 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
         current_candidates = candidates(nse, bse, master)
         to_read, status_rows, counts = choose(current_candidates, done, today)
+        # Only now, after eligibility and duplicate gates, query NSE's separate
+        # Integrated Filing APIs for live issuers whose selected filing makes them relevant.
+        # Bound endpoint traffic to the rows this run can realistically process.
+        # The normal live slot is intentionally capped at eight selected filings unless
+        # the operator explicitly supplies --max; quota-deferred runs make no companion calls.
+        integrated_limit = args.max if args.max is not None else 8
+        integrated_targets = to_read.head(max(0, integrated_limit)) if not out_of_quota else to_read.iloc[0:0]
+        integrated = collect_integrated_companions(integrated_targets, r2, today, args.dry_run, setup,
+                                                   max_requests=max(0, integrated_limit))
+        if integrated is not None and not integrated.empty:
+            nse = pd.concat([nse, integrated], ignore_index=True) if nse is not None else integrated
+            current_candidates = candidates(nse, bse, master)
+            to_read, status_rows, counts = choose(current_candidates, done, today)
 
     if out_of_quota:
         to_read = to_read.iloc[0:0]   # nothing is sent to a model; the next run with quota reads them
@@ -3418,9 +3903,45 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
               for r in status_rows.to_dict('records')]
     rows += status
     use = usage(clients, lanes)
+    narrative_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        items = r.get('narrative') or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except ValueError:
+                items = []
+        if isinstance(items, list):
+            narrative_items.extend(n for n in items if isinstance(n, dict))
+    narrative_holds = pd.Series([str(n.get('reason')) for n in narrative_items
+                                 if not n.get('shown') and n.get('reason')]).value_counts().to_dict()
+    headline_items = []
+    for r in rows:
+        if r.get('status') != 'read':
+            continue
+        item = r.get('headline')
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                item = None
+        if isinstance(item, dict):
+            headline_items.append(item)
+    headline_holds = pd.Series([str(h.get('reason')) for h in headline_items
+                                if not h.get('shown') and h.get('reason')]).value_counts().to_dict()
     ledger.extra.update(counts=counts, outcomes={str(k): int(v) for k, v in
-                                                 pd.Series([r['status'] for r in rows]).value_counts().items()})
-    ledger.write()
+                                                 pd.Series([r['status'] for r in rows]).value_counts().items()},
+                        headline_claims={'shown': sum(bool(h.get('shown')) for h in headline_items),
+                                         'held': sum(not bool(h.get('shown')) for h in headline_items),
+                                         'held_reasons': headline_holds},
+                        narrative_claims={'shown': sum(bool(n.get('shown')) for n in narrative_items),
+                                          'held': sum(not bool(n.get('shown')) for n in narrative_items),
+                                          'held_reasons': narrative_holds})
+    ledger_write_ok = ledger.write()
+    log(f'usage ledger checkpoint write_ok={ledger_write_ok} run_id={ledger.run_id} '
+        f'key={ledger.key} calls={ledger.calls()}')
     text = summary_markdown(counts, rows, notes_run, use, setup)
     print(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
@@ -3432,8 +3953,15 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         if current_candidates is None:   # a replay has no candidate list to audit
             return 0
         xbrl_report = xbrl_audit(current_candidates)
+        xbrl_report['sme_exclusions'] = sme_exclusion_audit(nse, bse, master)
+        xbrl_report['eligibility'] = {
+            'market_cap_cutoff_cr': 500, 'market_cap_operator': '>',
+            'market_cap_snapshot_as_of': getattr(master, 'market_cap_as_of', None),
+            'max_snapshot_age_days': 7,
+        }
         Path('announcement_reader_xbrl_audit.json').write_text(
             json.dumps(xbrl_report, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
+        log('SME exclusion audit', json.dumps(xbrl_report['sme_exclusions'], sort_keys=True))
         log('XBRL audit', json.dumps({k: xbrl_report[k] for k in ('candidates', 'has_xbrl_flagged', 'direct_xbrl_urls', 'xbrl_attachments', 'xbrl_linked')}))
         return 0
     saver.pending += status
@@ -3478,6 +4006,11 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         log('company-history stage off (READER_HISTORY is not 1): supervised run, today\'s filings only')
     elif window_only and not in_history_window():
         log('company-history stage waits for the overnight window (22:30-09:00 IST): Monday to Friday daytime reads live filings only')
+    elif any('stopped further NSE requests' in note for note in setup):
+        # A 401/403/429 from any NSE feed is a hard stop for the entire run, not
+        # merely the current feed loop. Live card reading can finish from already-fetched rows,
+        # but no company-history stage may issue another NSE request this run.
+        log('company-history stage skipped: NSE hard-stop response observed earlier in this run')
     elif not history_run and not live_remaining.empty:
         log(f'Deferring company-history AI work: {len(live_remaining)} eligible live filings remain; '
             f'live queue counts={json.dumps(live_counts, default=str)}')
@@ -3491,8 +4024,6 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
                                   errors='coerce').fillna(0)
             eligible_today = current_candidates[
                 (dates == today.isoformat()) & (groups != 'routine') & (urls != '') & (caps > MIN_MCAP)
-                & current_candidates.get('market', pd.Series('', index=current_candidates.index)).astype(str).str.casefold().ne('sme')
-                & ~current_candidates.get('is_sme', pd.Series(False, index=current_candidates.index)).fillna(False).astype(bool)
             ]
             current_isins.update(eligible_today['isin'].dropna().astype(str))
         try:

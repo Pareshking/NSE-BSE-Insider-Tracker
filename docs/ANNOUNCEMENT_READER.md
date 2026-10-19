@@ -1,10 +1,23 @@
-# Announcement reader: state and plan (updated 14 Oct 2026)
+# Announcement reader: state and plan (updated 19 Oct 2026)
+
+> **Current rollout status (19 Oct):** NSE SME is excluded at source collection; BSE SME-group rows and archived NSE SME rows are excluded before candidate processing. Only companies with a verified market cap **strictly above ₹500 crore** from a snapshot no more than seven days old can reach AI reading. The latest successful PR dry-run used the 16 Oct 2026 snapshot, excluded 7 BSE SME rows, rejected 26 rows at or below ₹500 crore and 5 with unverified market cap, and produced 3 read cards. One XBRL companion (CAMLINFINE) was linked using strict issuer/date/subject checks. The run's provider usage ledger reconciled successfully. Production AI reading remains paused; a green dry-run alone does not authorize reactivation.
+
 
 This document records the live reader and the historical AI backfill. Older dated notes below are an
 engineering log, not the current rollout status. The agreed historical AI backfill starts **01 Jan 2026**.
 The live reader prioritizes today/yesterday. After each successful live cycle, the same serialized workflow checks the eligible live queue; only when it is empty does it read at most one historical AI batch. Historical reading progresses month by month as soon as each month has a successful collection checkpoint; it does not wait for all requested months. For the current month, dates older than the live/nightly collection window are collected one day at a time during idle cycles, then read in bounded batches.
 
 Current implementation paths:
+- Dedicated NSE structured filing companions: the reader also queries the separate
+  `/api/integrated-filing-financials` and `/api/corporate-governance` endpoints for issuers
+  already selected from today's/yesterday's eligible live filings. It does not crawl all issuers
+  or perform a separate historical pass through these endpoints. Requests are bounded by the
+  selected read budget (eight selected rows by default, or the explicit `--max`) and skipped when
+  the run is quota-deferred. Only direct exchange-supplied XML/XBRL URLs and records dated today
+  or yesterday enter companion matching; an HTML/iXBRL display page or a generic ZIP is not treated
+  as a structured instance. Raw responses are captured before parsing in live mode. Financial and
+  governance pairings require the corresponding explicit filing semantics, one nearby companion,
+  and no competing issuer filings in the matching window; ambiguous links remain unpaired.
 - Collectors (no model): `collectors/nse_events/announcements.py` and `collectors/bse/announcements.py`;
   both support bounded `--from YYYY-MM-DD --to YYYY-MM-DD` historical windows.
 - Live reader: `scripts/announcement_reader.py`; prompt receives earlier, source-linked company memory.
@@ -52,7 +65,7 @@ Current implementation paths:
 Historical backfill acceptance is tracked separately as TODO item 30. A green workflow run means the code and bounded batch succeeded; the overall backfill is complete only when every completed collection month has been exhausted and the persisted state says `complete` and `remaining: 0`. A `running` or `paused` state is resumable, not completion. If the live queue has eligible unread filings, the historical worker defers until a later cycle.
 
 Code:
-- Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board and SME),
+- Collectors (no model): `collectors/nse_events/announcements.py` (NSE main board only; SME is out of scope),
   `collectors/bse/announcements.py` (BSE), workflow `announcement-collect.yml` (nightly, 3 days; any range by hand; no model).
 - Live reader: `scripts/announcement_reader.py`, lanes in `scripts/announcement_readers.txt`, workflow
   `announcement-reader.yml` (every 15 minutes on `main`; on a PR a 3-filing dry run, nothing written).
@@ -72,20 +85,27 @@ Code:
   refused (HTTP 401) ... renew the GitHub secret"), `ZAI_API_KEY`. Never in the repo or Streamlit secrets,
   so models cannot be called from a laptop.
 - Only public filing text goes in a prompt; nothing personal. Models get extracted text
-  (`pdftotext -layout`, ZIPs opened), never PDFs.
-- Every value must carry a quote found in the PDF text, and prices and counts must have their digits in
+  (`pdftotext -layout`, ZIPs opened), never PDFs. For PDF/ZIP text, the reader applies
+  `insiders_clean.text_clean.clean` to the model input to remove repeated page furniture, exchange address
+  lines and letterhead padding. The original extracted text remains untouched for quote validation, number/unit
+  checks, hashes and duplicate detection. Structured XBRL facts bypass this layout cleaner; a cleaner failure
+  or empty result falls back to the original text and is logged.
+- The recurring production chain enables bounded Gemini batching for short filings (up to four per request).
+  Each response is validated against its own filing; a missing/invalid batch answer and a long filing fall back
+  to individual reads. Manual runs remain configurable.
+- Every value must carry a quote found in the original extracted filing text, and prices and counts must have their digits in
   the quote; otherwise it is held back, never shown. The model gives numbers as written with their unit;
   our code converts (lakh, crore, million, billion) and computes every % change.
 - Use free limits up to 95%, through the day (every 15 minutes), not only at night; today's filings first.
 - The Brief (`/brief`) becomes the hub for critical and useful filings, crisp and tactical for the next
   day, with "before this" from our own data. No "impact" labels; gaps flagged neutrally.
 - Concall announcements are not collected (08 Oct decision).
-- Stocks below Rs 100 Cr market cap: their PDFs do not go to a model.
+- Current eligibility gate (updated 19 Oct 2026): only companies with a verified market cap strictly above Rs 500 Cr are sent to a model. The reader uses the latest available exchange snapshot from the prior seven days; it does not reconstruct market cap as of each old announcement. Missing/stale market cap fails closed.
 
 13 Oct, evening:
 - **Readers for the first live version: Kimi K3 on NVIDIA (main), Gemma 4 on NVIDIA (backup in the same
   lane), GLM-4.5-Flash on Z.ai (free) as the second lane and cross-check.**
-- Below Rs 100 Cr: keep these companies on the site for the time being (still never sent to a model).
+- The earlier Rs 100 Cr cutoff was replaced on 19 Oct 2026 with a strict > Rs 500 Cr gate. Older run counts in this document describe the old threshold and are historical only.
 - ADANIENT-type filings (reminder to pay call money on partly paid rights shares) count as `rights`.
 - The reader reads whichever exchange's copy of a filing comes first and skips the other.
 
@@ -178,8 +198,9 @@ then 29 seconds); no 429 from any provider in any run. No wrong value passed the
 
 ## NSE and BSE: what each adds (measured 12 Oct 2026)
 
-NSE's SME feed (`index=sme`) has the same fields and numbering as the main board's, and no filing in
-both (6-12 Oct: 3,318 main board, 699 SME). BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
+Historical scope note: NSE's SME feed (`index=sme`) was measured separately (6-12 Oct: 3,318 main-board
+filings, 699 SME), but SME listings are now explicitly out of the investment universe. The collector fetches
+only `index=equities`; the reader filters historical NSE SME rows and BSE SME-group listings before XBRL pairing or AI processing. BSE: `AnnSubCategoryGetData/w`, 50 filings a page, newest
 first, with the day's count; attachments at `www.bseindia.com/xml-data/corpfiling/AttachLive/<name>`
 (confirmed from a machine in India; the runner falls back to the in-page fetch if BSE refuses it).
 
@@ -190,7 +211,7 @@ each is addressed to its own exchange, so file size or hash cannot pair them):
 | Useful filings, 12 Oct | |
 |---|---|
 | NSE, company also filed on BSE that day | 129 |
-| NSE only: SME board (not on BSE at all) | 37 |
+| SME-board listings excluded from the reading universe | 37 |
 | NSE only: main board | 17 |
 | BSE only: companies not on NSE (354 companies) | 83 |
 | BSE only: codes missing from the 1 Sep security master | 40 |
@@ -198,7 +219,7 @@ each is addressed to its own exchange, so file size or hash cannot pair them):
 Same filing on both (347 pairs): BSE first by over a minute 204 times, NSE 89, within a minute 54;
 median BSE ahead by 2.0 minutes (useful filings: 91 pairs, 48 vs 21, median 1.2 minutes); over 30 minutes
 ahead: BSE 13, NSE 3. So both exchanges stay: BSE adds about 120 useful filings a day and is usually a
-minute or two ahead; NSE adds its SME board. Read once: same ISIN, within six hours, subjects alike.
+minute or two ahead. SME counts above are historical context only and are excluded from current collection/reading. Read once: same ISIN, within six hours, subjects alike.
 
 Regulation heads (Reg 30, 74(5) ...) as a filter: NSE's feed names one on 75 of 576 filings, BSE's mostly
 74(5) (already its own subcategory, routine) or 30 (on nearly everything). The subject lines already carry
@@ -211,7 +232,7 @@ lists (not collected yet).
 Every 15 minutes (on `main`, at :07, :22, :37 and :52; GitHub may start a run a few minutes late): collect yesterday's and today's NSE and BSE filings (BSE stops paging at the
 first page it already has; yesterday too, so a filing made public between the nightly collection at 22:45
 and midnight is read the same night); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
-skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
+skip those read before, the same filing on the other exchange, SME listings, companies at or below Rs 500 Cr, and companies without a recent verified market-cap snapshot; download, and
 copy instead of reading when the same file or text was read before (also when two lanes take one file at
 once: the second waits for the first's read); the lanes read different filings at the same time; check
 every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
@@ -426,6 +447,12 @@ steps. Subscribe to PR #56 and keep CI green."
 5. Sorter for `to_sort` filings from the subject plus the first ~1,500 characters (with the regulation
    cited there), so routine board outcomes are not read in full.
 6. XBRL of announcements: `hasXbrl` is true on all NSE rows but no URL is given; not probed yet.
+
+### Evidence-backed card narrative (18 Oct 2026)
+
+Each new read may include a short narrative in addition to the checked headline, points, fields and metrics. The narrative can connect a previously verified management-call statement or company event with the current filing, and can surface explicit forward guidance from the current filing. Every narrative sentence must cite verbatim evidence from the current filing or persistent company memory; the reader verifies source membership and number support before it is stored or shown. Claims that guidance was met/missed require both historical and current evidence for the same measure, and simple percentage-margin comparisons are checked deterministically. Unsupported claims are held back. The prompt version is bumped so eligible recent filings are reread once.
+
+The deterministic semantic gate also holds claims that turn a cancellation into a win, promote a proposal to an approval/completion, reverse the direction of a measure, or name a counterparty absent from the supporting quote. It is deliberately conservative and must be judged on false positives as well as false negatives in the reviewed card set.
 
 ### Headline format (16 Oct, owner's rule)
 

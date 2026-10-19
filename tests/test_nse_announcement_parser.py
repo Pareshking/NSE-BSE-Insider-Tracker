@@ -97,6 +97,24 @@ def test_dedicated_xbrl_feed_ignores_rows_without_an_xml_attachment():
     assert parsed.empty
 
 
+def test_para_feed_prefers_xml_xbrl_field_over_pdf_and_ixbrl_display_links():
+    parsed = parse_xbrl([{
+        "appId": "APP-PARA",
+        "symbol": "MARATHON",
+        "subject": "Financial Results",
+        "broadcastDateTime": "15-Oct-2026 10:00:00",
+        "xbrl": "https://nsearchives.nseindia.com/corporate/xbrl/MARATHON_results.xml",
+        "attachment": "https://nsearchives.nseindia.com/corporate/MARATHON_results.pdf",
+        "ixbrl": "https://nsearchives.nseindia.com/corporate/ixbrl/MARATHON_results.html",
+    }], "equities")
+    assert len(parsed) == 1
+    row = parsed.iloc[0]
+    assert row["file_url"].endswith("MARATHON_results.xml")
+    assert row["xbrl_url"] == row["file_url"]
+    assert row["file_type"] == "xbrl"
+    assert bool(row["has_xbrl"]) is True
+
+
 
 def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch):
     requested = []
@@ -111,3 +129,66 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
     )]
     assert client.s.headers['Referer'] == "https://www.nseindia.com/"
     assert 'X-Requested-With' not in client.s.headers
+
+
+
+def test_integrated_filing_client_uses_distinct_official_symbol_scoped_endpoints():
+    client = NSEClient()
+    assert client.integrated_filing_financials_url(symbol='IOC') == (
+        'https://www.nseindia.com/api/integrated-filing-financials?index=equities&symbol=IOC')
+    assert client.integrated_filing_financials_url(quarter_end_date='30-Sep-2026') == (
+        'https://www.nseindia.com/api/integrated-filing-financials?index=equities&quarterEndDate=30-Sep-2026')
+    assert client.corporate_governance_url('IOC') == (
+        'https://www.nseindia.com/api/corporate-governance?index=equities&symbol=IOC')
+    with pytest.raises(ValueError):
+        client.integrated_filing_financials_url('')
+    with pytest.raises(ValueError):
+        client.integrated_filing_financials_url(symbol='IOC', quarter_end_date='30-Sep-2026')
+    with pytest.raises(ValueError):
+        client.integrated_filing_financials_url(quarter_end_date='2026-09-30')
+    with pytest.raises(ValueError):
+        client.corporate_governance_url('IOC;bad')
+    requested = []
+    client.get = lambda url, **kwargs: requested.append((url, kwargs)) or {'data': [{'symbol': 'IOC'}]}
+    assert client.integrated_filing_financials('IOC') == [{'symbol': 'IOC'}]
+    assert client.corporate_governance('IOC') == [{'symbol': 'IOC'}]
+    assert [x[0] for x in requested] == [
+        client.integrated_filing_financials_url('IOC'), client.corporate_governance_url('IOC')]
+    assert all(x[1] == {'timeout': 10, 'retries': 1} for x in requested)
+
+
+def test_integrated_filing_parser_keeps_only_exchange_supplied_xml_links():
+    from collectors.nse_events.announcements import parse_integrated_xbrl
+    rows = [
+        {'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
+         'broadcastDateTime': '15-Oct-2026 18:43:11',
+         'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results.xml'},
+        {'symbol': 'IOC', 'companyName': 'Indian Oil Corporation Limited',
+         'broadcastDateTime': '15-Oct-2026 18:43:11',
+         'details': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'},
+        {'symbol': 'IOC', 'xbrl': 'https://nsearchives.nseindia.com/corporate/IOC_results.pdf'},
+    ]
+    parsed = parse_integrated_xbrl(rows, 'financials')
+    assert len(parsed) == 1
+    assert parsed.iloc[0]['symbol'] == 'IOC'
+    assert parsed.iloc[0]['file_url'].endswith('IOC_results.xml')
+    assert parsed.iloc[0]['subject'] == 'Integrated Filing - Financials'
+    assert bool(parsed.iloc[0]['has_xbrl']) is True
+
+
+
+def test_integrated_filing_revision_timestamp_controls_live_window_date():
+    from collectors.nse_events.announcements import parse_integrated_xbrl
+
+    parsed = parse_integrated_xbrl([{
+        'appId': 'IOC-REV-1',
+        'symbol': 'IOC',
+        'companyName': 'Indian Oil Corporation Limited',
+        'broadcastDateTime': '01-Oct-2026 10:00:00',
+        'revisedDateTime': '19-Oct-2026 12:15:00',
+        'revision': 'Revised',
+        'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_results_revision.xml',
+    }], 'financials')
+    assert len(parsed) == 1
+    assert parsed.iloc[0]['broadcast_date'] == '2026-10-19'
+    assert parsed.iloc[0]['broadcast_at'].startswith('2026-10-19T12:15:00')
