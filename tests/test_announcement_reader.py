@@ -264,6 +264,18 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
 
 
+def test_previously_read_card_is_retired_when_current_market_cap_falls_below_cutoff():
+    today = date(2026, 10, 13)
+    candidate = _cand('previous-read', 'NSE', 'INEOLD', '2026-10-13T10:00:00+05:30', 'Buyback',
+                      mcap=4_000_000_000)
+    c = pd.DataFrame([candidate])
+    done = pd.DataFrame([{**candidate, 'status': 'read', 'tries': 1, 'prompt_version': ar.PROMPT_VERSION}])
+    selected, status, counts = ar.choose(c, done, today)
+    assert selected.empty
+    assert status.set_index('event_id').loc['previous-read', 'status'] == 'below_500_cr'
+    assert counts['already_done'] == 0
+
+
 def test_old_below_100_cr_status_is_rechecked_under_the_new_current_cap_cutoff():
     today = date(2026, 10, 13)
     c = pd.DataFrame([_cand('old-small', 'NSE', 'INEOLD', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=6_000_000_000)])
