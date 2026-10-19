@@ -1965,8 +1965,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
 
     def management_pdf_support(row):
         text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
-        return (re.search(r'\\bindependent director\\b', text, re.IGNORECASE) is not None
-                and re.search(r'\\b(tenure|retirement|cessation|completion)\\b', text, re.IGNORECASE) is not None)
+        return (re.search(r'\bindependent director\b', text, re.IGNORECASE) is not None
+                and re.search(r'\b(tenure|retirement|cessation|completion)\b', text, re.IGNORECASE) is not None)
 
     records = df.to_dict('records')
     structured_rows = []
