@@ -62,7 +62,7 @@ def semantic_reason(text: object, quote: object, category: str = "", doc: str = 
     broad_governance_exemption = re.search(
         r"\b(?:exempt\s+from|non[- ]applicability\s+of|non[- ]applicable\s+to|not\s+applicable\s+to)\s+corporate\s+governance\b",
         c,
-    )
+    ) or re.search(r"\bexemption\s+applies\b", c)
     claim_scoped = bool(
         re.search(r"\bcorporate\s+governance\s+report(?:ing)?\b", c)
         or (re.search(r"\bprovisions?\b", c) and re.search(r"\breg(?:ulation)?\.?\s*27\b", c))
