@@ -1008,6 +1008,10 @@ def test_usage_ledger_replaces_its_own_file_so_no_call_counts_twice(monkeypatch)
     now = datetime.now(timezone.utc)
     assert ar.used_today(object(), now) == {'nvidia:m': 3}
     assert ar.used_today(object(), now, skip_run=ledger.run_id) == {}
+    assert ledger.close()
+    assert ledger.reconciliation['reconciled'] is True
+    assert ledger.reconciliation['saved_calls'] == 3
+    assert ledger.reconciliation['calls_by_minute_total'] == 3
 
 
 def _run_file(store, day, run, minutes):
@@ -2494,6 +2498,25 @@ def test_candidates_exclude_bse_sme_group_but_keep_main_board_bse_rows():
     ])
     out = ar.candidates(pd.DataFrame(), rows, Master())
     assert set(out['event_id']) == {'bse:main'}
+    audit = ar.sme_exclusion_audit(
+        pd.DataFrame([{'event_id': 'nse:sme:pdf:3', 'market': None},
+                      {'event_id': 'nse:xbrl:sme:10002:xyz'}]), rows, Master())
+    assert audit == {'nse_sme_rows_excluded': 2, 'bse_sme_rows_excluded': 1}
+
+
+def test_security_master_marks_bse_group_m_as_sme():
+    from insiders_clean.securities import SecurityMaster, bse_list_frame
+    rows = [
+        {'symbol': '540001', 'isin': 'INE000M01000', 'company_name': 'SME issuer Ltd',
+         'market_cap': 6_000_000_000, 'source': 'bse_list_securities', 'group': 'M'},
+        {'symbol': '500001', 'isin': 'INE000A01000', 'company_name': 'Main issuer Ltd',
+         'market_cap': 6_000_000_000, 'source': 'bse_list_securities', 'group': 'A'},
+    ]
+    master = SecurityMaster(bse_list=bse_list_frame(rows), market_cap_rows=rows)
+    sme = master.record('INE000M01000')
+    main = master.record('INE000A01000')
+    assert sme['bse_group'] == 'M' and sme['is_sme_listing'] is True
+    assert main['bse_group'] == 'A' and main['is_sme_listing'] is False
 
 
 def test_candidates_exclude_sme_market_aliases_case_insensitively():
@@ -2502,6 +2525,10 @@ def test_candidates_exclude_sme_market_aliases_case_insensitively():
          'file_url': 'https://nsearchives.nseindia.com/corporate/A.pdf',
          'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30',
          'broadcast_date': '2026-10-19', 'market': 'SME Platform'},
+        {'event_id': 'nse:sme:pdf:3', 'symbol': 'C', 'subject': 'Update', 'text': 'Archived SME filing',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/C.pdf',
+         'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:01:00+05:30',
+         'broadcast_date': '2026-10-19'},  # old archive row with no market label
         {'event_id': 'nse:2', 'symbol': 'B', 'subject': 'Update', 'text': 'Equity filing',
          'file_url': 'https://nsearchives.nseindia.com/corporate/B.pdf',
          'file_type': 'pdf', 'broadcast_at': '2026-10-19T10:00:00+05:30', 'broadcast_date': '2026-10-19'},
