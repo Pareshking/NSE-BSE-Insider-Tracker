@@ -389,6 +389,7 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
     frames, xbrl_frames = [], []
     blocked = False
     for a, b in (month_chunks(start, end) if backfill_from else [(start, end)]):
+        chunk_standard = None
         for market in FEEDS:
             def make_hook(x, y, market=market):   # exact bytes before parsing; a failed write stops the run
                 def hook(url, resp):
@@ -424,6 +425,7 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
             except Exception as exc:  # noqa: BLE001 -- the check must not lose the window it checks
                 report['notes'].append(f'{market} {a}..{b}: cross-check failed ({type(exc).__name__}: {exc})')
             report['calls'].append(call)
+            chunk_standard = df.copy()
             frames.append(df)
             if blocked:
                 break
@@ -466,41 +468,65 @@ def run(r2, nse: NSEClient, today: date, days: int = NIGHTLY_DAYS, raw=None,
                 break
         if blocked:
             break
-        # Integrated Filing-Financials and Integrated Filing-Governance are separate
-        # NSE tables/APIs, not guaranteed to appear in the ordinary XBRL announcement feeds.
-        # They are optional companions: only direct exchange-supplied XML URLs are retained.
-        for filing_type in ('financials', 'governance'):
-            raw_write_error = []
-            if raw is not None:
-                def integrated_hook(url, resp, a=a, b=b, market=market, filing_type=filing_type):
-                    try:
-                        raw.put('nse', 'announcements_integrated', resp.content, url=url, status=resp.status_code,
-                                content_type=resp.headers.get('Content-Type'),
-                                covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
-                                        'filing_type': filing_type})
-                    except Exception as exc:  # preserve the write-once raw-source invariant
-                        raw_write_error.append(exc)
-                        raise
-                nse.on_response = integrated_hook
-            try:
-                integrated_rows = nse.integrated_filings(a, b, filing_type=filing_type)
-                idf = parse_integrated_xbrl(integrated_rows, filing_type, market)
-                report['xbrl_calls'].append({'market': market, 'feed_type': f'integrated-{filing_type}',
-                                             'from': a.isoformat(), 'to': b.isoformat(),
-                                             'source_rows': len(integrated_rows), 'rows': len(idf)})
-                if not idf.empty:
-                    xbrl_frames.append(idf)
-            except Blocked as exc:
-                if raw_write_error:
-                    raise raw_write_error[0]
-                report['notes'].append(f'NSE integrated {filing_type} refused ({exc}); ordinary PDF path retained')
-                blocked = True
+        # Integrated Financials and Governance have their own symbol-scoped APIs.
+        # Query only issuers with a relevant live filing in this window; never issue an
+        # unbounded historical scan or guess that Governance is a Financials query type.
+        relevant_symbols = {}
+        if chunk_standard is not None and not chunk_standard.empty:
+            for row in chunk_standard.to_dict('records'):
+                symbol = str(row.get('symbol') or '').strip().upper()
+                if not symbol:
+                    continue
+                context = f"{row.get('subject') or ''} {row.get('text') or ''}"
+                if re.search(r'financial results?|results? for (?:the )?(?:quarter|period|year)|integrated filing\s*[-–:]?\s*financial', context, re.IGNORECASE):
+                    relevant_symbols.setdefault(symbol, set()).add('financials')
+                if re.search(r'integrated filing\s*[-–:]?\s*governance|corporate governance|investor grievance', context, re.IGNORECASE):
+                    relevant_symbols.setdefault(symbol, set()).add('governance')
+        for symbol, filing_types in relevant_symbols.items():
+            for filing_type in sorted(filing_types):
+                raw_write_error = []
+                if raw is not None:
+                    def integrated_hook(url, resp, a=a, b=b, market=market, filing_type=filing_type, symbol=symbol):
+                        try:
+                            raw.put('nse', 'announcements_integrated', resp.content, url=url, status=resp.status_code,
+                                    content_type=resp.headers.get('Content-Type'),
+                                    covers={'from': a.isoformat(), 'to': b.isoformat(), 'index': market,
+                                            'filing_type': filing_type, 'symbol': symbol})
+                        except Exception as exc:  # preserve the write-once raw-source invariant
+                            raw_write_error.append(exc)
+                            raise
+                    nse.on_response = integrated_hook
+                try:
+                    if filing_type == 'financials':
+                        integrated_rows = nse.integrated_filing_financials(symbol)
+                    else:
+                        integrated_rows = nse.corporate_governance(symbol)
+                    idf = parse_integrated_xbrl(integrated_rows, filing_type, market)
+                    if not idf.empty:
+                        parsed_dates = pd.to_datetime(idf['broadcast_date'], errors='coerce').dt.date
+                        # Symbol endpoints can return prior filings. Only archive companion
+                        # rows whose exchange broadcast date falls inside this exact window.
+                        idf = idf[parsed_dates.map(lambda value: value is not None and a <= value <= b)].copy()
+                    report['xbrl_calls'].append({'market': market, 'feed_type': f'integrated-{filing_type}',
+                                                 'symbol': symbol, 'from': a.isoformat(), 'to': b.isoformat(),
+                                                 'source_rows': len(integrated_rows), 'rows': len(idf)})
+                    if not idf.empty:
+                        xbrl_frames.append(idf)
+                except Blocked as exc:
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    report['notes'].append(
+                        f'NSE integrated {filing_type}/{symbol} refused ({exc}); ordinary PDF path retained')
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional structured source must not block PDFs
+                    if raw_write_error:
+                        raise raw_write_error[0]
+                    report['notes'].append(
+                        f'NSE integrated {filing_type}/{symbol} {a}..{b}: fetch/parse failed '
+                        f'({type(exc).__name__}: {exc}); PDF path retained')
+            if blocked:
                 break
-            except Exception as exc:  # noqa: BLE001 -- separate integrated endpoint must not block ordinary PDFs
-                if raw_write_error:
-                    raise raw_write_error[0]
-                report['notes'].append(
-                    f'NSE integrated {filing_type} {a}..{b}: fetch/parse failed ({type(exc).__name__}: {exc}); PDF path retained')
         if blocked:
             break
     nse.on_response = None
