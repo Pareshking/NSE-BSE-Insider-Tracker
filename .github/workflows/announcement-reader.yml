@@ -169,8 +169,8 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           READER_MINUTES: ${{ inputs.minutes || (github.event_name == 'push' && '40') || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
-          READER_BATCH: ${{ inputs.batch == true || github.event_name == 'push' && '1' || '0' }}
-          READER_VISION: ${{ inputs.vision == true || github.event_name == 'push' && '1' || '0' }}
+          READER_BATCH: ${{ inputs.batch == true && '1' || (github.event_name == 'push' && '1') || '0' }}
+          READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
           READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
           READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
           FLAGS_use_mkldnn: '0'
