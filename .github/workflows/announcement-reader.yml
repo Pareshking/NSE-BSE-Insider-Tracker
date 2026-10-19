@@ -489,3 +489,343 @@ jobs:
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
           gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
+; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.changed.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.changed.outputs.go == '1'
+        run: |
+          pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+          if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
+          if [ "${{ inputs.paddle }}" = "true" ]; then pip install paddlepaddle "paddleocr[all]"; fi
+      - name: Guard experimental prompt
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
+        run: |
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
+          exit 1
+      - name: Read unified pipeline
+        id: reader
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: ${{ inputs.minutes || '11' }}
+          READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
+          READER_BATCH: ${{ github.event_name == 'pull_request' && '1' || (github.event_name == 'push' && '1') || (inputs.batch == true && '1' || '0') }}
+          READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
+          READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
+          READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
+          FLAGS_use_mkldnn: '0'
+          REPLAY: ${{ inputs.replay || '' }}
+          ANNOUNCEMENT_CALL_SECONDS: '120'
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '25') || inputs.max || '' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'v2' || inputs.prompt_variant || 'v2' }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
+          DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"} ${REPLAY:+--replay "$REPLAY"}
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
+        with:
+          name: announcement-pipeline-dry-run
+          path: |
+            announcement_reader_dry_run.json
+            announcement_reader_xbrl_audit.json
+            announcement_reader_run_audit.json
+          if-no-files-found: ignore
+
+  next:
+    needs: read
+    # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && (inputs.chain == true || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+          EXHAUSTED: ${{ needs.read.outputs.exhausted }}
+          HISTORY_DONE: ${{ needs.read.outputs.history_done }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          # every model out of quota for the day: look again in an hour (source collection continues, no model work)
+          if [ "$EXHAUSTED" = "1" ]; then gap=3600; fi
+          # history finished (hard stop 18 Oct 2026) and nothing to do between live passes: half an hour, inside the 60-minute live windows
+          if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
+; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.changed.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.changed.outputs.go == '1'
+        run: |
+          pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+          if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
+          if [ "${{ inputs.paddle }}" = "true" ]; then pip install paddlepaddle "paddleocr[all]"; fi
+      - name: Guard experimental prompt
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
+        run: |
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
+          exit 1
+      - name: Read unified pipeline
+        id: reader
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: ${{ inputs.minutes || '11' }}
+          READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
+          READER_BATCH: ${{ github.event_name == 'pull_request' && '1' || (github.event_name == 'push' && '1') || (inputs.batch == true && '1' || '0') }}
+          READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
+          READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
+          READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
+          FLAGS_use_mkldnn: '0'
+          REPLAY: ${{ inputs.replay || '' }}
+          ANNOUNCEMENT_CALL_SECONDS: '120'
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '25') || inputs.max || '' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'v2' || inputs.prompt_variant || 'v2' }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
+          DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"} ${REPLAY:+--replay "$REPLAY"}
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
+        with:
+          name: announcement-pipeline-dry-run
+          path: |
+            announcement_reader_dry_run.json
+            announcement_reader_xbrl_audit.json
+            announcement_reader_run_audit.json
+          if-no-files-found: ignore
+
+  next:
+    needs: read
+    # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && (inputs.chain == true || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+          EXHAUSTED: ${{ needs.read.outputs.exhausted }}
+          HISTORY_DONE: ${{ needs.read.outputs.history_done }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          # every model out of quota for the day: look again in an hour (source collection continues, no model work)
+          if [ "$EXHAUSTED" = "1" ]; then gap=3600; fi
+          # history finished (hard stop 18 Oct 2026) and nothing to do between live passes: half an hour, inside the 60-minute live windows
+          if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
+; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.changed.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.changed.outputs.go == '1'
+        run: |
+          pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+          if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
+          if [ "${{ inputs.paddle }}" = "true" ]; then pip install paddlepaddle "paddleocr[all]"; fi
+      - name: Guard experimental prompt
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
+        run: |
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
+          exit 1
+      - name: Read unified pipeline
+        id: reader
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: ${{ inputs.minutes || '11' }}
+          READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
+          READER_BATCH: ${{ github.event_name == 'pull_request' && '1' || (github.event_name == 'push' && '1') || (inputs.batch == true && '1' || '0') }}
+          READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
+          READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
+          READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
+          FLAGS_use_mkldnn: '0'
+          REPLAY: ${{ inputs.replay || '' }}
+          ANNOUNCEMENT_CALL_SECONDS: '120'
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '25') || inputs.max || '' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'v2' || inputs.prompt_variant || 'v2' }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
+          DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"} ${REPLAY:+--replay "$REPLAY"}
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
+        with:
+          name: announcement-pipeline-dry-run
+          path: |
+            announcement_reader_dry_run.json
+            announcement_reader_xbrl_audit.json
+            announcement_reader_run_audit.json
+          if-no-files-found: ignore
+
+  next:
+    needs: read
+    # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && (inputs.chain == true || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+          EXHAUSTED: ${{ needs.read.outputs.exhausted }}
+          HISTORY_DONE: ${{ needs.read.outputs.history_done }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          # every model out of quota for the day: look again in an hour (source collection continues, no model work)
+          if [ "$EXHAUSTED" = "1" ]; then gap=3600; fi
+          # history finished (hard stop 18 Oct 2026) and nothing to do between live passes: half an hour, inside the 60-minute live windows
+          if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
+; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=0" >> "$GITHUB_OUTPUT"; echo "The unified pipeline's files did not change in this push; nothing read." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.changed.outputs.go == '1'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.changed.outputs.go == '1'
+        run: |
+          pip install -r requirements.txt && sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils tesseract-ocr
+          if [ "${{ inputs.docling }}" = "true" ]; then pip install docling; fi
+          if [ "${{ inputs.paddle }}" = "true" ]; then pip install paddlepaddle "paddleocr[all]"; fi
+      - name: Guard experimental prompt
+        if: github.event_name == 'workflow_dispatch' && inputs.prompt_variant == 'v2' && inputs.dry_run != true && github.ref != 'refs/heads/main'
+        run: |
+          echo "Prompt v2 is production-enabled only on main; experimental branches must use dry_run=true." >&2
+          exit 1
+      - name: Read unified pipeline
+        id: reader
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          READER_MINUTES: ${{ inputs.minutes || '11' }}
+          READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
+          READER_BATCH: ${{ github.event_name == 'pull_request' && '1' || (github.event_name == 'push' && '1') || (inputs.batch == true && '1' || '0') }}
+          READER_VISION: ${{ inputs.vision == true && '1' || (github.event_name == 'push' && '1') || '0' }}
+          READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
+          READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
+          FLAGS_use_mkldnn: '0'
+          REPLAY: ${{ inputs.replay || '' }}
+          ANNOUNCEMENT_CALL_SECONDS: '120'
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '25') || inputs.max || '' }}
+          CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'v2' || inputs.prompt_variant || 'v2' }}
+          CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
+          DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
+        run: python -u scripts/announcement_reader.py $DRY ${MAX:+--max "$MAX"} ${REPLAY:+--replay "$REPLAY"}
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.go == '1' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == true))
+        with:
+          name: announcement-pipeline-dry-run
+          path: |
+            announcement_reader_dry_run.json
+            announcement_reader_xbrl_audit.json
+            announcement_reader_run_audit.json
+          if-no-files-found: ignore
+
+  next:
+    needs: read
+    # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && (inputs.chain == true || github.event_name == 'push') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: write
+    steps:
+      - name: Wait, then start the next run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STARTED: ${{ needs.read.outputs.started }}
+          RESULT: ${{ needs.read.result }}
+          EXHAUSTED: ${{ needs.read.outputs.exhausted }}
+          HISTORY_DONE: ${{ needs.read.outputs.history_done }}
+        run: |
+          now=$(date +%s); started=${STARTED:-$now}
+          if [ "$RESULT" = "success" ]; then gap=600; else gap=1800; fi
+          # every model out of quota for the day: look again in an hour (source collection continues, no model work)
+          if [ "$EXHAUSTED" = "1" ]; then gap=3600; fi
+          # history finished (hard stop 18 Oct 2026) and nothing to do between live passes: half an hour, inside the 60-minute live windows
+          if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
+          wait=$(( started + gap - now ))
+          if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
