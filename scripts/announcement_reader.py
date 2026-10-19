@@ -3850,7 +3850,12 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         to_read, status_rows, counts = choose(current_candidates, done, today)
         # Only now, after eligibility and duplicate gates, query NSE's separate
         # Integrated Filing APIs for live issuers whose selected filing makes them relevant.
-        integrated = collect_integrated_companions(to_read, r2, today, args.dry_run, setup)
+        # Bound endpoint traffic to the rows this run can realistically process.
+        # The normal live slot is intentionally capped at eight selected filings unless
+        # the operator explicitly supplies --max; quota-deferred runs make no companion calls.
+        integrated_limit = args.max if args.max is not None else 8
+        integrated_targets = to_read.head(max(0, integrated_limit)) if not out_of_quota else to_read.iloc[0:0]
+        integrated = collect_integrated_companions(integrated_targets, r2, today, args.dry_run, setup)
         if integrated is not None and not integrated.empty:
             nse = pd.concat([nse, integrated], ignore_index=True) if nse is not None else integrated
             current_candidates = candidates(nse, bse, master)
