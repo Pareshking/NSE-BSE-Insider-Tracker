@@ -2541,6 +2541,20 @@ def test_candidates_exclude_sme_listings_before_ai_and_xbrl_pairing():
     assert out.iloc[0]['market'] == 'equities'
 
 
+
+def test_headline_quote_is_extended_to_checked_amount_evidence():
+    doc = 'Issuer entered into a facility agreement. Facility amount: Rs. 500 Cr.'
+    fields = [{'name': 'amount', 'value': '500', 'number': 5e9, 'unit': 'crore',
+               'quote': 'Facility amount: Rs. 500 Cr.', 'shown': True}]
+    item = {'text': 'Issuer enters into Rs 500 Cr facility', 'quote': 'Issuer entered into a facility agreement.',
+            'shown': True, 'reason': None}
+    out = ar.ground_claim_quote(item, fields, [], doc)
+    assert out['shown']
+    assert 'Facility amount: Rs. 500 Cr.' in out['quote']
+    assert ar.s.quote_found(out['quote'], doc)
+
+
+
 def test_candidates_exclude_bse_sme_group_but_keep_main_board_bse_rows():
     class Master:
         market_cap_as_of = '2026-10-18'
