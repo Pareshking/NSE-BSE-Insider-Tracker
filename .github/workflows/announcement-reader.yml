@@ -18,12 +18,20 @@ on:
     paths:
       - 'scripts/announcement_reader.py'
       - 'scripts/card_semantics.py'
+      - 'scripts/announcement_backfill.py'
+      - 'scripts/announcement_sample.py'
       - 'collectors/nse_events/**'
       - 'insiders_clean/securities.py'
+      - 'insiders_clean/text_clean.py'
+      - 'streamlit_app/screens/filings_read.py'
       - 'tests/test_announcement_reader.py'
       - 'tests/test_card_semantics.py'
+      - 'tests/test_filings_read.py'
+      - 'tests/test_text_clean.py'
+      - 'tests/test_announcement_backfill.py'
       - 'tests/test_announcements.py'
       - 'tests/test_nse_announcement_parser.py'
+      - 'scripts/announcement_readers.txt'
       - '.github/workflows/announcement-reader.yml'
   push:
     branches: [main]
@@ -86,24 +94,7 @@ on:
         required: true
         type: boolean
         default: false
-  pull_request:
-    paths:
-      - 'scripts/announcement_reader.py'
-      - 'scripts/announcement_backfill.py'
-      - 'scripts/announcement_sample.py'
-      - 'insiders_clean/text_clean.py'
-      - 'streamlit_app/screens/filings_read.py'
-      - 'tests/test_filings_read.py'
-      - 'tests/test_text_clean.py'
-      - 'scripts/announcement_readers.txt'
-      - 'collectors/nse_events/run_daily.py'
-      - 'collectors/nse_events/announcements.py'
-      - 'collectors/nse_events/client.py'
-      - 'tests/test_announcement_reader.py'
-      - 'tests/test_announcement_backfill.py'
-      - 'tests/test_announcements.py'
-      - 'tests/test_nse_announcement_parser.py'
-      - '.github/workflows/announcement-reader.yml'
+
 
 permissions:
   contents: read
