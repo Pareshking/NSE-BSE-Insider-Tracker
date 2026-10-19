@@ -141,14 +141,17 @@ class NSEClient:
         return j if isinstance(j, list) else j.get('data', [])
 
     def xbrl_announcements(self, start: date, end: date, index: str = 'equities',
-                           symbol: str | None = None) -> list[dict]:
-        """Dedicated NSE Announcement XBRL feed; returns rows carrying attachment/ixbrl URLs.
+                           symbol: str | None = None, feed_type: str = 'announcements') -> list[dict]:
+        """Fetch one NSE XBRL-announcement feed type: announcements, para-a, para-b, or award.
 
-        This is separate from the normal announcements endpoint: its hasXbrl flag alone is
-        not a URL. The official XBRL page uses /api/XBRL-announcements with type=announcements.
+        NSE exposes multiple feed types. The legacy announcements feed alone misses Para A/Para B
+        records; para-b carries post-20-Jun-2026 material events, while award preserves the legacy
+        order-award feed. A row's xbrl URL may differ from its ordinary PDF attachment URL.
         """
+        if feed_type not in {'announcements', 'para-a', 'para-b', 'award'}:
+            raise ValueError(f'unsupported NSE XBRL feed type: {feed_type}')
         query = (f'index={index}&from_date={self._d(start)}&to_date={self._d(end)}'
-                 '&type=announcements')
+                 f'&type={feed_type}')
         if symbol:
             query += f'&symbol={symbol}'
         self.warm_up()
