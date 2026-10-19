@@ -1854,6 +1854,11 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         resolved = master.resolve('bse', bse_code) if master and bse_code else None
         isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
+        # BSE-only SME issuers are identified by the official security-group field in
+        # the daily BSE security snapshot. Exclude before candidate/XBRL processing.
+        bse_group = str(rec.get('bse_group') or '').strip().upper()
+        if bse_group in {'M', 'SME', 'BSE SME'} or rec.get('is_sme_listing') is True:
+            continue
         url = clean(r.get('file_url'))
         rows.append({'event_id': r['event_id'], 'exchange': 'BSE', 'market': 'bse', 'isin': isin,
                      'symbol': clean(rec.get('nse_symbol')) or bse_code, 'company': clean(r.get('company')),
