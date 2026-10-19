@@ -87,12 +87,12 @@ Code:
 - The Brief (`/brief`) becomes the hub for critical and useful filings, crisp and tactical for the next
   day, with "before this" from our own data. No "impact" labels; gaps flagged neutrally.
 - Concall announcements are not collected (08 Oct decision).
-- Stocks below Rs 100 Cr market cap: their PDFs do not go to a model.
+- Current eligibility gate (updated 19 Oct 2026): only companies with a verified market cap strictly above Rs 500 Cr are sent to a model. The reader uses the latest available exchange snapshot from the prior seven days; it does not reconstruct market cap as of each old announcement. Missing/stale market cap fails closed.
 
 13 Oct, evening:
 - **Readers for the first live version: Kimi K3 on NVIDIA (main), Gemma 4 on NVIDIA (backup in the same
   lane), GLM-4.5-Flash on Z.ai (free) as the second lane and cross-check.**
-- Below Rs 100 Cr: keep these companies on the site for the time being (still never sent to a model).
+- The earlier Rs 100 Cr cutoff was replaced on 19 Oct 2026 with a strict > Rs 500 Cr gate. Older run counts in this document describe the old threshold and are historical only.
 - ADANIENT-type filings (reminder to pay call money on partly paid rights shares) count as `rights`.
 - The reader reads whichever exchange's copy of a filing comes first and skips the other.
 
@@ -219,7 +219,7 @@ lists (not collected yet).
 Every 15 minutes (on `main`, at :07, :22, :37 and :52; GitHub may start a run a few minutes late): collect yesterday's and today's NSE and BSE filings (BSE stops paging at the
 first page it already has; yesterday too, so a filing made public between the nightly collection at 22:45
 and midnight is read the same night); choose today's and yesterday's filings in a reading group with a PDF or ZIP, newest first;
-skip those read before, the same filing on the other exchange, companies below Rs 100 Cr; download, and
+skip those read before, the same filing on the other exchange, SME listings, companies at or below Rs 500 Cr, and companies without a recent verified market-cap snapshot; download, and
 copy instead of reading when the same file or text was read before (also when two lanes take one file at
 once: the second waits for the first's read); the lanes read different filings at the same time; check
 every value; save. A run takes new filings for 11 minutes (`READER_MINUTES` in the workflow),
