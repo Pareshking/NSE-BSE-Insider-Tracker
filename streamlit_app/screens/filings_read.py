@@ -496,10 +496,8 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
                 out.append(f'Insiders {word} <b>{esc(kit.rupees(x["value"].sum()))}</b> on the market in '
                            f'{kit.plural(len(x), "filing")} in the last {INSIDER_DAYS} days.')
     if reads is not None and not reads.empty and pd.notna(at):
-        # cards_html passes a per-company slice sorted newest-first once for the whole render.
-        # Keep this function independently usable by tests and other callers with the old full-frame input.
-        # cards_html passes a per-company slice already restricted to eligible reads, with UTC timestamps
-        # parsed once for the render. Direct callers keep the full-frame fallback.
+        # cards_html passes eligible per-company reads with UTC timestamps parsed once for the render.
+        # Direct callers keep the full-frame fallback.
         if reads_prepared:
             e = reads[reads['event_id'].ne(r.get('event_id'))]
             t = e['_broadcast_at_utc']
