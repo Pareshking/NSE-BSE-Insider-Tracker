@@ -229,9 +229,9 @@ def test_choose_excludes_unverified_market_cap_and_requires_more_than_500_cr():
     to_read, status, counts = ar.choose(c, None, today)
     assert list(to_read['event_id']) == ['above']
     statuses = status.set_index('event_id')['status'].to_dict()
-    assert statuses == {'below': 'below_500_cr', 'boundary': 'below_500_cr',
+    assert statuses == {'below': 'at_or_below_500_cr', 'boundary': 'at_or_below_500_cr',
                         'unknown': 'market_cap_unverified'}
-    assert counts['below_500_cr'] == 2
+    assert counts['at_or_below_500_cr'] == 2
     assert counts['market_cap_unverified'] == 1
 
 
@@ -254,8 +254,8 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert to_read.set_index('event_id')['tries']['nse:7'] == 1          # a failure is tried again
     st = status.set_index('event_id')
     assert st.loc['bse:a', 'status'] == 'same_filing_other_exchange' and st.loc['bse:a', 'same_as'] == 'nse:1'
-    assert st.loc['nse:3', 'status'] == 'below_500_cr'
-    assert counts == {'candidates': 7, 'routine_or_no_file': 1, 'already_done': 1, 'below_500_cr': 1,
+    assert st.loc['nse:3', 'status'] == 'at_or_below_500_cr'
+    assert counts == {'candidates': 7, 'routine_or_no_file': 1, 'already_done': 1, 'at_or_below_500_cr': 1,
                       'market_cap_unverified': 0, 'same_filing_other_exchange': 1, 'to_read': 3}
     gave_up = done.assign(tries=ar.MAX_TRIES)
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
