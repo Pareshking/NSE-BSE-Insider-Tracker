@@ -3557,7 +3557,15 @@ def collect(r2, today: date, dry_run: bool, notes: list):
             notes.append(f'BSE: {type(exc).__name__}: {exc}'[:200])
         finally:
             bse.close()
-        return (pd.concat(frames, ignore_index=True) if frames else None),             (pd.concat(bframes, ignore_index=True) if bframes else None)
+        nse_rows = pd.concat(frames, ignore_index=True) if frames else None
+        # The same structured filing may be advertised by more than one XBRL feed.
+        # parse_xbrl deliberately derives a stable event ID from the filing itself,
+        # not the feed name; collapse those repeated observations before companion
+        # matching so one XML cannot make an otherwise unique match look ambiguous.
+        if nse_rows is not None and not nse_rows.empty and 'event_id' in nse_rows:
+            nse_rows = nse_rows.drop_duplicates('event_id', keep='last').reset_index(drop=True)
+        bse_rows = pd.concat(bframes, ignore_index=True) if bframes else None
+        return nse_rows, bse_rows
     from insiders_clean.raw_store import RawStore
     from r2_writer import BUCKET
     try:
