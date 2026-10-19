@@ -11,7 +11,7 @@ reads clean/current/announcement_reads.parquet. docs/ANNOUNCEMENT_READER.md has 
 2. Choose: filings of today and yesterday, newest first, in a reading group (not routine, not concalls),
    with a PDF or ZIP. Read once: a filing already in the reads archive is skipped; the same filing on the
    other exchange (same ISIN, within six hours, subjects alike; the two copies are different files) and a
-   file or text read before are copied, not read again. A company below Rs 100 Cr market cap is not sent.
+   file or text read before are copied, not read again. Only companies strictly above Rs 500 Cr market cap, using a recent verified snapshot, are sent.
 3. Read: each lane of scripts/announcement_readers.txt reads every chosen filing, the lanes side by side.
    Within a lane the next model takes over when one is busy, refused or timing out; a model timing out
    twice running is left out for the rest of the run.
@@ -2113,14 +2113,14 @@ def choose(cands: pd.DataFrame, done: pd.DataFrame | None, today: date, *,
                                 'reason': 'no verified market-cap value in a recent snapshot from this week or last week'})
             continue
         if mcap <= MIN_MCAP:
-            status_rows.append({**r, 'status': 'below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
+            status_rows.append({**r, 'status': 'at_or_below_500_cr', 'reason': f'market cap Rs {mcap / 1e7:,.2f} Cr (must be strictly above Rs 500 Cr)'})
             continue
         twin = next((e for e in earlier + read_rows if same_filing(r, e)), None)
         if twin is not None:
             status_rows.append({**r, 'status': 'same_filing_other_exchange', 'same_as': twin['event_id']})
             continue
         read_rows.append(r)
-    counts['below_500_cr'] = sum(x['status'] == 'below_500_cr' for x in status_rows)
+    counts['at_or_below_500_cr'] = sum(x['status'] == 'at_or_below_500_cr' for x in status_rows)
     counts['market_cap_unverified'] = sum(x['status'] == 'market_cap_unverified' for x in status_rows)
     counts['same_filing_other_exchange'] = sum(x['status'] == 'same_filing_other_exchange' for x in status_rows)
     to_read = pd.DataFrame(read_rows)
@@ -3237,8 +3237,8 @@ def summary_markdown(counts: dict, rows: list[dict], notes: dict, use: dict, set
     st = pd.Series([r['status'] for r in rows]).value_counts().to_dict() if rows else {}
     lines = ['### Announcement reader', '',
              f"Candidates today and yesterday: {counts.get('candidates', 0)}; routine or no file "
-             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; below Rs 500 Cr "
-             f"{counts.get('below_500_cr', 0)}; same filing on the other exchange "
+             f"{counts.get('routine_or_no_file', 0)}; done before {counts.get('already_done', 0)}; at or below Rs 500 Cr "
+             f"{counts.get('at_or_below_500_cr', 0)}; same filing on the other exchange "
              f"{counts.get('same_filing_other_exchange', 0)}; chosen {counts.get('to_read', 0)}, "
              f"not reached this run {notes.get('not_reached', 0)}; cross-checked by a second provider "
              f"{notes.get('cross_checked', 0)}.", '',
