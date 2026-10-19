@@ -11,6 +11,12 @@ name: Unified announcement pipeline
 # advances by one verified date per run through yesterday. This replaces the separate announcement collector
 # and backfill workflows. Current cards are never held hostage by historical or model-quota failures.
 on:
+  # Recovery trigger is retained from main, but the reader job below still enforces
+  # the production pause until narrative/XBRL acceptance is complete.
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/restore_live_reader.trigger'
   workflow_dispatch:
     inputs:
       max:
@@ -92,8 +98,9 @@ permissions:
   actions: write
 
 concurrency:
-  # One production pipeline; experiments on PRs/branches remain isolated.
-  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
+  # Recovery-trigger pushes get unique groups so a second trigger cannot cancel the
+  # first run while it is checking whether another live reader is already active.
+  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && github.event_name == 'push' && format('nse-announcements-recovery-{0}', github.run_id) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name)) }}
   # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -116,7 +123,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for workflow in announcement-reader.yml announcements.yml announcement-history-backfill.yml; do
-            for status in queued in_progress; do
+            for status in queued pending in_progress; do
               ids=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --status "$status" --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
               for id in $ids; do
                 # Never cancel the run performing this cleanup; cancel older queued/live copies.
