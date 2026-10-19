@@ -2825,3 +2825,22 @@ def test_integrated_companion_fetch_is_limited_to_selected_live_issuers_and_date
     assert {event_id.split(':')[3] for event_id in result['event_id']} == {'IOC-FIN', 'IOC-GOV'}
     assert set(result['broadcast_date']) == {'2026-10-19'}
     assert any('2 direct XML rows' in note for note in notes)
+
+
+
+def test_candidates_do_not_pair_integrated_governance_on_issuer_date_alone():
+    rows = pd.DataFrame([
+        {'event_id': 'pdf:board', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Outcome of Board Meeting',
+         'text': 'Board meeting outcome', 'file_url': 'https://nsearchives.nseindia.com/corporate/IOC_board.pdf',
+         'file_type': 'pdf', 'has_xbrl': False,
+         'broadcast_at': '2026-09-30T18:43:00+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:APP-GOV:abcdef1234', 'symbol': 'IOC', 'isin': 'INE242A01010',
+         'company': 'Indian Oil Corporation Limited', 'subject': 'Integrated Filing - Governance',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/IOC_governance.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'broadcast_at': '2026-09-30T18:43:11+05:30', 'broadcast_date': '2026-09-30', 'market': 'equities'},
+    ])
+    out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
+    assert out.loc['pdf:board', 'content_url'].endswith('IOC_board.pdf')
+    assert pd.isna(out.loc['pdf:board', 'xbrl_source_event_id'])
