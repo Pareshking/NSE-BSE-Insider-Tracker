@@ -11,6 +11,11 @@ name: Unified announcement pipeline
 # advances by one verified date per run through yesterday. This replaces the separate announcement collector
 # and backfill workflows. Current cards are never held hostage by historical or model-quota failures.
 on:
+  # Explicit recovery trigger: touching this token starts the production reader once.
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/restore_live_reader.trigger'
   workflow_dispatch:
     inputs:
       max:
@@ -99,8 +104,6 @@ concurrency:
 
 jobs:
   read:
-    # Pause production AI reads until semantic and XBRL acceptance is complete; keep PR/manual dry-runs available.
-    if: ${{ github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 110   # the reader stops starting reads after `minutes` (11 by default; 80 for a supervised 100)
     outputs:
@@ -158,16 +161,16 @@ jobs:
       - name: Read unified pipeline
         id: reader
         # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
-        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
+        if: steps.changed.outputs.go == '1'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          READER_MINUTES: ${{ inputs.minutes || '11' }}
+          READER_MINUTES: ${{ inputs.minutes || (github.event_name == 'push' && '40') || '11' }}
           READER_HISTORY: ${{ inputs.history == true && '1' || (inputs.chain == true && 'night' || '0') }}
-          READER_BATCH: ${{ inputs.batch == true && '1' || '0' }}
-          READER_VISION: ${{ inputs.vision == true && '1' || '0' }}
+          READER_BATCH: ${{ inputs.batch == true || github.event_name == 'push' && '1' || '0' }}
+          READER_VISION: ${{ inputs.vision == true || github.event_name == 'push' && '1' || '0' }}
           READER_DOCLING: ${{ inputs.docling == true && '1' || '0' }}
           READER_PADDLE: ${{ inputs.paddle == true && '1' || '0' }}
           FLAGS_use_mkldnn: '0'
@@ -176,7 +179,7 @@ jobs:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MAX: ${{ github.event_name == 'pull_request' && '3' || inputs.max || '' }}
+          MAX: ${{ github.event_name == 'pull_request' && '3' || (github.event_name == 'push' && '100') || inputs.max || '' }}
           CARD_PROMPT_VARIANT: ${{ github.event_name == 'pull_request' && 'baseline' || inputs.prompt_variant || 'v2' }}
           CARD_PROMPT_COMPARE: ${{ github.event_name == 'pull_request' && '1' || (inputs.replay == '' && inputs.dry_run == true && '1' || '0') }}
           DRY: ${{ github.event_name == 'pull_request' && '--dry-run' || (inputs.dry_run == true && '--dry-run' || '') }}
@@ -194,7 +197,7 @@ jobs:
   next:
     needs: read
     # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
-    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && inputs.chain == true }}
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && (inputs.chain == true || github.event_name == 'push') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
