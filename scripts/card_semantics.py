@@ -42,6 +42,14 @@ _PERCENT = re.compile(r"(?<![\w.])([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*%")
 _METRIC = re.compile(r"\b(ebitda|ebit|operating margin|net interest margin|gross margin|net margin|revenue|sales|pat|net profit|profit|attrition|order book)\b", re.I)
 _GENERIC_CAPITALISED = {
     "annual general meeting", "board meeting", "financial results", "revenue from operations",
+    # Legal suffixes and job titles are not named counterparties. The capitalised-phrase
+    # heuristic otherwise holds valid claims such as "UHG Holdings IFSC Private Limited"
+    # when a supporting quote abbreviates the legal suffix, or treats "Managing Director"
+    # as an unsupported proper name when the quote describes a role transition.
+    "private limited", "pvt limited", "limited", "ltd", "managing director",
+    "executive director", "non executive director", "independent director",
+    "non executive vice chairman", "executive vice chairman", "chief executive officer",
+    "chief financial officer", "company secretary", "whole time director",
     "net profit", "profit after tax", "operating margin", "ebitda margin", "credit rating",
     "high court", "supreme court", "national company law tribunal", "income tax", "gst council",
     "reserve bank of india", "securities and exchange board of india", "india ratings",
