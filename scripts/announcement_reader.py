@@ -2100,16 +2100,31 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
                 # More than one XBRL payload carries the same appId; never guess.
                 continue
             else:
-                # Verified narrow semantic alias: an NSE "Retirement" PDF and the dedicated
-                # NSE XBRL feed's director/KMP-change XML, with the same issuer/date, within 15
-                # minutes, and no other NSE PDF or structured payload for that issuer/date. The
-                # dedicated feed is the authoritative XBRL source; do not require a second BSE copy
-                # to exist before using it. This is not a general date-only fallback.
+                # Verified semantic alias for a narrow real-world pattern: an NSE "Retirement"
+                # PDF plus its unique BSE copy describing completion of an independent director's
+                # tenure, and one nearby NSE XBRL record explicitly classified as a director/KMP
+                # change. Require exact issuer/date, <=15 minutes between all three records, and
+                # no other NSE PDF for that issuer/date. This is not a general date-only fallback.
                 if (len(nearby_structured) != 1 or other_pdfs or subject != 'retirement'):
                     continue
                 item = nearby_structured[0]
                 xrow = item[3]
                 if not management_xbrl(xrow) or not within_minutes(row.get('broadcast_at'), xrow.get('broadcast_at')):
+                    continue
+                support = []
+                for candidate_row in records:
+                    if candidate_row.get('exchange') != 'BSE':
+                        continue
+                    if str(clean(candidate_row.get('file_type')) or '').lower() not in ('pdf', 'zip') or not candidate_row.get('file_url'):
+                        continue
+                    if not same_issuer(row, candidate_row) or day(candidate_row.get('broadcast_date')) != broadcast_day:
+                        continue
+                    if not within_minutes(row.get('broadcast_at'), candidate_row.get('broadcast_at')) or not within_minutes(
+                            xrow.get('broadcast_at'), candidate_row.get('broadcast_at')):
+                        continue
+                    if management_pdf_support(candidate_row):
+                        support.append(candidate_row)
+                if len(support) != 1:
                     continue
                 _, _, xidx, xrow = item
         row['content_url'] = xrow['file_url']
