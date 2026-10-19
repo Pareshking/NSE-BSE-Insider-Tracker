@@ -3605,6 +3605,95 @@ def collect(r2, today: date, dry_run: bool, notes: list):
     return load_archive(r2, nann.PREFIX, today), load_archive(r2, bann.PREFIX, today)
 
 
+
+def collect_integrated_companions(selected: pd.DataFrame | None, r2, today: date,
+                                  dry_run: bool, notes: list) -> pd.DataFrame | None:
+    """Fetch separate NSE integrated XBRL only for eligible live filings selected to read.
+
+    This is deliberately not a historical crawler: the selected rows have already passed
+    the SME, recent-market-cap (> Rs 500 Cr), date, category, and duplicate gates.
+    """
+    if selected is None or selected.empty:
+        return None
+    import re
+    from collectors.nse_events import announcements as nann
+    from collectors.nse_events.client import Blocked, NSEClient
+
+    financial_re = re.compile(
+        r'financial results?|results? for (?:the )?(?:quarter|period|year)|'
+        r'(?:quarterly|half.year) results?|audited financial|unaudited financial',
+        re.IGNORECASE)
+    governance_re = re.compile(
+        r'corporate governance|integrated filing.{0,20}governance|secretarial compliance|'
+        r'regulation\s*13\s*\(\s*3\s*\)|regulation\s*27\s*\(\s*2\s*\)',
+        re.IGNORECASE)
+    requests_by_symbol: dict[str, set[str]] = {}
+    for row in selected.to_dict('records'):
+        if str(row.get('exchange') or '').upper() != 'NSE':
+            continue
+        symbol = str(row.get('symbol') or '').strip().upper()
+        if not symbol:
+            continue
+        text = f"{row.get('subject') or ''} {row.get('detail') or ''}"
+        types = requests_by_symbol.setdefault(symbol, set())
+        if financial_re.search(text):
+            types.add('financials')
+        if governance_re.search(text):
+            types.add('governance')
+    if not requests_by_symbol:
+        return None
+
+    client = NSEClient()
+    raw = None
+    if not dry_run and r2 is not None:
+        from insiders_clean.raw_store import RawStore
+        raw = RawStore(r2, bucket=__import__('r2_writer').BUCKET,
+                       collector='nse_integrated_filings')
+
+    companions = []
+    blocked = False
+    wanted_dates = {today.isoformat(), (today - timedelta(days=1)).isoformat()}
+    try:
+        for symbol, types in sorted(requests_by_symbol.items()):
+            for filing_type in sorted(types):
+                if raw is not None:
+                    def hook(url, resp, symbol=symbol, filing_type=filing_type):
+                        raw.put('nse', 'announcements_integrated', resp.content, url=url,
+                                status=resp.status_code, content_type=resp.headers.get('Content-Type'),
+                                covers={'symbol': symbol, 'filing_type': filing_type,
+                                        'live_window': sorted(wanted_dates)})
+                    client.on_response = hook
+                try:
+                    source_rows = (client.integrated_filing_financials(symbol=symbol)
+                                   if filing_type == 'financials'
+                                   else client.corporate_governance(symbol))
+                    parsed = nann.parse_integrated_xbrl(source_rows, filing_type)
+                    if not parsed.empty:
+                        parsed = parsed[parsed['broadcast_date'].isin(wanted_dates)]
+                        if not parsed.empty:
+                            companions.append(parsed)
+                except Blocked as exc:
+                    notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; stopped further NSE requests'[:220])
+                    blocked = True
+                    break
+                except Exception as exc:  # noqa: BLE001 -- optional companion feed never blocks PDF reading
+                    notes.append(f'NSE integrated {filing_type}/{symbol}: {type(exc).__name__}: {exc}; PDF path retained'[:220])
+            if blocked:
+                break
+    finally:
+        client.on_response = None
+        client.close()
+    if not companions:
+        return None
+    result = pd.concat(companions, ignore_index=True).drop_duplicates('event_id', keep='last')
+    if not dry_run and r2 is not None:
+        # Preserve exact source responses before adding normalized rows to the shared archive.
+        added, partitions = nann.merge_into_archive(r2, result, today.isoformat())
+        notes.append(f'NSE integrated companion archive: {len(result)} current-window XML rows, {added} new, {len(partitions)} partitions')
+    notes.append(f'NSE integrated companion audit: queried {sum(len(v) for v in requests_by_symbol.values())} symbol/feed pairs; '
+                 f'{len(result)} direct XML rows in the live window')
+    return result
+
 def in_history_window(now=None):
     """True from 22:30 to 09:00 IST, the hours the owner reserved for old announcements."""
     now = now or datetime.now(timezone.utc)
@@ -3738,6 +3827,13 @@ def read_and_save(args, today: date, setup: list[str], clients: dict, lanes: dic
         done = load_archive(r2, READS_PREFIX, today) if r2 is not None else None
         current_candidates = candidates(nse, bse, master)
         to_read, status_rows, counts = choose(current_candidates, done, today)
+        # Only now, after eligibility and duplicate gates, query NSE's separate
+        # Integrated Filing APIs for live issuers whose selected filing makes them relevant.
+        integrated = collect_integrated_companions(to_read, r2, today, args.dry_run, setup)
+        if integrated is not None and not integrated.empty:
+            nse = pd.concat([nse, integrated], ignore_index=True) if nse is not None else integrated
+            current_candidates = candidates(nse, bse, master)
+            to_read, status_rows, counts = choose(current_candidates, done, today)
 
     if out_of_quota:
         to_read = to_read.iloc[0:0]   # nothing is sent to a model; the next run with quota reads them
