@@ -501,7 +501,9 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
         e = reads[((reads['isin'] == isin) if has_isin and 'isin' in reads else (reads['symbol'] == sym))
                   & reads['status'].eq('read') & reads['category'].notna() & reads['category'].ne('routine')
                   & reads['event_id'].ne(r.get('event_id'))]
-        t = pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
+        # cards_html prepares this UTC timestamp once for the archive; don't parse the same company
+        # history again for every card. Keep the conversion fallback for direct callers and tests.
+        t = e['_broadcast_at_utc'] if '_broadcast_at_utc' in e else pd.to_datetime(e['broadcast_at'], errors='coerce', utc=True)
         e = e[(t < at - np.timedelta64(DEAL_HOURS, 'h')) & (t >= at - np.timedelta64(EARLIER_DAYS, 'D'))]
         # A pre-sorted per-company slice preserves the order; avoid sorting it for every card.
         if not reads_sorted:
@@ -534,7 +536,9 @@ def cards_html(r: pd.DataFrame, reads: pd.DataFrame, ctx=None, history: dict | N
     # so before_this() filters a small slice instead of scanning and sorting the whole archive N times.
     read_index = {}
     if reads is not None and not reads.empty:
-        ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable')
+        ordered_reads = reads.sort_values('broadcast_at', ascending=False, kind='stable').copy()
+        # Parse the archive's timestamps once per render, rather than once per card in before_this().
+        ordered_reads['_broadcast_at_utc'] = pd.to_datetime(ordered_reads['broadcast_at'], errors='coerce', utc=True)
         if 'isin' in ordered_reads:
             isins = ordered_reads['isin']
             has_isin = isins.notna() & isins.astype(str).str.strip().ne('')
