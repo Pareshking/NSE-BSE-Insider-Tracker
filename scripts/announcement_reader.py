@@ -149,6 +149,9 @@ def log(*parts):
     print(time.strftime('%H:%M:%S'), *parts, flush=True)
 
 
+# A lane must not spend an unbounded time cycling through unavailable models for one filing.
+LANE_READ_SECONDS = 300
+
 # --- lanes ---------------------------------------------------------------------------
 
 def lanes_of(text: str) -> dict[str, list[str]]:
@@ -233,9 +236,13 @@ class Lane:
                 f'{COOLDOWN_SECONDS // 60} minutes and its filings go to the other providers')
 
     def read(self, prompt: str) -> tuple[str, str, float]:
-        """(reply text, entry that answered, seconds). RuntimeError when every model failed."""
+        """(reply text, entry that answered, seconds). RuntimeError when every model failed or its budget expires."""
         t0, errors = time.monotonic(), []
+        deadline = self.clock() + LANE_READ_SECONDS
         for prov, model in self.models():
+            if self.clock() >= deadline:
+                errors.append(f'{self.name}: per-filing model budget of {LANE_READ_SECONDS}s exhausted')
+                break
             entry = f'{prov}:{model}'
             if self.resting(entry):          # the provider began resting during this very read
                 continue
