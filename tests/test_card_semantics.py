@@ -210,3 +210,13 @@ def test_generic_exemption_subtitle_is_held_when_filing_only_exempts_report():
         issuer_names=("ANB Metal Cast",),
     )
     assert reason and "overstates the exemption" in reason
+
+def test_corporate_governance_exemption_headline_preserves_report_scope():
+    reason = cs.semantic_reason(
+        "ANB Metal Cast confirms corporate governance exemption",
+        "As the company falls under the ambit of the aforesaid exemption, a compliance with the Corporate Governance provision specified in the aforesaid Regulation shall not be applicable to the Company.",
+        doc=("Certificate of Non-Applicability of Corporate Governance provisions under Regulation 27. "
+             "Therefore, it is not required to submit Corporate Governance Report for the quarter ended September 30, 2026."),
+        issuer_names=("ANB Metal Cast",),
+    )
+    assert reason and "overstates the exemption" in reason
