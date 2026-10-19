@@ -1855,7 +1855,8 @@ def candidates(nse: pd.DataFrame | None, bse: pd.DataFrame | None, master) -> pd
         isin = clean(resolved[0] if resolved else None)
         rec = (master.record(isin) or {}) if master and isin else {}
         # BSE-only SME issuers are identified by the official security-group field in
-        # the daily BSE security snapshot. Exclude before candidate/XBRL processing.
+        # the daily BSE security snapshot. Exclude before candidate/XBRL processing,
+        # so their rows cannot affect pairing, historical context, audit counts, or AI calls.
         bse_group = str(rec.get('bse_group') or '').strip().upper()
         if bse_group in {'M', 'SME', 'BSE SME'} or rec.get('is_sme_listing') is True:
             continue
