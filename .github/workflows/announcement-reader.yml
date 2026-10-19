@@ -105,7 +105,7 @@ concurrency:
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: 110   # the reader stops starting reads after `minutes` (11 by default; 80 for a supervised 100)
+    timeout-minutes: 60    # bounded reader batches; in-flight OCR/model calls may finish after the intake budget
     outputs:
       started: ${{ steps.start.outputs.at }}
       exhausted: ${{ steps.reader.outputs.quota_exhausted }}
@@ -219,5 +219,5 @@ jobs:
           if [ "$HISTORY_DONE" = "1" ]; then gap=1800; fi
           wait=$(( started + gap - now ))
           if [ "$wait" -gt 0 ]; then echo "waiting ${wait}s ($RESULT)"; sleep "$wait"; fi
-          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=100 -f minutes=40 -f vision=true -f paddle=true -f docling=false
+          gh workflow run announcement-reader.yml --repo "$GITHUB_REPOSITORY" --ref main -f prompt_variant=v2 -f dry_run=false -f history=false -f batch=true -f chain=true -f max=25 -f minutes=12 -f vision=true -f paddle=true -f docling=false
           echo "next unified pipeline run requested" >> "$GITHUB_STEP_SUMMARY"
