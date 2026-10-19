@@ -211,3 +211,33 @@ def test_run_queries_symbol_scoped_integrated_financials_only_for_live_results()
     assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('IOC_results.xml')
     pdfs = archived[archived['file_url'].astype(str).str.endswith('.pdf')]
     assert not pdfs.empty and pdfs['file_type'].eq('pdf').all()
+
+
+
+def test_run_queries_separate_governance_api_only_for_live_governance_filing():
+    governance_pdf = {
+        'seq_id': 'LIVE-GOV', 'symbol': 'NCLIND', 'sm_isin': 'INE732C01016',
+        'sm_name': 'NCL Industries Limited', 'desc': 'Integrated Filing- Governance',
+        'attchmntText': 'Integrated filing governance report',
+        'attchmntFile': 'https://nsearchives.nseindia.com/corporate/NCLIND_governance.pdf',
+        'an_dt': '05-Oct-2026 09:55:00', 'exchdisstime': '05-Oct-2026 09:55:01',
+    }
+
+    class GovernanceFakeNSE(FakeNSE):
+        def corporate_governance(self, symbol):
+            self.integrated_asked.append((symbol, 'governance'))
+            return [{
+                'symbol': symbol, 'companyName': 'NCL Industries Limited',
+                'broadcastDateTime': '05-Oct-2026 09:55:11',
+                'xbrl': 'https://nsearchives.nseindia.com/corporate/xbrl/CG_199585_05102026095531_WEB.xml',
+            }]
+
+    nse = GovernanceFakeNSE([governance_pdf])
+    r2 = FakeR2()
+    rep = ann.run(r2, nse, date(2026, 10, 5))
+    assert nse.integrated_asked == [('NCLIND', 'governance')]
+    assert any(x['feed_type'] == 'integrated-governance' and x['rows'] == 1 for x in rep['xbrl_calls'])
+    archived = pd.concat([pd.read_parquet(io.BytesIO(r2.objects[k]))
+                          for k in r2.objects if k.startswith(ann.PREFIX)])
+    xml = archived[archived['file_type'] == 'xbrl']
+    assert len(xml) == 1 and xml.iloc[0]['file_url'].endswith('CG_199585_05102026095531_WEB.xml')
