@@ -350,6 +350,24 @@ def test_different_subjects_or_hours_apart_are_not_the_same_filing():
     assert not ar.same_filing(a, {**a, 'event_id': 'nse:9'})   # same exchange: two filings
 
 
+def test_text_of_parses_standalone_xbrl_xml_without_pdf_fallback(monkeypatch):
+    xml = b'''<?xml version="1.0" encoding="UTF-8"?>
+    <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in="urn:example">
+      <xbrli:context id="Q2">
+        <xbrli:entity><xbrli:identifier scheme="urn:test">MARATHON</xbrli:identifier></xbrli:entity>
+        <xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:unit id="INR"><xbrli:measure>iso4217:INR</xbrli:measure></xbrli:unit>
+      <in:Revenue contextRef="Q2" unitRef="INR" decimals="0">987654321</in:Revenue>
+    </xbrli:xbrl>'''
+    monkeypatch.setattr(ar.s, 'pdf_text', lambda _data: (_ for _ in ()).throw(AssertionError('PDF fallback used')))
+    text, notes = ar.s.text_of(xml)
+    assert 'XBRL FACTS' in text
+    assert 'Revenue = 987654321' in text
+    assert '2026-07-01' in text and '2026-09-30' in text
+    assert any(note.startswith('xbrl: standalone XML;') for note in notes)
+
+
 def test_text_of_prefers_valid_xbrl_inside_zip_over_pdf(monkeypatch):
     xml = b'''<?xml version="1.0" encoding="UTF-8"?>
     <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in="urn:example">
