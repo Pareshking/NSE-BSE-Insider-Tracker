@@ -884,6 +884,49 @@ def test_dedicated_xbrl_provenance_allows_subject_mismatch_only_when_filing_id_m
     assert xbrl['group'] == 'routine'
 
 
+def test_xbrl_director_change_pairs_with_retirement_pdf_only_with_unique_bse_corroboration():
+    rows = pd.DataFrame([
+        {'event_id': 'nse:106821397', 'symbol': 'CAMLINFINE', 'isin': 'INE052I01032',
+         'company': 'Camlin Fine Sciences Limited', 'subject': 'Retirement',
+         'text': 'Camlin Fine Sciences Limited has informed the Exchange about Retirement',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/CAMLINFINE_18102026110303_Disclosure_under_Reg_30_LODR_-_Completion_of_tenure_of_ID.pdf',
+         'file_type': 'pdf', 'has_xbrl': True, 'broadcast_at': '2026-10-18T11:03:03+05:30',
+         'broadcast_date': '2026-10-18', 'market': 'equities'},
+        {'event_id': 'nse:xbrl:equities:100779:7c6e7d87db', 'symbol': 'CAMLINFINE',
+         'isin': 'INE052I01032', 'company': 'Camlin Fine Sciences Limited',
+         'subject': 'Change in Directors/KMP/SMP/Auditor/RTA', 'text': 'XBRL companion metadata',
+         'file_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'file_type': 'xbrl', 'has_xbrl': True,
+         'xbrl_url': 'https://nsearchives.nseindia.com/corporate/xbrl/CIM_11353_WebXMLFile_20261018_105938126.xml',
+         'broadcast_at': '2026-10-18T10:59:38+05:30', 'broadcast_date': '2026-10-18',
+         'market': 'equities'},
+    ])
+    bse = pd.DataFrame([{
+        'event_id': 'bse:camlin-retirement', 'bse_code': '532834',
+        'company': 'Camlin Fine Sciences Limited', 'subcategory': 'Change in Management',
+        'category': 'Company Update',
+        'headline': 'Intimation of completion of tenure of Independent Director of the Company.',
+        'file_url': 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/d432a138-9538-4c58-ad31-187ec038da22.pdf',
+        'file_type': 'pdf', 'broadcast_at': '2026-10-18T10:58:00+05:30',
+        'broadcast_date': '2026-10-18',
+    }])
+    class Master:
+        market_cap_as_of = '2026-10-16'
+        def resolve(self, exchange, identifier):
+            return ('INE052I01032', 'code') if exchange == 'bse' and identifier == '532834' else (None, 'unmatched')
+        def record(self, isin):
+            return {'market_cap': 18_000_000_000, 'bse_group': 'A',
+                    'is_sme_listing': False} if isin == 'INE052I01032' else None
+
+    out = ar.candidates(rows, bse, Master()).set_index('event_id')
+    pdf = out.loc['nse:106821397']
+    xbrl = out.loc['nse:xbrl:equities:100779:7c6e7d87db']
+    assert pdf['content_url'].endswith('CIM_11353_WebXMLFile_20261018_105938126.xml')
+    assert pdf['xbrl_source_event_id'] == xbrl.name
+    assert out.loc['bse:camlin-retirement']['content_url'].endswith('d432a138-9538-4c58-ad31-187ec038da22.pdf')
+    assert xbrl['group'] == 'routine'
+
+
 def test_dedicated_xbrl_does_not_pair_mismatched_subject_by_date_alone():
     rows = pd.DataFrame([
         {'event_id': 'nse:pdf:litigation', 'symbol': 'X', 'isin': 'INE000A01000',
