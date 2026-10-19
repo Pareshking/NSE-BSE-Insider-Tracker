@@ -217,18 +217,24 @@ def test_xbrl_audit_reports_flags_attachments_and_links():
     assert audit['xbrl_linked'] == 1
     assert audit['linked_samples'][0]['xbrl_source_event_id'] == 'xbrl:1'
 
-def test_choose_excludes_unverified_market_cap_and_keeps_exactly_100_cr():
+def test_choose_requires_strictly_over_500_cr_and_excludes_sme():
     today = date(2026, 10, 13)
     c = pd.DataFrame([
-        _cand('below', 'NSE', 'INELOW', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=999_999_999),
-        _cand('boundary', 'NSE', 'INE100', '2026-10-13T10:01:00+05:30', 'Buyback', mcap=1_000_000_000),
-        _cand('unknown', 'NSE', 'INEUNK', '2026-10-13T10:02:00+05:30', 'Buyback', mcap=None),
+        _cand('below', 'NSE', 'INELOW', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=4_999_999_999),
+        _cand('boundary', 'NSE', 'INE500', '2026-10-13T10:01:00+05:30', 'Buyback', mcap=5_000_000_000),
+        _cand('above', 'NSE', 'INE501', '2026-10-13T10:02:00+05:30', 'Buyback', mcap=5_000_000_001),
+        _cand('nse-sme', 'NSE', 'INESME', '2026-10-13T10:03:00+05:30', 'Buyback', mcap=8_000_000_000, market='sme'),
+        _cand('bse-sme', 'BSE', 'INESME2', '2026-10-13T10:04:00+05:30', 'Buyback', mcap=9_000_000_000, is_sme=True, market='bse'),
+        _cand('unknown', 'NSE', 'INEUNK', '2026-10-13T10:05:00+05:30', 'Buyback', mcap=None),
     ])
     to_read, status, counts = ar.choose(c, None, today)
-    assert list(to_read['event_id']) == ['boundary']
+    assert list(to_read['event_id']) == ['above']
     statuses = status.set_index('event_id')['status'].to_dict()
-    assert statuses == {'below': 'below_100_cr', 'unknown': 'market_cap_unverified'}
-    assert counts['below_100_cr'] == 1
+    assert statuses == {'nse-sme': 'sme_excluded', 'bse-sme': 'sme_excluded',
+                        'below': 'below_500_cr', 'boundary': 'below_500_cr',
+                        'unknown': 'market_cap_unverified'}
+    assert counts['below_500_cr'] == 2
+    assert counts['sme_excluded'] == 2
     assert counts['market_cap_unverified'] == 1
 
 
@@ -251,11 +257,21 @@ def test_choose_reads_once_skips_small_and_routine_and_retries_failures():
     assert to_read.set_index('event_id')['tries']['nse:7'] == 1          # a failure is tried again
     st = status.set_index('event_id')
     assert st.loc['bse:a', 'status'] == 'same_filing_other_exchange' and st.loc['bse:a', 'same_as'] == 'nse:1'
-    assert st.loc['nse:3', 'status'] == 'below_100_cr'
-    assert counts == {'candidates': 7, 'routine_or_no_file': 1, 'already_done': 1, 'below_100_cr': 1,
+    assert st.loc['nse:3', 'status'] == 'below_500_cr'
+    assert counts == {'candidates': 7, 'sme_excluded': 0, 'routine_or_no_file': 1, 'already_done': 1, 'below_500_cr': 1,
                       'market_cap_unverified': 0, 'same_filing_other_exchange': 1, 'to_read': 3}
     gave_up = done.assign(tries=ar.MAX_TRIES)
     assert 'nse:7' not in set(ar.choose(c, gave_up, today)[0]['event_id'])
+
+
+def test_old_below_100_cr_status_is_rechecked_under_the_new_current_cap_cutoff():
+    today = date(2026, 10, 13)
+    c = pd.DataFrame([_cand('old-small', 'NSE', 'INEOLD', '2026-10-13T10:00:00+05:30', 'Buyback', mcap=6_000_000_000)])
+    done = pd.DataFrame([{**c.iloc[0].to_dict(), 'status': 'below_100_cr', 'tries': 1}])
+    selected, status, counts = ar.choose(c, done, today)
+    assert list(selected['event_id']) == ['old-small']
+    assert status.empty
+    assert counts['to_read'] == 1
 
 
 def test_permanent_missing_document_is_retired_after_one_attempt():
