@@ -820,7 +820,8 @@ def test_dry_run_collect_queries_all_four_nse_xbrl_feeds(monkeypatch):
 
         def xbrl_announcements(self, start, end, index='equities', symbol=None, feed_type='announcements'):
             calls.append((index, feed_type))
-            if feed_type == 'para-b':
+            if feed_type in ('announcements', 'para-b'):
+                # NSE can expose the same appId and exact XML URL in more than one feed.
                 return [{'appId': '100779', 'symbol': 'CAMLINFINE', 'companyName': 'Camlin Fine Sciences Limited',
                          'subject': 'Change in Directors/KMP/SMP/Auditor/RTA',
                          'broadcastDateTime': '18-10-2026 10:59:38',
@@ -842,6 +843,8 @@ def test_dry_run_collect_queries_all_four_nse_xbrl_feeds(monkeypatch):
         'announcements', 'para-a', 'para-b', 'award'
     }
     assert nse is not None and 'nse:xbrl:equities:100779:' in set(nse['event_id'])
+    assert nse['event_id'].is_unique  # same XML from two feed types must not create duplicate companions
+    assert nse['event_id'].astype(str).str.startswith('nse:xbrl:').sum() == 1
     assert bse is not None and bse.empty
 
 
