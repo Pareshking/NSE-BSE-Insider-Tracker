@@ -155,7 +155,8 @@ jobs:
           exit 1
       - name: Read unified pipeline
         id: reader
-        if: steps.changed.outputs.go == '1'
+        # Production AI reading is paused pending narrative/XBRL acceptance. PR dry-runs and manual dry-runs remain available.
+        if: steps.changed.outputs.go == '1' && (github.ref != 'refs/heads/main' || github.event_name != 'workflow_dispatch' || inputs.dry_run == true)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -191,7 +192,7 @@ jobs:
   next:
     needs: read
     # Never self-dispatch from PR dry-runs or an explicitly requested manual dry-run.
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && inputs.chain == true }}
+    if: ${{ !cancelled() && needs.read.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && inputs.dry_run != true && inputs.chain == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
