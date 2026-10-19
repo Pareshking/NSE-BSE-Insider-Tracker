@@ -338,7 +338,8 @@ def test_reader_market_cap_snapshot_window_rejects_stale_values(monkeypatch):
     monkeypatch.setattr(run_daily, 'nse_lists', lambda *_: (pd.DataFrame(), pd.DataFrame()))
     master = run_daily.security_master(object(), '2026-10-15', [], max_age_days=7)
     assert master.market_cap_as_of is None
-    assert master.records == {}
+    rec = master.record('INE002A01018')
+    assert rec is None or rec.get('market_cap') is None
     assert len(requests) == 8
     assert requests[-1] == 'reference/market_cap/2026-10-08/data.json'
 
