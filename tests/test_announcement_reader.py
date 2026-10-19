@@ -2844,3 +2844,40 @@ def test_candidates_do_not_pair_integrated_governance_on_issuer_date_alone():
     out = ar.candidates(rows, pd.DataFrame(), None).set_index('event_id')
     assert out.loc['pdf:board', 'content_url'].endswith('IOC_board.pdf')
     assert pd.isna(out.loc['pdf:board', 'xbrl_source_event_id'])
+
+
+
+def test_integrated_companion_fetch_honors_nse_rate_limit_hard_stop(monkeypatch):
+    import collectors.nse_events.client as nse_client
+
+    calls = []
+
+    class FakeSession:
+        def close(self):
+            pass
+
+    class FakeNSE:
+        def __init__(self):
+            self.s = FakeSession()
+            self.on_response = None
+
+        def integrated_filing_financials(self, symbol=None, quarter_end_date=None):
+            calls.append(('financials', symbol))
+            raise nse_client.Blocked('429 rate limited')
+
+        def corporate_governance(self, symbol):
+            calls.append(('governance', symbol))
+            return []
+
+    monkeypatch.setattr(nse_client, 'NSEClient', FakeNSE)
+    selected = pd.DataFrame([
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Financial Results',
+         'detail': 'Unaudited financial results for the quarter'},
+        {'exchange': 'NSE', 'symbol': 'IOC', 'subject': 'Corporate Governance Compliance',
+         'detail': 'Regulation 27(2) filing'},
+    ])
+    notes = []
+    result = ar.collect_integrated_companions(selected, None, date(2026, 10, 19), True, notes)
+    assert result is None
+    assert calls == [('financials', 'IOC')]
+    assert any('stopped further NSE requests' in note for note in notes)
