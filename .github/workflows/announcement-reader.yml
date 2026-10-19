@@ -101,9 +101,9 @@ permissions:
 
 concurrency:
   # One production pipeline; experiments on PRs/branches remain isolated.
-  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && github.event_name == 'push' && format('nse-announcements-recovery-{0}', github.run_id) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name)) }}
-  # Cancel stale PR dry-runs so only the newest PR version is active; serialize production runs.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.event_name == 'pull_request' && format('announcement-pipeline-pr-{0}', github.event.pull_request.number) || (github.ref == 'refs/heads/main' && 'nse-announcements-unified' || github.ref_name) }}
+  # New recovery pushes replace stuck production runs; manual production runs otherwise serialize.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && github.event_name == 'push') }}
 
 jobs:
   read:
@@ -116,22 +116,6 @@ jobs:
     steps:
       - id: start
         run: echo "at=$(date +%s)" >> "$GITHUB_OUTPUT"
-      - name: Stop competing announcement workflows
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for workflow in announcement-reader.yml announcements.yml announcement-history-backfill.yml; do
-            for status in queued pending in_progress; do
-              ids=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --status "$status" --json databaseId --jq '.[].databaseId' 2>/dev/null || true)
-              for id in $ids; do
-                # Never cancel the run performing this cleanup; cancel older queued/live copies.
-                [ "$id" = "$GITHUB_RUN_ID" ] && continue
-                echo "Cancelling competing announcement workflow $workflow run $id"
-                gh run cancel "$id" --repo "$GITHUB_REPOSITORY" || true
-              done
-            done
-          done
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
