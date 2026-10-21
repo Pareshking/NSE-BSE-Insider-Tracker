@@ -113,7 +113,7 @@ def render():
         mine = qips[qips['symbol'].astype(str).str.upper() == sym]
         if not mine.empty:
             raises['QIPs'] = qip_rows(mine, ctx.prices).assign(offer_price=lambda r: r.get('issue_price'))
-    names = ['Overview', 'Timeline', f'Insider trades · {kit.indian(len(t))}', f'Deals · {kit.indian(len(d))}', 'Shareholding']
+    names = ['Overview', 'Timeline', f'Insider trades · {kit.indian(int(t["is_primary"].astype("boolean").fillna(False).sum()))}', f'Deals · {kit.indian(len(d))}', 'Shareholding']
     if raises:
         names.append('Capital raises')
     tabs = st.tabs(names)
@@ -125,8 +125,16 @@ def render():
         if len(shr) and pd.notna(shr['promoter_holding_pct'].iloc[0]):
             ph = float(shr['promoter_holding_pct'].iloc[0])
             fy = pd.Timestamp(year=ctx.ref.year if ctx.ref.month >= 4 else ctx.ref.year - 1, month=4, day=1)
-            used = pd.to_numeric(e.loc[(e['seen'] >= fy) & (e['side'] == 'BUY')
-                                       & e['person_role'].isin(signals.PROMOTER_ROLES), 'pct_of_mcap'], errors='coerce').sum()
+            # Reg 3(2) counts shares: shares bought since 1 April over the company's total shares in the latest
+            # shareholding XBRL (audit D2: rupees over today's market cap gave 4.23% where the shares give 4.39%).
+            fy_buys = e[(e['seen'] >= fy) & (e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)]
+            mine = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
+            total = (pd.to_numeric(mine.sort_values('quarter_end')['total_shares'], errors='coerce').dropna().iloc[-1]
+                     if 'total_shares' in mine and pd.to_numeric(mine['total_shares'], errors='coerce').notna().any() else None)
+            if total:
+                used = pd.to_numeric(fy_buys['quantity'], errors='coerce').sum() / total * 100
+            else:   # no share count filed: value over market cap, an estimate
+                used = pd.to_numeric(fy_buys['pct_of_mcap'], errors='coerce').sum()
             q_end = f'quarter ending {kit.day(shr["quarter_end"].iloc[0])}' if 'quarter_end' in shr else 'latest quarter'
             kit.tiles([
                 kit.Tile('Room to the 75% ceiling', f'{75 - ph:.2f} pts' if ph < 75 else f'{ph - 75:.2f} pts over',
@@ -134,7 +142,7 @@ def render():
                          '' if ph < 75 else 'down'),
                 kit.Tile('Creeping-acquisition room, this FY',
                          kit.pct(max(0.0, min(5.0 - used, 75 - ph)), 2) if 25 <= ph < 75 else 'Not open',
-                         (f'of 5% a year (SAST 3(2)) · {kit.pct(used, 2)} bought on market since {kit.day(fy)}, estimated'
+                         (f'of 5% a year (SAST 3(2)) · {kit.pct(used, 2)} of the shares bought on market since {kit.day(fy)}' + ('' if total else ', estimated')
                           if 25 <= ph < 75 else 'applies only to promoter holdings from 25% to under 75%')),
             ])
         with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):

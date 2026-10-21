@@ -492,8 +492,10 @@ def before_this(r: dict, reads: pd.DataFrame | None, price: dict | None, holding
                   else ', none of it pledged' if pledge == 0 else '')
             out.append(f'Promoters hold <b>{esc(kit.pct(pct, 1))}</b>{esc(q)}{pl}.')
     if insiders is not None and not insiders.empty and has_isin:
-        t = insiders[(insiders['isin'] == isin) & (insiders['seen'] >= (at.tz_convert(None).normalize() if pd.notna(at) else
-                     pd.Timestamp.now()) - np.timedelta64(INSIDER_DAYS, 'D'))]
+        end = at.tz_convert(None) if pd.notna(at) else pd.Timestamp.now()
+        # Only what was public before this filing: an older card must not count later trades (audit W15).
+        t = insiders[(insiders['isin'] == isin) & (insiders['seen'] >= end.normalize() - np.timedelta64(INSIDER_DAYS, 'D'))
+                     & (insiders['seen'] <= end)]
         for side, word in (('BUY', 'bought'), ('SELL', 'sold')):
             x = t[t['side'] == side]
             if len(x):

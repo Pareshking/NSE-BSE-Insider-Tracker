@@ -166,7 +166,7 @@ def test_issue_rows_show_the_allotment_with_its_approvals_terms_and_open_approva
     rows = cr.issue_rows(df, PRICES)
     assert sorted(rows['status']) == ['Allotted or listed', 'Approved in principle']   # the linked approval is not listed twice
     listed = rows[rows['status'] == 'Allotted or listed'].iloc[0]
-    assert listed['to'] == 'Promoters' and listed['amount'] == 1325914000
+    assert listed['to'] == 'Promoters' and listed['amount'] == 12500000   # raised (10 lakh x Rs 12.50), not the approved size (audit W11)
     assert round(listed['vs_market'], 1) == -50.0 and listed['latest_close'] == 25.0   # offer 12.5 against 25
 
 

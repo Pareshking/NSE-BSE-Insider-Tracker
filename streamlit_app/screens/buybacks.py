@@ -7,7 +7,7 @@ from __future__ import annotations
 import pandas as pd
 from ui import kit
 
-from screens.ctx import with_prices
+from screens.ctx import split_since, with_prices
 
 ROUTE = {'tender offer': 'Tender offer', 'open market': 'Open market'}
 
@@ -20,7 +20,8 @@ def rows(bb: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     r['how'] = r['route'].map(ROUTE)
     r['when'] = pd.to_datetime(r['offer_open'], errors='coerce').fillna(pd.to_datetime(r['record_date'], errors='coerce')) \
         .fillna(pd.to_datetime(r['first_report'], errors='coerce'))
-    offer, close = pd.to_numeric(r['offer_price'], errors='coerce'), pd.to_numeric(r['latest_close'], errors='coerce')
+    offer = pd.to_numeric(r['offer_price'], errors='coerce') * split_since(r, prices, ['record_date', 'offer_open', 'first_report'])   # audit W9
+    close = pd.to_numeric(r['latest_close'], errors='coerce')
     r['vs_market'] = ((offer / close - 1) * 100).where(offer.gt(0) & close.gt(0))
     r['note'] = r['route'].map({'open market': 'daily reports filed'}).fillna('') + \
         r['daily_reports'].map(lambda n: f': {int(n)}' if pd.notna(n) else '')

@@ -128,7 +128,7 @@ def test_promoter_group_buying_together_is_one_decision_maker_not_a_cluster():
     rows = [trade('Dipika Amar Vakil', 'promoter_group'), trade('Prafullika Shailesh Choksi', 'promoter_group'),
             trade('Malav A Dani', 'promoter_group')]
     ref = pd.Timestamp('2026-10-05')
-    assert len(signals.clusters(pd.DataFrame(rows), ref)) == 1          # without the pattern: a cluster
+    assert signals.clusters(pd.DataFrame(rows), ref).empty               # filed as promoter group: one decision-maker even without the pattern (audit D1)
     assert signals.clusters(linked(rows), ref).empty                     # with it: one decision-maker
     assert signals.insider_details(linked(rows), ref).iloc[0] == '3 promoter-group members · 1 decision-maker · 3 trades'
 

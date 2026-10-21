@@ -13,7 +13,7 @@ from ui import charts, kit
 from ui.kit import esc
 
 from insiders_clean import signals
-from screens.ctx import load, need_data, with_flags, with_prices, with_sparks
+from screens.ctx import load, need_data, split_since, with_flags, with_prices, with_sparks
 
 CHIPS = ['All', 'Promoter buys only', 'Bulk deals', 'Large handshakes']
 REASONS = {'value_over_25pct_of_mcap': "value is over 25% of the company's market cap",
@@ -50,6 +50,8 @@ def _card(r, ctx, day) -> str:
     else:
         share = f'{kit.pct(r["pct_of_mcap"])} of market cap; float not loaded'
     price = r['value'] / r['qty'] if pd.notna(r.get('qty')) and r.get('qty') else None
+    f = float(split_since(pd.DataFrame([dict(r)]), ctx.prices).iloc[0])   # paid on today's split-adjusted basis (audit W19)
+    price = price * f if price and f == f else None
     nth = signals.buys_in_days(ctx.eligible, r['isin'], r['person_id'], day + pd.Timedelta(days=1), 14)
     pledge = signals.pledge_by_isin(ctx.shareholding).get(r['isin'])
     if pledge is None or pd.isna(pledge):
@@ -95,6 +97,9 @@ def _session(ctx, n: int):
             qty = (e[e['seen'].dt.normalize() == day].assign(q=pd.to_numeric(e['quantity'], errors='coerce'))
                    .groupby(['isin', 'person_id', 'side'])['q'].sum())
             one['qty'] = [qty.get((i, p, s)) for i, p, s in zip(one['isin'], one['person_id'], one['side'])]
+            last = (e[e['seen'].dt.normalize() == day].assign(t=pd.to_datetime(e['trade_date_to'], errors='coerce'))
+                    .groupby(['isin', 'person_id', 'side'])['t'].max())   # for the split basis of the price paid
+            one['trade_date_to'] = [last.get((i, p, s)) for i, p, s in zip(one['isin'], one['person_id'], one['side'])]
             parts.append(one.assign(day=pd.Timestamp(day)))
     sess = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
     if not len(days):
@@ -165,7 +170,7 @@ def render():
         return
     when = kit.day(day) if first == day else f'{kit.day(first, with_year=False)}–{kit.day(day)}'
     end = day + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-    prom = sess[sess['person_role'].isin(signals.PROMOTER_ROLES)] if not sess.empty else sess
+    prom = sess[sess['person_role'].isin(signals.PROMOTER_ROLES) & ~sess['is_token']] if not sess.empty else sess   # audit W13
     net = (prom['value'] * prom['side'].map({'BUY': 1, 'SELL': -1})).sum() if not prom.empty else 0.0
 
     # A buy in the window by someone whose open-market buying in that company
@@ -173,10 +178,10 @@ def render():
     spot = signals.spotlight(ctx.eligible, end)
     buys = sess[(sess['side'] == 'BUY') & ~sess['is_token']] if not sess.empty else sess
     hc = buys.merge(spot[['isin', 'person_id', 'pct_30d']], on=['isin', 'person_id']) if not buys.empty else buys
-    hc = hc.assign(impact=hc['pct_of_float'].fillna(hc['pct_of_mcap'])).sort_values('impact', ascending=False)         .drop_duplicates(['isin', 'person_id']) if not hc.empty else hc
+    hc = hc.assign(impact=hc['pct_of_mcap']).sort_values('impact', ascending=False)   # one measure for every row (audit W17)         .drop_duplicates(['isin', 'person_id']) if not hc.empty else hc
     clus = signals.clusters(ctx.eligible, end)
     clus_today = clus[pd.to_datetime(clus['last_seen']).dt.normalize() >= first] if not clus.empty else clus
-    hs = signals.handshakes(ctx.deals, ctx.trades, days=max(1, (day - first).days + 1))
+    hs = signals.handshakes(ctx.deals, ctx.trades, days=max(1, (day - first).days + 1), ref=day)   # same span as the label (audit W14)
     hs_day = hs['date'].max() if not hs.empty else None
 
     if not hc.empty:
@@ -226,7 +231,7 @@ def render():
             if rows.empty:
                 kit.empty('No open-market insider trades in this session.')
             else:
-                rows = rows.assign(impact=rows['pct_of_float'].fillna(rows['pct_of_mcap'])).sort_values('impact', ascending=False)
+                rows = rows.assign(impact=rows['pct_of_mcap']).sort_values('impact', ascending=False)
                 kit.table(with_sparks(with_prices(rows, ctx.prices), ctx), [
                     kit.Col('company', 'Company', 'co'), kit.Col('person_name', 'Person', 'person'),
                     kit.Col('side', 'Side', 'side'), kit.Col('value', 'Value', 'money'),
@@ -236,8 +241,9 @@ def render():
                     kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=40)
         elif chip == 'Bulk deals':
             d = ctx.deals
-            d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & (d['date'] >= first)] \
-                if not d.empty else d
+            # Each deal once (NSE and BSE copies), real buyers and sellers, inside the window (audit W4).
+            d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)
+                  & (d['date'] >= first) & (d['date'] <= day)] if not d.empty else d
             if d.empty:
                 kit.empty('No bulk or block deals by real buyers or sellers in the latest session.')
             else:
@@ -263,7 +269,8 @@ def render():
 
     held = ctx.trades.copy()
     held['seen'] = pd.to_datetime(held['broadcast_date'], errors='coerce')
-    held = held[held['needs_review'].astype('boolean').fillna(False) & (held['seen'] > day - pd.Timedelta(days=10))]
+    held = held[held['needs_review'].astype('boolean').fillna(False) & held['is_primary'].astype('boolean').fillna(False)
+                & (held['seen'] > day - pd.Timedelta(days=10))]   # each filing once (audit W5)
     with st.expander(f'Needs a look · {len(held)} filings held back in the last 10 days'):
         if held.empty:
             kit.empty('Nothing held back.')

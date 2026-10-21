@@ -15,12 +15,26 @@ from data import store
 from ui import kit
 
 from insiders_clean import issues as issue_clean
-from screens.ctx import load, with_prices
+from screens.ctx import load, split_since, with_prices
 
 PURPOSES = {'buyback': 'Buyback', 'rights': 'Rights', 'bonus': 'Bonus', 'split': 'Split', 'dividend': 'Dividend'}
 MEETING_FOCUS = ['fund_raising', 'preferential', 'buyback', 'rights', 'bonus', 'split', 'dividend', 'results']
 ALLOTTEE_LABEL = {'PROMOTER': 'Promoters', 'NON_PROMOTER': 'Non-promoters', 'MIXED': 'Promoters and others'}
 LOCK_IN_RECENT_DAYS = 30
+
+
+def _on_today(price, rows, prices, dates):
+    """A filed price put on the basis of today's split- and bonus-adjusted close (audit W9)."""
+    return pd.to_numeric(price, errors='coerce') * split_since(rows, prices, dates)
+
+
+def _amount(rows: pd.DataFrame) -> pd.Series:
+    """One meaning for "Amount" on every issue kind (audit W11): what was raised once the
+    securities are allotted, the approved size before that; the Stage column says which."""
+    empty = pd.Series(index=rows.index, dtype=float)
+    raised = pd.to_numeric(rows['amount_raised'], errors='coerce') if 'amount_raised' in rows else empty
+    approved = pd.to_numeric(rows['amount_total'], errors='coerce') if 'amount_total' in rows else empty
+    return raised.fillna(approved)
 
 
 def _vs_market(offer, close):
@@ -45,13 +59,12 @@ def issue_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
     rows = _stage_rows(records)
     rows['nse_symbol'] = rows['symbol']
     rows['to'] = rows['allottee_category'].map(ALLOTTEE_LABEL) if 'allottee_category' in rows else None
-    amount = rows['amount_total'] if 'amount_total' in rows else pd.Series(index=rows.index, dtype=float)
-    rows['amount'] = amount.fillna(rows['amount_raised']) if 'amount_raised' in rows else amount
+    rows['amount'] = _amount(rows)
     for c in ('icdr_min_price', 'icdr_min_ours', 'vs_icdr_min', 'instruments'):
         if c not in rows:
             rows[c] = None
     rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(rows.get('offer_price'), rows['latest_close'])
+    rows['vs_market'] = _vs_market(_on_today(rows.get('offer_price'), rows, prices, ['allotment_date', 'listing_date', 'board_date', 'posted_on']), rows['latest_close'])
     rows['ours_vs_filed'] = _vs_market(rows['icdr_min_ours'], rows['icdr_min_price'])
     return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
@@ -81,7 +94,9 @@ def lock_in_calendar(records: pd.DataFrame, prices: pd.DataFrame, today: pd.Time
     rows['note'] = ['Mixed allotment: promoter and other split not filed' if b == 'rule' and pd.isna(s) else ''
                     for b, s in zip(rows['basis'], rows['shares'])]
     rows = with_prices(rows, prices)
-    rows['at_market'] = pd.to_numeric(rows['shares'], errors='coerce') * pd.to_numeric(rows['latest_close'], errors='coerce')
+    # Shares restated for any split or bonus since trading approval, so the value is at today's price (audit W10).
+    shares_now = pd.to_numeric(rows['shares'], errors='coerce') / split_since(rows, prices, ['trading_approval_date', 'allotment_date'])
+    rows['at_market'] = shares_now * pd.to_numeric(rows['latest_close'], errors='coerce')
     return rows.sort_values('expires').reset_index(drop=True)
 
 
@@ -91,10 +106,9 @@ def rights_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     rows = _stage_rows(records)
     rows['nse_symbol'] = rows['symbol']
-    amount = rows['amount_total'] if 'amount_total' in rows else pd.Series(index=rows.index, dtype=float)
-    rows['amount'] = amount.fillna(rows['amount_raised']) if 'amount_raised' in rows else amount
+    rows['amount'] = _amount(rows)
     rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(rows.get('offer_price'), rows['latest_close'])
+    rows['vs_market'] = _vs_market(_on_today(rows.get('offer_price'), rows, prices, ['record_date', 'allotment_date', 'posted_on']), rows['latest_close'])
     return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
 
@@ -105,9 +119,9 @@ def qip_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
     rows = _stage_rows(records)
     rows['nse_symbol'] = rows['symbol']
-    rows['amount'] = rows['amount_raised'].fillna(rows['amount_total'])
+    rows['amount'] = _amount(rows)
     rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(rows['issue_price'], rows['latest_close'])
+    rows['vs_market'] = _vs_market(_on_today(rows['issue_price'], rows, prices, ['allotment_date', 'relevant_date', 'posted_on']), rows['latest_close'])
     return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
 

@@ -47,10 +47,10 @@ def render():
 
     typed = 'client_type' in d  # written by the clean step from 12 Oct (insiders_clean/participants.py)
     with tabs[1]:
-        inst = typed and st.toggle('Institutions only', value=False, key='acc_inst',
+        inst = typed and st.toggle('Institutions only', value=True, key='acc_inst',
                                    help='Mutual funds, insurers, pension funds, banks, foreign investors, AIFs and other funds, '
                                         'as read from the client name (insiders_clean/participants.py)')
-        acc = signals.small_cap_accumulation(d[d['client_type'].isin(participants.INSTITUTIONAL)] if inst else d)
+        acc = signals.small_cap_accumulation(d, funds_only=bool(inst))
         if acc.empty:
             kit.empty('No small caps net-bought by real funds in the last 30 days.')
         else:

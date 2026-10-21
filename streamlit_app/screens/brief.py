@@ -149,12 +149,12 @@ def render():
                 kit.table(soon.assign(nse_symbol=soon['symbol'], what=soon['purposes'].str.replace('_', ' ').str.replace(',', ', ')), [
                     kit.Col('company', 'Company', 'co'), kit.Col('meeting_date', 'Meeting', 'date'),
                     kit.Col('what', 'To consider')], limit=20)
-    cal = lock_in_calendar(ctx.preferential, ctx.prices, ref)
+    cal = lock_in_calendar(ctx.preferential, ctx.prices, ref, store.table('preferential_lockins'))   # filed lines, as on Actions (audit W6)
     if cal is not None and not cal.empty:
         cal = cal[(cal['days_left'] > 0) & (cal['days_left'] <= SOON_DAYS)]
         if not cal.empty:
             with kit.card('Shares coming off lock-in this week', 'br_lock', f'next {SOON_DAYS} days'):
                 kit.table(with_flags(cal), [
                     kit.Col('expires', 'Free from', 'date'), kit.Col('company', 'Company', 'co'), kit.Col('who', 'Whose shares'),
-                    kit.Col('shares_allotted', 'Shares', 'shares', phone=False),
+                    kit.Col('shares', 'Shares', 'shares', phone=False),
                     kit.Col('at_market', 'At market now', 'money', phone=False)], limit=20)
