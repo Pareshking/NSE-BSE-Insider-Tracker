@@ -5,7 +5,7 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
 
 ## Part 2: numbers checked against the source
 
-### D1 Clusters count one promoter group as several decision-makers (wrong number, open)
+### D1 Clusters count one promoter group as several decision-makers (wrong number, fixed 21 Oct: the filed category decides, `signals.decision_makers`, `ideas.decisions`)
 - **Shown** (Actions, "Several insiders buying together", 21 Oct): Electrosteel Castings, 7 buyers,
   5 decision-makers, ₹194.95 Cr, 4.23% of market cap; first in the list.
 - **Source**: NSE PIT filing appId 3856, broadcast 01 Oct 2026 16:32 (XBRL
@@ -22,7 +22,7 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
   group (the filing's category is the exchange's own word), the member list adds the rest (relatives
   filed under other categories). Test on this filing.
 
-### D2 Creeping-acquisition room uses rupees over today's market cap, not shares (wrong number, open)
+### D2 Creeping-acquisition room uses rupees over today's market cap, not shares (wrong number, fixed 21 Oct: shares over total shares)
 - **Shown** (Company, Electrosteel): "4.23% bought on market since 01 Apr 2026", room 0.77%.
 - **Source**: the same filing: 2,71,42,650 shares bought; total shares 61.81 Cr (promoter 33,70,67,952 =
   54.53%) -> 4.39%, room 0.61%.
@@ -30,11 +30,11 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
 - **Fix**: shares bought / total shares in issue (or the filed post-minus-pre % of shareholding in each
   PIT XBRL), net of nothing (Reg 3(2) counts gross acquisitions). Test.
 
-### D3 The same promoter / directors / deals net shown twice on the Company page (duplicate, open)
+### D3 The same promoter / directors / deals net shown twice on the Company page (duplicate, open: Company rebuild in progress)
 - Tiles "Promoter net, 12 months", "Directors & KMP net", "Deals net, 12 months" and the card "Net
   open-market flow by who" repeat the same three figures.
 
-### D4 Empty card drawn (cosmetic, open)
+### D4 Empty card drawn (cosmetic, open: Company rebuild in progress)
 - Company, Electrosteel: "Handshakes in this stock" shows only "Click a column to sort." with no rows.
 
 ### To verify
@@ -47,17 +47,52 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
   lists); CMP vs paid +3.88% (₹71.82 average paid).
 - "Filings to 19 Oct" on 21 Oct: 20 Oct 2026 was Dussehra, an NSE trading holiday (holiday-master).
 
-### D5 Companies under ₹100 Cr lead the Screener (owner rule not live, open)
+### D5 Companies under ₹100 Cr lead the Screener (owner rule not live, fixed: study universe live; Screener retired into Today)
 - Screener top rows on 21 Oct: Swashthik Plascon, Dangee Dums (≈₹47 Cr), NAPS Global. Fixed by the study
   universe (PR #55) once merged.
 
-### D6 Promoters' own bulk buys counted in both "Promoter net" and "Deals net" (misleading, open)
+### D6 Promoters' own bulk buys counted in both "Promoter net" and "Deals net" (misleading, open: Company rebuild; Today already leaves a filed insider's deal to the insider lists)
 - Electrosteel: Asha and Mayank Kejriwal and Wilcox Merchants appear in the PIT filing and in NSE's bulk
   list for the same trades; the Company tiles add them to both nets. Fix with D3: one flow card where a
   deal by a filed insider is shown once, under the insider.
 
-### D7 Paragraph captions under tables (verbosity, open)
+### D7 Paragraph captions under tables (verbosity, fixed on Today and Evidence; Company in progress)
 - Screener, Actions, Track record and others end with multi-sentence captions; to become one-line tags.
+
+## Part 4: Today on real data (PR #184, 21 Oct), checked against the exchanges' own files
+
+### D8 Lenders' trustees shown as "Big investor in" (wrong signal, fixed #184)
+- **Shown**: Horizon Industrial Parks (Deutsche Bank AG, Singapore Branch, 75.40%), five Vedanta companies (GLAS Agency
+  (Hong Kong) as trustee and security agent for the tap bonds, 56.38% / 54.72%), Orient Green Power (Catalyst Trusteeship
+  as debenture trustee, 22.67%).
+- **Source**: NSE SAST Reg 29, 90 days to 21 Oct (1,441 filings): mode "Others"; 72 of 159 non-promoter "Others" filings
+  are trustees, agents or bank branches holding shares as security (and their release).
+- **Fix**: `ideas.SECURITY_HOLDER` leaves them out of big investors; a filing seen on both exchanges counted once. Test.
+
+### D9 Aequs pledge summed across a release and a re-pledge (wrong number, fixed #184)
+- **Shown**: "Promoters pledged 59.95% of the company (6 filings)".
+- **Source**: NSE PIT XBRL appIds 3471, 3969, 3985: Melligeri Private Family Foundation pledged 10,05,13,070 shares on 21 Sep,
+  released the same 10,05,13,070 on 08 Oct, pledged them again on 14 Oct.
+- **Fix**: PIT pledges netted per company (created minus released). Test on these three filings.
+
+### D10 Akme Fintrade warrants shown as Rs 9,10,200 Cr (wrong number, fixed #184, live after Clean only 21 Oct)
+- **Cause**: preferential and rights amounts checked only on the approved amount, under Rs 10 lakh crore; the documented
+  ceiling is Rs 1 lakh crore and QIPs were also checked against shares x price.
+- **Fix**: both amounts checked, the raised one against shares x offer price (2x), under Rs 1 lakh crore. Test.
+
+### D11 Evidence: company names blank, flags drawn letter by letter (wrong display, fixed #186)
+- Names were read from a `company` column the securities list does not have (`display_name`); "ESM I, T2T, 5% band"
+  arrived as one string. Forward record now cut to the Rs 100 Cr universe (24 rows counted, not shown).
+
+### Checked and right (21 Oct, real data)
+- Thyrocare "Pledge released": Docon Technologies released 1,75,00,000 and 7,94,69,696 pledged shares (PIT appIds 2183,
+  2325, Aug 2026), all 9,69,69,696 promoter shares.
+- Race Eco Chain "Pledge rising": the 30 Sep 2026 shareholding XBRL (filed 07 Oct) shows 50,20,000 + 27,10,100 promoter
+  shares pledged, 100% of the category; none in June.
+- Paramount Syntex "Funds selling": BSE bulk deals of 09 Oct 2026 at Rs 115: Minerva Ventures, Rigel Global, Sunrise
+  Investment Opportunities, MGO High Conviction, Al Maha Onyx and two 31 Degrees North funds sold 25,60,000 shares
+  (Rs 29.44 Cr), as shown.
+- Thyrocare "Big investor in": HSBC Mutual Fund bought 1.88% to 6.63% (SAST Reg 29(1)).
 
 ## Part 3: data layer (`docs/audit/data_layer.md`), batch 2
 
