@@ -32,10 +32,10 @@ def _cell(r, sized: bool) -> tuple[str, int]:
             f'<i>{beat:.0f}%</i></td>'), n
 
 
-def _names(df: pd.DataFrame, ctx) -> pd.DataFrame:
+def _names(df: pd.DataFrame, securities: pd.DataFrame) -> pd.DataFrame:
     """Company name and NSE symbol from the securities list (its name column is display_name), keeping any
     the artifact already carries."""
-    sec = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
+    sec = securities.drop_duplicates('isin').set_index('isin') if not securities.empty else pd.DataFrame()
     df = df.copy()
     for col, src in (('company', 'display_name'), ('nse_symbol', 'nse_symbol')):
         mapped = df['isin'].map(sec[src]) if src in sec else pd.Series(None, index=df.index, dtype=object)
@@ -107,7 +107,7 @@ def render():
     with kit.card('Every case', 'tr_cases', 'pick a signal; newest first'):
         pick = st.selectbox('Signal', list(track.SIGNALS), format_func=track.SIGNALS.get, key='tr_sig',
                             label_visibility='collapsed')
-        rows = _names(ev[ev['signal'] == pick], ctx).sort_values('day', ascending=False)
+        rows = _names(ev[ev['signal'] == pick], ctx.securities).sort_values('day', ascending=False)
         kit.table(rows, [
             kit.Col('company', 'Company', 'co'), kit.Col('day', 'Made public', 'date'),
             kit.Col('entry_price', 'Entry', 'price', phone=False), kit.Col('value', 'Value', 'money', phone=False),
@@ -124,13 +124,19 @@ def _forward(ctx, sized: bool):
     fw = store.artifact('artifacts/forward_outcomes.parquet')
     if fw.empty:
         return
-    fw = _names(fw, ctx)
+    uni = store.universe_isins()
+    outside = int((~fw['isin'].isin(uni)).sum()) if uni is not None else 0
+    if outside:
+        fw = fw[fw['isin'].isin(uni)]
+    fw = _names(fw, ctx.securities)
     fw['label'] = fw['signal'].map(track.SIGNALS).fillna(fw['signal'])
     started = pd.to_datetime(fw['recorded_at']).min()
     done = {h: fw[f'excess_sm_{h}' if sized else f'excess_{h}'].dropna() for h in track.HORIZONS}
     sub = ' · '.join(f'{h} {kit.pct(x.median(), 1, signed=True)} ({kit.plural(len(x), "case")})' for h, x in done.items() if len(x))
     with kit.card('Forward record', 'tr_fwd', f'recorded the night each signal fired since {kit.day(started)}, never edited · '
                   + (f'median excess {sub}' if sub else 'no complete window yet')):
+        if outside:
+            kit.caption(f'{kit.plural(outside, "row")} of companies now under ₹100 Cr not shown (the record itself is never edited)')
         kit.table(fw.sort_values(['day', 'recorded_at'], ascending=False), [
             kit.Col('company', 'Company', 'co'), kit.Col('label', 'Signal', 'text'),
             kit.Col('day', 'Made public', 'date'), kit.Col('recorded_at', 'Recorded', 'date', phone=False),
@@ -147,7 +153,7 @@ def _basket(ctx):
     if pos.empty:
         return
     nav = store.artifact('artifacts/basket_nav.parquet')
-    pos = _names(pos, ctx)
+    pos = _names(pos, store.names())
     pos['label'] = pos['signal'].map(track.SIGNALS).fillna(pos['signal'])
     closed = pos[pos['status'] == 'closed']
     with kit.card('Model basket', 'tr_basket', f'paper portfolio, rules fixed in advance (version {basket.BASKET_VERSION}): '
