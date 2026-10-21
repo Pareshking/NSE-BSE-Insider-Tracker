@@ -367,3 +367,25 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 .tile .v { font-size: 20px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
 .tbl td, .tbl th { font-variant-numeric: tabular-nums; }
 .head p { font-size: 13.5px !important; color: var(--ink-3) !important; }
+
+/* ---- Today, the dashboard (21 Oct): headline, groups, trend panel, the bar ---- */
+.headline { margin: 2px 0 4px; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; line-height: 1.35; text-wrap: balance; }
+.headline b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.headline b.up { color: var(--buy); } .headline b.down { color: var(--sell); }
+.chip i { font-style: normal; font-weight: 500; opacity: .75; margin-left: 6px; padding-left: 6px; border-left: 1px solid currentColor; }
+.grp { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 2px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-strong); }
+.grp:first-child { margin-top: 0; }
+.grp h3 { margin: 0; padding: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
+.grp span { font-size: var(--fs-small); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.grp-more { margin: 6px 4px 0; font-size: var(--fs-small); } .grp-more a { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
+.trend { width: 100%; border-collapse: collapse; font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.trend th, .trend td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.trend thead th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); text-align: right; }
+.trend tbody th { text-align: left; font-weight: 500; color: var(--ink-2); padding-left: 8px; }
+.trend tbody tr.look th { border-left: 2px solid var(--buy); } .trend tbody tr.warn th { border-left: 2px solid var(--sell); }
+.trend td { text-align: right; color: var(--ink); width: 13%; }
+.trend .on { background: var(--subtle); font-weight: 650; }
+.trend tr:last-child th, .trend tr:last-child td { border-bottom: 0; }
+.bar-rules { margin: 0; padding-left: 16px; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.45; }
+.bar-all { display: inline-block; margin-top: 10px; font-size: var(--fs-small); font-weight: 600; color: var(--accent-ink); text-decoration: none; }

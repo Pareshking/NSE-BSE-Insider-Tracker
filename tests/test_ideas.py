@@ -50,19 +50,21 @@ def test_one_lakh_a_day_is_steady_accumulation_and_small_one_offs_are_not():
     assert 'Steady accumulation' in out.iloc[0]['kinds'] and 'on 12 days' in out.iloc[0]['sentence']
 
 
-def test_a_kind_that_did_worse_than_the_index_stays_off_today():
+def test_a_kind_measured_behind_the_index_still_shows_with_its_tag():
+    """Owner, 21 Oct: evidence is a tag, never a filter (promoters buy for the quarters and years ahead)."""
     t = pd.DataFrame([row('INE333A01011', 'OFFICERCO', 'Kim Kmp', 'kmp', 'BUY', 400000, 100, '2026-10-10')])   # Rs 4 Cr
     behind = pd.DataFrame({'signal': ['officer_buy'] * 2, 'horizon': ['3M', '6M'], 'cases': [40, 35],
                            'median_excess': [-3.0, -4.0], 'beat_index': [40.0, 38.0]})
-    assert ideas.worth_a_look(t, REF, summary=behind).empty
-    assert len(ideas.worth_a_look(t, REF)) == 1   # not measured yet: shown, studies support it
+    look, _ = ideas.today([ideas.insider_events(t, REF, summary=behind)], behind)
+    assert list(look['nse_symbol']) == ['OFFICERCO'] and look.iloc[0]['group'] == 'Insiders buying'
+    assert look.iloc[0]['reads']['Director or KMP buying'] == 'drag'
 
 
-def test_watch_out_lists_promoter_sales_before_pledge_rises():
-    sell = [row('INE444A01011', 'SELLCO', 'Promo Seller', 'promoter', 'SELL', 3_000_000, 50, '2026-10-15')]
-    out = ideas.watch_out(pd.DataFrame(sell), REF, SH)
-    assert list(out['kind']) == ['Promoter selling', 'Pledge rising']
-    assert 'up from 8.0%' in out.iloc[1]['sentence']
+def test_watch_out_lists_promoter_sales_largest_first():
+    sell = [row('INE444A01011', 'SELLCO', 'Promo Seller', 'promoter', 'SELL', 3_000_000, 50, '2026-10-15'),
+            row('INE445A01011', 'SMALLSELL', 'Other Promoter', 'promoter', 'SELL', 1_000_000, 50, '2026-10-15')]
+    out = ideas.watch_out(pd.DataFrame(sell), REF)
+    assert list(out['nse_symbol']) == ['SELLCO', 'SMALLSELL'] and set(out['kind']) == {'Promoter selling'}
 
 
 def test_other_kinds_reach_today_across_the_market():
@@ -92,16 +94,67 @@ def test_other_kinds_reach_today_across_the_market():
                               ideas.pledge_events(trades, REF, sh), ideas.buyback_events(bb, REF, sh)])
     kinds = dict(zip(look['nse_symbol'], look['kind']))
     assert kinds == {'BUYBACKCO': 'Buyback at a premium', 'PREMCO': 'Promoters pay up', 'STAKECO': 'Big investor in', 'FUNDCO': 'Fund buying'}
-    assert list(look['nse_symbol'])[:2] == ['BUYBACKCO', 'PREMCO']          # by % of the company: 3.0% then 2.0%
+    # by group (ideas.GROUPS), then % of the company inside a group: the big investor's 1.2% before the funds' 0.35%
+    assert list(look['nse_symbol']) == ['PREMCO', 'STAKECO', 'FUNDCO', 'BUYBACKCO']
+    assert list(look['group']) == ['Promoters pay up', 'Big investors and funds in', 'Big investors and funds in', 'Buybacks at a premium']
     assert 'warrants' in look.loc[look['nse_symbol'] == 'PREMCO', 'sentence'].iloc[0]
     assert set(zip(warn['nse_symbol'], warn['kind'])) == {('DISCCO', 'Cheap shares to promoters'), ('ELECTCAST', 'Pledge created')}
 
 
-def test_a_kind_measured_behind_the_index_is_left_off_worth_a_look():
+def test_fund_buying_measured_behind_shows_tagged_behind():
     deals = pd.DataFrame({'isin': ['INE777A01011'], 'company': ['F'], 'nse_symbol': ['FUNDCO'], 'client_id': ['x'], 'client_name': ['X Fund'],
                           'client_type': ['mutual_fund'], 'client_is_market_maker': [False], 'is_primary': [True], 'side': ['BUY'],
                           'pct_of_mcap': [0.6], 'value': [5e7], 'date': pd.to_datetime(['2026-10-14'])})
     behind = pd.DataFrame({'signal': ['fund_deal_buy'] * 2, 'horizon': ['3M', '6M'], 'cases': [174, 120],
                            'median_excess': [-2.7, -3.1], 'beat_index': [41.0, 39.0]})
     look, _ = ideas.today([ideas.fund_events(deals, None, REF)], behind)
-    assert look.empty
+    assert list(look['kind']) == ['Fund buying'] and look.iloc[0]['reads'] == {'Fund buying': 'drag'}
+
+
+def test_a_lenders_trustee_or_security_agent_is_no_big_investor():
+    """Real SAST filings of Oct 2026: shares held as security for bonds or loans."""
+    names = ['GLAS Agency (Hong Kong) Limited (as trustee and security agent for the holders of the Tap Bonds)',
+             'Catalyst Trusteeship Limited acting in its capacity as the debenture trustee on behalf of',
+             'Deutsche Bank AG, Singapore Branch', 'Vistra ITCL (India) Limited', 'HSBC Mutual Fund']
+    sast = pd.DataFrame({'isin': [f'INE{i}00A01011' for i in range(5)], 'symbol': list('ABCDE'), 'company': list('ABCDE'),
+                         'is_promoter': [False] * 5, 'acquirer_name': names, 'pct_acquired': [56.38, 22.67, 75.4, 28.06, 1.88],
+                         'pct_sold': [None] * 5, 'post_stake_pct': [56.38, 22.67, 75.4, 28.06, 6.63],
+                         'broadcast_date': pd.to_datetime(['2026-10-10'] * 5)})
+    out = ideas.stake_events(pd.concat([sast, sast.tail(1)], ignore_index=True), REF)   # HSBC seen twice (both exchanges)
+    assert list(out['nse_symbol']) == ['E'] and out.iloc[0]['sentence'].startswith('HSBC Mutual Fund bought 1.88%')
+
+
+def pledge(day, kind, qty):
+    return {**row('INE0AEQUS011', 'AEQUS', 'Melligeri Private Family Foundation', 'promoter', 'BUY', qty, 0, day),
+            'kind': kind, 'is_primary': True, 'needs_review': False, 'broadcast_date': day}
+
+
+def test_pledges_are_netted_so_a_renewal_is_counted_once():
+    """Aequs, Sep-Oct 2026: the same 10.05 crore shares pledged, released, pledged again."""
+    sh = pd.DataFrame({'isin': ['INE0AEQUS011'], 'symbol': ['AEQUS'], 'company': ['Aequs'],
+                       'quarter_end': pd.to_datetime(['2026-09-30']), 'total_shares': [670e6]})
+    t = pd.DataFrame([pledge('2026-09-21', 'pledge_create', 100513070), pledge('2026-10-09', 'pledge_revoke', 100513070),
+                      pledge('2026-10-15', 'pledge_create', 100513070)])
+    out = ideas.pledge_events(t, REF, sh)
+    assert len(out) == 1 and out.iloc[0]['kind'] == 'Pledge created'
+    assert abs(out.iloc[0]['pct_of_company'] - 100513070 / 670e6 * 100) < 1e-9
+    assert '(2 pledged, 1 released)' in out.iloc[0]['sentence']
+    assert ideas.pledge_events(t.iloc[:2], REF, sh).empty      # pledged and released in full: nothing
+
+
+def test_a_quarterly_pledge_change_shows_only_in_the_period_it_was_made_public():
+    """Race Eco Chain, Sep 2026 XBRL: promoters' 77,30,100 shares all pledged, none in June."""
+    sh = pd.DataFrame({'isin': ['INE0RACE0011'] * 2, 'symbol': ['RACE'] * 2, 'company': ['Race Eco Chain'] * 2,
+                       'quarter_end': pd.to_datetime(['2026-06-30', '2026-09-30']),
+                       'submission_date': pd.to_datetime(['2026-07-04', '2026-10-07']), 'total_shares': [17.26e6] * 2,
+                       'promoter_pledge_pct': [0.0, 100.0], 'promoter_pledged_shares': [0, 7730100], 'xbrl_status': ['ok', 'ok']})
+    assert ideas.pledge_events(None, REF, sh, days=30).iloc[0]['kind'] == 'Pledge rising'
+    assert ideas.pledge_events(None, REF, sh, days=7).empty                  # made public 07 Oct, 12 days before
+    assert ideas.pledge_events(None, REF, sh.assign(xbrl_status=['pending', 'ok']), days=30).empty
+
+
+def test_each_period_counts_only_its_own_days():
+    t = pd.DataFrame([row('INE555B01011', 'OLDBUY', 'Old Promoter', 'promoter', 'BUY', 500000, 100, '2026-08-20'),
+                      row('INE556B01011', 'NEWBUY', 'New Promoter', 'promoter', 'BUY', 500000, 100, '2026-10-19')])
+    got = {d: set(ideas.insider_events(t, REF, days=d)['nse_symbol']) for d in ideas.PERIODS.values()}
+    assert got == {1: {'NEWBUY'}, 7: {'NEWBUY'}, 30: {'NEWBUY'}, 90: {'NEWBUY', 'OLDBUY'}}

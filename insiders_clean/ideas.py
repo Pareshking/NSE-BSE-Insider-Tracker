@@ -1,25 +1,26 @@
-"""Today's two short lists (redesign of 21 Oct 2026, docs/REVAMP_PLAN.md and the
-blueprint the owner approved): "Worth a look", at most 10 companies where people
-with skin in the game bought on the market at a size that matters, and "Watch
-out", at most 5 where they sold or pledged.
+"""Today, the dashboard (redesign of 21 Oct 2026, docs/REVAMP_PLAN.md and the
+blueprint the owner approved): across every listed company, for a period of one
+day, 7, 30 or 90 days, "Worth a look" (people with skin in the game put money in at
+a size that matters) and "Watch out" (they took money out, pledged, or took cheap
+shares), each in a few groups.
 
 Rules (owner, 21 Oct):
 * Who: one decision-maker per promoter group (every filer filed as Promoter or
   Promoter Group, plus members named in the shareholding pattern), otherwise per
-  person (signals.decision_makers). Tranches over the window are combined, so a
+  person (signals.decision_makers). Tranches over the period are combined, so a
   promoter buying Rs 1 lakh a day is seen as the steady buyer they are.
-* Size floor, per decision-maker over WINDOW days: at least MIN_VALUE and
-  MIN_PCT of the company; or ALONE_PCT of the company whatever the rupees; or
-  buying on STEADY_DAYS separate days (steady accumulation).
-* Gate: an idea is shown only while one of its signals has an "ahead" early read
-  in the measured track record, or is not measured yet but is supported by
-  published studies (STUDIES). A kind that has done worse than the index stays
-  searchable in Filings, never on Today.
-* Order: % of the company bought (shares over total shares from the shareholding
-  XBRL where filed, else value over market cap at the trade), then the latest.
-No score is shown: each idea carries its reasons.
+* Size floor, per decision-maker over the period: at least MIN_VALUE and MIN_PCT
+  of the company; or ALONE_PCT of the company whatever the rupees; or buying on
+  STEADY_DAYS separate days (steady accumulation).
+* Evidence does not pick: promoters buy for the quarters and years ahead, and a
+  few months of the track record is short-term noise. Every kind is shown with
+  its measured read as a tag (ahead, behind, no edge, few cases, not measured).
+* Order: % of the company (shares over total shares from the shareholding XBRL
+  where filed, else value over market cap at the trade), then the latest.
 """
 from __future__ import annotations
+
+import re
 
 import pandas as pd
 
@@ -31,12 +32,12 @@ MIN_PCT = 0.05          # % of the company
 ALONE_PCT = 0.25        # qualifies on its own, for a company too small for Rs 25 lakh to mean much
 STEADY_DAYS = 10        # separate buying days in the window
 MAX_IDEAS, MAX_WARNINGS = 10, 5
+PER_GROUP = 8           # rows shown per group on Today; the rest counted, all in Filings
 PLEDGE_RISE_PTS = 5.0   # pledge up this many points of promoter shares in the latest quarter
-# Signal kinds -> the track-record signal that measures them; STUDIES: supported by published work
-# (docs/PRODUCT.md, research) and so shown while not yet measured here.
+PERIODS = {'Today': 1, 'Last 7 days': 7, 'Last 30 days': 30, 'Last 90 days': 90}
+# Signal kinds -> the track-record signal that measures them (the tag each row carries).
 MEASURED_BY = {'Promoter buying': 'promoter_buy', 'Director or KMP buying': 'officer_buy', 'Cluster': 'cluster',
                'Spotlight': 'spotlight', 'Promoter selling': 'promoter_sell'}
-STUDIES = {'promoter_buy', 'officer_buy', 'cluster'}
 
 
 def _shares_out(sh: pd.DataFrame | None) -> dict:
@@ -110,19 +111,11 @@ def _verdicts(summary: pd.DataFrame | None) -> dict:
     return {k: evidence.verdict(summary, v)['kind'] for k, v in MEASURED_BY.items()}
 
 
-def _passes(kinds: list[str], verdicts: dict) -> bool:
-    for k in kinds:
-        sig, v = MEASURED_BY.get(k), verdicts.get(k)
-        if sig and (v == 'leaning_positive' or (v in ('not_measured', 'few') and sig in STUDIES)):
-            return True
-    return False
-
-
 def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None,
-                 summary: pd.DataFrame | None = None, limit: int = MAX_IDEAS) -> pd.DataFrame:
+                 summary: pd.DataFrame | None = None, limit: int = MAX_IDEAS, days: int = WINDOW) -> pd.DataFrame:
     """At most `limit` companies, one row each: the sentence, the size, the reasons (`kinds`), the
     decision-makers behind it. `t` is the eligible insider table (signals.eligible)."""
-    d = decisions(t, ref, 'BUY', sh)
+    d = decisions(t, ref, 'BUY', sh, days)
     if d.empty:
         return d
     d = d[_qualifies(d)]
@@ -139,8 +132,6 @@ def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = N
             + (['Director or KMP buying'] if (~g['promoter_group'] & g['roles'].map(lambda r: bool(set(r) & {'director', 'kmp'}))).any() else []) \
             + (['Cluster'] if isin in clus else []) + (['Spotlight'] if isin in spot else []) \
             + (['Steady accumulation'] if (g['days'] >= STEADY_DAYS).any() else [])
-        if not _passes(kinds, verdicts):
-            continue
         pct = g['pct_of_company'].sum()
         lead = _who(top) if len(g) == 1 else f'{_who(top)} and {len(g) - 1} more'
         rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'],
@@ -156,11 +147,11 @@ def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = N
 
 
 def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None,
-              limit: int = MAX_WARNINGS) -> pd.DataFrame:
-    """At most `limit` companies where promoters sold past the same floors, or pledged 5+ points more
-    of their shares in the latest quarter: the sentence and the size, largest first."""
+              limit: int = MAX_WARNINGS, days: int = WINDOW) -> pd.DataFrame:
+    """At most `limit` companies where the promoter group sold on the market past the same floors, largest
+    % of the company first. Pledges are pledge_events."""
     rows = []
-    d = decisions(t, ref, 'SELL', sh)
+    d = decisions(t, ref, 'SELL', sh, days)
     if not d.empty:
         d = d[d['promoter_group'] & _qualifies(d)]
         for isin, g in d.groupby('isin'):
@@ -168,27 +159,13 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
             top = g.sort_values('pct_of_company').iloc[-1]
             rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'], 'kind': 'Promoter selling',
                          'sentence': f'{_who(top)} sold {pct:.2f}% of the company on the market{", " + _when(top) if _when(top) else ""}',
-                         'size': pct, 'value': g['value'].sum(), 'last': g['last'].max()})
-    if sh is not None and not sh.empty and 'promoter_pledge_pct' in sh:
-        s = sh.dropna(subset=['isin']).assign(pl=pd.to_numeric(sh['promoter_pledge_pct'], errors='coerce'),
-                                              q=pd.to_datetime(sh['quarter_end'], errors='coerce')).sort_values('q')
-        for isin, g in s.groupby('isin'):
-            g = g.dropna(subset=['pl']).drop_duplicates('q', keep='last')
-            if len(g) < 2:
-                continue
-            a, b = g.iloc[-2], g.iloc[-1]
-            if b['pl'] - a['pl'] >= PLEDGE_RISE_PTS:
-                rows.append({'isin': isin, 'company': b.get('company') or b.get('symbol'), 'nse_symbol': b.get('symbol'),
-                             'kind': 'Pledge rising',
-                             'sentence': f'Promoters pledged {b["pl"]:.1f}% of their shares, up from {a["pl"]:.1f}% a quarter earlier',
-                             'size': b['pl'] - a['pl'], 'value': None, 'last': b['q']})
+                         'size': pct, 'value': g['value'].sum(), 'last': g['last'].max(),
+                         'avg_price': g['value'].sum() / g['shares'].sum() if g['shares'].sum() else None,
+                         'trade_to': g['trade_to'].max(), 'decision_makers': len(g)})
     out = pd.DataFrame(rows)
     if out.empty:
         return out
-    # One measure per order (audit W17): sales first, by % of the company; then pledge rises, by points.
-    out['_k'] = (out['kind'] != 'Promoter selling').astype(int)
-    out = out.sort_values(['_k', 'size', 'last'], ascending=[True, False, False]).drop_duplicates('isin')
-    return out.drop(columns='_k').head(limit).reset_index(drop=True)
+    return out.sort_values(['size', 'last'], ascending=[False, False]).head(limit).reset_index(drop=True)
 
 
 # --- Every other kind of filing, across the whole market (owner, 21 Oct: "one can not see 5000 company
@@ -199,7 +176,7 @@ EVENT_COLS = ['isin', 'company', 'nse_symbol', 'list', 'kind', 'pct_of_company',
               'avg_price', 'trade_to', 'decision_makers']
 BIG_STAKE = 5.0          # SAST Reg 29(1): crossing 5%
 BIG_CHANGE = 2.0         # SAST Reg 29(2): a change of 2% or more
-FUND_NET_PCT = 0.25      # funds' net bulk/block buying or selling, % of the company, 30 days
+FUND_NET_PCT = 0.25      # funds' net bulk/block buying or selling over the period, % of the company
 ISSUE_PREMIUM = 0.0      # promoters paying at or above today's price
 BUYBACK_PREMIUM = 10.0   # tender offer at least 10% above today's price
 MEASURED_BY.update({'Fund buying': 'fund_deal_buy'})
@@ -217,80 +194,107 @@ def _in_window(when: pd.Series, ref: pd.Timestamp, days: int) -> pd.Series:
     return (when <= ref + pd.Timedelta(days=1)) & (when > ref - pd.Timedelta(days=days))
 
 
-def insider_events(t, ref, sh=None, summary=None) -> pd.DataFrame:
+def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW) -> pd.DataFrame:
     """Insider buys (Worth a look) and promoter sales (Watch out), from the two lists above."""
     rows = []
-    look = worth_a_look(t, ref, sh, summary, limit=10_000)
+    look = worth_a_look(t, ref, sh, summary, limit=10_000, days=days)
     for r in look.to_dict('records') if not look.empty else []:
         for k in r['kinds']:
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'look',
                          'kind': k, 'pct_of_company': r['pct_of_company'], 'sentence': r['sentence'], 'value': r['value'],
                          'last': r['last'], 'avg_price': r['avg_price'], 'trade_to': r['trade_to'],
                          'decision_makers': r['decision_makers']})
-    warn = watch_out(t, ref, sh, limit=10_000)
+    warn = watch_out(t, ref, sh, limit=10_000, days=days)
     for r in warn.to_dict('records') if not warn.empty else []:
         if r['kind'] == 'Promoter selling':
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'warn',
                          'kind': r['kind'], 'pct_of_company': r['size'], 'sentence': r['sentence'], 'value': r['value'],
-                         'last': r['last']})
+                         'last': r['last'], 'avg_price': r['avg_price'], 'trade_to': r['trade_to'],
+                         'decision_makers': r['decision_makers']})
     return _ev(rows)
 
 
 def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = WINDOW) -> pd.DataFrame:
-    """Promoters pledging (Watch out) or releasing a pledge (Worth a look): the PIT filings of the window,
-    and the latest quarter's change of 5+ points in the shareholding XBRL. Size: shares over total shares."""
+    """Promoters pledging (Watch out) or releasing a pledge (Worth a look). From the PIT filings of the
+    period, net per company: shares released and pledged again (a renewal, a change of lender) are no new
+    pledge (Aequs, Sep-Oct 2026: 10.05 crore shares pledged, released, pledged again). And from a
+    shareholding XBRL made public in the period whose pledge moved 5+ points of promoter shares from the
+    quarter before, both quarters parsed. Size: shares over total shares."""
     rows = []
     total = _shares_out(sh)
     if trades is not None and not trades.empty and 'kind' in trades:
         t = trades[trades['is_primary'].astype('boolean').fillna(False) & ~trades['needs_review'].astype('boolean').fillna(False)
-                   & trades['person_role'].isin(signals.PROMOTER_ROLES)].copy()
+                   & trades['person_role'].isin(signals.PROMOTER_ROLES)
+                   & trades['kind'].isin(['pledge_create', 'pledge_revoke'])].copy()
         t['seen'] = pd.to_datetime(t['broadcast_date'], errors='coerce')
-        t = t[_in_window(t['seen'], ref, days)]
-        for kind, lst, word in (('pledge_create', 'warn', 'pledged'), ('pledge_revoke', 'look', 'released a pledge on')):
-            for isin, g in t[t['kind'] == kind].dropna(subset=['isin']).groupby('isin'):
-                q = pd.to_numeric(g['quantity'], errors='coerce').sum()
-                pct = q / total[isin] * 100 if total.get(isin) else None
-                if pct is None or pct < MIN_PCT:
-                    continue
-                rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1], 'list': lst,
-                             'kind': 'Pledge created' if lst == 'warn' else 'Pledge released', 'pct_of_company': pct,
-                             'sentence': f'Promoters {word} {pct:.2f}% of the company ({_filings(len(g))})',
-                             'value': None, 'last': g['seen'].max()})
+        t = t[_in_window(t['seen'], ref, days)].dropna(subset=['isin'])
+        t['q'] = pd.to_numeric(t['quantity'], errors='coerce') * t['kind'].map({'pledge_create': 1, 'pledge_revoke': -1})
+        for isin, g in t.groupby('isin'):
+            net = g['q'].sum()
+            pct = abs(net) / total[isin] * 100 if total.get(isin) else None
+            if pct is None or pct < MIN_PCT:
+                continue
+            made, freed = int((g['kind'] == 'pledge_create').sum()), int((g['kind'] == 'pledge_revoke').sum())
+            how = f' ({made} pledged, {freed} released)' if made and freed else f' ({_filings(len(g))})'
+            rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
+                         'list': 'warn' if net > 0 else 'look', 'kind': 'Pledge created' if net > 0 else 'Pledge released',
+                         'pct_of_company': pct,
+                         'sentence': f'Promoters {"pledged" if net > 0 else "released"} a net {pct:.2f}% of the company{how}',
+                         'value': None, 'last': g['seen'].max()})
     if sh is not None and not sh.empty and {'promoter_pledged_shares', 'total_shares', 'promoter_pledge_pct'} <= set(sh.columns):
-        s = sh.dropna(subset=['isin']).assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'),
-                                              pl=pd.to_numeric(sh['promoter_pledge_pct'], errors='coerce'),
-                                              ps=pd.to_numeric(sh['promoter_pledged_shares'], errors='coerce'),
-                                              ts=pd.to_numeric(sh['total_shares'], errors='coerce')).sort_values('q')
-        for isin, g in s.groupby('isin'):
+        filed = sh['submission_date'] if 'submission_date' in sh else sh['quarter_end']
+        s = sh.assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'), filed=pd.to_datetime(filed, errors='coerce'),
+                      pl=pd.to_numeric(sh['promoter_pledge_pct'], errors='coerce'),
+                      ps=pd.to_numeric(sh['promoter_pledged_shares'], errors='coerce'),
+                      ts=pd.to_numeric(sh['total_shares'], errors='coerce')).dropna(subset=['isin'])
+        if 'xbrl_status' in s:
+            s = s[s['xbrl_status'].fillna('ok') == 'ok']
+        if 'shareholding_stale' in s:
+            s = s[~s['shareholding_stale'].astype('boolean').fillna(False)]
+        for isin, g in s.sort_values('q').groupby('isin'):
             g = g.dropna(subset=['pl']).drop_duplicates('q', keep='last')
             if len(g) < 2:
                 continue
             a, b = g.iloc[-2], g.iloc[-1]
             move = b['pl'] - a['pl']
-            if abs(move) < PLEDGE_RISE_PTS or not b['ts']:
+            when = b['filed'] if pd.notna(b['filed']) else b['q']
+            if abs(move) < PLEDGE_RISE_PTS or not b['ts'] or not _in_window(pd.Series([when]), ref, days).iloc[0]:
                 continue
             pct = abs(b['ps'] - a['ps']) / b['ts'] * 100 if pd.notna(b['ps']) and pd.notna(a['ps']) else 0.0
-            direction = 'up' if move > 0 else 'down'
             rows.append({'isin': isin, 'company': b.get('company') or b.get('symbol'), 'nse_symbol': b.get('symbol'),
                          'list': 'warn' if move > 0 else 'look', 'kind': 'Pledge rising' if move > 0 else 'Pledge released',
                          'pct_of_company': pct,
                          'sentence': f'Promoters pledged {b["pl"]:.1f}% of their shares at {b["q"]:%b %Y}, '
-                                     f'{direction} from {a["pl"]:.1f}% a quarter earlier',
-                         'value': None, 'last': b['q']})
+                                     f'{"up" if move > 0 else "down"} from {a["pl"]:.1f}% a quarter earlier',
+                         'value': None, 'last': when})
     return _ev(rows)
+
+
+# A SAST filing by a lender's trustee or security agent, or by a bank branch, is a pledge or its release
+# (the shares are held as security), not an investor buying or selling: Vedanta's tap bonds (GLAS Agency,
+# Citicorp, Kroll, Axis Trustee), Orient Green (Catalyst Trusteeship), Horizon Industrial Parks and Manipal
+# (Deutsche Bank AG, Singapore Branch; Vistra ITCL), Oct 2026.
+SECURITY_HOLDER = re.compile(r'truste|security agent|\bagent\b|on behalf of|debenture|for the holders|facility agreement'
+                             r'|\blenders?\b|\bglas\b|vistra|\bitcl\b|madison pacific|citicorp international'
+                             r'|international trust|\bbank\b.*\bbranch\b', re.I)
 
 
 def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
     """Big investors (not promoters) crossing 5% or adding 2%+ (Worth a look), or selling 2%+ or falling
-    below 5% (Watch out), from SAST Reg 29 disclosures. Size: the % of the company they bought or sold."""
+    below 5% (Watch out), from SAST Reg 29 disclosures; lenders' trustees and agents holding shares as
+    security left out (SECURITY_HOLDER), a filing seen on both exchanges counted once. Size: the % of the
+    company they bought or sold."""
     if sast is None or sast.empty or 'isin' not in sast:
         return _ev([])
-    s = sast[~sast['is_promoter'].astype('boolean').fillna(False)].copy()
+    s = sast[~sast['is_promoter'].astype('boolean').fillna(False)
+             & ~sast['acquirer_name'].fillna('').astype(str).str.contains(SECURITY_HOLDER)].copy()
     when = pd.to_datetime(s['broadcast_date'], errors='coerce') if 'broadcast_date' in s else pd.Series(pd.NaT, index=s.index)
     if 'transaction_date' in s:
         when = when.fillna(pd.to_datetime(s['transaction_date'], errors='coerce'))
     s['when'] = when
     s = s[_in_window(s['when'], ref, days)].dropna(subset=['isin'])
+    same = [c for c in ('isin', 'acquirer_name', 'pct_acquired', 'pct_sold', 'post_stake_pct') if c in s]
+    s = s.sort_values('when').drop_duplicates(same, keep='last')
     rows = []
     for r in s.to_dict('records'):
         bought = pd.to_numeric(r.get('pct_acquired'), errors='coerce')
@@ -309,7 +313,7 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
     return _ev(rows)
 
 
-def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = 30) -> pd.DataFrame:
+def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
     """Funds' net buying (Worth a look) or selling (Watch out) in bulk/block deals over `days`: institutional
     client types only (insiders_clean/participants.py), market makers out, a deal that is an insider's own
     filed trade left to the insider lists. Size: net % of the company."""
@@ -400,30 +404,50 @@ def buyback_events(bb: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: in
     return _ev(rows)
 
 
-def today(events: list, summary: pd.DataFrame | None = None,
-          limits: tuple = (MAX_IDEAS, MAX_WARNINGS)) -> tuple:
-    """(worth a look, watch out): one row per company and list, led by its largest event (its sentence),
-    every kind as a chip, ordered by % of the company then the latest. A kind our own record measures as
-    doing worse than the index is left off Worth a look (it stays in Filings)."""
+# The groups each list is shown in, in this order. A company sits in the first group any of its kinds
+# belongs to, led by its largest event there; its other kinds are chips and their sentences are listed.
+GROUPS = {
+    'look': [('Insiders buying', ['Promoter buying', 'Director or KMP buying', 'Cluster', 'Spotlight', 'Steady accumulation']),
+             ('Promoters pay up', ['Promoters pay up']),
+             ('Pledges released', ['Pledge released']),
+             ('Big investors and funds in', ['Big investor in', 'Fund buying']),
+             ('Buybacks at a premium', ['Buyback at a premium'])],
+    'warn': [('Promoters selling', ['Promoter selling']),
+             ('Pledges', ['Pledge created', 'Pledge rising']),
+             ('Cheap shares to promoters', ['Cheap shares to promoters']),
+             ('Big investors and funds out', ['Big investor out', 'Funds selling'])],
+}
+
+
+def _group(lst: str, kinds: list) -> tuple:
+    for i, (name, members) in enumerate(GROUPS[lst]):
+        if set(kinds) & set(members):
+            return i, name, members
+    return len(GROUPS[lst]), 'Other', kinds
+
+
+def today(events: list, summary: pd.DataFrame | None = None) -> tuple:
+    """(worth a look, watch out): one row per company and list, in its group (GROUPS), led by its largest
+    event in that group, every kind as a chip with its measured read; ordered by group, then % of the
+    company, then the latest. Nothing is left out on its read (owner, 21 Oct): the read is a tag."""
     parts = [e for e in events if e is not None and not e.empty]
     if not parts:
         return _ev([]), _ev([])
     ev = pd.concat(parts, ignore_index=True)
     reads = _verdicts(summary)
-    behind = {k for k, v in reads.items() if v == 'drag'}
-    ev = ev[~((ev['list'] == 'look') & ev['kind'].isin(behind))]
     out = []
-    for lst, limit in zip(('look', 'warn'), limits):
+    for lst in ('look', 'warn'):
         x = ev[ev['list'] == lst].dropna(subset=['isin'])
         rows = []
         for isin, g in x.groupby('isin'):
-            g = g.sort_values(['pct_of_company', 'last'], ascending=[False, False])
-            lead = g.iloc[0].to_dict()
             kinds = list(dict.fromkeys(g['kind']))
-            lead.update(kinds=kinds, reads={k: reads.get(k) for k in kinds if k in MEASURED_BY},
-                        others=g['sentence'].drop_duplicates().tolist()[1:])
+            order, name, members = _group(lst, kinds)
+            g = g.assign(_in=g['kind'].isin(members)).sort_values(['_in', 'pct_of_company', 'last'], ascending=False)
+            lead = g.iloc[0].drop(labels='_in').to_dict()
+            lead.update(kinds=kinds, group=name, group_order=order, reads={k: reads.get(k) or 'not_measured' for k in kinds},
+                        others=[t for t in g['sentence'].drop_duplicates() if t != lead['sentence']])
             rows.append(lead)
         r = pd.DataFrame(rows)
-        out.append(r.sort_values(['pct_of_company', 'last'], ascending=[False, False]).head(limit).reset_index(drop=True)
+        out.append(r.sort_values(['group_order', 'pct_of_company', 'last'], ascending=[True, False, False]).reset_index(drop=True)
                    if not r.empty else r)
     return out[0], out[1]
