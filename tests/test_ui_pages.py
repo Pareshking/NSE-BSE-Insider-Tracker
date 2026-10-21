@@ -201,3 +201,22 @@ st.write(f'{st_t["isin"].nunique()}|{all_t["isin"].nunique()}')
     assert not at.exception
     shown, everything = at.markdown[0].value.split('|')
     assert shown == '1' and int(everything) == len(isins) > 1
+
+
+def test_market_page_renders_and_old_addresses_redirect(data_dir, monkeypatch):
+    """Market (21 Oct redesign) replaces Actions, Morning brief, Latest session, Screener and Shareholding."""
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+from ui import theme
+theme.inject()
+from screens import market
+market.render()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ''
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    assert 'Market' in html and 'ev-line' in html
+    import re
+    app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
+    for old in ('actions', 'brief', 'screener', 'today', 'shareholding'):
+        assert re.search(rf"'{old}': 'Market'", app), old

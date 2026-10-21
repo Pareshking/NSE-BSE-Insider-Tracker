@@ -307,3 +307,9 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .rc-mv { display: inline-flex; gap: 10px; }
 .rc-mv b { font-weight: 600; }
 @media (max-width: 640px) { .rds { grid-template-columns: 1fr; } }
+
+/* ---- Market: one evidence line for every badge on the board ---- */
+.ev-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0 0 12px; font-size: var(--fs-small); color: var(--ink-2); }
+.ev-i { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
+.ev-i b { font-weight: 600; color: var(--ink); }
+.ev-line a { margin-left: auto; color: var(--accent-ink); text-decoration: none; font-weight: 600; }
