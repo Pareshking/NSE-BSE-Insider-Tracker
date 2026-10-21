@@ -42,15 +42,12 @@ st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
                    initial_sidebar_state='expanded')
 
 from screens import (
-    market,
-    capital_raises,
     coming,
     company,
     data_status,
-    deals,
     entity,
-    insider_trades,
-    other_filings,
+    filings_all,
+    home,
     track_record,
 )
 from screens.ctx import load
@@ -65,14 +62,10 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 # Filings page next.
 SECTIONS = {
     '': [
-        st.Page(market.render, title='Market', icon=M('monitoring'), url_path='market', default=True),
-        st.Page(insider_trades.render, title='Insider trades', icon=M('swap_vert'), url_path='insider-trades'),
-        st.Page(deals.render, title='Bulk & block deals', icon=M('handshake'), url_path='deals'),
-        st.Page(other_filings.render, title='Other filings', icon=M('account_tree'), url_path='other-filings'),
-        st.Page(capital_raises.render, title='Capital raises', icon=M('event'), url_path='capital-raises'),
-        st.Page(company.render, title='Company', icon=M('apartment'), url_path='company'),
-        st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity'),
+        st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
         st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
+        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
     ],
 }
 def _search_picked():
@@ -86,14 +79,14 @@ def _search_picked():
 COMPANY_PAGE = next(p for p in SECTIONS[''] if p.url_path == 'company')
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
-HIDDEN = [DATA_PAGE, st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
+HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden'), st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
 ALL = [p for ps in SECTIONS.values() for p in ps] + HIDDEN
 # Old addresses keep working.
-MOVED = {'confluence_screener': 'Market', 'entity_tracker': 'People & funds', 'transactions': 'Insider trades',
-         'promoter_activity': 'Insider trades', 'bulk_block_concentration': 'Bulk & block deals',
-         'data_quality': 'Data quality', 'sast': 'Other filings', 'transfers': 'Other filings',
-         'filings': 'Market',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
-         'actions': 'Market', 'brief': 'Market', 'screener': 'Market', 'today': 'Market', 'shareholding': 'Market'}   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
+MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'transactions': 'Filings', 'promoter_activity': 'Filings',
+         'bulk_block_concentration': 'Filings', 'data_quality': 'Data quality', 'sast': 'Filings', 'transfers': 'Filings',
+         'filings': 'Today',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
+         'market': 'Today', 'actions': 'Today', 'brief': 'Today', 'screener': 'Today', 'shareholding': 'Today',
+         'insider-trades': 'Filings', 'deals': 'Filings', 'other-filings': 'Filings', 'capital-raises': 'Filings'}
 
 
 def _redirect(path: str, target: str):
