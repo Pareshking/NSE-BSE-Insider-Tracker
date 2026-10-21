@@ -40,3 +40,10 @@ table.table(rows, [table.Col('company', 'Company', 'co'), table.Col('value', 'Va
     assert 'iframe' not in html and 'target="_top"' not in html
     assert 'company?symbol=ALPHA" target="_self"' in html
     assert html.count('class="dt" hidden') == 2 and 'has-dt' in html and 'groups.sort' in html
+
+def test_flags_given_as_one_string_are_badges_not_letters():
+    """The forward record's flags arrive as "ESM I, T2T, 5% band" and were drawn letter by letter (21 Oct)."""
+    out = kit.flag_tags('ESM I, T2T, 5% band', 'Enhanced surveillance, stage I')
+    assert out.count('class="tg tg-warn"') == 3 and '>ESM I<' in out and '>5% band<' in out
+    assert out.count('Enhanced surveillance, stage I') == 3
+    assert kit.flag_tags(['SME'], ['SME board']).count('tg-warn') == 1 and kit.flag_tags(None) == ''

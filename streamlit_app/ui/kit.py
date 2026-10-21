@@ -142,8 +142,12 @@ def side_tag(side) -> str:
 def flag_tags(flags, notes=None) -> str:
     """Tradability flags (ASM/GSM/ESM stage, T2T, SME, tight band, circuit-locked days) as small amber badges,
     the explanation on hover. Empty when there are none."""
-    flags = [] if flags is None or isinstance(flags, float) else list(flags)
-    notes = [] if notes is None or isinstance(notes, float) else list(notes)
+    def items(v):   # a list, or one comma-separated string (the forward record's "ESM I, T2T, 5% band")
+        if v is None or isinstance(v, float):
+            return []
+        return [x.strip() for x in v.split(',') if x.strip()] if isinstance(v, str) else list(v)
+    flags = items(flags)
+    notes = [notes] * len(flags) if isinstance(notes, str) else items(notes)   # a note's own commas stay
     if not flags:
         return ''
     return '<span class="tf">' + ''.join(

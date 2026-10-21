@@ -70,6 +70,16 @@ def universe_isins() -> frozenset | None:
     return frozenset(u.loc[u['in_universe'].astype(bool), 'isin'].dropna()) if not u.empty and 'in_universe' in u else None
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def names() -> pd.DataFrame:
+    """ISIN, display name and NSE symbol of every security, not cut to the universe: only for the model
+    basket, a fixed-rule paper portfolio whose rows must add up to its return even when a holding has
+    since fallen under Rs 100 Cr."""
+    df = _parquet('securities', cut=False)
+    cols = [c for c in ('isin', 'display_name', 'name', 'nse_symbol') if c in df]
+    return df[cols].drop_duplicates('isin') if 'isin' in df else pd.DataFrame()
+
+
 def _parquet(name: str, cut: bool = True) -> pd.DataFrame:
     """A clean table with the columns pages use, cut to the study universe: a
     company under Rs 100 Cr (or a row with no ISIN) never reaches a page, nor
