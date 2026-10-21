@@ -14,115 +14,12 @@ import streamlit as st
 from data import store
 from ui import kit
 
-from insiders_clean import issues as issue_clean
-from screens.ctx import load, split_since, with_prices
+# The issue row builders live in screens/ctx.py (shared with the Filings page); re-exported for the pages that import them here.
+from screens.ctx import (ALLOTTEE_LABEL, LOCK_IN_RECENT_DAYS, _amount, _on_today, _stage_rows,  # noqa: F401
+                         _vs_market, issue_rows, load, lock_in_calendar, qip_rows, rights_rows)
 
 PURPOSES = {'buyback': 'Buyback', 'rights': 'Rights', 'bonus': 'Bonus', 'split': 'Split', 'dividend': 'Dividend'}
 MEETING_FOCUS = ['fund_raising', 'preferential', 'buyback', 'rights', 'bonus', 'split', 'dividend', 'results']
-ALLOTTEE_LABEL = {'PROMOTER': 'Promoters', 'NON_PROMOTER': 'Non-promoters', 'MIXED': 'Promoters and others'}
-LOCK_IN_RECENT_DAYS = 30
-
-
-def _on_today(price, rows, prices, dates):
-    """A filed price put on the basis of today's split- and bonus-adjusted close (audit W9)."""
-    return pd.to_numeric(price, errors='coerce') * split_since(rows, prices, dates)
-
-
-def _amount(rows: pd.DataFrame) -> pd.Series:
-    """One meaning for "Amount" on every issue kind (audit W11): what was raised once the
-    securities are allotted, the approved size before that; the Stage column says which."""
-    empty = pd.Series(index=rows.index, dtype=float)
-    raised = pd.to_numeric(rows['amount_raised'], errors='coerce') if 'amount_raised' in rows else empty
-    approved = pd.to_numeric(rows['amount_total'], errors='coerce') if 'amount_total' in rows else empty
-    return raised.fillna(approved)
-
-
-def _vs_market(offer, close):
-    ok = pd.to_numeric(offer, errors='coerce').gt(0) & pd.to_numeric(close, errors='coerce').gt(0)
-    return ((pd.to_numeric(offer, errors='coerce') / pd.to_numeric(close, errors='coerce') - 1) * 100).where(ok)
-
-
-def _stage_rows(records: pd.DataFrame) -> pd.DataFrame:
-    """Allotted or listed records, and approvals no listing record points to."""
-    r = records.copy()
-    linked = set(r.loc[r['stage'] == 'listing', 'linked_app_id'].dropna())
-    approved = r[(r['stage'] == 'in_principle') & ~r['app_id'].isin(linked)].assign(status='Approved in principle')
-    return pd.concat([r[r['stage'] == 'listing'].assign(status='Allotted or listed'), approved], ignore_index=True)
-
-
-def issue_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """One row per issue as far as the data shows: an allotted or listed
-    record (with its approval's amount, allottee and filed ICDR minimum when
-    the two are linked), or an approval no listing record points to."""
-    if records is None or records.empty:
-        return pd.DataFrame()
-    rows = _stage_rows(records)
-    rows['nse_symbol'] = rows['symbol']
-    rows['to'] = rows['allottee_category'].map(ALLOTTEE_LABEL) if 'allottee_category' in rows else None
-    rows['amount'] = _amount(rows)
-    for c in ('icdr_min_price', 'icdr_min_ours', 'vs_icdr_min', 'instruments'):
-        if c not in rows:
-            rows[c] = None
-    rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(_on_today(rows.get('offer_price'), rows, prices, ['allotment_date', 'listing_date', 'board_date', 'posted_on']), rows['latest_close'])
-    rows['ours_vs_filed'] = _vs_market(rows['icdr_min_ours'], rows['icdr_min_price'])
-    return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
-
-
-def lock_in_calendar(records: pd.DataFrame, prices: pd.DataFrame, today: pd.Timestamp,
-                     lines: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Lock-in expiries, earliest first, from a month ago on: the lines the
-    company filed where the listing XBRL has them, the rule otherwise
-    (promoters 18 months, others 6, from the trading-approval date). `lines`
-    is the preferential_lockins table; without it the rule lines are built
-    from `records`. A rule line of a mixed allotment has no share count (the
-    split is not filed), so no market value."""
-    if lines is None or lines.empty:
-        if records is None or records.empty or 'lock_in_promoter_until' not in records:
-            return pd.DataFrame()
-        lines = issue_clean.lock_in_lines(records, {})
-    rows = lines[lines['expires'].notna()].copy()
-    if rows.empty:
-        return pd.DataFrame()
-    rows['expires'] = pd.to_datetime(rows['expires'])
-    rows = rows[rows['expires'] >= today.normalize() - pd.Timedelta(days=LOCK_IN_RECENT_DAYS)].copy()
-    rows['nse_symbol'] = rows['symbol']
-    rows['days_left'] = (rows['expires'] - today.normalize()).dt.days
-    months = rows['months'].map(lambda m: f'{m:g} months' if pd.notna(m) else '')
-    rows['what'] = [f'{m}, as filed' if b == 'filed' else f'{w}, {m} (rule)'
-                    for b, w, m in zip(rows['basis'], rows['who'], months)]
-    rows['note'] = ['Mixed allotment: promoter and other split not filed' if b == 'rule' and pd.isna(s) else ''
-                    for b, s in zip(rows['basis'], rows['shares'])]
-    rows = with_prices(rows, prices)
-    # Shares restated for any split or bonus since trading approval, so the value is at today's price (audit W10).
-    shares_now = pd.to_numeric(rows['shares'], errors='coerce') / split_since(rows, prices, ['trading_approval_date', 'allotment_date'])
-    rows['at_market'] = shares_now * pd.to_numeric(rows['latest_close'], errors='coerce')
-    return rows.sort_values('expires').reset_index(drop=True)
-
-
-def rights_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """Rights issues: the listing record (ratio, price, dates) or an approval no listing record points to."""
-    if records is None or records.empty:
-        return pd.DataFrame()
-    rows = _stage_rows(records)
-    rows['nse_symbol'] = rows['symbol']
-    rows['amount'] = _amount(rows)
-    rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(_on_today(rows.get('offer_price'), rows, prices, ['record_date', 'allotment_date', 'posted_on']), rows['latest_close'])
-    return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
-
-
-def qip_rows(records: pd.DataFrame, prices: pd.DataFrame) -> pd.DataFrame:
-    """QIPs: the allotment (issue and floor price, discount, allottees) or an
-    approval no allotment points to."""
-    if records is None or records.empty:
-        return pd.DataFrame()
-    rows = _stage_rows(records)
-    rows['nse_symbol'] = rows['symbol']
-    rows['amount'] = _amount(rows)
-    rows = with_prices(rows, prices)
-    rows['vs_market'] = _vs_market(_on_today(rows['issue_price'], rows, prices, ['allotment_date', 'relevant_date', 'posted_on']), rows['latest_close'])
-    return rows.sort_values('posted_on', ascending=False, na_position='last', kind='stable').reset_index(drop=True)
 
 
 def allottee_rows(allottees: pd.DataFrame, known_ids: set) -> pd.DataFrame:

@@ -49,6 +49,8 @@ def configured() -> bool:
 # Kept in R2 for the clean layer and audits; no page reads them, and as Python strings they were a large
 # share of the site's memory (meetings' raw_json alone 22 MB of 35): scripts/site_memory_report.py.
 UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
+# ...except the filing's XBRL link on the issue tables (a few thousand rows): the Filings page links each issue to it.
+LINKS = {('preferential', 'xbrl_url'), ('rights', 'xbrl_url'), ('qip', 'xbrl_url')}
 ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at'),
         'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
@@ -76,7 +78,7 @@ def _parquet(name: str, cut: bool = True) -> pd.DataFrame:
     if not body:
         return pd.DataFrame()
     names = [c for c in pq.read_schema(io.BytesIO(body)).names if not c.startswith('__index_level_')]
-    keep = [c for c in names if c not in UNUSED and (name not in ONLY or c in ONLY[name])]
+    keep = [c for c in names if (c not in UNUSED or (name, c) in LINKS) and (name not in ONLY or c in ONLY[name])]
     df = pd.read_parquet(io.BytesIO(body), columns=keep)
     uni = universe_isins() if cut and name != 'universe' and 'isin' in df else None
     return df[df['isin'].isin(uni)].reset_index(drop=True) if uni is not None else df
