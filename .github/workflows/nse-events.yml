@@ -45,6 +45,10 @@ on:
         description: 'dataset=results backfill: last day of the window (empty = today)'
         required: false
         default: ''
+      reparse_raw:
+        description: 'dataset=shareholding: 1 = no NSE call; fill ownership by investor type from the XBRLs kept in raw_v2/'
+        required: false
+        default: '0'
   schedule:
     - cron: '0 16 * * 1-6'  # 21:30 IST, Monday-Saturday
 
@@ -76,13 +80,17 @@ jobs:
           FROM: ${{ inputs.from || '' }}
           RFROM: ${{ inputs.results_from || '' }}
           RTO: ${{ inputs.results_to || '' }}
-        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" --max-results-xbrl "${{ inputs.max_results_xbrl || '500' }}" --results-workers "${{ inputs.results_workers || '1' }}" ${RFROM:+--results-from "$RFROM"} ${RTO:+--results-to "$RTO"} ${FROM:+--from "$FROM"}
+          REPARSE: ${{ inputs.reparse_raw == '1' && '--reparse-raw' || '' }}
+        run: python -m collectors.nse_events.run_daily --days "${{ inputs.days || '10' }}" --dataset "${{ inputs.dataset || 'all' }}" --max-results-xbrl "${{ inputs.max_results_xbrl || '500' }}" --results-workers "${{ inputs.results_workers || '1' }}" ${RFROM:+--results-from "$RFROM"} ${RTO:+--results-to "$RTO"} ${FROM:+--from "$FROM"} $REPARSE
       # Shareholding catch-up. Each run parses at most 300 pledge files (NSE
       # rate-limits by IP); with chain=1 the next run starts by itself while
       # files are pending, up to 15 rounds, and stops if NSE refused a file
       # or this run parsed nothing. Pending includes companies whose latest
       # filing has no promoter-group member list yet (TODO item 21): after the
       # first deploy, run dataset=shareholding, days=120, chain=1 once.
+      # Ownership by investor type (pending_categories): first dataset=shareholding,
+      # reparse_raw=1 (no NSE call, the kept XBRLs), then days=400, chain=1 for the
+      # filings with no raw copy.
       - name: Continue the catch-up
         if: ${{ inputs.chain == '1' && always() }}
         env:
@@ -121,7 +129,7 @@ jobs:
             read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
           import json
           r = json.load(open('nse_events_report.json'))
-          print(r.get('pending_xbrl', 0) + r.get('pending_members', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
+          print(r.get('pending_xbrl', 0) + r.get('pending_members', 0) + r.get('pending_categories', 0), r.get('xbrl_fetched', 0), int(bool(r.get('xbrl_blocked'))))
           PY
           )
             LIMIT=15

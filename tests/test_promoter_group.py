@@ -211,7 +211,8 @@ def test_filings_parsed_before_member_lists_are_fetched_again_only_when_latest()
     listing = pd.DataFrame({'event_id': ['old', 'new'], 'symbol': ['ZEEL', 'ZEEL'], 'xbrl_url': ['u1', 'u2'],
                             'quarter_end': pd.to_datetime(['2026-03-31', '2026-06-30']),
                             'submission_date': pd.to_datetime(['2026-04-20', '2026-07-20'])})
-    known = listing.assign(xbrl_status='ok', promoter_shares=1.0, total_shares=2.0)  # parsed, no members yet
+    # parsed, investor types in, no members yet
+    known = listing.assign(xbrl_status='ok', promoter_shares=1.0, total_shares=2.0, categories_status='ok')
     members, nse = [], FakeNSE()
     out = fetch_xbrl(nse, listing, known, {'notes': []}, members=members).set_index('event_id')
     assert nse.calls == 1 and len(members) == 1 and set(members[0]['event_id']) == {'new'}

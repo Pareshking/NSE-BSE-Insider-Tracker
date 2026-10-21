@@ -26,6 +26,16 @@ fetched again when it is its company's latest; run with --days 120 and the
 workflow's chain=1 to cover every company's latest quarter. The XBRL itself
 is kept gzip-compressed in raw_v2/nse/shareholding_xbrl/ (write-once).
 
+Ownership by investor type (parsers.parse_shp_categories: mutual funds,
+insurers, FPIs, retail, ...) comes from the same download, into the
+CATEGORY_COLS of the shareholding row. A filing in the window without them
+is fetched again. `--reparse-raw` (dataset shareholding) makes no NSE call:
+it re-reads every XBRL kept in raw_v2/nse/shareholding_xbrl/, fills the
+columns on the archive row of that filing, and rebuilds the clean table.
+Filings with no raw copy (fetched before 12 Oct 2026) are filled when the
+fetch path downloads them again (--days 400 with chain=1 covers four
+quarters).
+
 Buybacks (TODO 12): NSE's tender-offer list (every buyback tender with its
 offer price) and the daily buyback reports of open-market buybacks are
 collected as streams `tenders` and `daily_buybacks`; with the corporate
@@ -173,6 +183,15 @@ def clean_shareholding(arch: pd.DataFrame) -> pd.DataFrame:
         carried = df.groupby('symbol')[c].ffill()
         df.loc[failed, c] = carried[failed]
     df.loc[failed & df['promoter_pledge_pct'].notna(), 'shareholding_stale'] = True
+    # Ownership by investor type: never carried forward; blank until the quarter's own XBRL is read.
+    for c in CATEGORY_COLS:
+        if c not in df.columns:
+            df[c] = None
+    for c in CATEGORY_VALUES + ('promoter_shares', 'total_shares'):
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
+    for c in CATEGORY_COLS[:3]:
+        df[c] = df[c].astype('string')
     return df
 
 
@@ -182,7 +201,7 @@ def shareholding_coverage(clean: pd.DataFrame) -> dict:
     why files failed, and how many latest filings have their promoter-group
     member list. Counts only; nothing here changes the data."""
     if clean is None or clean.empty:
-        return {'companies': 0, 'pending_xbrl': 0, 'pending_latest': 0, 'pending_members': 0}
+        return {'companies': 0, 'pending_xbrl': 0, 'pending_latest': 0, 'pending_members': 0, 'pending_categories': 0}
     status = clean['xbrl_status'].astype(str) if 'xbrl_status' in clean.columns else pd.Series('pending', index=clean.index)
     latest = clean.sort_values('quarter_end').groupby('symbol').tail(1)
     lstat = status.loc[latest.index]
@@ -190,6 +209,7 @@ def shareholding_coverage(clean: pd.DataFrame) -> dict:
     col = lambda c: clean[c] if c in clean.columns else pd.Series(None, index=clean.index, dtype=object)  # noqa: E731
     failed = status.str.startswith('failed')
     mstat = col('members_status').astype('string').fillna('not fetched')
+    cstat = col('categories_status').astype('string').fillna('not fetched')
     no_group = col('no_promoter_group').astype('boolean').fillna(False)
     return {
         'companies': int(clean['symbol'].nunique()),
@@ -208,12 +228,38 @@ def shareholding_coverage(clean: pd.DataFrame) -> dict:
         'members_status_latest': {str(k): int(v) for k, v in mstat.loc[latest.index].str.split(':').str[0].value_counts().items()},
         'members_check_latest': {str(k): int(v) for k, v in col('members_check').loc[latest.index].dropna().value_counts().items()},
         'pending_members': int(mstat.loc[latest.index].isin(['pending', 'not fetched']).sum()),
+        # Ownership by investor type: every quarter, and each company's latest.
+        'categories_status': {str(k): int(v) for k, v in cstat.str.split(':').str[0].value_counts().items()},
+        'categories_check': {str(k): int(v) for k, v in col('categories_check').dropna().value_counts().items()},
+        'categories_unmapped': int(col('categories_unmapped').notna().sum()),
+        'categories_latest_ok': int(cstat.loc[latest.index].eq('ok').sum()),
+        'pending_categories': int(cstat.eq('pending').sum()),
     }
 
 
 XBRL_COLS = ('xbrl_status', 'xbrl_error', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
              'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct', 'no_promoter_group')
 MEMBER_COLS = ('members_status', 'promoter_members', 'members_check')
+# Ownership by investor type (parsers.parse_shp_categories). promoter_shares is already in XBRL_COLS.
+CATEGORY_VALUES = tuple(f'{b}_{k}' for b in parsers.SHP_CATEGORIES for k in ('shares', 'pct')
+                        if f'{b}_{k}' != 'promoter_shares') + ('dr_shares', 'pct_base_shares')
+CATEGORY_COLS = ('categories_status', 'categories_check', 'categories_unmapped') + CATEGORY_VALUES
+SHP_RAW_FETCHES = 'raw_v2/nse/shareholding_xbrl/fetches/'
+
+
+def _set_categories(frame: pd.DataFrame, i, body: str) -> None:
+    """Fill one row's CATEGORY_COLS from an XBRL. A file that can't be parsed
+    (no totals: the reason is xbrl_error's) gets only the failed status."""
+    try:
+        facts = parsers.parse_shp_categories(body)
+    except Exception as exc:  # noqa: BLE001
+        for c in CATEGORY_COLS[1:]:
+            frame.at[i, c] = None
+        frame.at[i, 'categories_status'] = f'failed: {type(exc).__name__}'
+        return
+    for c in CATEGORY_COLS[1:]:
+        frame.at[i, c] = facts.get(c)
+    frame.at[i, 'categories_status'] = 'ok'
 
 
 def _latest_per_company(listing: pd.DataFrame) -> set:
@@ -251,16 +297,20 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
     again only when it is its company's latest in the listing, so a catch-up
     covers the latest quarter of every company. Parsed members are appended
     to `members` (one frame per filing); one download counts once against
-    max_xbrl."""
-    done, mdone, prev = set(), set(), None
+    max_xbrl. The ownership by investor type (CATEGORY_COLS) is read from the
+    same download; a filing without it (parsed before it existed) is fetched
+    again whenever it is in the listing, newest quarters first."""
+    done, mdone, cdone, prev = set(), set(), set(), None
     if known is not None and 'xbrl_status' in known.columns:
         done = set(known.loc[known['xbrl_status'].astype(str).eq('ok'), 'event_id'])
         if 'members_status' in known.columns:
             mdone = set(known.loc[known['members_status'].astype(str).eq('ok'), 'event_id'])
+        if 'categories_status' in known.columns:
+            cdone = set(known.loc[known['categories_status'].astype(str).eq('ok'), 'event_id'])
         prev = known.set_index('event_id')
     latest = _latest_per_company(listing)
     listing = listing.copy()
-    for c in XBRL_COLS + MEMBER_COLS:
+    for c in XBRL_COLS + MEMBER_COLS + CATEGORY_COLS:
         listing[c] = None
     fetched, blocked = 0, False
     # Newest quarters first: the latest filing per company is what the pages show.
@@ -268,36 +318,43 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
         eid = row['event_id']
         totals_done = eid in done
         if prev is not None and eid in prev.index:
-            for c in XBRL_COLS + MEMBER_COLS:
-                if c in prev.columns and (totals_done or c in MEMBER_COLS):
+            for c in XBRL_COLS + MEMBER_COLS + CATEGORY_COLS:
+                if c in prev.columns and (totals_done or c not in XBRL_COLS):
                     listing.at[i, c] = prev.at[eid, c]
         need_members = eid not in mdone and (not totals_done or eid in latest)
-        if totals_done and not need_members:
+        need_categories = eid not in cdone
+        if totals_done and not need_members and not need_categories:
             continue
-        if blocked or fetched >= max_xbrl or not row.get('xbrl_url'):
+
+        def mark(status):   # what wasn't read from this filing tonight
             if not totals_done:
-                listing.at[i, 'xbrl_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
-            listing.at[i, 'members_status'] = 'pending' if row.get('xbrl_url') else 'no_xbrl'
+                listing.at[i, 'xbrl_status'] = status
+            if need_members:
+                listing.at[i, 'members_status'] = status
+            if need_categories:
+                listing.at[i, 'categories_status'] = status
+
+        if blocked or fetched >= max_xbrl or not row.get('xbrl_url'):
+            mark('pending' if row.get('xbrl_url') else 'no_xbrl')
             continue
         fetched += 1
         try:
             body = nse.xbrl(row['xbrl_url'])
         except Blocked:
             # Keep what was parsed tonight; the rest wait for the next run.
-            if not totals_done:
-                listing.at[i, 'xbrl_status'] = 'pending'
-            listing.at[i, 'members_status'] = 'pending'
+            mark('pending')
             blocked = True
             report['xbrl_blocked'] = True
             report['notes'].append('NSE refused an XBRL download; remaining XBRLs wait for the next run')
             continue
         except Exception as exc:  # noqa: BLE001 -- one bad file must not stop the rest
+            mark(f'failed: {type(exc).__name__}')
             if not totals_done:
-                listing.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
                 listing.at[i, 'xbrl_error'] = str(exc)[:120]
-            listing.at[i, 'members_status'] = f'failed: {type(exc).__name__}'
             continue
         sha = _keep_raw(raw, body, row)
+        if need_categories:
+            _set_categories(listing, i, body)
         if not totals_done:
             try:
                 facts = parsers.parse_shp_xbrl(body)
@@ -309,6 +366,8 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
             except Exception as exc:  # noqa: BLE001
                 listing.at[i, 'xbrl_status'] = f'failed: {type(exc).__name__}'
                 listing.at[i, 'xbrl_error'] = str(exc)[:120]
+        if not need_members:   # fetched again for the investor types only; the member list is already in
+            continue
         try:
             found, check = parsers.parse_shp_members(body)
             listing.at[i, 'members_status'] = 'ok'
@@ -321,6 +380,74 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
             listing.at[i, 'members_status'] = f'failed: {type(exc).__name__}'
     report['xbrl_fetched'] = fetched
     return listing
+
+
+def reparse_shareholding_raw(r2, workers: int = 16) -> dict:
+    """Ownership by investor type for every filing whose XBRL is kept in
+    raw_v2/nse/shareholding_xbrl/, with no NSE call: each fetch record names
+    the filing (params.record_id) and its blob; the blob is un-gzipped, its
+    SHA-256 checked against the record's sha256_as_sent, parsed, and the
+    CATEGORY_COLS of the archive row with that record_id are replaced
+    (first_seen and last_seen stay as they were; raw is only read). Counts
+    for the report."""
+    keys = [k for k in list_keys(r2, SHP_RAW_FETCHES) if k.endswith('.json')]
+    with ThreadPoolExecutor(workers) as ex:
+        records = list(ex.map(lambda k: json.loads(get(r2, k) or b'{}'), keys))
+    newest: dict[str, dict] = {}
+    for rec in records:
+        rid = str((rec.get('params') or {}).get('record_id') or '')
+        if rid and rec.get('blob_key') and rec.get('fetched_at_utc', '') >= newest.get(rid, {}).get('fetched_at_utc', ''):
+            newest[rid] = rec
+    counts = {'fetch_records': len(keys), 'filings_with_raw': len(newest), 'raw_missing': 0, 'raw_hash_mismatch': 0}
+
+    def body_of(rec):
+        blob = get(r2, rec['blob_key'])
+        if blob is None:
+            return 'raw_missing', None
+        data = gzip.decompress(blob) if (rec.get('params') or {}).get('stored_as') == 'gzip' else blob
+        want = (rec.get('params') or {}).get('sha256_as_sent')
+        if want and raw_store.sha256_hex(data) != want:
+            return 'raw_hash_mismatch', None
+        return 'ok', data.decode('utf-8')
+
+    rids = sorted(newest)
+    with ThreadPoolExecutor(workers) as ex:
+        bodies = dict(zip(rids, ex.map(lambda r: body_of(newest[r]), rids)))
+    parsed = pd.DataFrame(index=rids, columns=list(CATEGORY_COLS), dtype=object)
+    for rid, (state, body) in bodies.items():
+        if state != 'ok':
+            counts[state] += 1
+            parsed = parsed.drop(index=rid)
+            continue
+        _set_categories(parsed, rid, body)
+    counts['parsed'] = {str(k): int(v) for k, v in parsed['categories_status'].astype(str).value_counts().items()}
+    counts['check'] = {str(k): int(v) for k, v in parsed['categories_check'].dropna().value_counts().items()}
+    filled, rows, rows_filled = set(), 0, 0
+    for key in sorted(k for k in list_keys(r2, prefix('shareholding')) if k.endswith('.parquet')):
+        part = read_parquet(r2, key)
+        if part is None or part.empty or 'record_id' not in part.columns:
+            continue
+        rows += len(part)
+        rid = part['record_id'].astype('string').fillna('')
+        hit = rid.isin(parsed.index)
+        if not hit.any():
+            continue
+        part = part.copy()
+        for c in CATEGORY_COLS:
+            vals = rid[hit].map(parsed[c])
+            if c in CATEGORY_VALUES:
+                col = pd.to_numeric(part[c], errors='coerce') if c in part.columns else pd.Series(float('nan'), index=part.index)
+                col.loc[hit] = pd.to_numeric(vals, errors='coerce')
+            else:
+                col = part[c].astype('string') if c in part.columns else pd.Series(pd.NA, index=part.index, dtype='string')
+                col.loc[hit] = vals.astype('string')
+            part[c] = col
+        put_parquet(r2, key, part)
+        filled |= set(rid[hit])
+        rows_filled += int(hit.sum())
+    counts.update(archive_rows=rows, archive_rows_filled=rows_filled, archive_rows_without_raw=rows - rows_filled,
+                  raw_without_archive_row=len(set(parsed.index) - filled))
+    return counts
 
 
 def month_chunks(start: date, end: date) -> list[tuple[date, date]]:
@@ -604,7 +731,7 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
         raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN,
         now: datetime | None = None, max_results_xbrl: int = MAX_RESULTS_XBRL_PER_RUN, results_workers: int = 1,
-        results_window: tuple | None = None) -> dict:
+        results_window: tuple | None = None, reparse_raw: bool = False) -> dict:
     run_date = today.isoformat()
     start = today - timedelta(days=days)
     report = {'run_date': run_date, 'window': [start.isoformat(), run_date], 'streams': {}, 'notes': []}
@@ -644,6 +771,8 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                     new = parsers.parse_tender_offers(nse.tender_offers_past(), nse.tender_offers_active())
                 elif stream == 'daily_buybacks':
                     new = parsers.parse_daily_buybacks(nse.daily_buybacks(start, today))
+                elif reparse_raw:   # no NSE call: the kept XBRLs, read again
+                    report['shareholding_reparse'] = reparse_shareholding_raw(r2)
                 else:
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
                     known = merge_into_archive(r2, stream, None, run_date)[0]
@@ -676,6 +805,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             entry['coverage'] = shareholding_coverage(clean)
             report['pending_xbrl'] = entry['coverage']['pending_xbrl']
             report['pending_members'] = entry['coverage']['pending_members']
+            report['pending_categories'] = entry['coverage']['pending_categories']
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['clean_rows'] = len(clean)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
@@ -712,6 +842,8 @@ def main(argv=None):
     ap.add_argument('--results-from', type=date.fromisoformat, default=None,
                     help='results only: list this window [from, to] instead of the last --days (a backfill, window by window)')
     ap.add_argument('--results-to', type=date.fromisoformat, default=None)
+    ap.add_argument('--reparse-raw', action='store_true',
+                    help='shareholding only: no NSE call; fill the investor-type columns from the XBRLs kept in raw_v2/')
     ap.add_argument('--results-workers', type=int, default=1,
                     help='results XBRL files fetched at once (a backfill of years); 1 = one at a time with NSE\'s pause')
     args = ap.parse_args(argv)
@@ -719,15 +851,20 @@ def main(argv=None):
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
     if args.backfill_from and streams != ('meetings',):
         ap.error('--from needs --dataset meetings')
+    if args.reparse_raw and streams != ('shareholding',):
+        ap.error('--reparse-raw needs --dataset shareholding')
     r2 = r2_client()
     report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
                  raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from,
                  max_issue_xbrl=args.max_issue_xbrl, max_results_xbrl=args.max_results_xbrl,
                  results_workers=args.results_workers,
-                 results_window=(args.results_from, args.results_to or today) if args.results_from else None)
+                 results_window=(args.results_from, args.results_to or today) if args.results_from else None,
+                 reparse_raw=args.reparse_raw)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')
+    if 'shareholding_reparse' in report:
+        print(f'  shareholding_reparse: {report["shareholding_reparse"]}')
     if 'promoter_group' in report:
         print(f'  promoter_group: {report["promoter_group"]}')
     for n in report['notes']:

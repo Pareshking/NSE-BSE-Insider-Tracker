@@ -202,6 +202,33 @@ One row per company and quarter; a revised filing replaces the original.
 | `no_promoter_group` | True when the filing has no promoter section at all and public plus non-promoter non-public shares are the whole total (ITC, L&T, ICICI Bank): promoter shares 0 as filed, pledge % blank |
 | `members_status`, `promoter_members`, `members_check` | Whether the promoter-group member list was parsed (`ok`, `pending`, `failed: ...`; blank for an older quarter fetched before lists existed), how many members, and whether their shares add up to the promoter total (`match` / `mismatch`) |
 | `shareholding_stale` | True when this quarter's XBRL isn't parsed and the pledge figures shown are the company's previous quarter's |
+| `{type}_shares`, `{type}_pct` | Ownership by investor type, from the same XBRL (Tables III and IV; `parsers.parse_shp_categories`), for the types below. Shares as filed; % of `pct_base_shares`, SEBI's base, so they add up to 100 and match the filing's own % column and NSE's `promoter_holding_pct` (to 4 decimals instead of 2). Blank until the quarter's own XBRL is read; never carried forward from another quarter. `promoter_shares` is the column above |
+| `dr_shares` | Shares a custodian holds against depository receipts (Table IV C1, `CustodianOrDRHolder`): outside the % base, as SEBI's form computes it (HDFC Bank, SBI, Infosys, Reliance, L&T, ITC have some) |
+| `pct_base_shares` | `total_shares - dr_shares`, the denominator of every `_pct` (SBI, Sep 2026: 9,230,766,786 - 70,396,990 = 9,160,369,796; promoter 55.45% as filed and listed, 55.03% of all shares) |
+| `categories_status` | `ok`, `pending` (not fetched yet), `no_xbrl`, `failed: ...`, or blank (fetched before these columns existed and no raw copy read yet) |
+| `categories_check` | `match` when every filed subtotal (domestic institutions, foreign institutions, government, non-institutions, public, non-promoter non-public) equals the sum of its filed sub-categories and the types plus `dr_shares` add up to `total_shares`, within one share; else `mismatch` |
+| `categories_unmapped` | What didn't map, as text: a subtotal's shares in none of its filed sub-categories, or a category context the parser doesn't know (named with its shares, never put in a type). Blank when nothing. Nothing is filled by difference |
+
+Investor types (`{type}`), each the sum of the XBRL contexts `<Context>_ContextI` (element `NumberOfShares`) on `CategoryOfShareholdersAxis` listed; SEBI's row in brackets. A category with no holders is left out of the file and counts 0.
+
+| Type | Contexts |
+|---|---|
+| `promoter` | `ShareholdingOfPromoterAndPromoterGroup` (A); 0 as filed for a company with no promoter group |
+| `mf` | `MutualFundsOrUTI` (B1a) |
+| `insurance` | `InsuranceCompanies` (B1e) |
+| `banks_fi` | `Banks` (B1d), `NBFCsRegisteredWithRBI` (B1i), `OtherFinancialInstitutions` (B1j) |
+| `aif` | `AlternativeInvestmentFunds` (B1c) |
+| `other_dii` | `VentureCapitalFunds` (B1b), `ProvidentFundsOrPensionFunds` (B1f), `AssetReconstructionCompanies` (B1g), `SovereignWealthFundsDomestic` (B1h), `OtherInstitutionsDomestic` (B1k) |
+| `fpi` | `InstitutionsForeignPortfolioInvestorCategoryOne` (B2d), `...CategoryTwo` (B2e) |
+| `other_foreign` | `ForeignDirectInvestment` (B2a), `ForeignVentureCapitalInvestors` (B2b), `SovereignWealthFundsForeign` (B2c), `OverseasDepositories` (B2f; ICICI Bank files its ADRs here, 15.8%), `OtherInstitutionsForeign` (B2g) |
+| `govt` | `CentralGovernmentOrPresidentOfIndia` (B3a), `StateGovernmentsOrGovernors` (B3b), `ShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter` (B3c) |
+| `retail` | `ResidentIndividualShareholdersHoldingNominalShareCapitalUpToRsTwoLakh` (B4g) |
+| `hni` | `ResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh` (B4h) |
+| `corporate` | `BodiesCorporate` (B4l) |
+| `other_public` | `AssociateCompaniesOrSubsidiaries` (B4a), `DirectorsAndDirectorsRelatives` (B4b), `KeyManagerialPersonnel` (B4c), `RelativesOfPromotersOtherThanPromoterGroup` (B4d), `TrustsWhereAnyPersonBelongingToPromoterAndPromoterGroupIsTrusteeOrBeneficiaryOrAuthorOfTrust` (B4e), `InvestorEducationAndProtectionFund` (B4f), `NonResidentIndians` (B4i), `ForeignNationals` (B4j), `ForeignCompanies` (B4k), `OtherNonInstitutions` (B4m: HUF, trusts, LLPs, clearing members; the L&T Employees Trust is here, 14.6% in Sep 2026) |
+| `non_public_other` | `EmployeeBenefitsTrusts` (C2), NSE's `employee_trust_pct` to 4 decimals |
+
+Subtotals checked: `InstitutionsDomestic` (B1), `InstitutionsForeign` (B2), `Governments` (B3), `NonInstitutions` (B4), `PublicShareholding` (B), `SharesHeldByNonPromoterNonPublicShareholders` (C), `ShareholdingPattern` (total). Confirmed on 44 real filings, taxonomies 2025-05-31 and 2025-10-31, Jun 2025 to Sep 2026 (HDFCBANK, RELIANCE, SBIN, LT, ITC, INFY, ICICIBANK, ASIANPAINT, COALINDIA, LICI, ZEEL, MOTILALOFS and 21 more companies): all `match`, and every category's filed % equals shares / `pct_base_shares` to the filing's 4 decimals.
 
 ### promoter_group — promoter and promoter-group members (TODO item 21)
 
