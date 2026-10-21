@@ -50,7 +50,6 @@ from screens import (
     data_status,
     deals,
     entity,
-    filings,
     insider_trades,
     other_filings,
     screener,
@@ -74,7 +73,6 @@ SECTIONS = {
     ],
     'Filings': [
         st.Page(today.render, title='Latest session', icon=M('space_dashboard'), url_path='today'),
-        st.Page(filings.render, title='Filings read', icon=M('article'), url_path='filings'),
         st.Page(insider_trades.render, title='Insider & promoter trades', icon=M('swap_vert'), url_path='insider-trades'),
         st.Page(deals.render, title='Bulk & block deals', icon=M('handshake'), url_path='deals'),
         st.Page(other_filings.render, title='Other filings', icon=M('account_tree'), url_path='other-filings'),
@@ -93,7 +91,8 @@ ALL = [p for ps in SECTIONS.values() for p in ps] + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Screener', 'entity_tracker': 'Person or fund', 'transactions': 'Insider & promoter trades',
          'promoter_activity': 'Insider & promoter trades', 'bulk_block_concentration': 'Bulk & block deals',
-         'data_quality': 'Data quality', 'sast': 'Other filings', 'transfers': 'Other filings'}
+         'data_quality': 'Data quality', 'sast': 'Other filings', 'transfers': 'Other filings',
+         'filings': 'Latest session'}   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
 
 
 def _redirect(path: str, target: str):

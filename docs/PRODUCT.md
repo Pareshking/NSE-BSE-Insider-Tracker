@@ -46,6 +46,11 @@ reader can't get by scrolling the exchange pages:
 
 ## Decisions (with dates)
 
+- **AI filing cards off; XBRL first** (owner, 21 Oct 2026): the AI announcement reader is
+  stopped (workflows `announcement-reader`, `announcement-three-filing-sample`, `ai-health-check`
+  disabled) and its cards are off the site (Filings read page, Morning brief section); the code,
+  workflows and tables are kept for later. Numbers come from the exchanges' XBRL wherever it is filed.
+
 - **One front page of actions, evidence beside each list** (owner, 12 Oct 2026:
   "clutter free website giving value to right signal"). The menu is three
   groups. A signal leads only if the measured record supports it: on 12 Oct
