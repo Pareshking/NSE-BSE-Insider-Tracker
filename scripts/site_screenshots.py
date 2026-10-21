@@ -17,7 +17,7 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-PAGES = [('', 'actions'), ('brief?watch=RELIANCE,TCS,ADANIENT', 'brief'), ('today', 'latest-session'), ('filings', 'filings'), ('screener', 'screener'), ('insider-trades', 'insider-trades'),
+PAGES = [('', 'actions'), ('brief?watch=RELIANCE,TCS,ADANIENT', 'brief'), ('today', 'latest-session'), ('screener', 'screener'), ('insider-trades', 'insider-trades'),
          ('deals', 'deals'), ('other-filings', 'other-filings'), ('capital-raises', 'capital-raises'),
          ('track-record', 'track-record'), ('data', 'data'), ('company?symbol=HCLTECH', 'company-hcltech'),
          ('entity', 'entity'), ('shareholding', 'shareholding'), ('coming', 'coming'),
