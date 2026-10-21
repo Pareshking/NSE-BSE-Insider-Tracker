@@ -21,7 +21,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import basket, evidence, slim, track  # noqa: E402
+from insiders_clean import adjust, basket, evidence, slim, track  # noqa: E402
 from price_coverage import load_prefix  # noqa: E402
 
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
@@ -45,6 +45,20 @@ def _flags_now(client, bucket) -> dict:
         print(f'forward: tradability not read ({e})')
         return {}
     return {i: ','.join(f) for i, f in zip(t['isin'], t['trade_flags']) if f is not None and len(f)}
+
+
+def filed_actions(client, bucket) -> pd.DataFrame | None:
+    """The filed corporate actions (clean/current/actions.parquet from NSE, bse_actions.parquet from BSE) that
+    classify a price reset as a bonus or split (insiders_clean/adjust.py). None when neither is there yet."""
+    frames = []
+    for table in ('actions', 'bse_actions'):
+        try:
+            frames.append(pd.read_parquet(io.BytesIO(
+                client.get_object(Bucket=bucket, Key=f'clean/current/{table}.parquet')['Body'].read())))
+        except Exception as e:  # noqa: BLE001 -- without actions the ratio guess decides, as before
+            print(f'adjust: {table} not read ({e})')
+    frames = [f for f in frames if len(f)]
+    return pd.concat(frames, ignore_index=True) if frames else None
 
 
 def forward(client, bucket, ev, close, nifty, sized, size_of, summ):
@@ -83,7 +97,8 @@ def main() -> int:
     client, bucket = r2_writer.r2_client(), r2_writer.BUCKET
     px = load_prefix(client, bucket, 'prices/daily/')
     px['date'] = pd.to_datetime(px['date'])
-    close, _, factors = slim.adjusted_panels(px)
+    close, _, factors = slim.adjusted_panels(px, actions=filed_actions(client, bucket))
+    print(f'adjust: {adjust.coverage(factors)}')
     meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
             .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name', 'exchange']])
     mc = load_prefix(client, bucket, 'marketcap/daily/')

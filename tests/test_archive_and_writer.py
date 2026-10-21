@@ -147,6 +147,27 @@ def test_next_night_rewrites_only_the_quarters_it_touches(bucket, real_nse_rows)
     assert r2.objects['archive/canonical/nse/insider_trading/year=2026/quarter=3.parquet'] is q3  # not rewritten
 
 
+def test_clean_step_reads_the_daily_market_cap_layer(bucket, real_nse_rows):
+    """% of market cap at the trade date (audit W1): the writer reads marketcap/daily/nse read only."""
+    r2, writer, _ = bucket
+    days = pd.bdate_range('2025-10-01', '2026-10-07')
+    syms = sorted({r['symbol'] for r in real_nse_rows[:120]})
+    mc = pd.DataFrame([(d, s, 'EQ', 'X', 'Listed', 1.0, 1e9, 100.0, 1e11) for d in days for s in syms],
+                      columns=['date', 'symbol', 'series', 'name', 'category', 'face_value', 'issue_size', 'close',
+                               'market_cap'])
+    for m, g in mc.groupby(mc['date'].dt.strftime('%Y-%m')):
+        r2.objects[f'marketcap/daily/nse/{m}.parquet'] = parquet(g)
+    october = r2.objects['marketcap/daily/nse/2026-10.parquet']
+    writer.main()
+    latest = json.loads(r2.objects['clean/latest.json'])
+    report = json.loads(r2.objects[latest['report']])
+    assert report['market_cap_layer']['months_read'] == 13 and report['market_cap_layer']['months_missing'] == []
+    trades = pd.read_parquet(io.BytesIO(r2.objects['clean/current/insider_trades.parquet']))
+    dated = trades['market_cap_basis'].isin(['trade_date', 'previous_session'])
+    assert dated.any() and (trades.loc[dated, 'market_cap_at_trade'] == 1e11).all()
+    assert r2.objects['marketcap/daily/nse/2026-10.parquet'] is october   # read only, never rewritten
+
+
 def test_partitions_follow_the_records_own_date(real_nse_rows):
     df = canonical('nse', 'insider_trading', real_nse_rows)
     parts = archive.partitions(df, 'insider_trading')

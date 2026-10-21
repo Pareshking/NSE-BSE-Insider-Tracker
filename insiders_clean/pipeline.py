@@ -41,7 +41,7 @@ def apply_product_window(table: pd.DataFrame, date_col: str, name: str, report, 
 
 def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.DataFrame | None = None,
         nse_lists=(), market_cap_rows=None, price_ranges: pd.DataFrame | None = None,
-        promoter_group: pd.DataFrame | None = None):
+        promoter_group: pd.DataFrame | None = None, market_cap_daily: pd.DataFrame | None = None):
     """
     canonical: {(exchange, category): DataFrame} as stored under canonical/
                in R2 (native + canonical_* columns).
@@ -50,6 +50,9 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
     promoter_group: clean/current/promoter_group.parquet (written by the NSE
                events collector); filings by a member of the company's latest
                list are linked to it (insiders_clean/promoter_group.py).
+    market_cap_daily: NSE's daily market caps (insiders_clean.market_cap.load_daily);
+               % of market cap is taken on the trade's day. None: every row
+               takes the latest market cap (noted in the report).
     Returns ({table_name: DataFrame}, report_dict).
     """
     report = Report(run_date)
@@ -71,9 +74,12 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
 
     if price_ranges is None:
         report.note('price check not run: no price layer loaded')
-    insider = clean_insider(frames('insider_trading'), master, cal, report, run_date, price_ranges=price_ranges)
+    if market_cap_daily is None:
+        report.note('% of market cap on the latest market cap: no daily market-cap layer loaded')
+    insider = clean_insider(frames('insider_trading'), master, cal, report, run_date, price_ranges=price_ranges,
+                            market_cap_daily=market_cap_daily)
     deals_raw = pd.concat([frames('bulk_deals'), frames('block_deals')], ignore_index=True)
-    deals = clean_deals(deals_raw, master, report, run_date)
+    deals = clean_deals(deals_raw, master, report, run_date, market_cap_daily=market_cap_daily)
     deals = add_participant_columns(deals)  # client type and investor group (TODO 23, 16)
     report.table('deals')['participants'] = participants_report(deals)
 

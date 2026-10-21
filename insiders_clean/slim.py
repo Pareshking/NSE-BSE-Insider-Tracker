@@ -27,9 +27,10 @@ def price_panel(prices: pd.DataFrame, field: str) -> pd.DataFrame:
     return p.pivot(index='date', columns='isin', values=field).sort_index()
 
 
-def adjusted_panels(px: pd.DataFrame):
-    """(close, open) date x ISIN panels adjusted as of the last stored session."""
-    f = adjust.inherit_nse(adjust.implied_factors(px))
+def adjusted_panels(px: pd.DataFrame, actions: pd.DataFrame | None = None):
+    """(close, open) date x ISIN panels adjusted as of the last stored session. `actions`: the filed corporate
+    actions (clean `actions` and `bse_actions`), which classify a reset as a bonus or split (insiders_clean/adjust.py)."""
+    f = adjust.inherit_nse(adjust.implied_factors(px, actions=actions))
     adj = adjust.adjust_as_of(f, px[['exchange', 'isin', 'date', 'close']].dropna(), px['date'].max())
     px = px.merge(adj[['exchange', 'isin', 'date', 'adj_close']], on=['exchange', 'isin', 'date'], how='left')
     ratio = (px['adj_close'] / px['close']).where(px['close'] > 0)

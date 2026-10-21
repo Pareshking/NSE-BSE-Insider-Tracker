@@ -14,13 +14,16 @@ What a row gains:
   is never treated as market, and is listed in the report.
 * `person_role` from the person category.
 * One security (ISIN, display name, both exchange identifiers).
-* Own-holding change, % of market cap, and the two Reg 7(2) deadlines.
+* Own-holding change, % of market cap (at the trade's last day), and the
+  two Reg 7(2) deadlines.
 * `flags`: reasons to hold a row back from rankings until checked;
   `marks`: data checks that are counted and shown but hold nothing back
   (docs/CLEAN_LAYER.md, "Data checks").
 * Holding-only disclosures (no shares traded) become kind 'holding_only'.
 * NSE/BSE copies of one filing: both kept, linked; NSE is primary (it
-  carries the intimation date), BSE gets is_primary = False.
+  carries the intimation date), BSE gets is_primary = False. A copy agrees
+  on person, security, side, kind, shares and trade dates; one BSE row per
+  NSE row (`_pair_copies`).
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from . import day_range
+from . import day_range, market_cap
 from .calendar import Calendar, lateness
 from .dates import parse_dates, to_datetime_day_first
 from .entities import add_entity_columns, most_common
@@ -129,14 +132,43 @@ def side_of(transaction_type, mode) -> str | None:
 # same place: "Vama Sundari Investments (Delh" and "Vama Sundari
 # \nInvestments (De" are one promoter of HCL Tech.
 TRUNCATION_MIN_KEY = 15
+# A name cut at a word boundary is only taken as cut when its raw spelling is
+# about as long as NSE's cut (the two Vama Sundari spellings are 30 and 29
+# characters). "Ramesh Kumar Agarwal" (20) is a whole name, not a cut one.
+TRUNCATION_RAW_LEN = (26, 32)
+# Words that, added after a whole name, make another legal person: an
+# individual's HUF or trust, or a company named after him (audit W5).
+_OTHER_PERSON_WORDS = {'huf', 'trust', 'family', 'foundation', 'estate', 'minor'}
+_CORPORATE_WORDS = {'private', 'limited', 'llp', 'company', 'corporation', 'holding', 'holdings', 'investment',
+                    'investments', 'ventures', 'enterprises', 'capital', 'fund', 'industries', 'associates',
+                    'partners', 'finance', 'securities', 'international', 'inc'}
+
+
+def _is_truncation(short: str, long: str, raw_len: int) -> bool:
+    """`long` starts with `short`; is `short` the same name cut short? Cut
+    mid-word: yes. Cut at a word boundary: only when the raw spelling is as
+    long as NSE's cut, and the added words never turn the person into
+    another one (an HUF, a trust, or a company when `short` is no company)."""
+    if long[len(short)] != '-':
+        return True
+    if not TRUNCATION_RAW_LEN[0] <= raw_len <= TRUNCATION_RAW_LEN[1]:
+        return False
+    added = set(long[len(short) + 1:].split('-'))
+    if added & _OTHER_PERSON_WORDS:
+        return False
+    return not (added & _CORPORATE_WORDS) or bool(set(short.split('-')) & _CORPORATE_WORDS)
 
 
 def _merge_truncated_names(df: pd.DataFrame) -> pd.DataFrame:
     """Within one security, a person ID that is a prefix of exactly one
-    longer ID there is the same person, cut short. Only within a security
-    and only on a unique match, so two different people never merge."""
+    longer ID there is the same person, cut short (`_is_truncation`). Only
+    within a security and only on a unique match, so two different people
+    never merge; never "X" into "X HUF"."""
     df = df.copy()
     sec = df['isin'].fillna(df['symbol'].astype(str))
+    raw = df['person_raw'] if 'person_raw' in df else df['person_name']
+    raw_len = (pd.DataFrame({'id': df['person_id'], 'n': raw.astype('string').str.strip().str.len()})
+               .dropna().groupby('id')['n'].max().to_dict())
     for _, grp in df[df['person_id'].notna()].groupby(sec):
         ids = sorted(set(grp['person_id']), key=len, reverse=True)
         remap = {}
@@ -144,7 +176,7 @@ def _merge_truncated_names(df: pd.DataFrame) -> pd.DataFrame:
             if len(short) < TRUNCATION_MIN_KEY:
                 continue
             longer = [i for i in ids if len(i) > len(short) and i.startswith(short) and i not in remap]
-            if len(longer) == 1:
+            if len(longer) == 1 and _is_truncation(short, longer[0], int(raw_len.get(short, 0))):
                 remap[short] = longer[0]
         if remap:
             idx = grp.index[grp['person_id'].isin(list(remap))]
@@ -277,12 +309,112 @@ def _counts(s: pd.Series) -> dict:
     return {str(k): int(v) for k, v in s.value_counts().items()}
 
 
+def _present(v) -> bool:
+    return v is not None and not (isinstance(v, float) and np.isnan(v)) and not pd.isna(v)
+
+
+def _dates_agree(n_from, n_to, b_from, b_to, b_nightly: bool) -> bool:
+    """Do an NSE row's trade dates and a BSE row's say the same trade? BSE's
+    nightly capture files one date (the from-date, as the to-date too), so
+    such a row agrees when that date lies in the NSE row's span (audit W4);
+    a row with its own to-date (BSE's insider CSV) agrees on the last day of
+    the trade, as the link always has."""
+    n_to = n_to if _present(n_to) else n_from
+    n_from = n_from if _present(n_from) else n_to
+    if not _present(n_to):
+        return False
+    if b_nightly or not _present(b_to):
+        d = b_from if _present(b_from) else b_to
+        return _present(d) and n_from <= d <= n_to
+    return n_to == b_to
+
+
+COPY_KEY = ['isin', 'person_id', '_side', 'kind', 'quantity']
+
+
+def _pair_copies(nse: pd.DataFrame, bse: pd.DataFrame) -> list[tuple]:
+    """(nse index, bse index) for each BSE row that is a copy of an NSE row:
+    same security, person, side, kind and shares, and trade dates that agree
+    (`_dates_agree`). One BSE row per NSE row, in date order; a row left over
+    on either side is a trade of its own (audit W3: a buy and a sale of the
+    same size on one day are two trades)."""
+    pairs = []
+    if nse.empty or bse.empty:
+        return pairs
+    n = nse.dropna(subset=['isin', 'person_id', 'quantity']).assign(_side=lambda d: d['side'].fillna('-'))
+    b = bse.dropna(subset=['isin', 'person_id', 'quantity']).assign(_side=lambda d: d['side'].fillna('-'))
+    b_groups = {k: g for k, g in b.groupby(COPY_KEY, sort=False)}
+    for k, g in n.groupby(COPY_KEY, sort=False):
+        cand = b_groups.get(k)
+        if cand is None:
+            continue
+        cand = cand.sort_values(['trade_date_from', 'broadcast_ts'], na_position='last')
+        nightly = (~cand['_bse_csv']).to_numpy() if '_bse_csv' in cand else np.ones(len(cand), dtype=bool)
+        used = set()
+        for i, nf, nt in zip(g.index, g['trade_date_from'], g['trade_date_to']):
+            for j, bf, bt, night in zip(cand.index, cand['trade_date_from'], cand['trade_date_to'], nightly):
+                if j not in used and _dates_agree(nf, nt, bf, bt, bool(night)):
+                    pairs.append((i, j))
+                    used.add(j)
+                    break
+    return pairs
+
+
+def _revision_marked(d: pd.DataFrame) -> pd.Series:
+    """NSE rows of a filing NSE lists as a 'Revision' that carry no prevAppId."""
+    st = d['nse_submission_type'].astype('string').str.strip().str.lower().fillna('')
+    return d['exchange'].eq('nse') & st.str.startswith('revis') & d['prev_app_id'].isna()
+
+
+def _superseded_by_marker(d: pd.DataFrame) -> tuple[pd.Index, dict]:
+    """Rows replaced by a later NSE filing marked 'Revision' without
+    prevAppId (audit W10). For each such filing and each person, security,
+    trade dates and kind in it: the earlier NSE filings (other appId,
+    broadcast before it) with rows of the same person, security, dates and
+    kind are the candidates; those with a row of the same side are preferred.
+    Exactly one candidate filing: its rows there are replaced. Several: none
+    is removed (counted `ambiguous`). None: nothing to replace (the original
+    is older than the archive, or its kind was corrected; counted)."""
+    out = {'revision_rows': 0, 'replaced_rows': 0, 'ambiguous': 0, 'no_original': 0}
+    rev = _revision_marked(d)
+    out['revision_rows'] = int(rev.sum())
+    if not rev.any():
+        return pd.Index([]), out
+    key = ['isin', 'person_id', '_from', 'trade_date_to', 'kind']
+    nse = d[d['exchange'].eq('nse')].dropna(subset=['isin', 'person_id', 'trade_date_to']).copy()
+    nse['_from'] = nse['trade_date_from'].where(nse['trade_date_from'].notna(), nse['trade_date_to'])
+    nse = nse[nse['broadcast_ts'].notna()]
+    by_key = {k: g for k, g in nse.groupby(key, sort=False)}
+    removed: set = set()
+    revs = nse[_revision_marked(nse)].sort_values('broadcast_ts')
+    for (app, k), g in revs.groupby([revs['app_id'].fillna(''), revs[key].apply(tuple, axis=1)], sort=False):
+        at = g['broadcast_ts'].max()
+        pool = by_key.get(k)
+        pool = pool[(pool['app_id'].fillna('') != app) & (pool['broadcast_ts'] < at) & ~pool.index.isin(list(removed))]
+        if pool.empty:
+            out['no_original'] += len(g)
+            continue
+        sides = set(g['side'].dropna())
+        same = pool[pool['side'].isin(sides)] if sides else pool
+        apps = (same if len(same) else pool)['app_id'].fillna('').unique()
+        if len(apps) != 1:
+            out['ambiguous'] += len(g)
+            continue
+        hit = pool.index[pool['app_id'].fillna('') == apps[0]]
+        removed.update(hit)
+        out['replaced_rows'] += len(hit)
+    return pd.Index(sorted(removed)), out
+
+
 def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date,
-                  price_ranges: pd.DataFrame | None = None) -> pd.DataFrame:
+                  price_ranges: pd.DataFrame | None = None,
+                  market_cap_daily: pd.DataFrame | None = None) -> pd.DataFrame:
     """canonical insider rows (both exchanges, native columns included,
     an `exchange` column) -> clean insider_trades. `price_ranges`
     (insiders_clean.day_range.load) feeds the price check; without it the
-    check is reported as not run and nothing is flagged for price."""
+    check is reported as not run and nothing is flagged for price.
+    `market_cap_daily` (insiders_clean.market_cap.load_daily) dates the
+    market cap behind `pct_of_mcap`; without it every row takes the latest."""
     t = report.table('insider_trades')
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -354,6 +486,13 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['nse_symbol'] = df['isin'].map(lambda i: (recs.get(i) or {}).get('nse_symbol'))
     df['bse_code'] = df['isin'].map(lambda i: (recs.get(i) or {}).get('bse_code'))
     df['market_cap'] = pd.to_numeric(df['isin'].map(lambda i: (recs.get(i) or {}).get('market_cap')), errors='coerce')
+    # % of market cap is taken at the trade's last day (NSE's daily mcap file,
+    # issue size x close); `market_cap` stays the latest (audit W1).
+    at = market_cap.at_trade_date(df['nse_symbol'], df['trade_date_to'], market_cap_daily, df['market_cap'],
+                                  fallback_symbols=df['symbol'].where(df['exchange'].eq('nse')))
+    for c in at.columns:
+        df[c] = at[c].to_numpy()
+    t['market_cap_basis'] = _counts(df['market_cap_basis'])
     report.unmatched(df.loc[df['isin'].isna(), ['exchange', 'symbol', 'company_raw']]
                      .rename(columns={'company_raw': 'name'}).astype(str).drop_duplicates()
                      .assign(table='insider_trades').to_dict('records'))
@@ -362,7 +501,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['price'] = (df['value'] / df['quantity']).where(df['quantity'] > 0)
     df['holding_change_pct'] = ((df['holding_after'] - df['holding_before']) / df['holding_before'] * 100
                                 ).where(df['holding_before'] >= HOLDING_BASE_MIN)
-    df['pct_of_mcap'] = (df['value'] / df['market_cap'] * 100).where(df['market_cap'] > 0)
+    df['pct_of_mcap'] = (df['value'] / df['market_cap_at_trade'] * 100).where(df['market_cap_at_trade'] > 0)
     sign = df['side'].map({'BUY': 1, 'SELL': -1})
     df['signed_value'] = df['value'] * sign
 
@@ -392,6 +531,25 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     superseded = df['app_id'].isin(set(df['prev_app_id'].dropna()) & known_app)
     report.removed('insider_trades', 'superseded_by_revision', df.loc[superseded, 'source_id'])
     keep &= ~superseded
+    # Most NSE re-filings carry no prevAppId but are listed as 'Revision'
+    # (typeOfSubmission; TODO A: 41 of 3,152 filings, 2 with prevAppId). A
+    # revision that corrects the quantity or the value changes the very
+    # fields the content match below compares, so both rows would count.
+    # The marker settles it (`_superseded_by_marker`).
+    df['_bse_csv'] = df['source'].eq(BSE_INSIDER_SOURCE).fillna(False).astype(bool)
+    by_marker, t['revision_marker'] = _superseded_by_marker(df[keep])
+    report.removed('insider_trades', 'superseded_by_revision_marker', df.loc[by_marker, 'source_id'])
+    keep.loc[by_marker] = False
+    # The BSE copy of a replaced NSE row is the replaced filing too, unless it
+    # is also a copy of a row still kept.
+    replaced = df.index[superseded.to_numpy()].union(by_marker)
+    if len(replaced):
+        bse_rows = df[keep & df['exchange'].eq('bse')]
+        to_old = {j for _, j in _pair_copies(df.loc[replaced], bse_rows)}
+        to_kept = {j for _, j in _pair_copies(df[keep & df['exchange'].eq('nse')], bse_rows.loc[list(to_old)])}
+        old_copies = pd.Index(sorted(to_old - to_kept))
+        report.removed('insider_trades', 'bse_copy_of_replaced_filing', df.loc[old_copies, 'source_id'])
+        keep.loc[old_copies] = False
     # BSE: the nightly capture (BSE's JSON) files only the from-date, as the
     # to-date too; BSE's insider CSV has both. So BSE rows are matched on the
     # from-date, and one filing seen by both feeds is one row: the CSV's is
@@ -399,7 +557,6 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # `bse_same_filing_two_feeds` (its mode is spelt differently in each feed,
     # so it would otherwise read as a correction).
     df['_key_to'] = df['trade_date_to'].where(df['exchange'] != 'bse', df['trade_date_from'])
-    df['_bse_csv'] = df['source'].eq(BSE_INSIDER_SOURCE).fillna(False).astype(bool)
     key_cols = ['exchange', 'isin', 'symbol', 'person_id', 'side', 'quantity', 'value',
                 'trade_date_from', '_key_to', 'holding_before', 'holding_after']
     order = (df[keep].assign(_b=df['broadcast_ts'])
@@ -491,23 +648,21 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
 
     # --- NSE/BSE copies of one filing ---
     df['trade_id'] = [_row_id(p) for p in zip(df['exchange'], df['source_id'])]
-    link = ['isin', 'person_id', 'quantity', 'trade_date_to']
+    # A BSE row is a copy of an NSE row only when person, security, side,
+    # kind, shares and trade dates agree, one BSE row per NSE row; an NSE row
+    # is never demoted (audit W3, W4). `_pair_copies` says which.
     df['is_primary'] = True
     df['primary_id'] = None
     df['listed_on'] = df['exchange']
-    linkable = df.dropna(subset=['isin', 'person_id', 'quantity', 'trade_date_to'])
-    # Only groups on both exchanges can link; filtering first avoids one
-    # pandas frame per row on a full history.
-    linkable = linkable[linkable.groupby(link)['exchange'].transform('nunique') > 1]
-    for _, grp in linkable.groupby(link):
-        if grp['exchange'].nunique() < 2:
-            continue
-        nse = grp[grp['exchange'] == 'nse']
-        primary = nse.index[0] if len(nse) else grp.index[0]
-        others = grp.index.drop(primary)
-        df.loc[others, 'is_primary'] = False
-        df.loc[others, 'primary_id'] = df.at[primary, 'trade_id']
-        df.loc[grp.index, 'listed_on'] = ','.join(sorted(grp['exchange'].unique()))
+    pairs = _pair_copies(df[df['exchange'].eq('nse')], df[df['exchange'].eq('bse')])
+    if pairs:
+        n_idx, b_idx = (list(x) for x in zip(*pairs))
+        df.loc[b_idx, 'is_primary'] = False
+        df.loc[b_idx, 'primary_id'] = df.loc[n_idx, 'trade_id'].to_numpy()
+        df.loc[n_idx + b_idx, 'listed_on'] = 'bse,nse'
+    bse_night = df['exchange'].eq('bse') & ~df['_bse_csv']
+    t['nse_bse_copies'] = {'linked': len(pairs),
+                           'linked_bse_nightly_on_span': int(bse_night.loc[[j for _, j in pairs]].sum()) if pairs else 0}
 
     cols = ['trade_id', 'source_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'app_id',
             'prev_app_id', 'nse_submission_type', 'nse_revision_remark',
@@ -516,8 +671,8 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw',
             'quantity', 'value', 'signed_value', 'price', 'day_low', 'day_high', 'price_check',
             'holding_before', 'holding_after', 'holding_check',
-            'holding_change_pct', 'market_cap', 'pct_of_mcap',
-            'trade_date_from', 'trade_date_to', 'intimation_date', 'broadcast_date',
+            'holding_change_pct', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'market_cap_basis',
+            'pct_of_mcap', 'trade_date_from', 'trade_date_to', 'intimation_date', 'broadcast_date',
             'insider_to_company_sessions', 'insider_filed_late',
             'company_to_exchange_sessions', 'company_filed_late', 'trade_to_public_sessions',
             'source_url', 'flags', 'marks', 'needs_review']
