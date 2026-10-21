@@ -148,14 +148,14 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 
 /* ---- Net flow bars (company page): zero in the middle ---- */
 .fl { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
-.fl-row { display: grid; grid-template-columns: 220px 1fr 120px; gap: 12px; align-items: center; font-size: 13.5px; }
+.fl-row { display: grid; grid-template-columns: minmax(110px, 1.3fr) minmax(60px, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; }
 .fl-l { color: var(--ink-2); }
 .fl-track { position: relative; height: 10px; background: var(--subtle); border-radius: 5px; }
 .fl-track::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-strong); }
 .fl-track i { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
 .fl-track i.pos { left: 50%; background: var(--buy); }
 .fl-track i.neg { right: 50%; background: var(--sell); }
-.fl-v { text-align: right; color: var(--ink); font-weight: 600; }
+.fl-v { text-align: right; color: var(--ink); font-weight: 600; white-space: nowrap; }
 @media (max-width: 720px) { .fl-row { grid-template-columns: 1fr; gap: 4px; } .fl-v { text-align: left; } }
 /* range bar and moves inside cards (same look as the tables) */
 .spot .up { color: var(--buy); font-weight: 600; } .spot .down { color: var(--sell); font-weight: 600; }
@@ -313,3 +313,8 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .ev-i { display: inline-flex; align-items: center; gap: 6px; cursor: help; }
 .ev-i b { font-weight: 600; color: var(--ink); }
 .ev-line a { margin-left: auto; color: var(--accent-ink); text-decoration: none; font-weight: 600; }
+
+/* ---- Company: money flow labels carry their note; the header line carries the exchange links ---- */
+.fl-l em { display: block; font-style: normal; font-size: var(--fs-label); color: var(--ink-3); margin-top: 1px; }
+.ident a { color: var(--accent-ink); text-decoration: none; font-weight: 600; }
+.ident a:hover { text-decoration: underline; }
