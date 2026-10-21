@@ -21,8 +21,22 @@ def test_search_text_with_regex_characters_is_literal():
     assert s.str.contains('C++', case=False, regex=False).tolist() == [False, True]
 
 
-def test_table_links_navigate_through_the_parent_page():
-    """Streamlit's st.iframe is sandboxed without top-level navigation, so a bare target=_top link is
-    blocked (checked in Chromium on 12 Oct). The frame script must hand the click to the parent page."""
-    from ui import table
-    assert "closest('a[target=\"_top\"]')" in table.SORT_JS and 'window.parent.document' in table.SORT_JS
+def test_tables_are_drawn_in_the_page_with_plain_links_and_rows_that_open():
+    """Tables moved out of iframes on 21 Oct: they share the page's styles, links are plain links,
+    and a row with facts behind it carries a hidden detail row that sorts with it."""
+    import pandas as pd
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_string("""
+import sys; sys.path.insert(0, 'streamlit_app')
+import pandas as pd
+from ui import table
+rows = pd.DataFrame({'company': ['Alpha Ltd', 'Beta Ltd'], 'nse_symbol': ['ALPHA', 'BETA'], 'value': [2e7, 5e6]})
+table.table(rows, [table.Col('company', 'Company', 'co'), table.Col('value', 'Value', 'money')],
+            detail=lambda r: table.facts([('Value', str(r['value']))], [('Filing', 'https://example.com/f.xml')]))
+""")
+    at.run()
+    assert not at.exception
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    assert 'iframe' not in html and 'target="_top"' not in html
+    assert 'company?symbol=ALPHA" target="_self"' in html
+    assert html.count('class="dt" hidden') == 2 and 'has-dt' in html and 'groups.sort' in html

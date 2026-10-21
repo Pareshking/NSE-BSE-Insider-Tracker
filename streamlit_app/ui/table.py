@@ -2,26 +2,22 @@
 
 A company cell with its symbol and exchanges, side pills, size bars, a
 52-week range and a price line with the insider trades marked on it read far
-faster than a plain grid. Each table sits in its own frame so a click on a
-header sorts it (st.html runs no script); the header and first column stay
-pinned, and at phone width the columns marked phone=False drop out.
+faster than a plain grid. Tables are drawn in the page (st.html with its
+script allowed), so they share the page's tokens and fonts and links are plain
+links; a click on a header sorts, a row with facts behind it opens in place,
+the header and first column stay pinned, and at phone width the columns
+marked phone=False drop out.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
+import hashlib
 
 import pandas as pd
 import streamlit as st
 
 from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tags, flag_tags, indian, pct, price, role, rupees,
                     shares, side_tag, tag)
-
-FONT_LINKS = ('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-              '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700'
-              '&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet">')
-
 
 @dataclass(frozen=True)
 class Col:
@@ -45,7 +41,7 @@ def _tone(text: str) -> str:
 
 
 def _a(href: str, text: str) -> str:
-    return f'<a href="{esc(href, quote=True)}" target="_top">{text}</a>'
+    return f'<a href="{esc(href, quote=True)}" target="_self">{text}</a>'
 
 
 def _sv(v) -> str:
@@ -178,43 +174,52 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
 
 
 SORT_JS = """
-// Streamlit's iframe is sandboxed without top-level navigation, so a link with target=_top is
-// blocked. The frame shares the app's origin, so hand the click to an anchor in the parent page.
-document.addEventListener('click', function (e) {
-  var a = e.target.closest && e.target.closest('a[target="_top"]');
-  if (!a) return;
-  e.preventDefault();
-  try {
-    var p = window.parent.document.createElement('a');
-    p.href = a.getAttribute('href'); p.target = '_self';
-    window.parent.document.body.appendChild(p); p.click(); p.remove();
-  } catch (err) { window.open(a.href, '_blank'); }
-});
-document.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {
-  const tb = th.closest('table').tBodies[0], i = th.cellIndex, num = th.dataset.k === 'n';
-  const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
-  th.closest('tr').querySelectorAll('th').forEach(h => { h.dataset.dir = ''; });
-  th.dataset.dir = dir;
-  const val = tr => { const v = tr.cells[i].dataset.v;
-    return num ? (v === '' ? NaN : parseFloat(v)) : (v || '').toLowerCase(); };
-  Array.from(tb.rows).sort((a, b) => {
-    const x = val(a), y = val(b);
-    if (num) { if (isNaN(x)) return 1; if (isNaN(y)) return -1; return dir === 'asc' ? x - y : y - x; }
-    return dir === 'asc' ? x.localeCompare(y) : y.localeCompare(x);
-  }).forEach(r => tb.appendChild(r));
-}));
+(function (id) {
+  const wrap = document.getElementById(id);
+  if (!wrap || wrap.dataset.ready) return;
+  wrap.dataset.ready = '1';
+  const tb = wrap.querySelector('tbody');
+  // A row with a detail row under it opens in place; clicks on links still follow the link.
+  tb.addEventListener('click', e => {
+    if (e.target.closest('a')) return;
+    const tr = e.target.closest('tr.has-dt');
+    if (!tr) return;
+    const dt = tr.nextElementSibling;
+    if (dt && dt.classList.contains('dt')) { dt.hidden = !dt.hidden; tr.classList.toggle('open', !dt.hidden); }
+  });
+  wrap.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {
+    const i = th.cellIndex, num = th.dataset.k === 'n';
+    const dir = th.dataset.dir === 'desc' ? 'asc' : 'desc';
+    th.closest('tr').querySelectorAll('th').forEach(h => { h.dataset.dir = ''; });
+    th.dataset.dir = dir;
+    const val = tr => { const v = tr.cells[i].dataset.v;
+      return num ? (v === '' ? NaN : parseFloat(v)) : (v || '').toLowerCase(); };
+    const groups = [];   // each row with its detail row, so they move together
+    Array.from(tb.rows).forEach(r => { if (r.classList.contains('dt')) groups[groups.length - 1].push(r); else groups.push([r]); });
+    groups.sort((a, b) => {
+      const x = val(a[0]), y = val(b[0]);
+      if (num) { if (isNaN(x)) return 1; if (isNaN(y)) return -1; return dir === 'asc' ? x - y : y - x; }
+      return dir === 'asc' ? x.localeCompare(y) : y.localeCompare(x);
+    }).forEach(g => g.forEach(r => tb.appendChild(r)));
+  }));
+})
 """
 
 
-@lru_cache(maxsize=1)
-def table_css() -> str:
-    return (Path(__file__).resolve().parent / 'table.css').read_text(encoding='utf-8')
+def facts(items: list[tuple[str, str]], links: list[tuple[str, str]] = ()) -> str:
+    """The inside of a detail row: label / value pairs in a grid, then links
+    (label, href). Values are text and are escaped here."""
+    cells = ''.join(f'<div><b>{esc(k)}</b><span>{esc(v)}</span></div>' for k, v in items if v not in (None, ''))
+    ln = ''.join(f'<a href="{esc(h, quote=True)}" target="_blank" rel="noopener">{esc(t)}</a>' for t, h in links if h)
+    return f'<div class="dt-grid">{cells}</div>' + (f'<div class="dt-links">{ln}</div>' if ln else '')
 
 
 def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str = 'Nothing here.',
-          height: int = 600, download: str = '', row_px: int = 53) -> None:
-    """A ranked, sortable table: the first `limit` rows drawn, the rest
-    counted (and offered as a CSV when `download` names the file)."""
+          height: int = 600, download: str = '', row_px: int = 53, detail=None, key: str = '') -> None:
+    """A ranked, sortable table drawn in the page (so it shares the page's
+    styles and links work as links): the first `limit` rows drawn, the rest
+    counted (and offered as a CSV when `download` names the file).
+    `detail(row) -> html` adds a row under each row that opens on a click."""
     if rows is None or rows.empty:
         empty(empty_text)
         return
@@ -234,22 +239,22 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
         for c in cols:
             inner, sv, cls = _cell(c, r, bar_max)
             cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}">{inner}</td>')
-        body.append('<tr>' + ''.join(cells) + '</tr>')
-    # Rows with tradability flags carry one more line under the company name.
-    flagged = int(shown['trade_flags'].map(lambda v: v is not None and not isinstance(v, float) and len(v) > 0).sum())         if 'trade_flags' in shown and any(c.kind == 'co' for c in cols) else 0
-    h = min(height + 18 * flagged, 40 + row_px * len(shown) + 18 * flagged + 6)
-    doc = (f'<!doctype html><html><head><meta charset="utf-8">'
-           f'<meta name="viewport" content="width=device-width, initial-scale=1">{FONT_LINKS}'
-           f'<style>{table_css()}</style></head><body>'
-           f'<div class="tbl-wrap" style="height:{h}px"><table class="tbl"><thead><tr>{head}</tr></thead>'
-           f'<tbody>{"".join(body)}</tbody></table></div><script>{SORT_JS}</script></body></html>')
-    st.iframe(doc, height=h + 2)
+        more_html = detail(r) if detail else ''
+        opener = ' class="has-dt"' if more_html else ''   # no backslash inside an f-string: Python 3.11 runs the site
+        body.append(f'<tr{opener}>' + ''.join(cells) + '</tr>')
+        if more_html:
+            body.append(f'<tr class="dt" hidden><td colspan="{len(cols)}">{more_html}</td></tr>')
+    tid = 'tb_' + hashlib.sha1(f'{key}|{download}|{len(rows)}|{"|".join(c.key for c in cols)}'.encode()).hexdigest()[:10]
+    st.html(f'<div class="tbl-wrap" id="{tid}" style="max-height:{height}px"><table class="tbl"><thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(body)}</tbody></table></div><script>{SORT_JS}("{tid}");</script>',
+            unsafe_allow_javascript=True)
     more = len(rows) - len(shown)
-    c1, c2 = st.columns([3, 1], vertical_alignment='center')
-    c1.html(f'<p class="cap">{"Top " + format(len(shown), ",") + " of " + format(len(rows), ",") + " shown · " if more > 0 else ""}'
-            'Click a column to sort.</p>')
-    if download:
-        flat = rows[[c for c in rows.columns if not str(c).startswith('_')
-                     and not rows[c].map(lambda x: isinstance(x, (list, dict))).any()]]
-        c2.download_button('Download all (CSV)', flat.to_csv(index=False).encode(), f'{download}.csv',
-                           'text/csv', key=f'dl_{download}', type='tertiary', width='stretch')
+    if more > 0 or download:
+        c1, c2 = st.columns([3, 1], vertical_alignment='center')
+        if more > 0:
+            c1.html(f'<p class="tbl-cap">Top {len(shown):,} of {len(rows):,}</p>')
+        if download:
+            flat = rows[[c for c in rows.columns if not str(c).startswith('_')
+                         and not rows[c].map(lambda x: isinstance(x, (list, dict))).any()]]
+            c2.download_button('CSV', flat.to_csv(index=False).encode(), f'{download}.csv',
+                               'text/csv', key=f'dl_{download}', type='tertiary', width='stretch')
