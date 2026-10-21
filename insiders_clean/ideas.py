@@ -467,3 +467,26 @@ def today(events: list, summary: pd.DataFrame | None = None) -> tuple:
         out.append(r.sort_values(['group_order', 'pct_of_company', 'last'], ascending=[True, False, False]).reset_index(drop=True)
                    if not r.empty else r)
     return out[0], out[1]
+
+
+def company_view(events: list, summary: pd.DataFrame | None = None) -> tuple:
+    """(for, against) on one company's page: the same builders as Today, run on that company's rows,
+    every event kept (not one per company), one row per sentence with its kinds as chips and their
+    measured read; largest share of the company first, then the latest."""
+    parts = [e for e in events if e is not None and not e.empty]
+    if not parts:
+        return _ev([]), _ev([])
+    ev = pd.concat(parts, ignore_index=True)
+    reads = _verdicts(summary)
+    out = []
+    for lst in ('look', 'warn'):
+        rows = []
+        for _, g in ev[ev['list'] == lst].groupby('sentence', sort=False):
+            r = g.iloc[0].to_dict()
+            kinds = list(dict.fromkeys(g['kind']))
+            r.update(kinds=kinds, reads={k: reads.get(k) or 'not_measured' for k in kinds})
+            rows.append(r)
+        r = pd.DataFrame(rows)
+        out.append(r.sort_values(['pct_of_company', 'last'], ascending=[False, False], na_position='last').reset_index(drop=True)
+                   if not r.empty else r)
+    return out[0], out[1]

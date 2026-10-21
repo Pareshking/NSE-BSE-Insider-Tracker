@@ -402,3 +402,34 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 .ev-t td b { font-weight: 650; color: var(--ink); } .ev-t td i { font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-left: 6px; }
 .ev-t td.up b { color: var(--buy); } .ev-t td.down b { color: var(--sell); }
 .ev-t td.few { opacity: .5; } .ev-t td.na { color: var(--ink-3); } .ev-t td.rd { text-align: left; }
+
+/* ---- Company dossier (21 Oct): quote line, for / against / risks, ownership by quarter ---- */
+.quote { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 8px 0 2px; font-size: var(--fs-small); color: var(--ink-3); }
+.quote > b.num { font-size: 22px; font-weight: 650; color: var(--ink); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.quote > span.up { color: var(--buy); font-weight: 600; } .quote > span.down { color: var(--sell); font-weight: 600; }
+.quote .q-k { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); margin-left: 6px; }
+.quote b:not(.num) { color: var(--ink); }
+.quote .rg { display: flex; align-items: center; gap: 10px; width: 240px; max-width: 100%; }
+.quote .rg-t { position: relative; flex: 1; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #F2D4D0, #E6E9EE 50%, #CBEAD9); }
+.quote .rg-t i { position: absolute; top: -4px; width: 3px; height: 12px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
+.quote .rg-v { font-size: 12px; white-space: nowrap; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.quote .rg-v em { font-style: normal; display: block; font-size: 10.5px; color: var(--ink-3); }
+.co-sig, .co-risk { margin: 0; padding: 0; list-style: none; display: grid; }
+.co-sig li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.co-sig li:first-child { border-top: 0; padding-top: 0; }
+.co-sig p { margin: 0 0 4px; font-size: 13.5px; color: var(--ink); line-height: 1.45; }
+.co-sig b.num { font-size: 14px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.co-risk li { padding: 8px 0 8px 14px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--ink); line-height: 1.45; position: relative; }
+.co-risk li:first-child { border-top: 0; padding-top: 0; } .co-risk li:first-child::before { top: 6px; }
+.co-risk li::before { content: ""; position: absolute; left: 0; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.co-none { margin: 0; font-size: 13.5px; color: var(--ink-3); }
+.own-wrap { overflow-x: auto; }
+.own { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: 520px; }
+.own th, .own td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.own thead th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); vertical-align: bottom; }
+.own thead th em { display: block; font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--warn); }
+.own thead th:first-child, .own tbody th { text-align: left; }
+.own tbody th { font-weight: 500; color: var(--ink-2); }
+.own td { color: var(--ink); } .own td.up { color: var(--buy); font-weight: 600; } .own td.down { color: var(--sell); font-weight: 600; }
+.own td:last-child, .own thead th:last-child { border-left: 1px solid var(--line-strong); }
+.own tr:last-child th, .own tr:last-child td { border-bottom: 0; }
