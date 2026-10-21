@@ -11,25 +11,38 @@ from data import store
 from ui import charts, kit
 from ui.kit import esc
 
-from insiders_clean import basket, track
+from insiders_clean import basket, evidence, track
 from screens.ctx import load
 
 MIN_CASES = 30  # below this a figure is shown, but marked "few cases"
 
 
-def _cell(r, sized: bool) -> str:
-    """One horizon: median excess, beat-the-index share and cases."""
+def _cell(r, sized: bool) -> tuple[str, int]:
+    """One horizon: median excess and the share of cases that beat the index; and the cases behind it."""
     if r is None or not r['cases']:
-        return '<td class="sc-na">not yet<br><span>no complete window</span></td>'
+        return '<td class="na" title="No complete window yet">·</td>', 0
     m = r.get('median_excess_sm') if sized else r['median_excess']
     beat = r.get('beat_size_index') if sized else r['beat_index']
     n = int(r.get('cases_sm', r['cases']) if sized else r['cases'])   # the cases behind this median (audit W16)
     if m is None or pd.isna(m) or not n or beat is None or pd.isna(beat):
-        return '<td class="sc-na">—<br><span>no index</span></td>'
+        return '<td class="na" title="No index return">—</td>', n
     tone = 'up' if m > 0 else 'down' if m < 0 else ''
-    few = n < MIN_CASES
-    return (f'<td class="sc {tone}{" few" if few else ""}"><b>{kit.pct(m, 1, signed=True)}</b>'
-            f'<span>{beat:.0f}% beat · {kit.plural(n, "case")}{" · few" if few else ""}</span></td>')
+    few = ' few' if n < MIN_CASES else ''
+    return (f'<td class="{tone}{few}" title="{n} cases{", few" if few else ""}"><b>{kit.pct(m, 1, signed=True)}</b>'
+            f'<i>{beat:.0f}%</i></td>'), n
+
+
+def _names(df: pd.DataFrame, ctx) -> pd.DataFrame:
+    """Company name and NSE symbol from the securities list (its name column is display_name), keeping any
+    the artifact already carries."""
+    sec = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
+    df = df.copy()
+    for col, src in (('company', 'display_name'), ('nse_symbol', 'nse_symbol')):
+        mapped = df['isin'].map(sec[src]) if src in sec else pd.Series(None, index=df.index, dtype=object)
+        df[col] = mapped.combine_first(df[col]) if col in df else mapped
+    if 'name' in sec:
+        df['company'] = df['company'].fillna(df['isin'].map(sec['name']))
+    return df
 
 
 def render():
@@ -59,26 +72,33 @@ def render():
             ev = ev[~ev['restricted'].astype(bool)]
             summ = track.summary(ev)
             kit.caption(f'{kit.count(len(ev))} events a reader could trade freely on the day; the scorecard below is re-measured on them.')
-    with kit.card('Scorecard', 'tr_score', f'median excess return over {"the size-matched index" if sized else "Nifty 500"}'
-                  ' · share of cases that beat it'):
-        heads = (''.join(f'<th title="Median return over {h} minus the index, after costs; share of cases that beat it">{h}</th>'
+    index = 'size-matched index' if sized else 'Nifty 500'
+    with kit.card('Scorecard', 'tr_score', f'median return minus the {index}, after costs · share of cases that beat it'):
+        heads = (''.join(f'<th title="Median return over {h} minus the {index}, after costs; the share of cases that beat it">{h}</th>'
                          for h in track.HORIZONS)
-                 + '<th title="The stock&#39;s move from the last trade date to the day made public, and the sessions it took">Before public</th>')
+                 + '<th title="Cases with a complete 3-month window">Cases</th>'
+                 + '<th title="Median move from the last trade date to the day made public (sessions in between)">Before</th>'
+                 + '<th title="The early read: 3 and 6 months against Nifty 500, 30+ cases">Read</th>')
         rows = []
         for sig, label in track.SIGNALS.items():
             g = summ[summ['signal'] == sig].set_index('horizon')
             if g.empty:
                 continue
-            cells = ''.join(_cell(g.loc[h] if h in g.index else None, sized) for h in track.HORIZONS)
+            got = [_cell(g.loc[h] if h in g.index else None, sized) for h in track.HORIZONS]
+            cells = ''.join(c for c, _ in got)
+            n3 = dict(zip(track.HORIZONS, (n for _, n in got))).get('3M', 0)
+            cells += f'<td class="n">{kit.count(n3) if n3 else "·"}</td>'
             pre = g['median_pre_move'].iloc[0] if 'median_pre_move' in g else None
             lag = g['median_lag'].iloc[0] if 'median_lag' in g else None
-            cells += (f'<td class="sc-pre"><b>{kit.pct(pre, 1, signed=True)}</b><span>median move · {lag:.0f} sessions</span></td>'
-                      if pre is not None and pd.notna(pre) and lag is not None and pd.notna(lag) else '<td class="sc-na">—</td>')
-            rows.append(f'<tr><th class="sc-l">{esc(label)}</th>{cells}</tr>')
-        st.html(f'<div class="sc-wrap"><table class="sc-t"><thead><tr><th></th>{heads}</tr></thead>'
+            cells += (f'<td class="n" title="{lag:.0f} sessions">{kit.pct(pre, 1, signed=True)}</td>'
+                      if pre is not None and pd.notna(pre) and lag is not None and pd.notna(lag) else '<td class="na">—</td>')
+            v = evidence.verdict(summ, sig)
+            cells += f'<td class="rd">{kit.tag(v["tag"].replace("Early read: ", ""), v["tone"])}</td>'
+            rows.append(f'<tr><th>{esc(label)}</th>{cells}</tr>')
+        st.html(f'<div class="ev-wrap"><table class="ev-t"><thead><tr><th>Signal</th>{heads}</tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table></div>')
         kit.caption(('Size-matched: Nifty 100 / Midcap 150 / Smallcap 250 / Microcap 250 by size · ' if sized else '')
-                    + f'medians · "few" = under {MIN_CASES} cases · one event per company per signal per 21 sessions')
+                    + f'faded: under {MIN_CASES} cases · one event per company per signal per 21 sessions')
 
     _forward(ctx, sized)
     _basket(ctx)
@@ -87,11 +107,7 @@ def render():
     with kit.card('Every case', 'tr_cases', 'pick a signal; newest first'):
         pick = st.selectbox('Signal', list(track.SIGNALS), format_func=track.SIGNALS.get, key='tr_sig',
                             label_visibility='collapsed')
-        rows = ev[ev['signal'] == pick].copy()
-        meta = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
-        for col in ('company', 'nse_symbol'):
-            rows[col] = rows['isin'].map(meta[col]) if col in meta else None
-        rows = rows.sort_values('day', ascending=False)
+        rows = _names(ev[ev['signal'] == pick], ctx).sort_values('day', ascending=False)
         kit.table(rows, [
             kit.Col('company', 'Company', 'co'), kit.Col('day', 'Made public', 'date'),
             kit.Col('entry_price', 'Entry', 'price', phone=False), kit.Col('value', 'Value', 'money', phone=False),
@@ -108,10 +124,7 @@ def _forward(ctx, sized: bool):
     fw = store.artifact('artifacts/forward_outcomes.parquet')
     if fw.empty:
         return
-    fw = fw.copy()
-    meta = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
-    for col in ('company', 'nse_symbol'):
-        fw[col] = fw['isin'].map(meta[col]) if col in meta else None
+    fw = _names(fw, ctx)
     fw['label'] = fw['signal'].map(track.SIGNALS).fillna(fw['signal'])
     started = pd.to_datetime(fw['recorded_at']).min()
     done = {h: fw[f'excess_sm_{h}' if sized else f'excess_{h}'].dropna() for h in track.HORIZONS}
@@ -134,9 +147,7 @@ def _basket(ctx):
     if pos.empty:
         return
     nav = store.artifact('artifacts/basket_nav.parquet')
-    meta = ctx.securities.drop_duplicates('isin').set_index('isin') if not ctx.securities.empty else pd.DataFrame()
-    for col in ('company', 'nse_symbol'):
-        pos[col] = pos['isin'].map(meta[col]) if col in meta else None
+    pos = _names(pos, ctx)
     pos['label'] = pos['signal'].map(track.SIGNALS).fillna(pos['signal'])
     closed = pos[pos['status'] == 'closed']
     with kit.card('Model basket', 'tr_basket', f'paper portfolio, rules fixed in advance (version {basket.BASKET_VERSION}): '
