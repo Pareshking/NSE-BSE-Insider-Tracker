@@ -104,6 +104,22 @@ should re-read it without asking NSE again. Size: 70 KB to 1.2 MB as sent
 roughly 100 MB a quarter for ~2,400 companies. A raw write that fails never
 stops the parse.
 
+Ownership by investor type (`clean/current/shareholding.parquet`, columns
+`mf_pct`, `fpi_pct`, `retail_pct`, ... in `docs/DATA_DICTIONARY.md`) is a third
+parse of the same file (`collectors/nse_events/parsers.parse_shp_categories`).
+Each type is the sum of the SEBI sub-categories mapped to it; nothing is filled
+by difference. `categories_check` says whether every filed subtotal equals its
+sub-categories and the types add up to the total; `categories_unmapped` names
+any shares or category that did not map. The run report's shareholding
+coverage counts `categories_status`, `categories_check`, rows with something
+unmapped, latest filings with the types, and `pending_categories`. Filled two
+ways: `run_daily --dataset shareholding --reparse-raw` (workflow input
+`reparse_raw=1`) re-reads every XBRL kept here, checks its SHA-256, and writes
+the columns on that filing's archive row, with no NSE call and `last_seen`
+untouched; a filing with no raw copy (fetched before 12 Oct 2026) is fetched
+again by the normal path whenever it is in the listing window (`days=400`,
+`chain=1` for four quarters), and the download is kept raw like any other.
+
 ## Product window
 
 The product holds transactions dated on or after 8 Oct 2025: the last one

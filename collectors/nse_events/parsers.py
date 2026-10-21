@@ -437,3 +437,147 @@ def parse_shp_members(xml: str) -> tuple[list[dict], dict]:
     check = ('no_members' if not members and promoter else
              'match' if abs(held - promoter) < 1 else 'mismatch')
     return members, {'members': len(members), 'member_shares': held, 'promoter_shares': promoter, 'check': check}
+
+
+# --- Ownership by investor type (Tables III and IV of the shareholding pattern) ----
+#
+# Every category of SEBI's shareholding pattern is an instant context
+# `<Category>_ContextI` on CategoryOfShareholdersAxis carrying NumberOfShares.
+# The public section (Table III) has four subtotals, each the sum of its
+# sub-categories as filed; a category with no holders is left out of the file
+# (read as 0). Context names are the same in taxonomies 2025-05-31 and
+# 2025-10-31, checked on 44 filings, Jun 2025 to Sep 2026 (HDFCBANK,
+# RELIANCE, SBIN, LT, ITC, INFY, ICICIBANK, ASIANPAINT, COALINDIA, LICI,
+# ZEEL, MOTILALOFS and 21 more companies): in each one the sub-categories add up to
+# their subtotal and the buckets below to the total.
+#
+# The % base is SEBI's: total shares less the shares a custodian holds
+# against depository receipts (Table IV C1, `CustodianOrDRHolder`), "as a %
+# of total no. of shares (calculated as per SCRR, 1957)". It is what each
+# filing's own % column and NSE's listing (promoter_holding_pct) use: SBIN Sep
+# 2026, promoter 5,079,775,288 of 9,230,766,786 shares with 70,396,990 under
+# DRs = 55.45% as filed and listed (55.03% of all shares). The filed % of
+# every category in the 44 filings matched shares / this base to 4 decimals.
+
+SHP_CATEGORIES = ('promoter', 'mf', 'insurance', 'banks_fi', 'aif', 'other_dii', 'fpi', 'other_foreign', 'govt',
+                  'retail', 'hni', 'corporate', 'other_public', 'non_public_other')
+# subtotal context -> {sub-category context: bucket}; SEBI's row in the comment.
+SHP_PUBLIC = {
+    'InstitutionsDomestic': {                                                       # B1
+        'MutualFundsOrUTI': 'mf',                                                   # a
+        'VentureCapitalFunds': 'other_dii',                                         # b
+        'AlternativeInvestmentFunds': 'aif',                                        # c
+        'Banks': 'banks_fi',                                                        # d
+        'InsuranceCompanies': 'insurance',                                          # e
+        'ProvidentFundsOrPensionFunds': 'other_dii',                                # f
+        'AssetReconstructionCompanies': 'other_dii',                                # g
+        'SovereignWealthFundsDomestic': 'other_dii',                                # h
+        'NBFCsRegisteredWithRBI': 'banks_fi',                                       # i
+        'OtherFinancialInstitutions': 'banks_fi',                                   # j
+        'OtherInstitutionsDomestic': 'other_dii',                                   # k any other
+    },
+    'InstitutionsForeign': {                                                        # B2
+        'ForeignDirectInvestment': 'other_foreign',                                 # a
+        'ForeignVentureCapitalInvestors': 'other_foreign',                          # b
+        'SovereignWealthFundsForeign': 'other_foreign',                             # c
+        'InstitutionsForeignPortfolioInvestorCategoryOne': 'fpi',                   # d
+        'InstitutionsForeignPortfolioInvestorCategoryTwo': 'fpi',                   # e
+        'OverseasDepositories': 'other_foreign',                                    # f holding DRs
+        'OtherInstitutionsForeign': 'other_foreign',                                # g any other
+    },
+    'Governments': {                                                                # B3
+        'CentralGovernmentOrPresidentOfIndia': 'govt',                              # a
+        'StateGovernmentsOrGovernors': 'govt',                                      # b
+        'ShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter': 'govt',  # c
+    },
+    'NonInstitutions': {                                                            # B4
+        'AssociateCompaniesOrSubsidiaries': 'other_public',                         # a
+        'DirectorsAndDirectorsRelatives': 'other_public',                           # b
+        'KeyManagerialPersonnel': 'other_public',                                   # c
+        'RelativesOfPromotersOtherThanPromoterGroup': 'other_public',               # d
+        'TrustsWhereAnyPersonBelongingToPromoterAndPromoterGroupIsTrusteeOrBeneficiaryOrAuthorOfTrust':
+            'other_public',                                                         # e
+        'InvestorEducationAndProtectionFund': 'other_public',                       # f
+        'ResidentIndividualShareholdersHoldingNominalShareCapitalUpToRsTwoLakh': 'retail',       # g
+        'ResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh': 'hni',    # h
+        'NonResidentIndians': 'other_public',                                       # i
+        'ForeignNationals': 'other_public',                                         # j
+        'ForeignCompanies': 'other_public',                                         # k
+        'BodiesCorporate': 'corporate',                                             # l
+        'OtherNonInstitutions': 'other_public',                                     # m any other: HUF, trusts, LLPs, ...
+    },
+}
+# Table IV, non-promoter non-public: C1 custodian / DR holder (outside the % base, `dr`), C2 employee benefit trusts.
+SHP_NON_PUBLIC = {'CustodianOrDRHolder': 'dr', 'EmployeeBenefitsTrusts': 'non_public_other'}
+# Table II sub-categories: only the promoter total is used here (the members are parse_shp_members).
+SHP_PROMOTER_PARTS = {'Indian', 'Foreign', 'IndividualsOrHinduUndividedFamily', 'CentralGovernmentOrStateGovernmentS',
+                      'OtherIndianShareholders', 'NonResidentIndividualsOrForeignIndividuals',
+                      'OtherForeignShareholders'}
+_SHP_TOTALS = {'ShareholdingPattern', 'ShareholdingOfPromoterAndPromoterGroup', 'PublicShareholding',
+               'SharesHeldByNonPromoterNonPublicShareholders'}
+_CATEGORY_FACT = re.compile(r'<in-bse-shp:NumberOfShares\b[^>]*?contextRef="(\w+?)_ContextI"[^>]*>([^<]*)<')
+_SHP_KNOWN = (_SHP_TOTALS | SHP_PROMOTER_PARTS | set(SHP_PUBLIC) | set(SHP_NON_PUBLIC)
+              | {c for parts in SHP_PUBLIC.values() for c in parts})
+
+
+def parse_shp_categories(xml: str) -> dict:
+    """Shares and % by investor type from a shareholding-pattern XBRL:
+    `{bucket}_shares` and `{bucket}_pct` for each of SHP_CATEGORIES, plus
+    `dr_shares` (held by a custodian against depository receipts),
+    `pct_base_shares` (total less dr_shares, SEBI's % base, see above),
+    `categories_check` and `categories_unmapped`.
+
+    Each bucket is the sum of the sub-categories mapped to it (SHP_PUBLIC,
+    SHP_NON_PUBLIC); promoter is parse_shp_xbrl's promoter shares (0 as filed
+    for a company with no promoter group). Nothing is filled by difference.
+    `categories_check` is 'match' when each filed subtotal (domestic
+    institutions, foreign institutions, government, non-institutions, public,
+    non-promoter non-public) equals the sum of its filed sub-categories and
+    the buckets plus dr_shares add up to the total, within one share (the %
+    then add up to 100); 'mismatch' otherwise. `categories_unmapped` names
+    what did not map: a subtotal's shares found in none of its filed
+    sub-categories, or a category context this parser does not know
+    (reported, never put in a bucket); blank when nothing. Raises ValueError,
+    as parse_shp_xbrl does, when the totals are missing."""
+    base = parse_shp_xbrl(xml)
+    total = base['total_shares']
+    filed: dict[str, float] = {}
+    for ctx, val in _CATEGORY_FACT.findall(xml):
+        n = _num(val)
+        if n is not None:
+            filed.setdefault(ctx, n)
+    buckets = dict.fromkeys(SHP_CATEGORIES + ('dr',), 0.0)
+    buckets['promoter'] = base['promoter_shares']
+    notes, mismatch = [], False
+    groups = dict(SHP_PUBLIC, SharesHeldByNonPromoterNonPublicShareholders=SHP_NON_PUBLIC)
+    for subtotal, parts in groups.items():
+        held = 0.0
+        for ctx, bucket in parts.items():
+            buckets[bucket] += filed.get(ctx, 0.0)
+            held += filed.get(ctx, 0.0)
+        gap = filed.get(subtotal, 0.0) - held
+        if abs(gap) >= 1:
+            notes.append(f'{subtotal}: {gap:.0f} shares in no filed sub-category')
+            mismatch = True
+    gap = filed.get('PublicShareholding', 0.0) - sum(filed.get(s, 0.0) for s in SHP_PUBLIC)
+    if abs(gap) >= 1:
+        notes.append(f'PublicShareholding: {gap:.0f} shares in no filed subtotal')
+        mismatch = True
+    for ctx in sorted(set(filed) - _SHP_KNOWN):
+        notes.append(f'unknown category {ctx}: {filed[ctx]:.0f} shares')
+    summed = sum(buckets.values())
+    if abs(summed - total) >= 1:
+        notes.append(f'categories add up to {summed:.0f}, total is {total:.0f}')
+        mismatch = True
+    pct_base = total - buckets['dr']
+    if pct_base <= 0:
+        raise ValueError('no shares outside depository receipts')
+    out = {}
+    for b in SHP_CATEGORIES:
+        out[f'{b}_shares'] = buckets[b]
+        out[f'{b}_pct'] = round(buckets[b] / pct_base * 100, 4)
+    out['dr_shares'] = buckets['dr']
+    out['pct_base_shares'] = pct_base
+    out['categories_check'] = 'mismatch' if mismatch else 'match'
+    out['categories_unmapped'] = '; '.join(notes) or None
+    return out
