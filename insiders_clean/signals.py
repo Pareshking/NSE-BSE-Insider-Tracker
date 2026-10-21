@@ -20,6 +20,8 @@ CLUSTER_DAYS = 30
 HIGH_PLEDGE_PCT = 15.0        # promoter pledge as % of promoter shares
 DECISION_ROLES = ('promoter', 'promoter_group', 'director', 'kmp')
 PROMOTER_ROLES = ('promoter', 'promoter_group')
+# Institutional client types (insiders_clean/participants.INSTITUTIONAL, kept here to avoid an import cycle)
+FUND_TYPES = ('mutual_fund', 'insurer', 'pension', 'bank', 'fpi', 'pms_aif', 'fund_other')
 _CORPORATE = re.compile(r'\b(limited|ltd|llp|private|pvt|trust|holdings?|investments?|ventures?|'
                         r'enterprises?|capital|fund|corporation|company|inc)\b', re.IGNORECASE)
 
@@ -29,7 +31,14 @@ def as_of(trades: pd.DataFrame) -> pd.Timestamp | None:
     page never claims a session the data doesn't have."""
     if trades is None or trades.empty:
         return None
-    d = pd.to_datetime(trades['broadcast_date'], errors='coerce').dropna()
+    t = trades   # held-back rows and exchange copies don't set the date (audit W20)
+    if 'is_primary' in t:
+        t = t[t['is_primary'].astype('boolean').fillna(False)]
+    if 'needs_review' in t:
+        t = t[~t['needs_review'].astype('boolean').fillna(False)]
+    d = pd.to_datetime(t['broadcast_date'], errors='coerce').dropna()
+    today = pd.Timestamp.now(tz='Asia/Kolkata').tz_localize(None).normalize()
+    d = d[d.dt.normalize() <= today]   # a date typed in the future in a filing never moves 'today'
     return d.max().normalize() if len(d) else None
 
 
@@ -60,12 +69,12 @@ def family_key(person_name, person_id) -> str:
 
 def decision_makers(people: pd.DataFrame) -> pd.Series:
     """person_id -> decision-maker key, for the buyers of one company (one row
-    per person). Members of the company's promoter group, linked through the
-    shareholding pattern (`promoter_group_id`, insiders_clean/promoter_group.py),
-    are one decision-maker; promoter-role filers sharing a family_key (the
-    surname rule above) are one as well, and either link joins the two.
-    Directors and KMP outside the group stand alone. Links only ever merge, so
-    a cluster is never easier to reach than under the surname rule alone."""
+    per person). The company's promoter group is one decision-maker: every filer
+    whose own filing says Promoter or Promoter Group (the exchange's category),
+    and anyone the shareholding pattern names as a member (`promoter_group_id`,
+    insiders_clean/promoter_group.py) even when filed under another category.
+    Directors and KMP outside the group stand alone. (21 Oct, audit D1: the
+    surname rule split one family into five; the filed category is the rule.)"""
     ids = list(people['person_id'])
     parent = {i: i for i in ids}
 
@@ -77,10 +86,8 @@ def decision_makers(people: pd.DataFrame) -> pd.Series:
 
     groups = people['promoter_group_id'] if 'promoter_group_id' in people else pd.Series(None, index=people.index)
     first: dict[str, str] = {}
-    for pid, name, role, g in zip(ids, people['person_name'], people['person_role'], groups):
-        keys = [g] if isinstance(g, str) and g else []
-        if role in PROMOTER_ROLES:
-            keys.append(family_key(name, pid))
+    for pid, role, g in zip(ids, people['person_role'], groups):
+        keys = ['promoter group'] if (isinstance(g, str) and g) or role in PROMOTER_ROLES else []
         for k in keys:
             if k in first:
                 parent[find(pid)] = find(first[k])
@@ -92,7 +99,7 @@ def decision_makers(people: pd.DataFrame) -> pd.Series:
 def decision_text(people: pd.DataFrame, dm: pd.Series) -> str:
     """'4 buyers, 2 decision-makers: promoter group (3), director'."""
     groups = people['promoter_group_id'] if 'promoter_group_id' in people else pd.Series(None, index=people.index)
-    linked = groups.map(lambda g: isinstance(g, str) and bool(g)).to_numpy()
+    linked = (groups.map(lambda g: isinstance(g, str) and bool(g)) | people['person_role'].isin(PROMOTER_ROLES)).to_numpy()
     roots = people['person_id'].map(dm).to_numpy()
     parts = []
     for root in dict.fromkeys(roots):
@@ -182,7 +189,9 @@ def company_board(t: pd.DataFrame, deals: pd.DataFrame | None, sh: pd.DataFrame 
     win = t[(t['seen'] <= ref) & (t['seen'] > ref - pd.Timedelta(days=days))].dropna(subset=['isin'])
     if win.empty:
         return pd.DataFrame()
-    prom = win['person_role'].isin(PROMOTER_ROLES)
+    # Token buys (under Rs 25 L in companies above Rs 5,000 Cr) are labelled, never ranked (07 Oct; audit W12).
+    token = win['is_token'].astype('boolean').fillna(False) if 'is_token' in win else pd.Series(False, index=win.index)
+    prom = win['person_role'].isin(PROMOTER_ROLES) & ~token
     off = win['person_role'].isin(['director', 'kmp'])
     board = win.groupby('isin').agg(company=('company', 'last'), nse_symbol=('nse_symbol', 'last'),
                                     market_cap=('market_cap', 'last'), last_seen=('seen', 'max'))
@@ -345,15 +354,20 @@ def handshakes(deals: pd.DataFrame, trades: pd.DataFrame | None = None, days: in
     return out.sort_values(['date', 'matched_value'], ascending=False).reset_index(drop=True)
 
 
-def small_cap_accumulation(deals: pd.DataFrame, ref: pd.Timestamp | None = None, days: int = 30) -> pd.DataFrame:
-    """Small caps (under Rs.5,000 Cr) that real funds net-bought in bulk/block
-    deals over the last `days` days: who, net value, % of market cap."""
+def small_cap_accumulation(deals: pd.DataFrame, ref: pd.Timestamp | None = None, days: int = 30,
+                           funds_only: bool = True) -> pd.DataFrame:
+    """Small caps (under Rs.5,000 Cr) that funds net-bought in bulk/block deals
+    over the last `days` days: who, net value, % of market cap. `funds_only`
+    keeps the institutional client types (insiders_clean/participants.py);
+    without the type column (older clean tables) every real client counts."""
     if deals is None or deals.empty:
         return pd.DataFrame()
     d = deals.copy()
     d['date'] = pd.to_datetime(d['date'], errors='coerce')
     mm = d['client_is_market_maker'].astype('boolean').fillna(False) if 'client_is_market_maker' in d else False
     d = d[(~mm) & d['is_primary'].astype('boolean').fillna(False)]
+    if funds_only and 'client_type' in d:   # the title says funds (audit W18)
+        d = d[d['client_type'].isin(FUND_TYPES)]
     if d.empty:
         return pd.DataFrame()
     ref = ref or d['date'].max()
@@ -403,3 +417,26 @@ def with_tradability(df: pd.DataFrame, trad: pd.DataFrame | None) -> pd.DataFram
     as_list = lambda v: list(v) if v is not None and not isinstance(v, float) else None  # noqa: E731
     return df.assign(trade_flags=df['isin'].map(t['trade_flags']).map(as_list),
                      trade_flag_notes=df['isin'].map(t['trade_flag_notes']).map(as_list))
+
+
+def deals_also_filed(deals: pd.DataFrame, trades: pd.DataFrame) -> pd.Series:
+    """True for a bulk/block deal that is the same trade as an insider's own
+    filing: the same person (client_id = person_id, one key space), company and
+    side, with the deal's date inside the filing's trade dates. Such a buy is
+    counted once, under the insider (audit W7, D6)."""
+    out = pd.Series(False, index=deals.index)
+    if deals is None or deals.empty or trades is None or trades.empty:
+        return out
+    t = trades.dropna(subset=['isin', 'person_id']).copy()
+    t['_to'] = pd.to_datetime(t['trade_date_to'], errors='coerce')
+    t['_from'] = pd.to_datetime(t['trade_date_from'], errors='coerce').fillna(t['_to'])
+    t = t.dropna(subset=['_to'])
+    key = t.groupby(['isin', 'person_id', 'side'])
+    spans = {k: list(zip(g['_from'], g['_to'])) for k, g in key}
+    dd = pd.to_datetime(deals['date'], errors='coerce')
+    for i, isin, cid, side, day in zip(deals.index, deals['isin'], deals['client_id'], deals['side'], dd):
+        for a, b in spans.get((isin, cid, side), ()):
+            if pd.notna(day) and a.normalize() <= day.normalize() <= b.normalize():
+                out.at[i] = True
+                break
+    return out

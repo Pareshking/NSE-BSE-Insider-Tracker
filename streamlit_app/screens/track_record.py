@@ -23,8 +23,8 @@ def _cell(r, sized: bool) -> str:
         return '<td class="sc-na">not yet<br><span>no complete window</span></td>'
     m = r.get('median_excess_sm') if sized else r['median_excess']
     beat = r.get('beat_size_index') if sized else r['beat_index']
-    n = int(r['cases'])
-    if m is None or pd.isna(m):
+    n = int(r.get('cases_sm', r['cases']) if sized else r['cases'])   # the cases behind this median (audit W16)
+    if m is None or pd.isna(m) or not n or beat is None or pd.isna(beat):
         return '<td class="sc-na">—<br><span>no index</span></td>'
     tone = 'up' if m > 0 else 'down' if m < 0 else ''
     few = n < MIN_CASES

@@ -112,16 +112,21 @@ def pre_public_move(df: pd.DataFrame) -> pd.Series:
     return out
 
 
-def split_since(df: pd.DataFrame, prices: pd.DataFrame) -> pd.Series:
-    """Per trade, the split/bonus factor that puts its price on the basis of
-    today's adjusted close (paid x factor; shares / factor): 1 when none came
-    after the trade, the factor when one did, blank when more than one may
-    have (the summary keeps only the last) or the trade date is unreadable."""
+def split_since(df: pd.DataFrame, prices: pd.DataFrame, date_col='trade_date_to') -> pd.Series:
+    """Per row, the split/bonus factor that puts a price of `date_col`'s day
+    (a trade, an allotment, a buyback offer) on the basis of today's adjusted
+    close (price x factor; shares / factor): 1 when none came after that day,
+    the factor when one did, blank when more than one may have (the summary
+    keeps only the last) or the date is unreadable. `date_col` may be a list:
+    the first readable date per row is used."""
     one = pd.Series(1.0, index=df.index)
     if df.empty or prices.empty or 'last_split_date' not in prices or 'isin' not in df:
         return one
     p = prices.drop_duplicates('isin').set_index('isin')
-    when = pd.to_datetime(df['trade_date_to'], errors='coerce') if 'trade_date_to' in df else pd.Series(pd.NaT, index=df.index)
+    when = pd.Series(pd.NaT, index=df.index)
+    for c in [date_col] if isinstance(date_col, str) else date_col:
+        if c in df:
+            when = when.fillna(pd.to_datetime(df[c], errors='coerce'))
     split = pd.to_datetime(df['isin'].map(p['last_split_date']), errors='coerce')
     n = pd.to_numeric(df['isin'].map(p['n_splits']), errors='coerce').fillna(0)
     f = pd.to_numeric(df['isin'].map(p['last_split_factor']), errors='coerce')

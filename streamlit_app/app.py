@@ -120,9 +120,14 @@ if not ctx.trades.empty:
         tone = 'up' if vs is not None and vs >= 0 else 'down'
         parts.append(f'{kit.esc(m["index"].replace("Nifty Smallcap", "Smallcap").replace("Nifty Microcap", "Microcap"))} <b>{m["close"]:,.0f}</b>'
                      + (f' <em class="{tone}">{vs * 100:+.1f}% vs 200D</em>' if vs is not None else ''))
-    parts += [f'<span class="opt"><b>{len(ctx.trades):,}</b> filings</span>',
+    # Each filing and deal once: NSE and BSE copies and market-maker legs are not counted (audit W1, W2).
+    prim = ctx.trades['is_primary'].astype('boolean').fillna(False)
+    dl = ctx.deals
+    n_deals = int((dl['is_primary'].astype('boolean').fillna(False)
+                   & ~dl['client_is_market_maker'].astype('boolean').fillna(False)).sum()) if not dl.empty else 0
+    parts += [f'<span class="opt"><b>{int(prim.sum()):,}</b> filings</span>',
               f'<span class="opt"><b>{int(e["is_market"].sum()):,}</b> open-market</span>',
-              f'<span class="opt"><b>{len(ctx.deals):,}</b> deals</span>']
+              f'<span class="opt"><b>{n_deals:,}</b> deals</span>']
     kit.strip(parts)
 
 nav.run()

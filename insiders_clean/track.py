@@ -116,6 +116,8 @@ def events(trades: pd.DataFrame, deals: pd.DataFrame | None, close: pd.DataFrame
         mm = d['client_is_market_maker'].astype('boolean').fillna(False)
         d = d[~mm & d['is_primary'].astype('boolean').fillna(False)
               & (pd.to_numeric(d['market_cap'], errors='coerce') < signals.SMALL_CAP_MAX_MCAP)]
+        if 'client_type' in d:   # funds only, as the signal's name says (audit W18)
+            d = d[d['client_type'].isin(signals.FUND_TYPES)]
         net = pd.to_numeric(d['signed_value'], errors='coerce').groupby([d['isin'], d['date']]).sum()
         nb = net[net >= MIN_VALUE].reset_index().rename(columns={'date': 'day', 'signed_value': 'value'})
         ev = pd.concat([ev, nb.assign(signal='fund_deal_buy')], ignore_index=True)
@@ -185,6 +187,7 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
                          'ci_high': x.mean() + 1.645 * se if n > 1 else np.nan,
                          'median_return': g[f'ret_{name}'].dropna().median() if n else np.nan,
                          'median_excess_sm': g[f'excess_sm_{name}'].dropna().median() if f'excess_sm_{name}' in g and n else np.nan,
+                         'cases_sm': int(g[f'excess_sm_{name}'].notna().sum()) if f'excess_sm_{name}' in g else 0,
                          'beat_size_index': (g[f'excess_sm_{name}'].dropna() > 0).mean() * 100
                          if f'excess_sm_{name}' in g and g[f'excess_sm_{name}'].notna().any() else np.nan,
                          'median_pre_move': g['pre_move'].dropna().median() if 'pre_move' in g and g['pre_move'].notna().any() else np.nan,
@@ -200,7 +203,7 @@ def summary(fr: pd.DataFrame) -> pd.DataFrame:
 # version, and never edits a row. Outcomes are derived from those rows later,
 # by the same forward_returns as the backtest.
 
-RULES_VERSION = '2026-10-12.3'  # bump when a signal rule, threshold, spacing or cost changes
+RULES_VERSION = '2026-10-21'  # .21: funds-only fund_deal_buy, one promoter group per company (audit W18, D1)  # bump when a signal rule, threshold, spacing or cost changes
 # .2: window_open_buy added. .3: clusters count a company's promoter group once (shareholding pattern).
 LEDGER_PREFIX = 'ledger/forward/'
 FIRE_WINDOW = 5  # sessions: an event made public this recently counts as firing now (covers missed runs)
