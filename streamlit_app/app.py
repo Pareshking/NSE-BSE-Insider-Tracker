@@ -42,8 +42,7 @@ st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
                    initial_sidebar_state='expanded')
 
 from screens import (
-    actions,
-    brief,
+    market,
     capital_raises,
     coming,
     company,
@@ -52,9 +51,6 @@ from screens import (
     entity,
     insider_trades,
     other_filings,
-    screener,
-    shareholding,
-    today,
     track_record,
 )
 from screens.ctx import load
@@ -64,24 +60,19 @@ from ui import kit, theme
 theme.inject()
 
 M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
+# Redesign of 21 Oct 2026 (docs/REVAMP_PLAN.md): one page per question, each piece shown once. Market replaces
+# Actions, Morning brief, Latest session, Screener and Shareholding & pledges; the filing pages follow into one
+# Filings page next.
 SECTIONS = {
-    'Signals': [
-        st.Page(actions.render, title='Actions', icon=M('bolt'), url_path='actions', default=True),
-        st.Page(brief.render, title='Morning brief', icon=M('wb_sunny'), url_path='brief'),
-        st.Page(screener.render, title='Screener', icon=M('filter_alt'), url_path='screener'),
-        st.Page(track_record.render, title='Track record', icon=M('query_stats'), url_path='track-record'),
-    ],
-    'Filings': [
-        st.Page(today.render, title='Latest session', icon=M('space_dashboard'), url_path='today'),
-        st.Page(insider_trades.render, title='Insider & promoter trades', icon=M('swap_vert'), url_path='insider-trades'),
+    '': [
+        st.Page(market.render, title='Market', icon=M('monitoring'), url_path='market', default=True),
+        st.Page(insider_trades.render, title='Insider trades', icon=M('swap_vert'), url_path='insider-trades'),
         st.Page(deals.render, title='Bulk & block deals', icon=M('handshake'), url_path='deals'),
         st.Page(other_filings.render, title='Other filings', icon=M('account_tree'), url_path='other-filings'),
-    ],
-    'Companies': [
+        st.Page(capital_raises.render, title='Capital raises', icon=M('event'), url_path='capital-raises'),
         st.Page(company.render, title='Company', icon=M('apartment'), url_path='company'),
-        st.Page(entity.render, title='Person or fund', icon=M('person_search'), url_path='entity'),
-        st.Page(capital_raises.render, title='Capital raises & actions', icon=M('event'), url_path='capital-raises'),
-        st.Page(shareholding.render, title='Shareholding & pledges', icon=M('pie_chart'), url_path='shareholding'),
+        st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity'),
+        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
     ],
 }
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
@@ -89,10 +80,11 @@ DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check
 HIDDEN = [DATA_PAGE, st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
 ALL = [p for ps in SECTIONS.values() for p in ps] + HIDDEN
 # Old addresses keep working.
-MOVED = {'confluence_screener': 'Screener', 'entity_tracker': 'Person or fund', 'transactions': 'Insider & promoter trades',
-         'promoter_activity': 'Insider & promoter trades', 'bulk_block_concentration': 'Bulk & block deals',
+MOVED = {'confluence_screener': 'Market', 'entity_tracker': 'People & funds', 'transactions': 'Insider trades',
+         'promoter_activity': 'Insider trades', 'bulk_block_concentration': 'Bulk & block deals',
          'data_quality': 'Data quality', 'sast': 'Other filings', 'transfers': 'Other filings',
-         'filings': 'Latest session'}   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
+         'filings': 'Market',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
+         'actions': 'Market', 'brief': 'Market', 'screener': 'Market', 'today': 'Market', 'shareholding': 'Market'}   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
 
 
 def _redirect(path: str, target: str):
@@ -103,7 +95,7 @@ def _redirect(path: str, target: str):
 
 
 st.logo(str(HERE / 'ui' / 'logo.svg'), size='large', link=None)
-nav = st.navigation({**SECTIONS, '': HIDDEN + [_redirect(p, t) for p, t in MOVED.items()]}, position='sidebar', expanded=True)
+nav = st.navigation(SECTIONS[''] + HIDDEN + [_redirect(p, t) for p, t in MOVED.items()], position='sidebar', expanded=True)
 
 ctx = load()
 with st.sidebar:
