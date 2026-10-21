@@ -10,34 +10,12 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
-from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
 from insiders_clean.trading_window import WINDOW_OPEN_SESSIONS
-from screens.ctx import load, need_data, pre_public_move, split_since, with_prices, with_sparks
+from screens.ctx import (late_text, load, need_data, pre_public_move, split_since, window_text, with_prices,
+                         with_sparks)
 
 ROLE_FILTER = ['promoter', 'promoter_group', 'director', 'kmp', 'designated_person', 'immediate_relative', 'other',
                'missing']
-
-
-def late_text(r) -> str:
-    """'Filed late by 3 trading days (insider to company)', or ''."""
-    parts = []
-    for col, step in (('insider_to_company_sessions', 'insider to company'),
-                      ('company_to_exchange_sessions', 'company to exchange')):
-        n = pd.to_numeric(r.get(col), errors='coerce')
-        if pd.notna(n) and n > DISCLOSURE_LIMIT_SESSIONS:
-            x = int(n - DISCLOSURE_LIMIT_SESSIONS)
-            parts.append(f'Filed late by {x} trading day{"s" if x != 1 else ""} ({step})')
-    return '; '.join(parts)
-
-
-def window_text(r) -> str:
-    """'2 sessions after the trading window reopened (results 15 Oct)' for a marked buy, or ''."""
-    v = r.get('window_open_buy')
-    if not (pd.notna(v) and bool(v)):
-        return ''
-    n = int(r['sessions_since_window_open'])
-    when = 'First session' if n == 0 else f'{n} session{"s" if n != 1 else ""}'
-    return f'{when} after the trading window reopened (results {kit.day(r.get("results_date"), with_year=False)})'
 
 
 def _table(rows: pd.DataFrame, ctx, name: str):
