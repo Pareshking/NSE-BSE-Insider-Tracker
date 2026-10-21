@@ -13,7 +13,9 @@ Steps, each counted in the cleaning report:
    -> one row, `feeds` = 'block,bulk'.
 2. Same-day roll-up: legs with the same client, security, day and side are
    summed; price becomes the volume-weighted average.
-3. NSE/BSE copies of one leg are both kept and linked; NSE is primary.
+3. NSE and BSE legs are separate executions (each exchange publishes the
+   deals done on its own platform): both are primary and both count. Equal
+   legs on the two exchanges are marked `same_size_on_other_exchange`.
 4. `counterparties`: who was on the other side in that security that day,
    so a promoter's block sale shows who bought it.
 
@@ -29,6 +31,7 @@ import json
 import numpy as np
 import pandas as pd
 
+from . import market_cap
 from .dates import parse_dates
 from .entities import add_entity_columns, per_group
 from .insider import VALUE_SHARE_OF_MCAP_REVIEW, _col, _num
@@ -84,9 +87,12 @@ def _drop_json_copies(raw: pd.DataFrame, report) -> pd.DataFrame:
     return raw
 
 
-def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> pd.DataFrame:
+def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
+                market_cap_daily: pd.DataFrame | None = None) -> pd.DataFrame:
     """canonical bulk + block rows (both exchanges; `exchange` and
-    `category` columns) -> clean deals."""
+    `category` columns) -> clean deals. `market_cap_daily`
+    (insiders_clean.market_cap.load_daily) dates the market cap behind
+    `pct_of_mcap`; without it every leg takes the latest."""
     t = report.table('deals')
     if raw is None or raw.empty:
         return pd.DataFrame()
@@ -156,7 +162,13 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     legs['bse_code'] = legs['isin'].map(lambda i: (recs.get(i) or {}).get('bse_code'))
     legs['market_cap'] = pd.to_numeric(legs['isin'].map(lambda i: (recs.get(i) or {}).get('market_cap')),
                                        errors='coerce')
-    legs['pct_of_mcap'] = (legs['value'] / legs['market_cap'] * 100).where(legs['market_cap'] > 0)
+    # % of market cap on the deal's day (NSE's daily mcap file); `market_cap` stays the latest (audit W1).
+    at = market_cap.at_trade_date(legs['nse_symbol'], legs['date'], market_cap_daily, legs['market_cap'],
+                                  fallback_symbols=legs['symbol'].where(legs['exchange'].eq('nse')))
+    for c in at.columns:
+        legs[c] = at[c].to_numpy()
+    t['market_cap_basis'] = {str(k): int(v) for k, v in legs['market_cap_basis'].value_counts().items()}
+    legs['pct_of_mcap'] = (legs['value'] / legs['market_cap_at_trade'] * 100).where(legs['market_cap_at_trade'] > 0)
     legs['signed_value'] = legs['value'] * legs['side'].map({'BUY': 1, 'SELL': -1})
     legs['deal_id'] = [_id(p) for p in zip(legs['exchange'], legs['security_key'], legs['client_id'],
                                             legs['date'], legs['side'])]
@@ -200,23 +212,25 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
                               if o else None for e, k, d, o in
                               zip(legs['exchange'], legs['security_key'], legs['date'], opposite)]
 
-    # 3. NSE/BSE copies of one leg
+    # 3. NSE and BSE legs are separate executions. Each exchange publishes the
+    # bulk and block deals done on its own platform (the 0.5% bulk test is per
+    # exchange), so a client's NSE leg and BSE leg on one day are two trades,
+    # even of equal size: both stay primary and both count (audit W8). The
+    # columns `is_primary`, `primary_id` and `listed_on` stay for the tables'
+    # shape; equal-size legs on the other exchange are only marked
+    # (`same_size_on_other_exchange`) and counted, for the production check.
     legs['is_primary'] = True
     legs['primary_id'] = None
     legs['listed_on'] = legs['exchange']
-    linkable = legs.dropna(subset=['isin', 'client_id', 'date', 'side'])
-    # Only groups on both exchanges can link; filtering first avoids one
-    # pandas frame per row on a full history.
-    linkable = linkable[linkable.groupby(['isin', 'client_id', 'date', 'side', 'quantity'])['exchange'].transform('nunique') > 1]
-    for _, grp in linkable.groupby(['isin', 'client_id', 'date', 'side', 'quantity']):
-        if grp['exchange'].nunique() < 2:
-            continue
-        nse = grp[grp['exchange'] == 'nse']
-        primary = nse.index[0] if len(nse) else grp.index[0]
-        others = grp.index.drop(primary)
-        legs.loc[others, 'is_primary'] = False
-        legs.loc[others, 'primary_id'] = legs.at[primary, 'deal_id']
-        legs.loc[grp.index, 'listed_on'] = ','.join(sorted(grp['exchange'].unique()))
+    twin_key = ['isin', 'client_id', 'date', 'side', 'quantity']
+    keyed = legs.dropna(subset=['isin', 'client_id', 'date', 'side', 'quantity'])
+    both = keyed.groupby(twin_key)['exchange'].transform('nunique') > 1
+    legs['same_size_on_other_exchange'] = False
+    legs.loc[both[both].index, 'same_size_on_other_exchange'] = True
+    twins = keyed[both]
+    same_price = (twins.groupby(twin_key)['price'].transform(lambda p: p.max() - p.min())
+                  <= 0.0005 * twins['price']) if len(twins) else pd.Series(dtype=bool)
+    t['same_size_on_both_exchanges'] = {'legs': int(both.sum()), 'legs_at_the_same_price': int(same_price.sum())}
 
     flags = [[] for _ in range(len(legs))]
 
@@ -236,7 +250,8 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date) -> 
     cols = ['deal_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'feeds', 'date',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
             'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price', 'value', 'signed_value',
-            'trades', 'market_cap', 'pct_of_mcap', 'counterparties', 'source_ids',
+            'trades', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'market_cap_basis', 'pct_of_mcap',
+            'same_size_on_other_exchange', 'counterparties', 'source_ids',
             'flags', 'needs_review']
     out = legs[cols].reset_index(drop=True)
     t['output_rows'] += len(out)

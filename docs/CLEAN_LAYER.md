@@ -18,7 +18,9 @@ says where they live, what each rule does, and how storage is kept small.
 3. `scripts/update_calendar.py` extends the NSE trading calendar.
 4. `scripts/clean_writer.py` merges today's canonical files into the archive
    and rebuilds the clean tables from the whole archive. It also reads (never
-   writes) the price layer `prices/daily/` for the insider price check.
+   writes) the price layer `prices/daily/` for the insider price check, and
+   NSE's daily market cap `marketcap/daily/nse/` for % of market cap at the
+   trade date.
 
    and rebuilds the clean tables from the whole archive. Insider trades then
    get the results date and trading-window columns from the NSE events
@@ -171,12 +173,38 @@ Insider trades (`insiders_clean/insider.py`):
   scheme, conversion, offer for sale, bonus, rights and allotment are kept
   but never counted as market trades. Unknown modes are reported.
 - **Side** from the transaction type; the mode is a fallback only.
-- **Revisions** are recognised by content (same person, security, side,
-  quantity, value, dates, holdings before and after); the latest broadcast
-  wins. NSE's `prevAppId` is not captured by `nse_insider.py`, and real
-  corrections arrive without it.
+- **Revisions**, in this order: (1) a filing whose `prevAppId` names a
+  filing we hold replaces it (`superseded_by_revision`); (2) a filing NSE
+  lists as `Revision` (`typeOfSubmission`) without `prevAppId` replaces the
+  one earlier NSE filing (other appId, broadcast before it) with rows of the
+  same person, security, trade dates and kind, preferring one of the same
+  side (`superseded_by_revision_marker`); two or more candidates: nothing is
+  removed, counted as `revision_marker.ambiguous`; none: `no_original`. This
+  catches the correction of a quantity or value, which changes the very
+  fields the content match compares (audit W10). (3) The BSE copy of a
+  replaced NSE row goes too (`bse_copy_of_replaced_filing`), unless it is
+  also a copy of a row still kept. (4) Content: same person, security, side,
+  quantity, value, dates, holdings before and after; the latest broadcast
+  wins. NSE's markers (`prevAppId`, `typeOfSubmission`, `revisionRemark`)
+  are captured by `nse_insider.py` since 09 Oct 2026; most re-filings are
+  marked `Original`, so (4) stays.
 - **Truncated names** (NSE cuts at ~30 characters) are merged within one
-  security on a unique prefix match.
+  security on a unique prefix match: a name cut mid-word, or cut at a word
+  boundary when its raw spelling is 26-32 characters. Never when the added
+  words make another legal person: an HUF, a trust, a family, a foundation,
+  or a company when the shorter name is no company ("Ramesh Kumar Agarwal"
+  and "Ramesh Kumar Agarwal HUF" stay two; audit W5).
+- **% of market cap** = value / market cap on the trade's last day
+  (`market_cap_at_trade`), from NSE's daily mcap file
+  (`marketcap/daily/nse/YYYY-MM.parquet`, issue size x close, read only by
+  `clean_writer.py`), matched on the NSE symbol (the filed NSE symbol where
+  today's has no figure, e.g. after a rename), as of the session itself or
+  the last one before it within 10 calendar days. No dated figure (BSE-only
+  names; trades after the layer's last day, as the layer is extended by the
+  Price backfill workflow): the latest market cap, `market_cap_basis` =
+  `latest`. `market_cap` stays the latest (the size of the company today:
+  study universe, token rule). Counts in `tables.*.market_cap_basis` and
+  `market_cap_layer` (audit W1).
 - **Deadlines**: SEBI PIT Reg 7(2)(a) insider -> company and 7(2)(b)
   company -> exchange, each within 2 trading sessions. BSE rows from the
   nightly page capture don't (rows from BSE's insider CSV do); those rows don't
@@ -185,7 +213,14 @@ Insider trades (`insiders_clean/insider.py`):
   mode, value over 25% of market cap, a market trade that multiplies the
   holding more than 20x, zero value or no shares on a market trade, mode
   contradicting side, and the data checks below.
-- NSE/BSE copies of one filing are linked; NSE is primary.
+- **NSE/BSE copies of one filing** are linked; NSE is primary. A BSE row is
+  a copy only when person, ISIN, side, kind, shares and trade dates agree,
+  and each NSE row takes at most one BSE row (in date order); an NSE row is
+  never demoted, so a buy and a sale of the same size on one day stay two
+  trades (audit W3). Dates agree on the last day of the trade, except for a
+  BSE nightly row (the capture files the from-date as the to-date), which
+  agrees when its date lies inside the NSE row's span (audit W4). Counted
+  in `nse_bse_copies`.
 - **One BSE filing in both BSE feeds** (the nightly page capture and BSE's
   insider CSV) is one row: BSE rows are matched on the from-date (the capture
   files only that), the CSV's row is kept (it adds the to-date and the
@@ -230,7 +265,44 @@ been verified, so a block price outside them might be normal.
 
 Deals (`insiders_clean/deals.py`): same execution in the bulk and block feed
 counted once; same client, security, day and side rolled up with a
-volume-weighted price; NSE/BSE copies linked; counterparties listed.
+volume-weighted price; counterparties listed; % of market cap on the deal's
+day, as for insider trades.
+
+**NSE and BSE deals are never copies of each other** (audit W8). Each
+exchange publishes the bulk and block deals executed on its own platform:
+SEBI's bulk-deal circular (Jan 2004) has brokers report to the exchange
+every transaction in a scrip above 0.5% of its listed shares and the
+exchange disseminate them the same day; SEBI's block-deal guidelines
+(Sep 2005, `sebi.gov.in` circular 8382) put block trades in a separate
+window on each exchange, which disseminates its own. Our fixtures agree:
+BSE's lists carry BSE scrip codes and no exchange field, NSE's carry NSE
+symbols. So a client's NSE leg and BSE leg on one day are two executions,
+even of the same size (a split order): both are primary and both count.
+Equal legs are only marked (`same_size_on_other_exchange`) and counted
+(`same_size_on_both_exchanges`: legs, and legs at the same price within
+0.05%). A BSE leg would be demoted only as a duplicate of the same record,
+which the feeds never produce across exchanges (one record is in one
+exchange's file).
+
+Split and bonus adjustment (`insiders_clean/adjust.py`, used by
+`precompute_slim.py` for prices and the Track record, and by the ICDR
+estimate): a reset in the exchange's base price is applied only as a split
+or bonus. Where NSE or BSE filed a corporate action (`actions`,
+`bse_actions`) between the previous print and the session, the action
+decides: a bonus n:h (factor h/(h+n)) or split (new / old face value)
+within 1.5% of the price's factor is applied, even under the 5% line
+(`kind_basis` = `action`); a factor that differs from the filed ratio is
+not (`action_mismatch`); a large reset on a date with only a dividend,
+rights or buyback filed is never a bonus (`action_not_split_bonus`: a 20%
+special dividend is 0.8, the factor of a 1:4 bonus). Where nothing is
+filed (BSE-only names, dates before the action history) the reset is
+guessed from clean ratios within 1.5%: 1/k and k for k up to 20, a/(a+b)
+for a and b up to 5, and h/(h+n) for h of 6 or 10 and n up to h + 1 (1:6,
+1:10, 3:10, 7:10, 11:10; audit W7). The guess covers about half of all
+factors between 0.05 and 0.95 (35% before), so it can still take a rights
+issue or demerger for a bonus; bonus ratios with 7, 8 or 9 held are left to
+the filed actions, since with them almost any reset matches. Counts:
+`adjust.coverage(...)['by_basis']`, printed by Precompute slim assets.
 
 Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
 and BSE's list win on identity; the 01 Sep Value Research export only

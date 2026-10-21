@@ -17,7 +17,10 @@ Runs after r2_writer.py in the R2 Storage Write workflow.
    * each session's traded range from our own price layer
      (prices/daily/{nse|bse}/YYYY-MM.parquet, the months of the product
      window), read only, for the insider price check. Missing or unreadable
-     months are noted; with no prices the clean step runs and says so.
+     months are noted; with no prices the clean step runs and says so;
+   * NSE's daily market cap (marketcap/daily/nse/YYYY-MM.parquet), read
+     only, so % of market cap is taken on the trade's day (the latest
+     market cap where no dated one exists).
 3. Write clean/current/{insider_trades,deals,securities}.parquet (the full
    history the site reads), clean/reports/{date}.json, and last
    clean/latest.json -- so a reader never follows the pointer to a
@@ -40,7 +43,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import adjust, archive, day_range, issues, trading_window
+from insiders_clean import adjust, archive, day_range, issues, market_cap, trading_window
 from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
 
@@ -208,7 +211,9 @@ def issue_prices(client, filings: pd.DataFrame | None) -> tuple[pd.DataFrame | N
     px = pd.concat(frames, ignore_index=True)
     px = px[px['isin'].isin(set(filings.loc[filings['kind'] == 'preferential', 'isin'].dropna()))]
     px['date'] = pd.to_datetime(px['date'], errors='coerce')
-    f = adjust.implied_factors(px)
+    acts = [a for a in (read_parquet(client, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions'))
+            if a is not None and not a.empty]
+    f = adjust.implied_factors(px, actions=pd.concat(acts, ignore_index=True) if acts else None)
     f = f[f['kind'] == 'split_bonus']
     return px, {i: list(g['date']) for i, g in f.groupby('isin')}
 
@@ -270,6 +275,22 @@ def load_price_ranges(client, run_day: date, notes: list):
     return ranges, info
 
 
+def load_market_cap_daily(client, run_day: date, notes: list):
+    """NSE's daily market caps (marketcap/daily/nse/YYYY-MM.parquet, written by
+    scripts/price_backfill.py) for the months of the product window, read only.
+    Returns (frame or None, info for the report)."""
+    try:
+        daily, info = market_cap.load_daily(lambda k: get(client, k), day_range.months_between(PRODUCT_START, run_day))
+    except Exception as e:  # noqa: BLE001 -- dated market caps refine a figure, never a reason to fail
+        notes.append(f'daily market-cap layer not read ({type(e).__name__}: {e}); % of market cap on the latest')
+        return None, {'error': f'{type(e).__name__}: {e}'}
+    if daily is None:
+        notes.append('no daily market-cap months found; % of market cap on the latest market cap')
+    if info.get('months_unreadable'):
+        notes.append(f'market-cap layer: {len(info["months_unreadable"])} month file(s) unreadable')
+    return daily, info
+
+
 def main():
     client = r2_client()
     run_day = date.fromisoformat(TARGET_DATE)
@@ -296,13 +317,15 @@ def main():
     vr_master = pd.read_csv(vr_path, dtype=str, keep_default_na=False) if vr_path.exists() else None
 
     ranges, price_info = load_price_ranges(client, run_day, notes)
+    mcap_daily, mcap_info = load_market_cap_daily(client, run_day, notes)
     group = read_parquet(client, 'clean/current/promoter_group.parquet')  # NSE events collector; None until its first run
     if group is None:
         notes.append('no promoter-group lists yet (clean/current/promoter_group.parquet): no filing linked')
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
                          nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows,
-                         price_ranges=ranges, promoter_group=group)
+                         price_ranges=ranges, promoter_group=group, market_cap_daily=mcap_daily)
     report['price_layer'] = price_info
+    report['market_cap_layer'] = mcap_info
     try:  # a failure here must never stop the insider and deal tables
         issue_out, report['issues'] = issue_tables(client)
         tables.update(issue_out)

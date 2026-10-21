@@ -33,6 +33,23 @@ Added by the data checks (`docs/CLEAN_LAYER.md`, "Data checks").
 | `marks` | Comma list of checks that failed but hold nothing back (`price_outside_day_range`); `flags` holds those that do |
 | `kind` = `holding_only` | A disclosure of a holding with no shares traded; never a trade (`is_market` false, no side) |
 
+## insider_trades and deals: market cap and copies (audit batch 2, 21 Oct 2026)
+
+| Column | Table | Meaning |
+|---|---|---|
+| `market_cap` | both | Latest market cap (NSE's, else BSE's), rupees: the size of the company today (study universe, token rule, size filters) |
+| `market_cap_at_trade` | both | Market cap on the trade's last day (insider: `trade_date_to`; deal: `date`), rupees, from NSE's daily mcap file (`marketcap/daily/nse`, issue size x close); the latest when no dated figure exists |
+| `market_cap_date` | both | The session whose market cap was used; blank when the latest was used |
+| `market_cap_basis` | both | `trade_date` (that session), `previous_session` (the last one before it, within 10 calendar days), `latest` (no dated figure: BSE-only names, trades after the layer's last day), `none` |
+| `pct_of_mcap` | both | `value` / `market_cap_at_trade` x 100 |
+| `is_primary`, `primary_id`, `listed_on` | insider_trades | A BSE row is a copy of an NSE row (is_primary false, `primary_id` = the NSE row's `trade_id`, both `listed_on` = `bse,nse`) only when person, ISIN, side, kind, shares and trade dates agree, one BSE row per NSE row; a BSE nightly row (one date filed) agrees when its date lies in the NSE row's span |
+| `is_primary`, `listed_on` | deals | Every leg is primary and `listed_on` is its own exchange: NSE and BSE legs are separate executions |
+| `same_size_on_other_exchange` | deals | True when the same client has a leg of the same ISIN, day, side and quantity on the other exchange (marked and counted, both kept) |
+
+Cleaning-report counts: `tables.{insider_trades,deals}.market_cap_basis`, `market_cap_layer` (months read, missing,
+unreadable), `tables.insider_trades.nse_bse_copies`, `tables.insider_trades.revision_marker`,
+`tables.deals.same_size_on_both_exchanges`.
+
 ## Deal participants (columns on `deals`, from 12 Oct 2026)
 
 Added by `insiders_clean/participants.py` in the clean step (TODO 23, 16). Read from the client's name only;
@@ -445,4 +462,4 @@ Prices adjusted for splits and bonuses only.
 
 ## Adjustment factors (computed, not stored yet)
 
-`insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `structural`, `minor`, `none` or `unknown`. Adjusted price at T uses only factors dated up to T.
+`insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `split_bonus` (the only kind applied), `other_large`, `minor`, `none` or `unknown`; `kind_basis` says how a large reset was classified: `action` (a filed bonus or split in `actions` / `bse_actions`, factor within 1.5% of the filed ratio), `action_mismatch` (filed, but the factor differs: not applied), `action_not_split_bonus` (only a dividend, rights or buyback filed that day: not applied), `ratio` (nothing filed; the clean-ratio guess). Adjusted price at T uses only factors dated up to T.
