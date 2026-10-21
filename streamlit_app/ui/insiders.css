@@ -301,7 +301,8 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 /* ---- Top bar (st.navigation position='top', 21 Oct): white, thin rule, text links, the active page underlined ---- */
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--bg); }
 header[data-testid="stHeader"] { background: var(--surface) !important; border-bottom: 1px solid var(--line); height: 56px !important; }
-[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] { display: none !important; }
+/* On a phone Streamlit moves the top links into a slide-out menu: keep it there, hide it only on wider screens. */
+@media (min-width: 768px) { [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] { display: none !important; } }
 [data-testid="stTopNavLinkContainer"] { gap: 2px !important; }
 [data-testid="stTopNavLink"] { padding: 0 12px !important; height: 56px; border-radius: 0 !important; background: none !important;
   border-bottom: 2px solid transparent; display: flex; align-items: center; }
@@ -326,3 +327,65 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 .dq-t td { padding: 9px 0; color: var(--ink-2); border-bottom: 1px solid var(--line); line-height: 1.5; }
 .dq-t tr:last-child th, .dq-t tr:last-child td { border-bottom: 0; }
 @media (max-width: 720px) { .dq-t th, .dq-t td { display: block; width: auto; border-bottom: 0; padding: 4px 0; } .dq-t tr { display: block; border-bottom: 1px solid var(--line); padding: 6px 0; } }
+
+/* ---- Today: idea rows (insiders_clean/ideas.py). One sentence, three numbers, chips; opens in place. ---- */
+.ideas { display: grid; }
+.idea { border-top: 1px solid var(--line); }
+.idea:first-child { border-top: 0; }
+.idea > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 2.2fr) repeat(3, minmax(0, .8fr));
+  gap: 16px; align-items: center; padding: 14px 4px; }
+.idea > summary::-webkit-details-marker { display: none; }
+.idea > summary:hover { background: var(--subtle); }
+.idea-co { min-width: 0; display: grid; gap: 3px; }
+.idea-co a { font-size: 15px; font-weight: 650; color: var(--ink); text-decoration: none; }
+.idea-co a:hover { color: var(--accent-ink); text-decoration: underline; }
+.idea-co p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.idea-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.chip { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+.chip.acc { background: var(--accent-tint); color: var(--accent-ink); } .chip.sell { background: var(--sell-tint); color: var(--sell); }
+.chip.buy { background: var(--buy-tint); color: var(--buy); } .chip.mute { background: var(--subtle); color: var(--ink-3); }
+.idea .kv { display: grid; gap: 2px; text-align: right; min-width: 0; }
+.idea .kv span { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 600; }
+.idea .kv b { font-size: 14.5px; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.idea-more { padding: 4px 4px 16px; display: grid; gap: 10px; }
+.idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 18px; font-size: var(--fs-small);
+  background: var(--subtle); border-radius: 8px; padding: 12px 14px; }
+.idea-grid b { display: block; font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 600; }
+.idea-grid span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.idea-more > a { font-size: var(--fs-small); color: var(--accent-ink); font-weight: 600; text-decoration: none; }
+.quiet { font-size: var(--fs-small); color: var(--ink-3); margin: 4px 2px 0; }
+.quiet a { color: var(--accent-ink); }
+@media (max-width: 720px) { .idea > summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } .idea-co { grid-column: 1 / -1; }
+  .idea .kv { text-align: left; } }
+.idea-also { margin: 0; padding-left: 18px; font-size: var(--fs-small); color: var(--ink-2); display: grid; gap: 2px; }
+
+/* ---- Design standard (docs/DESIGN.md, 21 Oct): section titles and labels in caps, one type scale ---- */
+.card-h { align-items: center !important; margin-bottom: 8px !important; }
+.card-h h2 { font-size: 12.5px !important; font-weight: 650 !important; text-transform: uppercase; letter-spacing: .07em; color: var(--ink) !important; }
+.card-h span { font-size: 12px !important; color: var(--ink-3) !important; }
+.tile .k, .tbl thead th, .idea .kv span, .idea-grid b, .dt-grid b { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.tile .v { font-size: 20px !important; font-weight: 600 !important; letter-spacing: -0.01em; }
+.tbl td, .tbl th { font-variant-numeric: tabular-nums; }
+.head p { font-size: 13.5px !important; color: var(--ink-3) !important; }
+
+/* ---- Today, the dashboard (21 Oct): headline, groups, trend panel, the bar ---- */
+.headline { margin: 2px 0 4px; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; line-height: 1.35; text-wrap: balance; }
+.headline b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.headline b.up { color: var(--buy); } .headline b.down { color: var(--sell); }
+.chip i { font-style: normal; font-weight: 500; opacity: .75; margin-left: 6px; padding-left: 6px; border-left: 1px solid currentColor; }
+.grp { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 2px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-strong); }
+.grp:first-child { margin-top: 0; }
+.grp h3 { margin: 0; padding: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
+.grp span { font-size: var(--fs-small); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.grp-more { margin: 6px 4px 0; font-size: var(--fs-small); } .grp-more a { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
+.trend { width: 100%; border-collapse: collapse; font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
+.trend th, .trend td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.trend thead th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); text-align: right; }
+.trend tbody th { text-align: left; font-weight: 500; color: var(--ink-2); padding-left: 8px; }
+.trend tbody tr.look th { border-left: 2px solid var(--buy); } .trend tbody tr.warn th { border-left: 2px solid var(--sell); }
+.trend td { text-align: right; color: var(--ink); width: 13%; }
+.trend .on { background: var(--subtle); font-weight: 650; }
+.trend tr:last-child th, .trend tr:last-child td { border-bottom: 0; }
+.bar-rules { margin: 0; padding-left: 16px; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.45; }
+.bar-all { display: inline-block; margin-top: 10px; font-size: var(--fs-small); font-weight: 600; color: var(--accent-ink); text-decoration: none; }

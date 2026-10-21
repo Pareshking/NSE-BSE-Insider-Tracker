@@ -218,5 +218,22 @@ market.render()
     assert 'Market' in html and 'ev-line' in html
     import re
     app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
-    for old in ('actions', 'brief', 'screener', 'today', 'shareholding'):
-        assert re.search(rf"'{old}': 'Market'", app), old
+    for old in ('market', 'actions', 'brief', 'screener', 'shareholding'):
+        assert re.search(rf"'{old}': 'Today'", app), old
+    for old in ('insider-trades', 'deals', 'other-filings', 'capital-raises'):
+        assert re.search(rf"'{old}': 'Filings'", app), old
+
+
+def test_today_page_renders_its_two_lists(data_dir, monkeypatch):
+    """Today (21 Oct redesign): Worth a look and Watch out, from insiders_clean/ideas.py."""
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+from ui import theme
+theme.inject()
+from screens import home
+home.render()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ''
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    assert 'Worth a look' in html and 'Watch out' in html

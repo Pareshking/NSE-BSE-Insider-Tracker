@@ -51,6 +51,17 @@ def test_absurd_amount_is_dropped_and_flagged():
     assert pd.isna(df['amount_total'].iloc[0]) and bool(df['amount_unreliable'].iloc[0])
 
 
+def test_a_raised_amount_far_from_shares_times_price_or_above_a_lakh_crore_is_dropped():
+    """Akme Fintrade's warrants were shown as Rs 9,10,200 Cr (21 Oct audit)."""
+    df = issues.normalise(frame(pref('In-Principle', 1, totalAmtRaised='9102000000000'),
+                                pref('Listing Stage', 2, **{**LIST, 'amountRaised': '125000000'}),       # 10x shares x price
+                                pref('Listing Stage', 3, **LIST)), 'preferential')
+    by = df.set_index('app_id')
+    assert pd.isna(by.loc['1', 'amount_total']) and bool(by.loc['1', 'amount_unreliable'])
+    assert pd.isna(by.loc['2', 'amount_raised']) and bool(by.loc['2', 'amount_unreliable'])
+    assert by.loc['3', 'amount_raised'] == 12_500_000 and not by.loc['3', 'amount_unreliable']
+
+
 def linked(*rows, window=issues.LINK_WINDOW_DAYS):
     return issues.link_stages(issues.normalise(frame(*rows), 'preferential'), window)
 

@@ -69,25 +69,21 @@ fraction), NSE/BSE copies (`is_primary`), window edges and time zone (IST),
 split/bonus basis, market makers and token buys, NaN and empty handling, a number
 computed twice in two places, dead code, memory on Streamlit Cloud.
 
-## Phase 4: information architecture (owner approves before the build)
+## Phase 4: information architecture (owner approved 21 Oct, blueprint artifact "Insiders Blueprint")
 
-Proposed menu (one question per page, no repeats):
+From the individual investor's side: follow people with skin in the game, look where funds cannot go,
+avoid the traps. Four links in a top bar:
 
-| Page | Question | Takes from today |
-|---|---|---|
-| Today | What happened in the last session, and on my watchlist? | Morning brief + Latest session |
-| Ideas | Which companies deserve a look, and how has each signal done? | Actions + Screener (one ranked list, filters) |
-| Filings | Every filing, filtered | Insider & promoter trades, Other filings, Filings read |
-| Deals | Who is buying and selling in bulk | Bulk & block deals |
-| Company | Everything about one company | Company (+ capital raises, shareholding for that company) |
-| Person or fund | Everything one name did | Person or fund |
-| Evidence | Has each signal worked? | Track record (+ forward record, basket) |
-| Capital raises | Dilution and buybacks across the market | Capital raises & actions |
-| Data quality | Can I trust the numbers? | Data quality (footer) |
+| Page | What it holds |
+|---|---|
+| Today | A dashboard (owner, 21 Oct): period chips (Today, 7, 30, 90 days), a headline count, tiles, filters (size, sector, name), group pills, and a trend panel counting companies per group in each period. Worth a look and Watch out across every listed company, in groups (`ideas.GROUPS`), one row per company, by % of the company (`insiders_clean/ideas.py`): insider buys and promoter sales (per decision-maker over the period, tranches combined: Rs 25 L and 0.05%, or 0.25% alone, or 10+ buying days), preferential shares or warrants to promoters at a premium or a discount to the price now, big investors in or out (SAST 5% / 2%, lenders' trustees and security agents left out), funds' net bulk/block buying or selling, pledges (PIT net of releases, or a 5+ point quarterly move made public in the period), tender buybacks at a premium. Evidence is a tag on every kind, never a filter: promoters buy for the quarters and years ahead (owner, 21 Oct). |
+| Companies | The dossier: header, for/against with numbers, risks always shown, price with each decision, ownership by quarter from the XBRL, one timeline, filings that open to their facts. |
+| Evidence | One small table of what has worked, with case counts. |
+| Filings | Every filing and deal, filters, rows that open (where the noise lives). |
 
-Shareholding & pledges becomes a section of Ideas (heavy pledges) and Company.
+People & funds pages open from links only. No watchlist (owner, 21 Oct).
 
-## Phase 5: design system
+## Phase 5: design system (the written standard: docs/DESIGN.md, checked on every page before merge)
 
 - Tokens in one place (colour, type scale, spacing, radius, shadow); light theme
   as decided on 08 Oct (canvas #F6F7F9, white cards, indigo for links, green/red
