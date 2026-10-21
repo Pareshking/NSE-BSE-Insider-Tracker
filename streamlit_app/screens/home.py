@@ -61,7 +61,7 @@ def _row(ctx, r, holding, px) -> str:
     pr = px.get(isin)
     now = pr['latest_close'] if pr is not None and pd.notna(pr.get('latest_close')) else None
     mcap = pr['market_cap'] if pr is not None and pd.notna(pr.get('market_cap')) else None
-    s = holding.get(isin)
+    s = holding.get(isin) or holding.get(('sym', r.get('nse_symbol')))
     href = kit.company_href(r['nse_symbol'])
     pct = r.get('pct_of_company')
     pct = pct if pd.notna(pct) and pct else None
@@ -158,8 +158,14 @@ def render():
     if not latest.empty:
         s = ctx.shareholding.assign(quarter_end=pd.to_datetime(ctx.shareholding['quarter_end'], errors='coerce'),
                                     promoter_holding_pct=pd.to_numeric(ctx.shareholding['promoter_holding_pct'], errors='coerce'))
-        latest = s.dropna(subset=['isin', 'promoter_holding_pct']).sort_values('quarter_end').drop_duplicates('isin', keep='last')
-    holding = ({i: r for i, r in zip(latest['isin'], latest.to_dict('records'))} if not latest.empty else {})
+        latest = s.dropna(subset=['promoter_holding_pct']).sort_values('quarter_end')
+    holding = {}
+    if not latest.empty:
+        # By ISIN, and by NSE symbol for a filing whose row carries no ISIN (Electrosteel showed a dash).
+        for r in latest.to_dict('records'):
+            for k in (r.get('isin'), ('sym', r.get('symbol'))):
+                if isinstance(k, str) or (isinstance(k, tuple) and isinstance(k[1], str)):
+                    holding[k] = r
 
     head = st.container()
     c1, c2, c3 = st.columns([1, 1.4, 2], vertical_alignment='bottom')
