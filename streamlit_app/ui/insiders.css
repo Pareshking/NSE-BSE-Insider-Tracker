@@ -1,8 +1,8 @@
 /* Insiders design system. One file, one set of tokens; every page draws
-   with these classes. Light only. Same family as paresh.streamlit.app
-   (light canvas, white 14px cards, indigo for interaction), its own design. */
+   with these classes. Light only. Since 21 Oct a corporate, minimal look (owner:
+   like screener.in or Zerodha): white page, top bar, flat 8px cards with a 1px border, indigo for interaction. */
 :root {
-  --bg: #F6F7F9;
+  --bg: #FFFFFF;
   --surface: #FFFFFF;
   --subtle: #F3F4F7;
   --line: #E3E6EB;
@@ -17,8 +17,8 @@
   --sell: #B42318;  --sell-tint: #FDECEA;
   --warn: #A15C07;  --warn-tint: #FEF4E2;  --warn-ink: #7A2E0E;
   --nse: #6D28D9;   --bse: #0E7490;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(14, 23, 38, 0.04);
+  --radius: 8px;
+  --shadow: none;
   --ui: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   /* One type scale for every page: title, card heading, body, small, label. */
@@ -37,7 +37,7 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 [data-testid="stAppDeployButton"], .stAppDeployButton { display: none !important; }
 [data-testid="stMainBlockContainer"] { max-width: 1280px; padding: 18px 28px 64px; }
 /* Collapsed sidebar: the logo and expand arrow sit in the header; keep content clear of them and the logo legible. */
-[data-testid="stHeader"] img, [data-testid="stHeaderLogo"], [data-testid="stLogo"] { background: #0B1324; border-radius: 8px; padding: 3px 8px; box-sizing: content-box; }
+
 [data-testid="stSidebar"] img, [data-testid="stSidebar"] [data-testid="stLogo"] { background: none; padding: 0; }
 @media (max-width: 720px) { [data-testid="stMainBlockContainer"] { padding: 10px 14px 48px; } }
 [data-testid="stMainBlockContainer"] { padding-top: 3.4rem !important; }
@@ -216,27 +216,6 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .sc-t td.sc-na { color: var(--ink-3); font-size: 12px; background: transparent; border: 1px dashed var(--line-strong); }
 
 /* ---- Sidebar menu: dark, grouped by dataset ---- */
-[data-testid="stSidebar"] { background: #0B1324; border-right: 0; }
-[data-testid="stSidebar"] > div:first-child { background: #0B1324; }
-[data-testid="stSidebarHeader"] { padding: 18px 18px 6px; }
-[data-testid="stLogo"] { height: 34px; max-width: 170px; }
-[data-testid="stSidebarNav"] { padding-top: 4px; }
-[data-testid="stNavSectionHeader"] { color: #7C8AA5 !important; font-size: 10.5px !important; font-weight: 600 !important;
-  text-transform: uppercase; letter-spacing: .08em; padding: 14px 18px 4px !important; }
-[data-testid="stNavSectionHeader"] * { color: #7C8AA5 !important; font-size: 10.5px !important; }
-[data-testid="stSidebarNavLink"] { margin: 1px 10px; padding: 7px 10px !important; border-radius: 8px; }
-[data-testid="stSidebarNavLink"] span, [data-testid="stSidebarNavLink"] p { color: #C8D1E3 !important; font-size: 13.5px !important; font-weight: 500; }
-[data-testid="stSidebarNavLink"] [data-testid="stIconMaterial"] { color: #8A97B1 !important; font-size: 19px !important; }
-[data-testid="stSidebarNavLink"]:hover { background: rgba(255,255,255,0.06) !important; }
-[data-testid="stSidebarNavLink"][aria-current="page"] { background: #4F46E5 !important; }
-[data-testid="stSidebarNavLink"][aria-current="page"] span, [data-testid="stSidebarNavLink"][aria-current="page"] p,
-[data-testid="stSidebarNavLink"][aria-current="page"] [data-testid="stIconMaterial"] { color: #FFFFFF !important; }
-[data-testid="stSidebarNavSeparator"] { display: none; }
-[data-testid="stSidebarCollapseButton"] svg, [data-testid="stSidebarCollapseButton"] span { color: #C8D1E3 !important; }
-.sb-foot { padding: 12px 8px 4px; border-top: 1px solid rgba(255,255,255,.08); margin-top: 8px; }
-.sb-foot .pill { background: rgba(52,211,153,.12); color: #6EE7B7; }
-.sb-foot .pill.warn { background: rgba(245,158,11,.14); color: #FCD34D; }
-.sb-foot p { color: #7C8AA5; font-size: 11.5px; margin: 8px 2px 0; }
 [data-testid="stMainBlockContainer"] { padding-top: 8px; }
 .cm-r { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid #F0F2F5; }
 .cm-r:last-child { border-bottom: 0; } .cm-r b { color: var(--ink); font-size: var(--fs-body); }
@@ -318,3 +297,25 @@ header[data-testid="stHeader"] { background: transparent; height: 2.6rem; }
 .fl-l em { display: block; font-style: normal; font-size: var(--fs-label); color: var(--ink-3); margin-top: 1px; }
 .ident a { color: var(--accent-ink); text-decoration: none; font-weight: 600; }
 .ident a:hover { text-decoration: underline; }
+
+/* ---- Top bar (st.navigation position='top', 21 Oct): white, thin rule, text links, the active page underlined ---- */
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--bg); }
+header[data-testid="stHeader"] { background: var(--surface) !important; border-bottom: 1px solid var(--line); height: 56px !important; }
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] { display: none !important; }
+[data-testid="stTopNavLinkContainer"] { gap: 2px !important; }
+[data-testid="stTopNavLink"] { padding: 0 12px !important; height: 56px; border-radius: 0 !important; background: none !important;
+  border-bottom: 2px solid transparent; display: flex; align-items: center; }
+[data-testid="stTopNavLink"] [data-testid="stIconMaterial"] { display: none !important; }
+[data-testid="stTopNavLink"] p, [data-testid="stTopNavLink"] span { font-size: 14px !important; font-weight: 500 !important; color: var(--ink-2) !important; }
+[data-testid="stTopNavLink"]:hover p, [data-testid="stTopNavLink"]:hover span { color: var(--ink) !important; }
+[data-testid="stTopNavLink"][aria-current="page"] { border-bottom-color: var(--accent); }
+[data-testid="stTopNavLink"][aria-current="page"] p, [data-testid="stTopNavLink"][aria-current="page"] span { color: var(--accent-ink) !important; font-weight: 600 !important; }
+[data-testid="stHeaderLogo"], [data-testid="stHeader"] img { background: none !important; padding: 0 !important; }
+[data-testid="stMainBlockContainer"] { padding-top: 4.6rem !important; max-width: 1240px; }
+/* the market line under the bar: plain text, no box */
+.strip { background: none !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; font-size: 12.5px; }
+.strip > span { padding: 4px 14px 4px 0 !important; border-right: 0 !important; }
+.head { margin: 6px 0 14px !important; }
+.head h1 { font-size: 24px !important; font-weight: 650 !important; }
+.tiles { border-radius: var(--radius) !important; box-shadow: none !important; }
+[class*="st-key-card_"] { box-shadow: none !important; }
