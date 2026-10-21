@@ -21,7 +21,8 @@ def _css() -> str:
     <style> block through untouched only while it has no blank line: at the
     first one Markdown ends the HTML block and prints the rest as text
     (seen in a real browser; the headless test runner doesn't render CSS)."""
-    text = (HERE / 'insiders.css').read_text(encoding='utf-8')
+    # One stylesheet for the page and its tables (tables are drawn in the page since 21 Oct).
+    text = '\n'.join((HERE / f).read_text(encoding='utf-8') for f in ('insiders.css', 'table.css'))
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
     return '\n'.join(line.strip() for line in text.splitlines() if line.strip())
 

@@ -1,12 +1,4 @@
-/* Tables (ui/table.py). Each table is its own small page inside a frame, so
-   it carries the tokens it needs; keep them equal to ui/insiders.css. */
-:root { --surface:#FFFFFF; --subtle:#F4F5F8; --line:#E3E6EB; --ink:#0E1726; --ink-2:#3C4657; --ink-3:#5E6878;
-  --accent:#4F46E5; --accent-ink:#4338CA; --accent-tint:#EEF0FF; --buy:#067647; --buy-tint:#E7F5EE;
-  --sell:#B42318; --sell-tint:#FDECEA; --warn-ink:#7A2E0E; --warn-tint:#FEF4E2; --nse:#6D28D9; --bse:#0E7490;
-  --ui:'Geist',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; --mono:'Geist Mono',ui-monospace,Menlo,monospace; }
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; background: transparent; font-family: var(--ui); color: var(--ink-2);
-  -webkit-font-smoothing: antialiased; }
+/* Tables (ui/table.py), drawn in the page: every rule is scoped to .tbl-wrap so it uses the page's tokens. */
 .tbl-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .tbl thead th { position: sticky; top: 0; z-index: 2; background: var(--subtle); color: var(--ink-3); font-size: 11px;
@@ -24,8 +16,8 @@ html, body { margin: 0; padding: 0; background: transparent; font-family: var(--
 .tbl tbody td:first-child { background: var(--surface); z-index: 1; box-shadow: 1px 0 0 #EEF0F4; }
 .tbl thead th:first-child { z-index: 3; }
 .tbl tbody tr:hover td:first-child { background: #F8F9FD; }
-a { color: var(--ink); text-decoration: none; }
-a:hover { color: var(--accent-ink); text-decoration: underline; }
+.tbl a { color: var(--ink); text-decoration: none; }
+.tbl a:hover { color: var(--accent-ink); text-decoration: underline; }
 td.co, td.who, td.tx { max-width: 250px; overflow: hidden; text-overflow: ellipsis; }
 td.co a, td.who a { display: block; overflow: hidden; text-overflow: ellipsis; } td.co a { font-weight: 600; }
 td.co { min-width: 170px; } td.who { min-width: 150px; }
@@ -67,3 +59,14 @@ td.tags { min-width: 110px; }
   .tbl { font-size: 13px; } .tbl td, .tbl thead th { padding: 8px 9px; }
   td.co { min-width: 140px; } .rg { min-width: 130px; } .sp { width: 96px; }
 }
+/* row detail: a row with facts behind it opens in place */
+.tbl tr.has-dt { cursor: pointer; }
+.tbl tr.has-dt td:first-child::before { content: '›'; display: inline-block; width: 12px; color: var(--ink-3); transition: transform .15s; }
+.tbl tr.has-dt.open td:first-child::before { transform: rotate(90deg); }
+.tbl tr.dt td { height: auto; white-space: normal; padding: 10px 14px 14px; background: var(--subtle); position: static; }
+.tbl tr.dt:hover td { background: var(--subtle); }
+.tbl .dt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 18px; font-size: 12.5px; }
+.tbl .dt-grid b { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.tbl .dt-grid span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.tbl .dt-links { margin-top: 10px; font-size: 12.5px; } .tbl .dt-links a { color: var(--accent-ink); margin-right: 14px; }
+.tbl-cap { display: flex; justify-content: space-between; align-items: center; margin: 6px 2px 0; font-size: 12px; color: var(--ink-3); }

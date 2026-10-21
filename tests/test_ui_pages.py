@@ -170,7 +170,7 @@ from screens import {screen}
 """, default_timeout=60)
         at.run()
         assert not at.exception, at.exception[0].value
-        out[screen] = ' '.join(e.proto.srcdoc for e in at.get('iframe'))  # tables are drawn in st.iframe
+        out[screen] = ' '.join(e.proto.body for e in at.get('html'))  # tables are drawn in the page (st.html)
     assert 'after the trading window reopened' in out['insider_trades']
     assert 'Tender offer' in out['capital_raises'] and 'Open market' in out['capital_raises'] and '₹1,800' in out['capital_raises']
 
