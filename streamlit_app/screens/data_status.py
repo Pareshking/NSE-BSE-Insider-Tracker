@@ -66,8 +66,13 @@ def _checks(it: dict, layer: dict) -> None:
     filed = ', '.join(f'{c(n)} as {k.replace("_", " ")}' for k, n in ho.get('filed_as', {}).items())
     rows.append(f"<b>Holding-only disclosures</b> (no shares traded, e.g. on appointment): {c(ho.get('count', 0))}, "
                 "not counted as trades" + (f' (filed {kit.esc(filed)}).' if filed else '.'))
+    # One row per check: its name, then what the run found (each row's first bold part is the check).
+    cells = []
+    for r in rows:
+        name, _, rest = r.partition('</b>')
+        cells.append(f'<tr><th>{name.replace("<b>", "").rstrip(".:")}</th><td>{rest.lstrip(" .:")}</td></tr>')
     with kit.card('Data checks', 'checks', 'insider filings, counted before the product window'):
-        st.html(''.join(f'<div class="q-row">{r}</div>' for r in rows))
+        st.html(f'<table class="dq-t"><tbody>{"".join(cells)}</tbody></table>')
 
 
 def render():

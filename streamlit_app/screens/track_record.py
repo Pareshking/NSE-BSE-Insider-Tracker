@@ -34,8 +34,7 @@ def _cell(r, sized: bool) -> str:
 
 def render():
     ctx = load()
-    kit.head('Track record', 'What stocks did after each kind of filing was made public: median return over Nifty '
-                             '500, after costs, with the number of cases.')
+    kit.head('Evidence', 'How stocks did after each kind of filing was made public, against the index, after costs.')
     summ = store.artifact('artifacts/track_summary.parquet')
     if summ.empty:
         kit.note('Not measured yet.', 'The nightly precompute writes the track record after the first run with prices.')
@@ -43,16 +42,12 @@ def render():
     ev = store.artifact('artifacts/track_events.parquet')
     first = pd.to_datetime(ev['day']).min() if not ev.empty else None
     last = pd.to_datetime(ev['entry_date']).max() if not ev.empty else None
+    months = max(1, round((last - first).days / 30.4)) if first is not None and last is not None else 0
     kit.tiles([
         kit.Tile('Events measured', kit.count(len(ev)), f'{kit.day(first)} to {kit.day(last)}'),
-        kit.Tile('Entry', 'Next close', 'close of the first session after the day made public'),
-        kit.Tile('Benchmark', 'Nifty 500', 'or the size-matched index, same sessions'),
-        kit.Tile('Costs', f'{track.COST_PCT:.2f} pts', 'off every return, round trip'),
+        kit.Tile('History', f'{months} months', 'one market phase: an early read, not proof'),
+        kit.Tile('Entry · costs', f'Next close · {track.COST_PCT:.2f} pts', 'first session after the day made public; round trip'),
     ])
-    if first is not None and last is not None:
-        months = max(1, round((last - first).days / 30.4))
-        kit.note('Early read.', f'Our measured history is about {months} months ({kit.day(first)} to {kit.day(last)}), one market '
-                                'phase. Treat every row as a hint that gets firmer as history grows, not as proof of an edge.')
     bench = st.segmented_control('Benchmark', ['Nifty 500', 'Size-matched index'], default='Nifty 500', key='tr_bench',
                                  label_visibility='collapsed') or 'Nifty 500'
     sized = bench != 'Nifty 500'
@@ -66,7 +61,9 @@ def render():
             kit.caption(f'{kit.count(len(ev))} events a reader could trade freely on the day; the scorecard below is re-measured on them.')
     with kit.card('Scorecard', 'tr_score', f'median excess return over {"the size-matched index" if sized else "Nifty 500"}'
                   ' · share of cases that beat it'):
-        heads = ''.join(f'<th>{h}</th>' for h in track.HORIZONS) + '<th>Before public</th>'
+        heads = (''.join(f'<th title="Median return over {h} minus the index, after costs; share of cases that beat it">{h}</th>'
+                         for h in track.HORIZONS)
+                 + '<th title="The stock&#39;s move from the last trade date to the day made public, and the sessions it took">Before public</th>')
         rows = []
         for sig, label in track.SIGNALS.items():
             g = summ[summ['signal'] == sig].set_index('horizon')
@@ -80,12 +77,8 @@ def render():
             rows.append(f'<tr><th class="sc-l">{esc(label)}</th>{cells}</tr>')
         st.html(f'<div class="sc-wrap"><table class="sc-t"><thead><tr><th></th>{heads}</tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table></div>')
-        kit.caption(('Size-matched: large caps against Nifty 100, mid caps Midcap 150, small caps Smallcap 250, micro caps '
-                     "Microcap 250, by today's size bucket. " if sized else '')
-                    + "Before public: the stock's move from the last trade date to the day the filing was made public, and "
-                    'how many sessions that took. ' + f'Medians, not means: a few big winners would flatter a mean. "Few" marks fewer than {MIN_CASES} '
-                    'cases. One year of history is one market regime, and windows overlap, so read these as '
-                    'evidence building up, not as proof. Each company counts once per signal per 21 sessions.')
+        kit.caption(('Size-matched: Nifty 100 / Midcap 150 / Smallcap 250 / Microcap 250 by size · ' if sized else '')
+                    + f'medians · "few" = under {MIN_CASES} cases · one event per company per signal per 21 sessions')
 
     _forward(ctx, sized)
     _basket(ctx)

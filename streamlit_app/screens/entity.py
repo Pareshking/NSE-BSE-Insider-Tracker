@@ -35,8 +35,8 @@ def render():
     name = (t['person_name'].dropna().iloc[0] if len(t) else d['client_name'].dropna().iloc[0] if len(d) else eid)
     kit.head(str(name), 'Every filing and deal under this name, across companies.')
     if not d.empty and d['client_is_market_maker'].astype('boolean').fillna(False).any():
-        kit.note('Market maker.', 'This client buys and sells in near-equal amounts at high volume; its deals are '
-                                  'liquidity, not positions, and are left out of signals.')
+        st.html('<p class="evl">' + kit.tag('Market maker', 'mute') + ' buys and sells in near-equal amounts: '
+                'liquidity, left out of signals</p>')
     if not d.empty and 'client_type' in d:
         # Type read from the name (insiders_clean/participants.py); other names of the same investor.
         r = d.iloc[0]
