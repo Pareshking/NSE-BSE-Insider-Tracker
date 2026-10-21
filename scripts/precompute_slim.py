@@ -94,13 +94,19 @@ def main() -> int:
     put(client, bucket, SUMMARY_KEY, summary)
     print(f'slim: isins {len(summary)}, with bucket {int(summary["mcap_bucket"].notna().sum())}, last session {close.index.max():%Y-%m-%d}')
     clean = {}
-    for table in ('insider_trades', 'deals'):
+    for table in ('insider_trades', 'deals', 'universe'):
         try:
             clean[table] = pd.read_parquet(io.BytesIO(
                 client.get_object(Bucket=bucket, Key=f'clean/current/{table}.parquet')['Body'].read()))
         except Exception as e:  # noqa: BLE001 -- a missing clean table means no lines for it, not a failed run
             print(f'history: {table} not read ({e})')
-    isins = set().union(*(set(t['isin'].dropna()) for t in clean.values())) if clean else set()
+    # Study universe (insiders_clean/universe.py, latest market cap): the site draws no other company,
+    # so neither its price lines nor its track record events are kept.
+    uni = (set(clean['universe'].loc[clean['universe']['in_universe'].astype(bool), 'isin'])
+           if 'universe' in clean and 'in_universe' in clean['universe'] else None)
+    isins = set().union(*(set(clean[t]['isin'].dropna()) for t in ('insider_trades', 'deals') if t in clean))
+    if uni is not None:
+        isins &= uni
     hist = slim.price_history(close, isins)
     put(client, bucket, HISTORY_KEY, hist)
     print(f'history: isins {hist["isin"].nunique()} of {len(isins)} in filings, rows {len(hist)}')
@@ -113,6 +119,9 @@ def main() -> int:
         nifty = ix[ix['symbol'] == 'Nifty 500'].drop_duplicates('date').set_index('date')['close'].sort_index()
         if 'insider_trades' in clean and len(nifty):
             ev = track.events(clean['insider_trades'], clean.get('deals'), close)
+            if uni is not None:
+                print(f'track: {int((~ev["isin"].isin(uni)).sum())} of {len(ev)} events left out (under Rs 100 Cr today, or no market cap)')
+                ev = ev[ev['isin'].isin(uni)]
             sized = {name: ix[ix['symbol'] == name].drop_duplicates('date').set_index('date')['close'].sort_index()
                      for name in track.SIZE_INDEX.values()}
             sized = {k: v for k, v in sized.items() if len(v)}

@@ -46,6 +46,8 @@ same day something is promised, started or finished. Pages follow the data:
 | W | **Live by day, history by night** (12.26): confirm the first overnight run read old dates; checkpoint status view; real RPM per Gemini model; model-list probe for models with their own quota | history run log and checkpoint show the latest filled date |
 | V | **Text cache fill 1 Jan to 15 Oct** (run 38848258817) and the **nightly collection at 02:30 IST**: report counts and sizes (12.7, 12.8) | reported to the owner |
 
+| UN | ~~Study universe: Rs 100 Cr and up~~ **Done 18 Oct** (owner): clean step writes the universe table, the site cuts every table to it on read, Track record uses the same list (latest market cap); collection unchanged | Pages show no company under Rs 100 Cr; the Data page counts what is left out |
+
 ## Later
 
 | # | Item | Done when |
