@@ -59,29 +59,36 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
         w = w[~w['is_token'].astype('boolean').fillna(False)]
     if w.empty:
         return pd.DataFrame()
-    out = []
-    total = _shares_out(sh)
-    for isin, g in w.groupby('isin'):
-        people = g.drop_duplicates('person_id')
-        dm = signals.decision_makers(people)
-        g = g.assign(dm=g['person_id'].map(dm))
-        for key, x in g.groupby('dm'):
-            roles = set(x['person_role'])
-            group = bool(roles & set(signals.PROMOTER_ROLES)) or (
-                'promoter_group_id' in x and x['promoter_group_id'].map(lambda v: isinstance(v, str) and bool(v)).any())
-            shares = pd.to_numeric(x['quantity'], errors='coerce').sum()
-            value = pd.to_numeric(x['value'], errors='coerce').sum()
-            pct = (shares / total[isin] * 100) if total.get(isin) else pd.to_numeric(x['pct_of_mcap'], errors='coerce').sum()
-            trade_days = pd.to_datetime(x['trade_date_to'], errors='coerce').dt.normalize().nunique()
-            out.append({'isin': isin, 'company': x['company'].iloc[-1], 'nse_symbol': x['nse_symbol'].iloc[-1],
-                        'dm': key, 'promoter_group': group, 'roles': sorted(roles),
-                        'people': x['person_name'].drop_duplicates().tolist(), 'value': value, 'shares': shares,
-                        'pct_of_company': pct, 'pct_basis': 'shares' if total.get(isin) else 'value',
-                        'days': int(trade_days), 'first': x['seen'].min(), 'last': x['seen'].max(),
-                        'trade_from': pd.to_datetime(x['trade_date_from'], errors='coerce').min(),
-                        'trade_to': pd.to_datetime(x['trade_date_to'], errors='coerce').max(),
-                        'avg_price': value / shares if shares else None, 'filings': len(x)})
-    return pd.DataFrame(out)
+    # The decision-maker of each row, as signals.decision_makers does it but for every company at once (a
+    # loop per company took 6 of Today's 8 seconds): the promoter group is one, led by its first filer, made
+    # of everyone whose first filing here says Promoter or Promoter Group or whom the shareholding pattern
+    # names; anyone else stands alone.
+    named = (w['promoter_group_id'].map(lambda v: isinstance(v, str) and bool(v)) if 'promoter_group_id' in w
+             else pd.Series(False, index=w.index))
+    w = w.assign(_row_pg=named | w['person_role'].isin(signals.PROMOTER_ROLES),
+                 _q=pd.to_numeric(w['quantity'], errors='coerce'), _v=pd.to_numeric(w['value'], errors='coerce'),
+                 _p=pd.to_numeric(w['pct_of_mcap'], errors='coerce'),
+                 _to=pd.to_datetime(w['trade_date_to'], errors='coerce'), _from=pd.to_datetime(w['trade_date_from'], errors='coerce'))
+    first = w.drop_duplicates(['isin', 'person_id'])
+    pg = first.set_index(['isin', 'person_id'])['_row_pg']
+    w['_pg'] = pg.reindex(pd.MultiIndex.from_frame(w[['isin', 'person_id']])).to_numpy()
+    lead = first[first['_row_pg']].groupby('isin')['person_id'].first()
+    w['dm'] = w['person_id'].where(~w['_pg'], w['isin'].map(lead))
+    w['_day'] = w['_to'].dt.normalize()
+    g = w.groupby(['isin', 'dm'], sort=False)
+    out = g.agg(company=('company', 'last'), nse_symbol=('nse_symbol', 'last'), promoter_group=('_row_pg', 'any'),
+                value=('_v', 'sum'), shares=('_q', 'sum'), pct_mcap=('_p', 'sum'), days=('_day', 'nunique'),
+                first=('seen', 'min'), last=('seen', 'max'), trade_from=('_from', 'min'), trade_to=('_to', 'max'),
+                filings=('seen', 'size')).reset_index()
+    out['roles'] = g['person_role'].agg(lambda s: sorted(set(s))).to_numpy()
+    out['people'] = g['person_name'].agg(lambda s: list(dict.fromkeys(s))).to_numpy()
+    total = out['isin'].map(_shares_out(sh))
+    out['pct_of_company'] = (out['shares'] / total * 100).where(total.gt(0), out['pct_mcap'])
+    out['pct_basis'] = total.gt(0).map({True: 'shares', False: 'value'})
+    out['avg_price'] = (out['value'] / out['shares']).where(out['shares'].ne(0))
+    out['days'] = out['days'].astype(int)
+    out['promoter_group'] = out['promoter_group'].astype(bool)
+    return out.drop(columns='pct_mcap')
 
 
 def _qualifies(d: pd.DataFrame) -> pd.Series:
@@ -124,21 +131,24 @@ def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = N
     clus = set(signals.clusters(t, ref)['isin']) if not t.empty else set()
     spot = set(signals.spotlight(t, ref)['isin']) if not t.empty else set()
     verdicts = _verdicts(summary)
+    by: dict[str, list] = {}
+    for r in d.sort_values('pct_of_company', ascending=False, kind='stable').to_dict('records'):
+        by.setdefault(r['isin'], []).append(r)
     rows = []
-    for isin, g in d.groupby('isin'):
-        g = g.sort_values('pct_of_company', ascending=False)
-        top = g.iloc[0]
-        kinds = (['Promoter buying'] if g['promoter_group'].any() else []) \
-            + (['Director or KMP buying'] if (~g['promoter_group'] & g['roles'].map(lambda r: bool(set(r) & {'director', 'kmp'}))).any() else []) \
+    for isin, g in by.items():
+        top = g[0]
+        kinds = (['Promoter buying'] if any(x['promoter_group'] for x in g) else []) \
+            + (['Director or KMP buying'] if any(not x['promoter_group'] and set(x['roles']) & {'director', 'kmp'} for x in g) else []) \
             + (['Cluster'] if isin in clus else []) + (['Spotlight'] if isin in spot else []) \
-            + (['Steady accumulation'] if (g['days'] >= STEADY_DAYS).any() else [])
-        pct = g['pct_of_company'].sum()
+            + (['Steady accumulation'] if any(x['days'] >= STEADY_DAYS for x in g) else [])
+        pct = sum(x['pct_of_company'] for x in g)
+        value, shares = sum(x['value'] for x in g), sum(x['shares'] for x in g)
         lead = _who(top) if len(g) == 1 else f'{_who(top)} and {len(g) - 1} more'
         rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'],
                      'sentence': f'{lead} bought {pct:.2f}% of the company on the market{", " + _when(top) if _when(top) else ""}',
-                     'pct_of_company': pct, 'pct_basis': top['pct_basis'], 'value': g['value'].sum(),
-                     'avg_price': g['value'].sum() / g['shares'].sum() if g['shares'].sum() else None,
-                     'trade_to': g['trade_to'].max(), 'last': g['last'].max(), 'kinds': kinds,
+                     'pct_of_company': pct, 'pct_basis': top['pct_basis'], 'value': value,
+                     'avg_price': value / shares if shares else None,
+                     'trade_to': max(x['trade_to'] for x in g), 'last': max(x['last'] for x in g), 'kinds': kinds,
                      'decision_makers': len(g), 'reads': {k: verdicts.get(k) for k in kinds if k in MEASURED_BY}})
     out = pd.DataFrame(rows)
     if out.empty:
@@ -154,14 +164,18 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
     d = decisions(t, ref, 'SELL', sh, days)
     if not d.empty:
         d = d[d['promoter_group'] & _qualifies(d)]
-        for isin, g in d.groupby('isin'):
-            pct = g['pct_of_company'].sum()
-            top = g.sort_values('pct_of_company').iloc[-1]
+        by: dict[str, list] = {}
+        for r in d.sort_values('pct_of_company', ascending=False, kind='stable').to_dict('records'):
+            by.setdefault(r['isin'], []).append(r)
+        for isin, g in by.items():
+            top = g[0]
+            pct = sum(x['pct_of_company'] for x in g)
+            value, shares = sum(x['value'] for x in g), sum(x['shares'] for x in g)
             rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'], 'kind': 'Promoter selling',
                          'sentence': f'{_who(top)} sold {pct:.2f}% of the company on the market{", " + _when(top) if _when(top) else ""}',
-                         'size': pct, 'value': g['value'].sum(), 'last': g['last'].max(),
-                         'avg_price': g['value'].sum() / g['shares'].sum() if g['shares'].sum() else None,
-                         'trade_to': g['trade_to'].max(), 'decision_makers': len(g)})
+                         'size': pct, 'value': value, 'last': max(x['last'] for x in g),
+                         'avg_price': value / shares if shares else None,
+                         'trade_to': max(x['trade_to'] for x in g), 'decision_makers': len(g)})
     out = pd.DataFrame(rows)
     if out.empty:
         return out
@@ -251,15 +265,17 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
             s = s[s['xbrl_status'].fillna('ok') == 'ok']
         if 'shareholding_stale' in s:
             s = s[~s['shareholding_stale'].astype('boolean').fillna(False)]
-        for isin, g in s.sort_values('q').groupby('isin'):
-            g = g.dropna(subset=['pl']).drop_duplicates('q', keep='last')
-            if len(g) < 2:
-                continue
-            a, b = g.iloc[-2], g.iloc[-1]
-            move = b['pl'] - a['pl']
-            when = b['filed'] if pd.notna(b['filed']) else b['q']
-            if abs(move) < PLEDGE_RISE_PTS or not b['ts'] or not _in_window(pd.Series([when]), ref, days).iloc[0]:
-                continue
+        s = s.dropna(subset=['pl']).sort_values('q').drop_duplicates(['isin', 'q'], keep='last')
+        two = s.groupby('isin').tail(2)
+        prev = two.groupby('isin').head(1).set_index('isin')
+        last = two.groupby('isin').tail(1).set_index('isin')
+        last = last[last.index.isin(prev.index) & (last['q'] != prev['q'].reindex(last.index))]
+        prev = prev.reindex(last.index)
+        last = last.assign(when=last['filed'].fillna(last['q']), move=last['pl'] - prev['pl'])
+        last = last[last['move'].abs().ge(PLEDGE_RISE_PTS) & last['ts'].gt(0) & _in_window(last['when'], ref, days)]
+        for isin, b in last.iterrows():
+            a = prev.loc[isin]
+            move, when = b['move'], b['when']
             pct = abs(b['ps'] - a['ps']) / b['ts'] * 100 if pd.notna(b['ps']) and pd.notna(a['ps']) else 0.0
             rows.append({'isin': isin, 'company': b.get('company') or b.get('symbol'), 'nse_symbol': b.get('symbol'),
                          'list': 'warn' if move > 0 else 'look', 'kind': 'Pledge rising' if move > 0 else 'Pledge released',

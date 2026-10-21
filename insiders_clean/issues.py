@@ -79,6 +79,7 @@ DATES = ('board_date', 'allotment_date', 'listing_date', 'trading_approval_date'
          'issue_open_date', 'issue_close_date')
 STAGE = {'In-Principle': 'in_principle', 'Listing Stage': 'listing'}
 AMOUNT_CEILING = 1e13   # rupees; anything above is a unit error, as in scripts/r2_writer.py
+ISSUE_CEILING = 1e12    # a preferential or rights issue above Rs 1 lakh crore is a unit error (docs/DATA_DICTIONARY.md)
 
 
 def _text(df: pd.DataFrame, col: str) -> pd.Series:
@@ -126,9 +127,19 @@ def normalise(raw: pd.DataFrame, kind: str) -> pd.DataFrame:
     for c in NUMERIC:
         if c in out.columns:
             out[c] = _num(out[c])
-    if 'amount_total' in out.columns:
-        out['amount_unreliable'] = out['amount_total'].notna() & ~out['amount_total'].between(1, AMOUNT_CEILING)
-        out.loc[out['amount_unreliable'], 'amount_total'] = None
+    # Audit (21 Oct): the approved and the raised amount both checked, the raised one also against shares
+    # x offer price (as for QIPs), under the documented ceiling of Rs 1 lakh crore (Akme Fintrade's warrants
+    # were shown as Rs 9,10,200 Cr).
+    bad = pd.Series(False, index=out.index)
+    for c in ('amount_total', 'amount_raised'):
+        if c in out.columns:
+            wrong = out[c].notna() & ~out[c].between(1, ISSUE_CEILING)
+            if c == 'amount_raised' and {'shares_allotted', 'offer_price'} <= set(out.columns):
+                implied = out['shares_allotted'] * out['offer_price']
+                wrong |= out[c].notna() & implied.gt(0) & ~(out[c] / implied).between(1 / AMOUNT_TOLERANCE, AMOUNT_TOLERANCE)
+            out.loc[wrong, c] = None
+            bad |= wrong
+    out['amount_unreliable'] = bad
     # one row per record: the newest snapshot of (stage, appId)
     out['_key'] = out['app_id'].fillna(out['event_id'])
     out = (out.sort_values('snapshot').drop_duplicates(['stage', '_key'], keep='last')
