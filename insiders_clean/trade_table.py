@@ -2,7 +2,7 @@
 Screener.in's trade pages: Date | Symbol & Name | Traded By | Category | Mode | Qty | Avg Price | Value (Rs Cr) | % equity.
 
 The clean data carries no post-transaction shareholding percentage (only share counts), so the equity column is the
-ESTIMATED value / market cap on the disclosure day, and the holding change is the relative change in the filer's own
+ESTIMATED value / market cap on the trade's last day (NSE's daily market cap; the latest where none is dated), and the holding change is the relative change in the filer's own
 holding. Nothing is invented where a field is missing."""
 from __future__ import annotations
 
