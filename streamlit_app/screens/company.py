@@ -8,11 +8,51 @@ from data import store
 from ui import charts, kit
 from ui.timeline import timeline
 from ui.kit import esc
+from ui.table import facts
 
 from insiders_clean import signals
 from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.buybacks import events as buyback_events
 from screens.ctx import load, need_data, with_flags
+
+
+def _headroom(ctx, e, shr, sym):
+    """Room to the 75% promoter ceiling (SCRR 19A) and creeping-acquisition room this financial year (SAST
+    Reg 3(2): holders of 25% to under 75% may add 5% a year, gross, without an open offer), in one tile.
+    The year's use is shares bought by promoters on the market over the company's total shares in the latest
+    shareholding XBRL (audit D2); allotments and off-market moves are not in it."""
+    if not len(shr) or pd.isna(shr['promoter_holding_pct'].iloc[0]):
+        return None
+    ph = float(shr['promoter_holding_pct'].iloc[0])
+    fy = pd.Timestamp(year=ctx.ref.year if ctx.ref.month >= 4 else ctx.ref.year - 1, month=4, day=1)
+    fy_buys = e[(e['seen'] >= fy) & (e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)]
+    mine = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
+    tot = pd.to_numeric(mine.sort_values('quarter_end')['total_shares'], errors='coerce').dropna() if 'total_shares' in mine else pd.Series(dtype=float)
+    used = (pd.to_numeric(fy_buys['quantity'], errors='coerce').sum() / tot.iloc[-1] * 100 if len(tot) and tot.iloc[-1]
+            else pd.to_numeric(fy_buys['pct_of_mcap'], errors='coerce').sum())
+    creep = (f'{kit.pct(max(0.0, min(5.0 - used, 75 - ph)), 2)} creeping room left this FY · {kit.pct(used, 2)} bought since {kit.day(fy, with_year=False)}'
+             if 25 <= ph < 75 else 'no creeping room: holding under 25%' if ph < 25 else f'{ph - 75:.2f} pts over: must sell down')
+    return kit.Tile('Room to 75%', f'{75 - ph:.2f} pts' if ph < 75 else 'Over 75%', creep, '' if ph < 75 else 'down')
+
+
+def _trade_detail(r) -> str:
+    """One filing's facts, opened from its row."""
+    hb, ha = r.get('holding_before'), r.get('holding_after')
+    flags = ', '.join(x.replace('_', ' ') for x in str(r.get('flags') or '').split(',') if x)
+    frm, to = pd.to_datetime(r.get('trade_date_from'), errors='coerce'), pd.to_datetime(r.get('trade_date_to'), errors='coerce')
+    when = lambda k: kit.day(r.get(k)) if pd.notna(pd.to_datetime(r.get(k), errors='coerce')) else ''  # noqa: E731
+    return facts([
+        ('Traded', (kit.day(to) if pd.isna(frm) or frm == to else f'{kit.day(frm)} to {kit.day(to)}') if pd.notna(to) else ''),
+        ('Told the company', when('intimation_date')),
+        ('Made public', when('broadcast_date')),
+        ('Held before', kit.shares(hb) if kit._finite(hb) is not None else ''),
+        ('Held after', kit.shares(ha) if kit._finite(ha) is not None else ''),
+        ('Own holding change', kit.pct(r.get('holding_change_pct'), 1, signed=True) if kit._finite(r.get('holding_change_pct')) is not None else ''),
+        ('% of market cap', kit.pct(r.get('pct_of_mcap'), 3) if kit._finite(r.get('pct_of_mcap')) is not None else ''),
+        ('Mode as filed', str(r.get('mode_raw') or '')),
+        ('Filed late', 'yes' if r.get('insider_filed_late') is True or r.get('company_filed_late') is True else ''),
+        ('Held back because', flags),
+    ], [('The filing', r.get('source_url') if isinstance(r.get('source_url'), str) and r['source_url'].startswith('http') else '')])
 
 
 def _pick_symbol(ctx) -> str | None:
@@ -56,6 +96,10 @@ def render():
                 parts.append(esc(str(rec.get(k))))
         if 'market_cap' in rec and pd.notna(rec.get('market_cap')):
             parts.append(f'Mkt cap {kit.rupees(rec.get("market_cap"))}')
+        q = sym.replace('&', '%26')
+        parts.append(f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank" rel="noopener">NSE</a>'
+                     f' <a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" '
+                     f'target="_blank" rel="noopener">filings</a>')
         st.html(f'<div class="ident">{" · ".join(parts)}</div>')
         fl = with_flags(pd.DataFrame({'isin': [rec.get('isin')]})) if pd.notna(rec.get('isin')) else pd.DataFrame()
         if 'trade_flags' in fl and fl['trade_flags'].iloc[0]:  # NSE surveillance, T2T, SME, band, circuit days
@@ -70,6 +114,7 @@ def render():
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]  # same 12 months as the insider flow
+        d = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))
     sh = signals.latest_shareholding(ctx.shareholding)
     shr = sh[sh['symbol'].astype(str).str.upper() == sym] if not sh.empty else pd.DataFrame()
     pledge = shr['promoter_pledge_pct'].iloc[0] if len(shr) else None
@@ -87,18 +132,14 @@ def render():
                               'up' if pr['pct_off_high'] > -0.05 else '')
     else:
         price_tile = kit.Tile('Price', '—', 'not in our NSE/BSE price files')
+    headroom = _headroom(ctx, e, shr, sym)
     kit.tiles([
         price_tile,
-        kit.Tile('Promoter net, 12 months', kit.rupees(prom['signed_value'].sum(), signed=True),
-                 f'{kit.pct(signed.sum(), 3, signed=True)} of market cap, open market only',
-                 'up' if prom['signed_value'].sum() > 0 else 'down' if prom['signed_value'].sum() < 0 else ''),
-        kit.Tile('Directors & KMP net', kit.rupees(off['signed_value'].sum(), signed=True), kit.plural(off['person_id'].nunique(), 'person', 'people')),
-        kit.Tile('Deals net, 12 months', kit.rupees(d['signed_value'].sum() if not d.empty else None, signed=True),
-                 'bulk/block, market makers excluded'),
-        kit.Tile('Promoter holding · pledge',
-                 f'{kit.pct(shr["promoter_holding_pct"].iloc[0], 1) if len(shr) else "—"} · {kit.pct(pledge, 1) if pledge is not None else "—"}',
-                 (f'free float {kit.pct(shr["public_holding_pct"].iloc[0], 1)} · ' if len(shr) else '')
-                 + 'pledge as % of promoter shares, latest quarter'),
+        kit.Tile('Promoters hold', kit.pct(shr['promoter_holding_pct'].iloc[0], 1) if len(shr) else '—',
+                 (f'{kit.pct(pledge, 1)} of it pledged · ' if pledge is not None and pd.notna(pledge) else '')
+                 + (f'quarter to {kit.day(shr["quarter_end"].iloc[0])}' if len(shr) and 'quarter_end' in shr else 'no shareholding pattern yet'),
+                 'down' if pledge is not None and pd.notna(pledge) and pledge > signals.HIGH_PLEDGE_PCT else ''),
+        *([headroom] if headroom else []),
     ])
 
     # Preferential and rights issues for this company; the tab appears only when there are some.
@@ -118,62 +159,28 @@ def render():
         names.append('Capital raises')
     tabs = st.tabs(names)
     with tabs[0]:
-        # Ownership headroom: room to the 75% promoter ceiling (minimum public shareholding,
-        # SCRR 19A) and creeping-acquisition room this financial year (SAST Reg 3(2): holders
-        # of 25% to under 75% may add 5% a year, gross, without an open offer). This year's use
-        # is estimated from promoter open-market buys only; allotments and off-market moves are not in it.
-        if len(shr) and pd.notna(shr['promoter_holding_pct'].iloc[0]):
-            ph = float(shr['promoter_holding_pct'].iloc[0])
-            fy = pd.Timestamp(year=ctx.ref.year if ctx.ref.month >= 4 else ctx.ref.year - 1, month=4, day=1)
-            # Reg 3(2) counts shares: shares bought since 1 April over the company's total shares in the latest
-            # shareholding XBRL (audit D2: rupees over today's market cap gave 4.23% where the shares give 4.39%).
-            fy_buys = e[(e['seen'] >= fy) & (e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)]
-            mine = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
-            total = (pd.to_numeric(mine.sort_values('quarter_end')['total_shares'], errors='coerce').dropna().iloc[-1]
-                     if 'total_shares' in mine and pd.to_numeric(mine['total_shares'], errors='coerce').notna().any() else None)
-            if total:
-                used = pd.to_numeric(fy_buys['quantity'], errors='coerce').sum() / total * 100
-            else:   # no share count filed: value over market cap, an estimate
-                used = pd.to_numeric(fy_buys['pct_of_mcap'], errors='coerce').sum()
-            q_end = f'quarter ending {kit.day(shr["quarter_end"].iloc[0])}' if 'quarter_end' in shr else 'latest quarter'
-            kit.tiles([
-                kit.Tile('Room to the 75% ceiling', f'{75 - ph:.2f} pts' if ph < 75 else f'{ph - 75:.2f} pts over',
-                         f'promoters hold {kit.pct(ph, 2)}, {q_end} · minimum public shareholding (SCRR 19A)',
-                         '' if ph < 75 else 'down'),
-                kit.Tile('Creeping-acquisition room, this FY',
-                         kit.pct(max(0.0, min(5.0 - used, 75 - ph)), 2) if 25 <= ph < 75 else 'Not open',
-                         (f'of 5% a year (SAST 3(2)) · {kit.pct(used, 2)} of the shares bought on market since {kit.day(fy)}' + ('' if total else ', estimated')
-                          if 25 <= ph < 75 else 'applies only to promoter holdings from 25% to under 75%')),
-            ])
-        with kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, sized by value, on the day made public'):
+        left, right = st.columns([3, 2], gap='medium')
+        with left, kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, on the day made public'):
             chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
             if chart is None:
                 kit.empty('No price history for this stock in our NSE/BSE price files yet.')
             else:
                 st.altair_chart(chart, width='stretch')
-
-        # Net open-market flow by who, 12 months (owner's spec: promoters vs
-        # directors/KMP vs other insiders vs institutional deal buyers).
+        # Net open-market money by who, 12 months, each rupee once: a bulk/block deal that is an insider's own
+        # filed trade counts under the insider, not again under deals (audit D3, D6).
         other = win[~win['person_role'].isin(list(signals.PROMOTER_ROLES) + ['director', 'kmp'])]
-        flows = [('Promoters', prom['signed_value'].sum()), ('Directors & KMP', off['signed_value'].sum()),
-                 ('Other insiders', other['signed_value'].sum()),
-                 ('Bulk/block buyers (no market makers)', d['signed_value'].sum() if not d.empty else 0.0)]
-        scale = max([abs(v) for _, v in flows] + [1.0])
+        rest = d[~d['also_filed']] if not d.empty else d
+        flows = [('Promoters', prom['signed_value'].sum(), f'{kit.pct(signed.sum(), 2, signed=True)} of mcap'),
+                 ('Directors & KMP', off['signed_value'].sum(), kit.plural(off['person_id'].nunique(), 'person', 'people')),
+                 ('Other insiders', other['signed_value'].sum(), ''),
+                 ('Other deal buyers & sellers', rest['signed_value'].sum() if not rest.empty else 0.0, 'bulk/block, market makers out')]
+        scale = max([abs(v) for _, v, _ in flows] + [1.0])
         bars = ''.join(
-            f'<div class="fl-row"><span class="fl-l">{esc(label)}</span><span class="fl-track">'
+            f'<div class="fl-row"><span class="fl-l">{esc(label)}<em>{esc(note)}</em></span><span class="fl-track">'
             f'<i class="{"pos" if v >= 0 else "neg"}" style="width:{abs(v) / scale * 50:.1f}%"></i></span>'
-            f'<span class="fl-v num">{kit.rupees(v, signed=True)}</span></div>' for label, v in flows)
-        with kit.card('Net open-market flow by who', 'co_flow', '12 months, ₹'):
+            f'<span class="fl-v num">{kit.rupees(v, signed=True)}</span></div>' for label, v, note in flows)
+        with right, kit.card('Money in and out', 'co_flow', '12 months, open market, each rupee once'):
             st.html(f'<div class="fl">{bars}</div>')
-
-        own = ctx.deals[ctx.deals['nse_symbol'].astype(str).str.upper() == sym] if not ctx.deals.empty else ctx.deals
-        hs = signals.handshakes(own, ctx.trades, days=365, ref=ctx.deals['date'].max() if not ctx.deals.empty else None)
-        if not hs.empty:
-            with kit.card('Handshakes in this stock', 'co_hs', 'who sold, who absorbed it'):
-                kit.table(hs.assign(who=hs['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
-                    kit.Col('date', 'Date', 'date'), kit.Col('sellers', 'Sold by'), kit.Col('who', 'Seller', 'tags'),
-                    kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
-                    kit.Col('pct_of_mcap_sold', '% of mcap sold', 'bar')], limit=30)
 
     with tabs[1]:
         # Timeline: each event with what an investor needs on one line: when it
@@ -245,7 +252,7 @@ def render():
             kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
             kit.Col('value', 'Value', 'money'), kit.Col('holding_change_pct', 'Own holding Δ', 'spct', phone=False),
             kit.Col('trade_date_to', 'Traded', 'date', phone=False), kit.Col('seen', 'Made public', 'date')],
-            limit=300, download=f'{sym}_insider')
+            limit=300, download=f'{sym}_insider', detail=_trade_detail, key=f'co_it_{sym}')
     with tabs[3]:
         kit.table(d.sort_values('date', ascending=False) if not d.empty else d, [
             kit.Col('date', 'Date', 'date'), kit.Col('client_name', 'Client', 'client', sub='counterparties'),
@@ -253,6 +260,14 @@ def render():
             kit.Col('price', 'Price', 'price'), kit.Col('value', 'Value', 'money'),
             kit.Col('pct_of_mcap', '% of mcap', 'bar'), kit.Col('feeds', 'Feed', phone=False)],
             limit=300, download=f'{sym}_deals', empty_text='No bulk or block deals by real buyers or sellers in 12 months.')
+        own = ctx.deals[ctx.deals['nse_symbol'].astype(str).str.upper() == sym] if not ctx.deals.empty else ctx.deals
+        hs = signals.handshakes(own, ctx.trades, days=365, ref=ctx.deals['date'].max() if not ctx.deals.empty else None)
+        if not hs.empty:
+            with kit.card('Handshakes', 'co_hs', 'who sold, who absorbed it, 12 months'):
+                kit.table(hs.assign(who=hs['seller_is_promoter'].map({True: ['Promoter'], False: []})), [
+                    kit.Col('date', 'Date', 'date'), kit.Col('sellers', 'Sold by'), kit.Col('who', 'Seller', 'tags'),
+                    kit.Col('buyers', 'Absorbed by'), kit.Col('matched_value', 'Matched', 'money'),
+                    kit.Col('pct_of_mcap_sold', '% of mcap sold', 'bar')], limit=30, key=f'co_hs_{sym}')
     with tabs[4]:
         q_rows = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
         kit.table(q_rows.sort_values('quarter_end', ascending=False) if not q_rows.empty else q_rows, [
@@ -284,9 +299,3 @@ def render():
                     kit.Col('offer_price', 'Offer price', 'price'), kit.Col('amount', 'Amount', 'money'),
                     kit.Col('shares_allotted', 'Shares', 'shares', phone=False),
                     kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)], limit=20)
-    q = sym.replace('&', '%26')
-    st.html('<p class="cap">Exchange filings: '
-            f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-insider-trading?symbol={q}" target="_blank">NSE insider trading</a> · '
-            f'<a href="https://www.nseindia.com/companies-listing/corporate-filings-sast-regulation-29?symbol={q}" target="_blank">NSE SAST</a> · '
-            f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank">NSE quote</a>. '
-            '</p>')
