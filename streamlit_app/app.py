@@ -75,6 +75,15 @@ SECTIONS = {
         st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
     ],
 }
+def _search_picked():
+    """The top search: remember the company, clear the box (so the next page does not jump again)."""
+    pick = st.session_state.get('top_search')
+    if pick:
+        st.session_state['_go_symbol'] = pick.rsplit(' · ', 1)[1]
+    st.session_state['top_search'] = None
+
+
+COMPANY_PAGE = next(p for p in SECTIONS[''] if p.url_path == 'company')
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
 HIDDEN = [DATA_PAGE, st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
@@ -95,13 +104,9 @@ def _redirect(path: str, target: str):
 
 
 st.logo(str(HERE / 'ui' / 'logo.svg'), size='large', link=None)
-nav = st.navigation(SECTIONS[''] + HIDDEN + [_redirect(p, t) for p, t in MOVED.items()], position='sidebar', expanded=True)
+nav = st.navigation(SECTIONS[''] + HIDDEN + [_redirect(p, t) for p, t in MOVED.items()], position='top')   # top bar, no side menu (owner, 21 Oct)
 
 ctx = load()
-with st.sidebar:
-    st.html(f'<div class="sb-foot"><span class="pill{"" if ctx.ref is not None else " warn"}"><i></i>'
-            + (f'Filings to {kit.day(ctx.ref)}' if ctx.ref is not None else 'No clean data yet') + '</span>'
-            '<p>NSE + BSE disclosures, cleaned nightly</p></div>')
 
 if not ctx.trades.empty:
     e = ctx.eligible
@@ -119,7 +124,20 @@ if not ctx.trades.empty:
     parts += [f'<span class="opt"><b>{int(prim.sum()):,}</b> filings</span>',
               f'<span class="opt"><b>{int(e["is_market"].sum()):,}</b> open-market</span>',
               f'<span class="opt"><b>{n_deals:,}</b> deals</span>']
-    kit.strip(parts)
+    parts.insert(0, f'<b>Filings to {kit.day(ctx.ref)}</b>' if ctx.ref is not None else 'No clean data yet')
+    # One row under the top bar, as on screener.in: the market line on the left, a company search on the right.
+    left, right = st.columns([5, 2], vertical_alignment='center', gap='small')
+    with left:
+        kit.strip(parts)
+    with right:
+        sec = ctx.securities.dropna(subset=['nse_symbol']).drop_duplicates('nse_symbol') if not ctx.securities.empty else ctx.securities
+        names = sec['display_name'] if 'display_name' in sec else sec.get('company', sec['nse_symbol'])
+        options = sorted(f'{n} · {s}' for n, s in zip(names, sec['nse_symbol'])) if len(sec) else []
+        st.selectbox('Search a company', options, index=None, placeholder='Search a company',
+                     key='top_search', label_visibility='collapsed', on_change=_search_picked)
+    go = st.session_state.pop('_go_symbol', None)
+    if go:
+        st.switch_page(COMPANY_PAGE, query_params={'symbol': go})
 
 nav.run()
 
