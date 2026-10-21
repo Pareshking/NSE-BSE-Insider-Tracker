@@ -240,7 +240,8 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
             inner, sv, cls = _cell(c, r, bar_max)
             cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}">{inner}</td>')
         more_html = detail(r) if detail else ''
-        body.append(f'<tr{" class=\"has-dt\"" if more_html else ""}>' + ''.join(cells) + '</tr>')
+        opener = ' class="has-dt"' if more_html else ''   # no backslash inside an f-string: Python 3.11 runs the site
+        body.append(f'<tr{opener}>' + ''.join(cells) + '</tr>')
         if more_html:
             body.append(f'<tr class="dt" hidden><td colspan="{len(cols)}">{more_html}</td></tr>')
     tid = 'tb_' + hashlib.sha1(f'{key}|{download}|{len(rows)}|{"|".join(c.key for c in cols)}'.encode()).hexdigest()[:10]
