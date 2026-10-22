@@ -25,7 +25,7 @@ from lib import r2_data
 pa.set_memory_pool(pa.system_memory_pool())
 
 TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings', 'shareholding', 'preferential', 'rights', 'tradability',
-          'buybacks', 'bse_sast', 'bse_actions')
+          'buybacks', 'bse_sast', 'bse_actions', 'bse_shareholding')
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
 TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
@@ -63,7 +63,7 @@ def _read(key: str) -> bytes | None:
 # reads whole), then are dropped; leftovers go at the next prefetch or after FETCHED_TTL.
 PREFETCH = tuple(f'clean/current/{t}.parquet' for t in (
     'universe', 'insider_trades', 'deals', 'securities', 'sast', 'bse_sast', 'actions', 'bse_actions', 'meetings',
-    'shareholding', 'preferential', 'rights', 'results', 'buybacks', 'tradability', 'qip', 'promoter_group',
+    'shareholding', 'bse_shareholding', 'preferential', 'rights', 'results', 'buybacks', 'tradability', 'qip', 'promoter_group',
     'preferential_lockins', 'preferential_allottees', 'qip_allottees')) + tuple(f'artifacts/{a}' for a in (
         'prices_summary_slim.parquet', 'price_history.parquet', 'track_summary.parquet',
         'track_events.parquet', 'forward_outcomes.parquet', 'basket_positions.parquet', 'basket_nav.parquet')) + (
@@ -107,7 +107,7 @@ UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
 # ...except the filing's XBRL link on the issue tables (a few thousand rows): the Filings page links each issue to it.
 LINKS = {('preferential', 'xbrl_url'), ('rights', 'xbrl_url'), ('qip', 'xbrl_url')}
 ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at',
-                    'quarter_revenue', 'quarter_profit', 'ytd_start'),   # the Company timeline's quarter line (audit 22 Oct)
+                    'quarter_revenue', 'quarter_profit', 'ytd_start', 'superseded'),   # the Company timeline's quarter line (audit 22 Oct)
         'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
 

@@ -66,7 +66,8 @@ def _shared() -> Ctx:
     return Ctx(trades=trades, eligible=elig, deals=deals, securities=store.table('securities'),
                sast=with_bse(store.table('sast'), store.table('bse_sast')),
                actions=with_bse(store.table('actions'), store.table('bse_actions')), meetings=store.table('meetings'),
-               shareholding=store.table('shareholding'), preferential=store.table('preferential'),
+               shareholding=with_bse(store.table('shareholding'), store.table('bse_shareholding')),
+               preferential=store.table('preferential'),
                rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest(),
                marks=_marks(elig), results=store.table('results'))
 

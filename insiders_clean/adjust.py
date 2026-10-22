@@ -12,6 +12,12 @@ A reset that matches a filed bonus or split (NSE's and BSE's corporate actions, 
 filed, a reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` and is the ONLY kind
 applied (`kind_basis` says which). Other large resets (`other_large`: rights, demergers, relistings, series moves,
 special dividends) and small ones (`minor`, mostly cash dividends) are counted, never applied.
+
+Audit 22 Oct 2026: in the UDiFF files the base price is in fact NOT reset for bonuses and splits (HDFCAMC 1:1 bonus,
+NSE 26 Nov 2025: PrvsClsgPric 5,336.50 = the day before's close), and a split comes with a new ISIN (BLSE INE0NLT01010
+-> INE0NLT01028 on 06 Oct 2026), so neither left a factor: 169 of the 170 splits and bonuses filed since May 2025 went
+unadjusted. Now `bridge_isins` carries the old ISIN's prints under the new one, and a filed bonus or split whose day
+moved by its factor is applied (`action_price`).
 """
 from __future__ import annotations
 
@@ -22,6 +28,8 @@ STRUCTURAL = 0.05      # |f - 1| above this = a large base-price reset (config)
 MINOR = 0.001          # |f - 1| above this but below STRUCTURAL = minor
 RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts as one
 KIND_ADJUSTED = ('split_bonus',)   # the only kind applied to prices (owner directive: splits and bonuses only)
+MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
+BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
 
 
 # Bonus n:h (n new shares for every h held) moves the price by h/(h+n). Boards use small n and h, and h of 6 or 10
@@ -95,6 +103,36 @@ def session_frame(prices: pd.DataFrame) -> pd.DataFrame:
     return p.drop_duplicates(['exchange', 'isin', 'date']).reset_index(drop=True)
 
 
+def bridge_isins(prices: pd.DataFrame, max_gap_days: int = BRIDGE_GAP_DAYS) -> tuple[pd.DataFrame, dict]:
+    """(prices, {old ISIN: new ISIN}). A face-value split gives the share a new ISIN: on NSE BLSE printed under
+    INE0NLT01010 to 03 Oct 2026 and under INE0NLT01028 from 06 Oct, BANSALWIRE INE0B9K01025 -> INE0B9K01033 (audit
+    22 Oct). The new ISIN's history then starts on the ex-date, with no previous close to measure the split by. Where,
+    on one exchange, one symbol's prints move from ISIN A to ISIN B of the same issuer and security type (the first
+    nine characters, 'INE0NLT01'), A's last print is before B's first and within `max_gap_days`, A's prints are added
+    again under B (A keeps its own), so B's line is whole and the split is measured on B's first session."""
+    cols = ['exchange', 'symbol', 'isin', 'date']
+    if prices is None or prices.empty or not set(cols) <= set(prices.columns):
+        return prices, {}
+    p = prices.dropna(subset=cols)
+    p = p[(p['isin'].astype(str).str.len() == 12) & (p['symbol'].astype(str).str.strip() != '')]
+    span = p.groupby(['exchange', 'symbol', 'isin'], sort=False)['date'].agg(['min', 'max']).reset_index()
+    links, extra = {}, []
+    for (ex, _), g in span.groupby(['exchange', 'symbol'], sort=False):
+        if len(g) < 2:
+            continue
+        g = g.sort_values('min')
+        for a, b in zip(g.itertuples(), g.iloc[1:].itertuples()):
+            gap = (b.min - a.max).days
+            if a.isin[:9] != b.isin[:9] or not (0 < gap <= max_gap_days) or links.get(a.isin, b.isin) != b.isin:
+                continue
+            links[a.isin] = b.isin
+            extra.append(prices[(prices['exchange'] == ex) & (prices['isin'] == a.isin) & (prices['date'] < b.min)]
+                         .assign(isin=b.isin))
+    if not extra:
+        return prices, {}
+    return pd.concat([prices, *extra], ignore_index=True), links
+
+
 def _action_on_session(s: pd.DataFrame, exp: pd.DataFrame) -> pd.DataFrame:
     """Per session row: the filed action whose ex-date falls after the previous print and on or before this one
     (an illiquid stock may not trade on the ex-date itself). Columns `expected`, `split_bonus`, `has_action`."""
@@ -147,6 +185,19 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     s.loc[mismatch, 'kind'], s.loc[mismatch, 'kind_basis'] = 'other_large', 'action_mismatch'
     other = has & ~sb & big
     s.loc[other, 'kind'], s.loc[other, 'kind_basis'] = 'other_large', 'action_not_split_bonus'
+    # The UDiFF bhavcopy does NOT reset the base price on a bonus or split ex-date (audit 22 Oct: NSE's file of
+    # 26 Nov 2025 prints HDFCAMC's PrvsClsgPric 5,336.50, the close before its 1:1 bonus, and closes it at 2,679;
+    # Thyrocare 1,475.10 then 495.70 on its 1:2 bonus of 28 Nov 2025). So where the base price was not reset, a
+    # filed bonus or split is applied at its filed factor when the day's own move agrees with it (close over the
+    # previous close within MOVE_TOL of the factor: a day's band is at most 20%); basis `action_price`.
+    exp = act['expected'].to_numpy(dtype=float)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        move = (s['close'] / s['last_close']).where(usable).to_numpy(dtype=float)
+        agrees = np.abs(np.log(move / exp)) <= np.log(MOVE_TOL)
+    not_reset = (dev <= MINOR).to_numpy() & usable.to_numpy()
+    priced = has & sb & ~near & not_reset & agrees & np.isfinite(exp)
+    s.loc[priced, 'factor'] = exp[priced]
+    s.loc[priced, 'kind'], s.loc[priced, 'kind_basis'] = 'split_bonus', 'action_price'
     return s[['exchange', 'isin', 'symbol', 'date', 'close', 'prev_close', 'last_close', 'factor', 'kind',
               'kind_basis']]
 

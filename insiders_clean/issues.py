@@ -45,6 +45,7 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 
 from insiders_clean.dates import parse_dates
@@ -237,6 +238,7 @@ def clean_issues(raw: pd.DataFrame, kind: str, filings: pd.DataFrame | None = No
         return df, report
     if kind == 'preferential':
         df = add_xbrl(df, xbrl_facts(filings), filings)
+        df, report['amount_power_of_ten'] = check_approved_amount(df)
     df = link_stages(df)
     if kind == 'preferential':
         df = add_lock_in(check_links(df))
@@ -421,6 +423,28 @@ def add_xbrl(df: pd.DataFrame, facts: dict, filings: pd.DataFrame | None = None)
     df['securities_proposed'] = pd.to_numeric(df['securities_proposed'], errors='coerce')
     df['icdr_min_price'] = pd.to_numeric(df['icdr_min_price'], errors='coerce')
     return df
+
+
+POWER_TOL = 0.03   # an approved amount within 3% of 10^k (k not 0) times securities x ICDR minimum is a unit error
+
+
+def check_approved_amount(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Preferential approvals whose filed amount is a power of ten away from the securities proposed times the
+    ICDR minimum price of the same XBRL (audit 22 Oct: R K Forge, appId 63777, 34,00,000 warrants at a Rs 586.77
+    minimum filed as Rs 1,99,92,000, a hundredth of Rs 199.92 Cr; Kaya, appId 70976, 18,24,150 shares at
+    Rs 274.10 filed as Rs 49,99,000; Sanginita, appId 67204, 10x too large). The amount is blanked and
+    `amount_unreliable` set: the page shows no amount rather than one a hundred times off. A price above the
+    minimum (an issue priced higher) moves the ratio by less than a power of ten and is kept."""
+    if not {'amount_total', 'securities_proposed', 'icdr_min_price'} <= set(df.columns):
+        return df, 0
+    df = df.copy()
+    implied = pd.to_numeric(df['securities_proposed'], errors='coerce') * pd.to_numeric(df['icdr_min_price'], errors='coerce')
+    ratio = pd.to_numeric(df['amount_total'], errors='coerce') / implied.where(implied > 0)
+    k = np.round(np.log10(ratio.where(ratio > 0)))
+    off = (df['stage'] == 'in_principle') & k.notna() & k.ne(0) & ((ratio / 10.0 ** k - 1).abs() <= POWER_TOL)
+    df.loc[off, 'amount_total'] = None
+    df['amount_unreliable'] = df['amount_unreliable'].astype(bool) | off
+    return df, int(off.sum())
 
 
 def _pct_vs(a, b) -> pd.Series:
