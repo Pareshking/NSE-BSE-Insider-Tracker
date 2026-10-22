@@ -43,10 +43,12 @@ def as_of(trades: pd.DataFrame) -> pd.Timestamp | None:
 
 
 def eligible(trades: pd.DataFrame) -> pd.DataFrame:
-    t = trades.copy()
-    for c in ('is_market', 'is_primary', 'needs_review'):
-        t[c] = t[c].astype('boolean').fillna(False)
-    t = t[t['is_market'] & t['is_primary'] & ~t['needs_review']].copy()
+    # The rows picked first, then copied: copying the whole table to filter it doubled it in memory.
+    flags = {c: trades[c].astype('boolean').fillna(False) for c in ('is_market', 'is_primary', 'needs_review')}
+    keep = (flags['is_market'] & flags['is_primary'] & ~flags['needs_review']).to_numpy(dtype=bool)
+    t = trades[keep].copy()
+    for c, v in flags.items():
+        t[c] = v[keep].array
     t['date'] = pd.to_datetime(t['trade_date_to'], errors='coerce')
     t['seen'] = pd.to_datetime(t['broadcast_date'], errors='coerce')
     for c in ('value', 'pct_of_mcap', 'market_cap', 'signed_value'):
@@ -427,16 +429,19 @@ def deals_also_filed(deals: pd.DataFrame, trades: pd.DataFrame) -> pd.Series:
     out = pd.Series(False, index=deals.index)
     if deals is None or deals.empty or trades is None or trades.empty:
         return out
-    t = trades.dropna(subset=['isin', 'person_id']).copy()
-    t['_to'] = pd.to_datetime(t['trade_date_to'], errors='coerce')
-    t['_from'] = pd.to_datetime(t['trade_date_from'], errors='coerce').fillna(t['_to'])
-    t = t.dropna(subset=['_to'])
-    key = t.groupby(['isin', 'person_id', 'side'])
-    spans = {k: list(zip(g['_from'], g['_to'])) for k, g in key}
-    dd = pd.to_datetime(deals['date'], errors='coerce')
-    for i, isin, cid, side, day in zip(deals.index, deals['isin'], deals['client_id'], deals['side'], dd):
-        for a, b in spans.get((isin, cid, side), ()):
-            if pd.notna(day) and a.normalize() <= day.normalize() <= b.normalize():
-                out.at[i] = True
-                break
+    # One join on (company, person, side) instead of a loop per filer: the loop over every insider's
+    # filings took 2 s of each Company page and 8 s of Today's first load (22 Oct).
+    t = trades[['isin', 'person_id', 'side', 'trade_date_from', 'trade_date_to']].dropna(subset=['isin', 'person_id', 'side'])
+    to = pd.to_datetime(t['trade_date_to'], errors='coerce')
+    frm = pd.to_datetime(t['trade_date_from'], errors='coerce').fillna(to)
+    spans = pd.DataFrame({'isin': t['isin'].to_numpy(), 'cid': t['person_id'].to_numpy(), 'side': t['side'].to_numpy(),
+                          'a': frm.dt.normalize().to_numpy(), 'b': to.dt.normalize().to_numpy()})[to.notna().to_numpy()]
+    d = pd.DataFrame({'isin': deals['isin'].to_numpy(), 'cid': deals['client_id'].to_numpy(), 'side': deals['side'].to_numpy(),
+                      'day': pd.to_datetime(deals['date'], errors='coerce').dt.normalize().to_numpy(),
+                      'row': range(len(deals))}).dropna(subset=['isin', 'cid', 'side', 'day'])
+    if d.empty or spans.empty:
+        return out
+    m = d.merge(spans, on=['isin', 'cid', 'side'])
+    hit = m.loc[(m['a'] <= m['day']) & (m['day'] <= m['b']), 'row'].unique()
+    out[deals.index.isin(deals.index[hit])] = True   # by label, as before: a repeated label is marked on every row
     return out

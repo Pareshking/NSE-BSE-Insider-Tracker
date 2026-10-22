@@ -30,13 +30,35 @@ MB = 1024 ** 2
 
 
 def rss_mb() -> tuple[float, float]:
-    """(resident now, peak) in MB, from /proc on Linux; (nan, nan) elsewhere."""
+    """(resident now, peak) in MB, from /proc on Linux, the process counters on Windows."""
     try:
         status = Path('/proc/self/status').read_text()
     except OSError:
-        return float('nan'), float('nan')
+        return _rss_windows()
     kb = {k: int(v.split()[0]) for k, v in (ln.split(':', 1) for ln in status.splitlines() if ln.startswith(('VmRSS', 'VmHWM')))}
     return kb.get('VmRSS', 0) / 1024, kb.get('VmHWM', 0) / 1024
+
+
+def _rss_windows() -> tuple[float, float]:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [('cb', wintypes.DWORD), ('PageFaultCount', wintypes.DWORD), ('PeakWorkingSetSize', ctypes.c_size_t),
+                        ('WorkingSetSize', ctypes.c_size_t), ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPagedPoolUsage', ctypes.c_size_t), ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t), ('PagefileUsage', ctypes.c_size_t),
+                        ('PeakPagefileUsage', ctypes.c_size_t)]
+        c = Counters()
+        c.cb = ctypes.sizeof(c)
+        k32, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(c), c.cb)
+        return c.WorkingSetSize / MB, c.PeakWorkingSetSize / MB
+    except Exception:  # noqa: BLE001 -- not Windows either
+        return float('nan'), float('nan')
 
 
 def script(screen: str, params: dict) -> str:

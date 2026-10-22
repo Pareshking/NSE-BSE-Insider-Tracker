@@ -24,20 +24,21 @@ SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=2)
 def _inputs(_ctx, ref_key: str) -> tuple:
-    """What every period shares: the track summary, the issues and the buybacks on today's prices."""
+    """What every period shares: the track summary, the issues and the buybacks on today's prices, and the
+    cluster and spotlight companies (their own 30-day windows)."""
     ctx = _ctx
     summary = store.artifact('artifacts/track_summary.parquet')
     issues = issue_rows(ctx.preferential, ctx.prices) if ctx.preferential is not None and not ctx.preferential.empty else None
-    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices)
+    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices), ideas.marked(ctx.eligible, ctx.ref)
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def _lists(_ctx, ref_key: str, days: int) -> tuple:
     """(look, warn) for one period; `ref_key` (the data's as-of day) keys the cache."""
     ctx, ref, sh = _ctx, _ctx.ref, _ctx.shareholding
-    summary, issues, bb = _inputs(ctx, ref_key)
+    summary, issues, bb, marks = _inputs(ctx, ref_key)
     return ideas.today([
-        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days), ideas.pledge_events(ctx.trades, ref, sh, days=days),
+        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days),
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.issue_events(issues, ref, sh, days=days), ideas.buyback_events(bb, ref, sh, days=days)], summary)
 
