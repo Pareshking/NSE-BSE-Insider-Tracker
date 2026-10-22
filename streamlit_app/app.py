@@ -120,9 +120,9 @@ if not ctx.trades.empty:
     n_deals = int((real & when.eq(deal_day)).sum()) if deal_day is not None and pd.notna(deal_day) else 0
     other_day = deal_day is not None and pd.notna(deal_day) and deal_day != day
     deals_word = 'deals' + (f' on {kit.day(deal_day, with_year=False)}' if other_day else '')
-    parts += [f'<span class="opt"><b>{int((prim & on_day).sum()):,}</b> filings</span>',
-              f'<span class="opt"><b>{int(mkt.sum()):,}</b> on the market</span>',
-              f'<span class="opt"><b>{n_deals:,}</b> {deals_word}</span>']
+    parts += [f'<span><b>{int((prim & on_day).sum()):,}</b> filings</span>',   # short now: shown on a phone too
+              f'<span><b>{int(mkt.sum()):,}</b> on the market</span>',
+              f'<span><b>{n_deals:,}</b> {deals_word}</span>']
     parts.insert(0, f'<b>{kit.day(ctx.ref)}</b>' if ctx.ref is not None else 'No clean data yet')
     # One row under the top bar, as on screener.in: the data line on the left, a company search on the right.
     left, right = st.columns([5, 2], vertical_alignment='center', gap='small')
