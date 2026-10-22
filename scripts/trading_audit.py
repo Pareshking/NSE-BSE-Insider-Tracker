@@ -270,8 +270,8 @@ def main() -> int:
                          'same_holding': g['holding_before'].nunique(dropna=False) == 1,
                          'chain': bool(set(g['holding_after'].dropna()) & set(g['holding_before'].dropna())),
                          'apps': ','.join(g['app_id'].astype(str)), 'types': ','.join(g['nse_submission_type'].astype(str)),
-                         'bcast': ','.join(pd.to_datetime(g['broadcast_date']).dt.strftime('%d%b%y')),
-                         'value_cr': round(float(g['value'].max()) / 1e7, 2), 'from': ','.join(pd.to_datetime(g['trade_date_from']).dt.strftime('%d%b%y'))})
+                         'bcast': ','.join(pd.to_datetime(g['broadcast_date']).dt.strftime('%d%b%y').fillna('-')),
+                         'value_cr': round(float(g['value'].max()) / 1e7, 2), 'from': ','.join(pd.to_datetime(g['trade_date_from']).dt.strftime('%d%b%y').fillna('-'))})
         why = pd.DataFrame(rows)
         if len(why):
             print(why.groupby(['ex', 'same_value', 'value_close', 'same_holding', 'chain']).agg(groups=('n', 'size'), cr=('value_cr', 'sum')).to_string())
@@ -355,6 +355,17 @@ def main() -> int:
                 print(f'-- eligible rows by {st}:', e[st].astype(str).value_counts().head(15).to_dict())
                 odd = e[~e[st].astype(str).str.lower().str.contains('equity|share|^none$|^nan$|^$', regex=True)]
                 show(odd.sort_values('value', ascending=False), TR_COLS + [st], 20)
+
+    if on('cases'):
+        head('cases: rows behind the findings')
+        tv = pd.to_datetime(tr['trade_date_to'], errors='coerce')
+        for co, a, z in (('Thyrocare', '2026-08-10', '2026-08-20'), ('VIP Industries', '2025-12-20', '2025-12-28'),
+                         ('Mkventures', '2026-09-20', '2026-09-26'), ('Bajaj Finserv', '2026-04-27', '2026-04-27'),
+                         ('Info Edge', '2026-08-18', '2026-08-20'), ('Innova Captab', '2026-09-30', '2026-09-30'),
+                         ('Vikram Solar', '2026-02-19', '2026-02-19'), ('Stylam', '2026-02-17', '2026-02-17')):
+            x = tr[tr['company'].astype(str).str.startswith(co) & (tv >= a) & (tv <= z)]
+            print(f'-- {co} {a}..{z}: {len(x)} rows')
+            show(x.sort_values(['person_name', 'exchange']), TR_COLS + ['source_id', 'primary_id', 'needs_review', 'source_url'], 30)
 
     if on('today'):
         el = signals.eligible(tr)
