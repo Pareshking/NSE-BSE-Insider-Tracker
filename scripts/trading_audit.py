@@ -1,0 +1,268 @@
+"""The trading data on real rows (read-only), for the data chain audit of 22 Oct 2026: insider trades, pledges,
+bulk/block deals, SAST, and what Today builds from them. Prints only; writes nothing to R2, calls no exchange.
+
+SECTIONS=comma list (insider,dups,roles,price,deals,sast,pledge,today) picks what to print; empty = all.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))
+from r2_writer import r2_client  # noqa: E402
+from clean_writer import read_parquet  # noqa: E402
+
+from insiders_clean import ideas, signals  # noqa: E402
+from insiders_clean.bse_events import with_bse  # noqa: E402
+
+pd.set_option('display.width', 260)
+pd.set_option('display.max_columns', 40)
+pd.set_option('display.max_colwidth', 40)
+pd.set_option('display.max_rows', 400)
+
+WANT = {x.strip() for x in os.environ.get('SECTIONS', '').split(',') if x.strip()}
+TR_COLS = ['company', 'exchange', 'is_primary', 'listed_on', 'person_name', 'person_role', 'person_category_raw', 'kind',
+           'side', 'mode_raw', 'transaction_type_raw', 'quantity', 'value', 'price', 'holding_before', 'holding_after',
+           'trade_date_from', 'trade_date_to', 'broadcast_date', 'app_id', 'isin', 'symbol', 'price_check', 'flags']
+
+
+def on(name: str) -> bool:
+    return not WANT or name in WANT
+
+
+def head(title: str) -> None:
+    print(f'\n######## {title}')
+
+
+def show(df: pd.DataFrame, cols=None, n=25) -> None:
+    if df is None or df.empty:
+        print('  (none)')
+        return
+    cols = [c for c in (cols or df.columns) if c in df]
+    print(df[cols].head(n).to_string(index=False))
+
+
+def b(s) -> pd.Series:
+    return s.astype('boolean').fillna(False)
+
+
+def main() -> int:
+    r2 = r2_client()
+    tr = read_parquet(r2, 'clean/current/insider_trades.parquet')
+    deals = read_parquet(r2, 'clean/current/deals.parquet')
+    sast = read_parquet(r2, 'clean/current/sast.parquet')
+    bsast = read_parquet(r2, 'clean/current/bse_sast.parquet')
+    sh = read_parquet(r2, 'clean/current/shareholding.parquet')
+    print('insider_trades columns:', list(tr.columns))
+    print('deals columns:', list(deals.columns))
+    print('sast columns:', list(sast.columns))
+    print('bse_sast columns:', list(bsast.columns))
+    prim = tr[b(tr['is_primary'])].copy()
+    for c in ('value', 'quantity', 'pct_of_mcap', 'holding_before', 'holding_after'):
+        prim[c] = pd.to_numeric(prim[c], errors='coerce')
+    ref = signals.as_of(tr)
+    print('as of', ref)
+
+    if on('insider'):
+        head('kind x transaction_type_raw (all rows)')
+        print(pd.crosstab(tr['kind'].astype(str), tr['transaction_type_raw'].astype(str)).to_string())
+        head('mode_raw (every value) x kind')
+        m = tr.groupby([tr['mode_raw'].astype(str), tr['kind'].astype(str), tr['exchange']]).size().unstack(fill_value=0)
+        print(m.to_string())
+        head('kind missing: exchange x transaction type x side')
+        miss = tr[tr['kind'].eq('missing')]
+        print(miss.groupby(['exchange', miss['transaction_type_raw'].astype(str), miss['side'].astype(str),
+                            b(miss['is_primary'])]).size().to_string())
+        head('kind missing: 25 largest (all rows)')
+        show(miss.assign(_v=pd.to_numeric(miss['value'], errors='coerce')).sort_values('_v', ascending=False), TR_COLS)
+        head('kind unrecognised / other: mode_raw values')
+        print(tr[tr['kind'].isin(['unrecognised', 'other'])]['mode_raw'].astype(str).value_counts().head(40).to_string())
+        head('Thyrocare and JB Chemicals rows (large)')
+        sel = tr[tr['company'].astype(str).str.contains('Thyrocare|JB Chem', case=False)
+                 & (pd.to_numeric(tr['quantity'], errors='coerce') > 1e6)]
+        show(sel.sort_values(['company', 'trade_date_to']), TR_COLS + ['source_id', 'primary_id', 'security_match'], 40)
+
+    if on('dups'):
+        head('duplicate primaries: same company, person, quantity, trade_date_to (any side/kind)')
+        p = prim.assign(_co=prim['isin'].fillna(prim['company'].astype(str).str.lower()),
+                        _side=prim['side'].fillna('-'))
+        key = ['_co', 'person_id', 'quantity', 'trade_date_to']
+        g = p.dropna(subset=['person_id', 'quantity']).groupby(key, dropna=False)
+        n = g['trade_id'].transform('size')
+        d = p.loc[n[n > 1].index]
+        print('rows', len(d), 'groups', d.groupby(key).ngroups)
+        combo = d.groupby(key).agg(ex=('exchange', lambda s: ','.join(sorted(s))),
+                                   sides=('_side', lambda s: ','.join(sorted(s))),
+                                   kinds=('kind', lambda s: ','.join(sorted(set(s)))),
+                                   noisin=('isin', lambda s: int(s.isna().sum())),
+                                   apps=('app_id', lambda s: s.nunique()), v=('value', 'max'))
+        print(combo.groupby(['ex', 'sides']).size().sort_values(ascending=False).head(30).to_string())
+        print('-- kinds differ in group:', int((combo['kinds'].str.contains(',')).sum()))
+        cross = combo[combo['ex'].str.contains('bse') & combo['ex'].str.contains('nse')]
+        print('-- groups with an nse and a bse primary:', len(cross), ' value of the extra copies Rs',
+              round(cross['v'].sum() / 1e7, 1), 'Cr')
+        print('   by sides:', cross['sides'].value_counts().head(10).to_dict())
+        print('   by kinds:', cross['kinds'].value_counts().head(15).to_dict())
+        print('   with an isin missing:', int((cross['noisin'] > 0).sum()))
+        same_side = cross[cross['sides'].map(lambda s: len(set(s.split(','))) == 1)]
+        print('-- nse+bse same side (true duplicates?):', len(same_side), 'value Rs', round(same_side['v'].sum() / 1e7, 1), 'Cr')
+        top = same_side.sort_values('v', ascending=False).head(12).reset_index()
+        for _, r in top.iterrows():
+            rows = p[(p['_co'] == r['_co']) & (p['person_id'] == r['person_id']) & (p['quantity'] == r['quantity'])
+                     & (p['trade_date_to'] == r['trade_date_to'])]
+            show(rows, TR_COLS + ['trade_date_from', 'security_match'], 6)
+            print()
+        nse_only = combo[~combo['ex'].str.contains('bse')]
+        print('-- nse-only duplicate groups:', len(nse_only), nse_only['sides'].value_counts().head(5).to_dict())
+        top = nse_only[nse_only['sides'].map(lambda s: len(set(s.split(','))) == 1)].sort_values('v', ascending=False).head(6).reset_index()
+        for _, r in top.iterrows():
+            rows = p[(p['_co'] == r['_co']) & (p['person_id'] == r['person_id']) & (p['quantity'] == r['quantity'])
+                     & (p['trade_date_to'] == r['trade_date_to'])]
+            show(rows, TR_COLS + ['nse_submission_type', 'prev_app_id'], 6)
+            print()
+        bse_only = combo[~combo['ex'].str.contains('nse')]
+        print('-- bse-only duplicate groups:', len(bse_only), bse_only['sides'].value_counts().head(5).to_dict())
+        top = bse_only[bse_only['sides'].map(lambda s: len(set(s.split(','))) == 1)].sort_values('v', ascending=False).head(6).reset_index()
+        for _, r in top.iterrows():
+            rows = p[(p['_co'] == r['_co']) & (p['person_id'] == r['person_id']) & (p['quantity'] == r['quantity'])
+                     & (p['trade_date_to'] == r['trade_date_to'])]
+            show(rows, TR_COLS + ['trade_date_from'], 6)
+            print()
+        el = signals.eligible(tr)
+        ek = el.assign(_co=el['isin'].fillna(el['company'].astype(str)))
+        ed = ek[ek.duplicated(['_co', 'person_id', 'side', 'quantity', 'trade_date_to'], keep=False)]
+        print('-- eligible (signal) rows duplicated on company, person, side, quantity, date:', len(ed),
+              ' by exchange', ed['exchange'].value_counts().to_dict(), ' value Rs', round(pd.to_numeric(ed['value'], errors='coerce').sum() / 2e7, 1), 'Cr')
+
+    if on('roles'):
+        head('person_category_raw x person_role (all rows)')
+        print(pd.crosstab(tr['person_category_raw'].astype(str), tr['person_role'].astype(str)).to_string())
+        el = signals.eligible(tr)
+        rel = el[el['person_category_raw'].astype(str).str.contains('relative', case=False)]
+        head('eligible market rows filed as a relative: category x role x side')
+        print(rel.groupby([rel['person_category_raw'].astype(str), 'person_role', 'side']).size().to_string())
+        show(rel.sort_values('value', ascending=False), TR_COLS, 15)
+        head('eligible rows by role x category (BUY)')
+        e = el[el['side'].eq('BUY')]
+        print(e.groupby(['person_role', e['person_category_raw'].astype(str)]).size().to_string())
+
+    if on('price'):
+        head('price_check x kind (primary)')
+        print(pd.crosstab(prim['kind'].astype(str), prim['price_check'].astype(str)).to_string())
+        el = signals.eligible(tr)
+        head('eligible (signal) rows by price_check')
+        print(el['price_check'].astype(str).value_counts().to_string())
+        print('value share by price_check:', (el.groupby(el['price_check'].astype(str))['value'].sum() / el['value'].sum()).round(3).to_dict())
+        for pc in ('no_print', 'no_price', 'span_too_long', 'no_isin'):
+            head(f'eligible, price_check {pc}: 10 largest')
+            show(el[el['price_check'].eq(pc)].sort_values('value', ascending=False), TR_COLS + ['day_low', 'day_high'], 10)
+        head('market rows below / above (marked only, in signals): 15 largest')
+        show(el[el['price_check'].isin(['below', 'above'])].sort_values('value', ascending=False),
+             TR_COLS + ['day_low', 'day_high'], 15)
+        head('eligible BUY, 20 largest % of market cap')
+        show(el[el['side'].eq('BUY')].sort_values('pct_of_mcap', ascending=False),
+             TR_COLS + ['pct_of_mcap', 'day_low', 'day_high'], 20)
+        head('eligible SELL, 12 largest % of market cap')
+        show(el[el['side'].eq('SELL')].sort_values('pct_of_mcap', ascending=False),
+             TR_COLS + ['pct_of_mcap', 'day_low', 'day_high'], 12)
+
+    if on('deals'):
+        d = deals.copy()
+        d['value'] = pd.to_numeric(d['value'], errors='coerce')
+        head('deals: client_type x rule')
+        if 'client_type_rule' in d:
+            print(d.groupby(['client_type', 'client_type_rule']).size().to_string())
+        nm = d[~b(d['client_is_market_maker'])]
+        for ty in ('fpi', 'fund_other', 'pms_aif', 'broker', 'corporate', 'trust', 'unknown'):
+            head(f'deals: type {ty}, 30 largest clients by gross value (non market maker)')
+            x = nm[nm['client_type'].eq(ty)].groupby(['client_name', 'client_type_rule'] if 'client_type_rule' in nm else ['client_name'])
+            print(x['value'].agg(['sum', 'size']).sort_values('sum', ascending=False).head(30).assign(sum=lambda f: (f['sum'] / 1e7).round(1)).to_string())
+        head('deals: fund-typed clients that filed as insiders in the same company')
+        ins = tr[['isin', 'person_id', 'person_role', 'person_name']].dropna().drop_duplicates(['isin', 'person_id'])
+        f = nm[nm['client_type'].isin(signals.FUND_TYPES)].merge(ins, left_on=['isin', 'client_id'], right_on=['isin', 'person_id'])
+        print('legs', len(f), 'value Rs', round(f['value'].sum() / 1e7, 1), 'Cr; by role', f['person_role'].value_counts().to_dict())
+        show(f.sort_values('value', ascending=False), ['date', 'company', 'exchange', 'client_name', 'client_type', 'person_role', 'side', 'quantity', 'value'], 20)
+        head('deals: promoters (filed in PIT as promoter/group) by client_type')
+        pr = nm.merge(ins[ins['person_role'].isin(signals.PROMOTER_ROLES)], left_on=['isin', 'client_id'], right_on=['isin', 'person_id'])
+        print(pr['client_type'].value_counts().to_dict())
+        head('deals: same client, security, day on both sides (non market maker), not netted at the leg')
+        two = nm.groupby(['isin', 'client_id', 'date'])['side'].transform('nunique') > 1
+        rt = nm[two]
+        print('legs', len(rt), 'clients', rt['client_id'].nunique(), 'gross Rs', round(rt['value'].sum() / 1e7, 1), 'Cr; by type',
+              rt['client_type'].value_counts().to_dict())
+        net = rt.groupby(['isin', 'client_id', 'date']).agg(company=('company', 'first'), name=('client_name', 'first'),
+                                                             ty=('client_type', 'first'), net=('signed_value', 'sum'),
+                                                             gross=('value', 'sum'), ex=('exchange', lambda s: ','.join(sorted(set(s)))))
+        net['net_share'] = (net['net'].abs() / net['gross']).round(3)
+        print(net.sort_values('gross', ascending=False).head(15).to_string())
+        print('-- same-day both sides across exchanges only:', int((net['ex'] == 'bse,nse').sum()))
+        head('deals: same size on the other exchange')
+        if 'same_size_on_other_exchange' in d:
+            s2 = d[b(d['same_size_on_other_exchange'])]
+            print('legs', len(s2))
+            show(s2.sort_values(['date', 'client_name']), ['date', 'company', 'exchange', 'feeds', 'client_name', 'side', 'quantity', 'price', 'value'], 20)
+        head('Today fund events (90 days)')
+        fe = ideas.fund_events(deals, tr, ref, days=90, sh=sh)
+        show(fe.sort_values('pct_of_company', ascending=False), ['company', 'list', 'kind', 'pct_of_company', 'sentence', 'value', 'last'], 25)
+
+    if on('sast'):
+        for name, s in (('sast (nse)', sast), ('bse_sast', bsast)):
+            head(f'{name}: non-promoter rows by mode x action_type')
+            np_ = s[~b(s['is_promoter'])]
+            print(np_.groupby([np_['mode'].astype(str), np_['action_type'].astype(str)]).size().sort_values(ascending=False).head(50).to_string())
+        both = with_bse(sast, bsast)
+        print('with_bse rows', len(both), 'listed_on', both['listed_on'].value_counts().to_dict() if 'listed_on' in both else '')
+        np_ = both[~b(both['is_promoter'])]
+        enc = np_[np_['mode'].astype(str).str.contains('pledge|encumb|release|invo|revo|security|lien|nda|non.?disposal', case=False)]
+        head('SAST non-promoter rows whose mode is a pledge or encumbrance')
+        enc = enc.assign(security_holder=enc['acquirer_name'].fillna('').astype(str).str.contains(ideas.SECURITY_HOLDER))
+        print('rows', len(enc), 'caught by SECURITY_HOLDER', int(enc['security_holder'].sum()))
+        show(enc.sort_values('trade_date_to', ascending=False),
+             ['company', 'acquirer_name', 'mode', 'action_type', 'pct_acquired', 'pct_sold', 'post_stake_pct', 'trade_date_to', 'listed_on', 'security_holder'], 40)
+        head('Today stake events (90 days), with the filing behind each')
+        ev = ideas.stake_events(both, ref, days=90)
+        print('events', len(ev), ev['kind'].value_counts().to_dict())
+        sm = np_.assign(when=pd.to_datetime(np_.get('transaction_date'), errors='coerce'))
+        sm = sm[(sm['when'] <= ref) & (sm['when'] > ref - pd.Timedelta(days=90))]
+        sm = sm[~sm['acquirer_name'].fillna('').astype(str).str.contains(ideas.SECURITY_HOLDER)]
+        print('-- the non-promoter SAST rows of 90 days by mode (what stake_events reads):')
+        print(sm.groupby([sm['mode'].astype(str), sm['action_type'].astype(str), sm['listed_on'].astype(str)]).size().sort_values(ascending=False).head(40).to_string())
+        x = sm[~sm['mode'].astype(str).str.lower().isin(['open market', 'market'])]
+        x = x.assign(p=pd.to_numeric(x['pct_acquired'], errors='coerce').fillna(0) + pd.to_numeric(x['pct_sold'], errors='coerce').fillna(0))
+        print('-- not on market, 40 largest %:')
+        show(x.sort_values('p', ascending=False), ['company', 'acquirer_name', 'mode', 'action_type', 'instrument', 'pct_acquired', 'pct_sold',
+                                                   'post_stake_pct', 'trade_date_to', 'listed_on', 'regulation'], 40)
+        head('SAST post_stake_pct > 100 or pct > 100 (base errors)')
+        for c in ('post_stake_pct', 'pct_acquired', 'pct_sold'):
+            v = pd.to_numeric(both[c], errors='coerce')
+            print(c, 'over 100:', int((v > 100).sum()), ' negative:', int((v < 0).sum()))
+
+    if on('pledge'):
+        pl = tr[tr['kind'].astype(str).str.startswith('pledge') | tr['transaction_type_raw'].astype(str).str.contains('PLEDGE|REVOKE|INVOKE')]
+        head('pledge rows: kind x exchange x primary, quantity missing')
+        print(pl.groupby(['kind', 'exchange', b(pl['is_primary']), pl['quantity'].isna()]).size().to_string())
+        head('pledge rows needing review (left out of pledge events): flags')
+        print(pl[b(pl['needs_review'])]['flags'].value_counts().head(15).to_string())
+        inv = prim[prim['kind'].eq('pledge_invoke')]
+        head('pledge invocations (primary), 20 largest: not on Today')
+        show(inv.sort_values('quantity', ascending=False), TR_COLS, 20)
+        pe = ideas.pledge_events(tr, ref, sh, days=90)
+        head('Today pledge events (90 days)')
+        show(pe.sort_values('pct_of_company', ascending=False), ['company', 'list', 'kind', 'pct_of_company', 'sentence', 'last'], 30)
+
+    if on('today'):
+        el = signals.eligible(tr)
+        head('Today insider events (90 days)')
+        ev = ideas.insider_events(el, ref, sh, None, days=90)
+        show(ev.sort_values('pct_of_company', ascending=False).drop_duplicates('isin'),
+             ['company', 'list', 'kind', 'pct_of_company', 'sentence', 'value', 'last'], 40)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
