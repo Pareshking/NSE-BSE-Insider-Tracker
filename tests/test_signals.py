@@ -34,4 +34,10 @@ def test_revised_note_is_not_part_of_a_name():
     assert entity_key('Rohan Ranjeet Rajput (Revised)') == entity_key('ROHAN RANJEET RAJPUT')
     assert entity_display('Rohan Ranjeet Rajput (Revised)') == 'Rohan Ranjeet Rajput'
     assert entity_display('ACME HOLDINGS - REVISED') == 'Acme Holdings'
+    assert entity_display('SBI MUTUAL FUND') == 'SBI Mutual Fund'                  # not 'Sbi' (Today, 23 Oct)
+    assert entity_display('RAMESH KUMAR HUF') == 'Ramesh Kumar HUF'
+    assert entity_display('Mr. Sachidanand H Upadhyay') == 'Sachidanand H Upadhyay'
+    assert entity_display('Mr Bean') == 'Mr Bean'                                    # a title before one word stays
+    assert entity_display('Thirumalai Chemicals LTD') == 'Thirumalai Chemicals Ltd'
+    assert entity_display('TITAN COMPANY LIMITED') == 'Titan Company Limited'
     assert entity_key('Revised Holdings Ltd') == 'revised-holdings-limited'

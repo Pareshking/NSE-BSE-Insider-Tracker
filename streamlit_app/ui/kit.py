@@ -162,8 +162,15 @@ def exchange_tags(listed_on) -> str:
 
 # ---- page structure ------------------------------------------------------------
 
+def sentence(text) -> str:
+    """Sentence case where a line of text starts: its first letter a capital, the rest as written (names,
+    tickers and units keep their own case). The owner, 22 Oct: "no first letter in cap"."""
+    s = '' if text is None else str(text)
+    return s[:1].upper() + s[1:] if s[:1].islower() else s
+
+
 def head(title: str, sub: str) -> None:
-    st.html(f'<div class="head"><h1>{esc(title)}</h1><p>{esc(sub)}</p></div>')
+    st.html(f'<div class="head"><h1>{esc(title)}</h1><p>{esc(sentence(sub))}</p></div>')
 
 
 @dataclass(frozen=True)
@@ -186,20 +193,20 @@ def tiles(items: list[Tile]) -> None:
 def card(title: str, key: str, aside: str = ''):
     with st.container(key=f'card_{key}'):
         st.html(f'<div class="card-h"><h2>{esc(title)}</h2>'
-                + (f'<span>{esc(aside)}</span>' if aside else '') + '</div>')
+                + (f'<span>{esc(sentence(aside))}</span>' if aside else '') + '</div>')
         yield
 
 
 def note(lead: str, text: str = '') -> None:
-    st.html(f'<div class="note" role="note"><b>{esc(lead)}</b>' + (f' {esc(text)}' if text else '') + '</div>')
+    st.html(f'<div class="note" role="note"><b>{esc(sentence(lead))}</b>' + (f' {esc(text)}' if text else '') + '</div>')
 
 
 def caption(text: str) -> None:
-    st.html(f'<p class="cap">{esc(text)}</p>')
+    st.html(f'<p class="cap">{esc(sentence(text))}</p>')
 
 
 def empty(text: str) -> None:
-    st.html(f'<div class="empty">{esc(text)}</div>')
+    st.html(f'<div class="empty">{esc(sentence(text))}</div>')
 
 
 def topbar(pages: list, active, pill_text: str, pill_warn: bool = False) -> None:

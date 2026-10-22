@@ -16,7 +16,7 @@ from insiders_clean import ideas
 from screens import buybacks
 from screens.ctx import issue_rows, load, need_data, split_since
 
-READ = {'leaning_positive': 'ahead', 'drag': 'behind', 'no_edge': 'no edge', 'few': 'few cases', 'not_measured': 'not measured'}
+READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
 WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
 DEFAULT_PERIOD = 'Last 30 days'
 SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
@@ -228,7 +228,7 @@ def render():
     bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Promoters selling')
     with top:
         st.html(f'<div class="head"><h1 class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
-                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(span)} to {kit.day(ctx.ref)}</span></h1></div>')
+                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(kit.sentence(span))} to {kit.day(ctx.ref)}</span></h1></div>')
     n = lambda d, k: d.get(k, 0)   # noqa: E731
     with head:
         kit.tiles([
