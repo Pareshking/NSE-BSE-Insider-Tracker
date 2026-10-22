@@ -319,11 +319,12 @@ def test_issue_xbrl_cap_leaves_the_rest_pending_and_retries_them(events):
 
 class _Master:
     """The two lookups add_identity uses: Electrosteel's current ISIN only (audit 22 Oct)."""
-    recs = {'INE086A01029': {'display_name': 'Electrosteel Castings'}, 'INE467B01029': {'display_name': 'TCS'}}
-    syms = {'ELECTCAST': 'INE086A01029', 'TCS': 'INE467B01029'}
+    recs = {'INE086A01029': {'display_name': 'Electrosteel Castings'}, 'INE467B01029': {'display_name': 'TCS'},
+            'INE133A01011': {'display_name': 'Akzo Nobel India'}, 'INE133A01029': {'display_name': 'JSW Dulux'}}
+    syms = {'ELECTCAST': 'INE086A01029', 'TCS': 'INE467B01029', 'JSWDULUX': 'INE133A01029'}
 
     def resolve(self, exchange, symbol=None, isin=None):
-        return self.syms.get(symbol), 'symbol'
+        return (self.syms[symbol], 'symbol') if symbol in self.syms else (None, 'unmatched')
 
     def record(self, isin):
         return self.recs.get(isin)
@@ -331,9 +332,12 @@ class _Master:
 
 def test_a_retired_isin_filed_with_the_shareholding_gives_way_to_the_current_one():
     from collectors.nse_events.run_daily import add_identity
-    df = pd.DataFrame({'symbol': ['ELECTCAST', 'TCS', 'NEWCO'], 'company': ['Electrosteel Castings Limited', 'TCS', 'New Co'],
-                       'isin': ['INE086A01011', 'INE467B01029', 'INE999X01019']})
+    df = pd.DataFrame({'symbol': ['ELECTCAST', 'TCS', 'NEWCO', 'JSWDULUX'],
+                       'company': ['Electrosteel Castings Limited', 'TCS', 'New Co', 'JSW Dulux'],
+                       'isin': ['INE086A01011', 'INE467B01029', 'INE999X01019', 'INE133A01011']})
     out = add_identity(df, _Master())
-    assert list(out['isin']) == ['INE086A01029', 'INE467B01029', 'INE999X01019']   # unknown to the master and no symbol: kept
-    assert list(out['isin_filed'].fillna('')) == ['INE086A01011', '', '']
+    # the symbol's current ISIN wins, even over a retired one the master still knows (JSW Dulux, Akzo's old ISIN);
+    # a symbol not in today's list keeps its filed ISIN
+    assert list(out['isin']) == ['INE086A01029', 'INE467B01029', 'INE999X01019', 'INE133A01029']
+    assert list(out['isin_filed'].fillna('')) == ['INE086A01011', '', '', 'INE133A01011']
     assert out.loc[0, 'company_display'] == 'Electrosteel Castings' and not out['unmatched_security'].any()

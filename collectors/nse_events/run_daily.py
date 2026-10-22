@@ -151,18 +151,19 @@ def security_master(r2, run_date: str, notes: list, *, max_age_days: int = 10) -
 
 
 def add_identity(df: pd.DataFrame, master: SecurityMaster) -> pd.DataFrame:
-    """ISIN and display name from the security master. The row's own ISIN (corporate actions, shareholding)
-    wins when the master knows it; one the master does not know is a retired ISIN (NSE's shareholding list
-    still files Electrosteel under INE086A01011, the ISIN before its split; the company is INE086A01029,
-    audit 22 Oct), so the symbol's current ISIN replaces it and `isin_filed` keeps what was filed."""
+    """ISIN and display name from the security master. These tables are keyed by NSE symbol, and the
+    symbol's ISIN in today's NSE list is the company's current one: it wins over the filed ISIN, which can be
+    retired (Electrosteel INE086A01011 before its split, JSW Dulux INE133A01011 as Akzo Nobel India; audit
+    22 Oct) and still be in the 01 Sep master. Only an exact symbol counts; otherwise the filed ISIN stays.
+    `isin_filed` keeps what was filed when it differs."""
     df = df.copy()
     own = df['isin'] if 'isin' in df.columns else pd.Series([None] * len(df), index=df.index)
-    resolved = [master.resolve('nse', s)[0] for s in df['symbol']]
-    known = {i: master.record(i) is not None for i in pd.Series(own).dropna().unique() if isinstance(i, str) and i.strip()}
+    hits = [master.resolve('nse', s) for s in df['symbol']]
+    resolved = [i if how == 'symbol' else None for i, how in hits]
 
     def pick(o, r):
         o = o.strip() if isinstance(o, str) and o.strip() else None
-        return o if o and (known.get(o) or not r) else r
+        return r or o
 
     df['isin'] = [pick(o, r) for o, r in zip(own, resolved)]
     df['isin_filed'] = [o if isinstance(o, str) and o.strip() and o.strip() != i else None for o, i in zip(own, df['isin'])]

@@ -88,8 +88,9 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
         insider, report.data['promoter_group_link'] = link_promoter_group(insider, promoter_group)
     deals = apply_product_window(deals, 'date', 'deals', report, 'deal_id')
 
-    used = pd.concat([s for s in (insider.get('isin'), deals.get('isin')) if s is not None]).dropna()
-    securities = master.frame(used.unique())
+    # Every company the master knows, not only those with insider or deal filings: a company with only a
+    # corporate action, SAST or shareholding filing needs its name and page too (VRL Logistics, audit 22 Oct).
+    securities = master.frame()
     uni = universe.table(master.frame())   # every ISIN we know, not only those in filings
     report.data['universe'] = universe.report(uni)
     return {'insider_trades': insider, 'deals': deals, 'securities': securities, 'universe': uni}, report.data
