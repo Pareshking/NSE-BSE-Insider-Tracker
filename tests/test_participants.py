@@ -42,6 +42,7 @@ def test_a_global_banks_dealing_arm_is_a_dealer_not_an_investor():
     assert classify('BNP PARIBAS FINANCIAL MARKETS')[0] == 'broker'
     assert classify('CITIGROUP GLOBAL MARKETS MAURITIUS PRIVATE LIMITED')[0] == 'broker'
     assert classify('GOLDMAN SACHS (SINGAPORE) PTE')[0] == 'fpi' and classify('SOCIETE GENERALE')[0] == 'fpi'
+    assert classify('SOCIETE GENERALE - ODI')[0] == 'broker'
 
 
 def test_no_source_file_holds_a_control_character():

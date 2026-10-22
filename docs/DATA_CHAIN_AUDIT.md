@@ -292,8 +292,9 @@ tables as of 21 Oct; NSE's own files fetched for appIds 2325, 2427, 3934, 3962 (
   Jubilant Ingrevia trust; Rs 2,612 Cr, mostly held back by other flags): which copy is right needs the filing's PDF.
 - 10 of 244 PIT pledges whose create/release is the reverse of Reg 31's (open). The lender and type from Reg 31 are on
   the pledge rows of Today and the Company page (#208).
-- Global banks' trading desks: a bank's Financial / Global Markets arm is a dealer (#207); Integrated Core Strategies and
-  Societe Generale ODI still typed `fpi` (open).
+- Global banks' trading desks: a bank's Financial / Global Markets arm (#207) and its ODI account (Societe Generale -
+  ODI, the hedge of its P-notes) are dealers. Integrated Core Strategies (a multi-manager hedge fund) stays `fpi`: a
+  fund trading for itself, not a dealer.
 
 #### Timing and holdings (23 Oct, sections `timing`, `holding`, on the clean data of 22 Oct)
 - Trade to public, the 10,957 open-market rows the signals read: median 1 session, 90% within 4, 95% within 9; 239 rows
