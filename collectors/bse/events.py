@@ -36,10 +36,11 @@ old one; the clean step drops the old date. One board-meetings call can leave
 rows out (meetings_window), so each window is read whole and in 15-day
 pieces, the rows united; the report counts rows only one reading had.
 
-Shareholding (BSE-only companies; NSE's collector has the rest, and NSE's
-filing wins for a company on both): a company with an NSE symbol in the
-security master, or whose ISIN is in NSE's clean/current/shareholding.parquet,
-is left out and counted. BSE's filings list is asked for a period back from
+Shareholding (the companies NSE's list does not carry; NSE's filing wins for a
+company on both): a company whose ISIN is in NSE's
+clean/current/shareholding.parquet is left out and counted. An NSE-listed
+company that NSE's list leaves out (Abbott India, MCX: audit 22 Oct) is read
+here; without NSE's table, a company with an NSE symbol is left out. BSE's filings list is asked for a period back from
 today (client.py), 15 days nightly and a year in history mode. The holdings
 are only in each filing's inline XBRL, read once per filing with NSE's parsers
 into NSE's columns (promoter and public %, promoter pledge, ownership by
@@ -335,18 +336,24 @@ def shareholding(store, bse: BSEClient, master, flag: int, max_xbrl: int, stats:
                  members: list, nse_isins: frozenset = frozenset()) -> tuple[pd.DataFrame, bool]:
     """BSE's filings list for the period `flag`, BSE-only companies kept (with
     a master; a dry run keeps all), their XBRL read. (rows, refused). A
-    company is left to NSE's collector when the security master gives it an
-    NSE symbol (`dual_listed_skipped`) or its ISIN is in NSE's shareholding
-    table (`isin_in_nse_table_skipped`)."""
+    company is left to NSE's collector when its ISIN is in NSE's shareholding
+    table (`isin_in_nse_table_skipped`, or `dual_listed_skipped` when it has an
+    NSE symbol). An NSE-listed company NSE's list does not carry is read here
+    (`dual_listed_kept`): NSE's corporate-share-holdings-master gives no row for
+    574 companies of the universe, Abbott India and MCX among them (audit
+    22 Oct: symbol=ABBOTINDIA answers 0 rows). Without NSE's table, an NSE
+    symbol alone leaves a company to NSE, as before."""
     listing = parsers.parse_shareholding_listing(bse.shareholding_filings(flag))
     stats.update(calls=stats.get('calls', 0) + 1, listed=len(listing))
     if master is not None and not listing.empty:
         listing = bse_events.add_identity(listing, master)
         nse = listing['nse_symbol'].notna()
-        on_nse = ~nse & listing['isin'].isin(nse_isins)
-        stats['dual_listed_skipped'] = int(nse.sum())
-        stats['isin_in_nse_table_skipped'] = int(on_nse.sum())
-        listing = listing[~nse & ~on_nse]
+        in_table = listing['isin'].isin(nse_isins)
+        skip = in_table if nse_isins else nse
+        stats['dual_listed_skipped'] = int((nse & skip).sum())
+        stats['isin_in_nse_table_skipped'] = int((~nse & skip).sum())
+        stats['dual_listed_kept'] = int((nse & ~skip).sum())
+        listing = listing[~skip]
     stats['fetched'] = len(listing)
     known = store.whole('shareholding') if store is not None else None
     return shareholding_xbrl(bse, listing, known, stats, max_xbrl, members, run_date, nse_isins)

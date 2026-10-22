@@ -220,6 +220,26 @@ def test_shareholding_bse_only_catch_up_members_and_clean(master):
     assert sum(k.startswith(events.GROUP_BATCHES) for k in r2.objects) == 2   # one write-once batch a run
 
 
+def test_a_dual_listed_company_nse_does_not_list_is_read_from_bse(master):
+    """Audit 22 Oct: NSE's shareholding list gives no row for 574 NSE-listed companies of the universe (Abbott India,
+    MCX). With NSE's table present, only a company whose ISIN is in it is left to NSE; the others are read here."""
+    listing = parsers.parse_shareholding_listing(js('shareholding_listing_20261012.json')['Table'])
+    dual = bse_events.add_identity(listing, master)
+    dual = dual[dual['nse_symbol'].notna()].drop_duplicates('bse_code')
+    assert len(dual) == 2   # Cantabil and Utique (APPLEIND): left to NSE by symbol alone before
+    in_nse, missing = dual.iloc[0], dual.iloc[1]
+    r2, bse = FakeR2(), SHP()
+    buf = io.BytesIO()
+    pd.DataFrame({'isin': [in_nse['isin']], 'symbol': [in_nse['nse_symbol']]}).to_parquet(buf, index=False)
+    r2.objects[events.NSE_SHAREHOLDING] = buf.getvalue()
+    rep = events.run(events.Store(r2), bse, date(2026, 10, 12), ('shareholding',), start=date(2025, 10, 8),
+                     master=master, max_xbrl=50, now=datetime(2026, 10, 12, 18, 0), log=lambda *_: None)
+    s = rep['streams']['shareholding']
+    assert s['dual_listed_skipped'] == 1 and s['dual_listed_kept'] == 1
+    arch = events.Store(r2).whole('shareholding')
+    assert missing['bse_code'] in set(arch['bse_code']) and in_nse['bse_code'] not in set(arch['bse_code'])
+
+
 def test_shareholding_dry_run_reads_without_writing():
     bse = SHP()
     rep = events.run(None, bse, date(2026, 10, 12), ('shareholding',), max_xbrl=1, log=lambda *_: None)

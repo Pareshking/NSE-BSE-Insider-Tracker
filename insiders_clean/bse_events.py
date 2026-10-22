@@ -108,14 +108,16 @@ def clean(arch: pd.DataFrame | None, master: SecurityMaster, nse: pd.DataFrame |
     if stream == 'meetings':
         df, extra['moved_away'] = drop_moved(df)
     if stream == 'shareholding':
-        # NSE's filing wins for a company on both exchanges: told apart by the NSE symbol, or by the ISIN being in
-        # NSE's shareholding table (a company the security master gives no NSE symbol).
-        extra['dual_listed_left_out'] = int(df['nse_symbol'].notna().sum())
-        df = df[df['nse_symbol'].isna()]
+        # NSE's filing wins for a company on both exchanges: told apart by the ISIN being in NSE's shareholding
+        # table. An NSE-listed company NSE's list does not carry (Abbott India, MCX: audit 22 Oct) stays; without
+        # NSE's table, an NSE symbol alone leaves a company to NSE.
         nse_isins = set() if nse is None or 'isin' not in nse else set(nse['isin'].dropna().astype(str))
-        in_nse = df['isin'].isin(nse_isins)
-        extra['isin_in_nse_table_left_out'] = int(in_nse.sum())
-        df = df[~in_nse]
+        on_nse_list = df['nse_symbol'].notna()
+        out = df['isin'].isin(nse_isins) if nse_isins else on_nse_list
+        extra['dual_listed_left_out'] = int((out & on_nse_list).sum())
+        extra['isin_in_nse_table_left_out'] = int((out & ~on_nse_list).sum())
+        extra['dual_listed_kept'] = int((~out & on_nse_list).sum())
+        df = df[~out]
         parsed = pd.to_numeric(df['promoter_holding_pct'], errors='coerce').notna()
         extra['not_parsed_yet'] = int((~parsed).sum())
         df = df[parsed]
