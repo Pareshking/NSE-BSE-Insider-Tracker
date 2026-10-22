@@ -171,4 +171,22 @@ def clean(filings: pd.DataFrame) -> pd.DataFrame:
             except (ValueError, KeyError, TypeError):
                 s = {}
         rows.append({**{k: v for k, v in r.items() if k != 'xbrl_json'}, **s})
-    return pd.DataFrame(rows).sort_values('broadcast_at', ascending=False, na_position='last').reset_index(drop=True)
+    out = pd.DataFrame(rows).sort_values('broadcast_at', ascending=False, na_position='last').reset_index(drop=True)
+    return mark_superseded(out)
+
+
+def mark_superseded(df: pd.DataFrame) -> pd.DataFrame:
+    """`superseded`: a later filing of the same company, period end and basis (standalone or consolidated) was
+    broadcast, a revision mostly (audit 22 Oct: 1,639 rows share a company, period and basis, 891 of them
+    revisions; HCL Tech's 31 Mar 2026 standalone result was listed twice on the Company page). Kept, not dropped:
+    a card dated before the revision still reads the filing it could have seen (insiders_clean/context.py)."""
+    df = df.copy()
+    if df.empty or not {'symbol', 'period_end', 'consolidated', 'broadcast_at'} <= set(df.columns):
+        df['superseded'] = False
+        return df
+    at = pd.to_datetime(df['broadcast_at'], errors='coerce', utc=True)
+    key = [df['symbol'].astype(str).str.upper(), df['period_end'].astype(str),
+           df['consolidated'].astype(str).str.strip().str.lower()]
+    latest = at.groupby(key).transform('max')
+    df['superseded'] = (at < latest).fillna(False).astype(bool)
+    return df

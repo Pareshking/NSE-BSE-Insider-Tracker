@@ -97,3 +97,19 @@ def test_approved_amount_a_power_of_ten_off_is_held_back():
     assert by.at['69999', 'amount_total'] == 250362000 and by.at['59198', 'amount_total'] == 2047500000
     assert by['amount_unreliable'].to_dict() == {'63777': True, '67204': True, '69999': False, '59198': False}
     assert rep['amount_power_of_ten'] == 2
+
+
+# --- C3: a revised result listed beside its original -------------------------------------------------------------
+
+def test_a_revision_supersedes_its_original_and_the_other_basis_stays():
+    from test_results import ROW
+
+    from insiders_clean import results
+    rows = [{**ROW, 'seq_Id': '1', 'symbol': 'HCLTECH', 'qe_Date': '31-MAR-2026', 'consolidated': 'Standalone',
+             'broadcast_Date': '21-Apr-2026 17:00:00'},
+            {**ROW, 'seq_Id': '2', 'symbol': 'HCLTECH', 'qe_Date': '31-MAR-2026', 'consolidated': 'Standalone',
+             'type_Sub': 'Revision', 'broadcast_Date': '23-Apr-2026 18:00:00'},
+            {**ROW, 'seq_Id': '3', 'symbol': 'HCLTECH', 'qe_Date': '31-MAR-2026', 'consolidated': 'Consolidated',
+             'broadcast_Date': '21-Apr-2026 17:00:00'}]
+    t = results.clean(results.filing_rows(rows)).set_index('seq_id')
+    assert t['superseded'].to_dict() == {'2': False, '1': True, '3': False}

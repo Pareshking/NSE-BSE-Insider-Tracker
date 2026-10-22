@@ -168,7 +168,10 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
     res = ctx.results
     isin = t['isin'].dropna().iloc[0] if not t.empty and t['isin'].notna().any() else None
     if res is not None and not res.empty and isin:
-        for r in res[res['isin'] == isin].to_dict('records'):
+        mine = res[res['isin'] == isin]
+        if 'superseded' in mine:   # a revised filing shows once, as revised (insiders_clean/results.py)
+            mine = mine[~mine['superseded'].astype('boolean').fillna(False)]
+        for r in mine.to_dict('records'):
             # NSE's `consolidated` is text ("Consolidated" / "Non-Consolidated"): both read as true (audit 22 Oct).
             basis = 'consolidated' if str(r.get('consolidated') or '').strip().lower().startswith('consolidated') else 'standalone'
             months = _months(r.get('ytd_start'), r.get('period_end'))

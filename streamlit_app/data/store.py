@@ -107,7 +107,7 @@ UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
 # ...except the filing's XBRL link on the issue tables (a few thousand rows): the Filings page links each issue to it.
 LINKS = {('preferential', 'xbrl_url'), ('rights', 'xbrl_url'), ('qip', 'xbrl_url')}
 ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at',
-                    'quarter_revenue', 'quarter_profit', 'ytd_start'),   # the Company timeline's quarter line (audit 22 Oct)
+                    'quarter_revenue', 'quarter_profit', 'ytd_start', 'superseded'),   # the Company timeline's quarter line (audit 22 Oct)
         'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
 
