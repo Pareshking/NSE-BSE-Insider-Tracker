@@ -228,11 +228,6 @@ def render():
         kit.head('Company', '')
         kit.empty(f'No company with the symbol {sym} in our data. Open one from any table, or check the spelling.')
         return
-    # Set again here so streamlit.app's address bar carries ?symbol= too: after st.switch_page it showed only
-    # /company, so a copied link opened no company (audit 22 Oct).
-    if st.session_state.get('_co_url') != sym:
-        st.session_state['_co_url'] = sym
-        st.query_params['symbol'] = sym
     name = (rec.get('display_name') if 'display_name' in rec else None) or (t['company'].iloc[0] if len(t) else sym)
     isin = rec.get('isin') if pd.notna(rec.get('isin')) else (t['isin'].dropna().iloc[0] if len(t) and t['isin'].notna().any() else None)
     pr = ctx.prices[ctx.prices['isin'] == isin].iloc[0] if isin and not ctx.prices.empty and (ctx.prices['isin'] == isin).any() else None

@@ -130,6 +130,7 @@ if not ctx.trades.empty:
 
 # A link the pages draw (a company, a person, Filings) switches page in this session, with its own address.
 inapp.links({**{p.url_path: p for p in ALL}, '': SECTIONS[''][0]})
+inapp.apply_query()
 
 nav.run()
 
