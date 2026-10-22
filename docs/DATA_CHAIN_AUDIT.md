@@ -40,9 +40,9 @@ Insider trades
 - [x] (T2, T3; JB Chemicals open) The same trade counted twice: NSE + BSE copies, revisions, BSE's two feeds, multi-day filings.
 - [x] (T1, T4, T5) Who: promoter vs promoter group vs director vs KMP vs designated person vs immediate relative; one
       family split into many "decision-makers"; a company (promoter entity) vs an individual.
-- [ ] Timing: trade date vs intimation vs exchange broadcast; late filings; trades inside a closed trading
+- [x] (timing, 23 Oct) Timing: trade date vs intimation vs exchange broadcast; late filings; trades inside a closed trading
       window; the date we mark on the chart.
-- [ ] Holdings before/after vs shares traded (holding_check); % of the company basis.
+- [x] (holding, 23 Oct) Holdings before/after vs shares traded (holding_check); % of the company basis.
 
 Pledges
 - [x] (T2, T6; Reg 31 #199) Pledge vs encumbrance vs non-disposal undertaking vs invocation; renewals and top-ups; release then
@@ -283,13 +283,29 @@ tables as of 21 Oct; NSE's own files fetched for appIds 2325, 2427, 3934, 3962 (
 - JB Chemicals, 21-23 Jan 2026 (Tau -> Torrent, Rs 11,917 Cr): NSE (JBCHEPHARM) and BSE (506943) copies both primary
   because neither has an ISIN (`security_match` unmatched; 117 such NSE+BSE groups). Held back (`unmatched_security`),
   so out of signals; the fix is the security master's (a delisted or merged symbol), the other audit's scope.
-- 13 NSE revision + BSE pairs left unpaired (Indo-mim 3307/3327, 360 One 3855, Aurionpro 2780; Rs 27 Cr): cause not found.
+- ~~13 NSE revision + BSE pairs left unpaired~~ Found 23 Oct (section `unpaired`): BSE files the trade twice (a revision,
+  a value filed as 0 corrected: Gateway Distriparks 04 Dec 2025 again on 23 Jan 2026; Khandwala, C.E. Info, Indo-mim);
+  NSE's row paired with one copy and the other stood primary. 28 groups, 64 rows, Rs 43 Cr read twice by the signals.
+  Fixed: a BSE row left over that is a copy of an NSE row already paired is its copy too (`bse_refiled` in the report).
+  Left: a BSE-only company whose re-filing changes the value (no NSE row to pair with).
 - 90 market rows whose other exchange's copy files another kind (BSE "ESOP" vs NSE "Market Sale", Shaily Engineering,
   Jubilant Ingrevia trust; Rs 2,612 Cr, mostly held back by other flags): which copy is right needs the filing's PDF.
-- 10 of 244 PIT pledges whose create/release is the reverse of Reg 31's; PIT pledges should take the lender and type
-  from Reg 31 (#199) on the pages.
-- Global banks' trading desks (BNP Paribas Financial Markets, Integrated Core Strategies, Societe Generale ODI) are typed
-  `fpi` and can be named as "funds" (LEAP India "BNP Paribas Financial Markets and 4 more bought 5.70%"): a desk list.
+- 10 of 244 PIT pledges whose create/release is the reverse of Reg 31's (open). The lender and type from Reg 31 are on
+  the pledge rows of Today and the Company page (#208).
+- Global banks' trading desks: a bank's Financial / Global Markets arm is a dealer (#207); Integrated Core Strategies and
+  Societe Generale ODI still typed `fpi` (open).
+
+#### Timing and holdings (23 Oct, sections `timing`, `holding`, on the clean data of 22 Oct)
+- Trade to public, the 10,957 open-market rows the signals read: median 1 session, 90% within 4, 95% within 9; 239 rows
+  more than 30 sessions late (GNG Electronics, a promoter's Rs 175 Cr sale of 11 Jun made public 18 Sep). The signals,
+  the period and the chart marks all take the day made public (`seen` = broadcast date), so a late filing is never
+  dated before anyone could read it; the card shows the trade dates in its sentence and "Made public". Right.
+- Closed trading window (quarter end to 48 hours after that quarter's results): 114 rows of 9,829 with the results date
+  known, Rs 34,366 Cr. Mostly not insiders bound by the window: the Government's offers for sale (LIC, Cochin
+  Shipyard), promoter companies moving shares inside the group (Bajaj Finserv 27 Apr), employee trusts (Sonata,
+  Jindal Steel). Not flagged on the site: the exchange data cannot tell a designated person from an exempt seller.
+- Holding before / after: every row the signals read matches its shares (10,956 `match`, 1 `not_filed`); the 56 that
+  differ are held back. `holding_change_pct` is the person's own holding change (labelled so), not a % of the company.
 
 #### Leads from Chain stats (22 Oct, 09:15 IST)
 - JB Chemicals -> Open (no ISIN on either copy); Thyrocare -> T2; `price_check`: of the

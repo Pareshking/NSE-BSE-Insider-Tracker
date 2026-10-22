@@ -1,7 +1,7 @@
 """The trading data on real rows (read-only), for the data chain audit of 22 Oct 2026: insider trades, pledges,
 bulk/block deals, SAST, and what Today builds from them. Prints only; writes nothing to R2, calls no exchange.
 
-SECTIONS=comma list (insider,dups,roles,price,deals,sast,pledge,today) picks what to print; empty = all.
+SECTIONS=comma list (insider,dups,roles,price,deals,sast,pledge,timing,holding,today) picks what to print; empty = all.
 """
 from __future__ import annotations
 
@@ -486,6 +486,84 @@ def main() -> int:
             print('PIT promoter pledge rows since', lo, ':', len(pw), ' matched', int(pw['trade_id'].isin(m['trade_id']).sum()))
             ew = e[e['sym'].isin(set(prim['nse_symbol'].dropna().astype(str).str.upper()))]
             print('Reg 31 events of companies with PIT rows:', len(ew), ' by type', ew['k'].value_counts().to_dict())
+
+    if on('timing'):
+        from insiders_clean import trading_window
+        el = signals.eligible(tr)
+        head(f'timing of the {len(el)} open-market rows the signals read: trade to public, in sessions')
+        lag = pd.to_numeric(el['trade_to_public_sessions'], errors='coerce')
+        print(lag.describe(percentiles=[.5, .75, .9, .95, .99]).round(1).to_string())
+        bins = pd.cut(lag, [-1, 2, 5, 10, 30, 60, 10_000], labels=['0-2', '3-5', '6-10', '11-30', '31-60', '61+'])
+        print(pd.crosstab(bins, el['exchange'], margins=True).to_string())
+        print('insider_filed_late', b(el['insider_filed_late']).sum(), ' company_filed_late', b(el['company_filed_late']).sum(),
+              ' no lag (a date missing)', int(lag.isna().sum()))
+        print('value Rs Cr by lag:', (pd.to_numeric(el['value'], errors='coerce').groupby(bins, observed=False).sum() / 1e7).round(0).to_dict())
+        late = el[lag.gt(30)].assign(_lag=lag[lag.gt(30)])
+        show(late.sort_values('value', ascending=False), ['company', 'person_name', 'person_role', 'side', 'value', 'trade_date_to',
+                                                          'intimation_date', 'broadcast_date', '_lag', 'exchange'], 15)
+        # The chart marks the day made public (screens/ctx._marks uses `seen` = broadcast_date): count marks a
+        # trade-date chart would put elsewhere by more than 5 sessions.
+        print('marks more than 5 sessions after the trade:', int(lag.gt(5).sum()))
+
+        head('open-market rows inside a closed trading window (quarter end to 48 hours after that quarter\'s results)')
+        nse_m = read_parquet(r2, 'clean/current/meetings.parquet')
+        meet = with_bse(pd.DataFrame() if nse_m is None else nse_m, read_parquet(r2, 'clean/current/bse_meetings.parquet'))
+        rd = trading_window.results_dates(meet)
+        day = pd.to_datetime(el['trade_date_from'], errors='coerce').fillna(pd.to_datetime(el['trade_date_to'], errors='coerce'))
+        qe = day.dt.to_period('Q').dt.start_time - pd.Timedelta(days=1)
+        x = el.assign(_day=day, _qe=qe, key=el['isin'].astype('string'))
+        x2 = el.assign(_day=day, _qe=qe, key='sym:' + el['nse_symbol'].astype('string').str.upper())
+        both = pd.concat([x, x2]).dropna(subset=['key', '_day'])
+        j = both[['trade_id', 'key', '_day', '_qe']].merge(rd[['key', 'results_date']], on='key')
+        j = j[(j['results_date'] > j['_qe']) & (j['results_date'] <= j['_qe'] + pd.Timedelta(days=100))]
+        first = j.sort_values('results_date').drop_duplicates('trade_id')
+        known = el['trade_id'].isin(first['trade_id'])
+        closed = first[first['_day'] < first['results_date'] + pd.Timedelta(days=trading_window.WINDOW_HOURS_DAYS)]
+        c = el[el['trade_id'].isin(closed['trade_id'])].merge(closed[['trade_id', 'results_date']], on='trade_id')
+        print('rows with that quarter\'s results date known:', int(known.sum()), 'of', len(el), '; inside the closed window:', len(c),
+              f'(Rs {pd.to_numeric(c["value"], errors="coerce").sum() / 1e7:,.0f} Cr)')
+        if len(c):
+            print(pd.crosstab(c['person_role'], c['side'], margins=True).to_string())
+            show(c.sort_values('value', ascending=False), ['company', 'person_name', 'person_role', 'side', 'value', 'trade_date_from',
+                                                           'trade_date_to', 'results_date', 'broadcast_date', 'mode_raw'], 25)
+
+    if on('holding'):
+        el = signals.eligible(tr)
+        head('holding before / after against the shares traded (holding_check)')
+        print('all primary rows:', prim['holding_check'].value_counts().to_dict())
+        print('rows the signals read:', el['holding_check'].value_counts().to_dict())
+        d = el[el['holding_check'].astype(str).str.startswith(('differs', 'against'))]
+        show(d.sort_values('value', ascending=False), ['company', 'person_name', 'side', 'quantity', 'holding_before', 'holding_after',
+                                                       'value', 'holding_check', 'flags', 'exchange'], 15)
+        if 'holding_change_pct' in el:
+            tot = None
+            if sh is not None and {'isin', 'total_shares', 'quarter_end'} <= set(sh.columns):
+                tot = sh.sort_values('quarter_end').drop_duplicates('isin', keep='last').set_index('isin')['total_shares']
+            if tot is not None:
+                mine = pd.to_numeric(el['quantity'], errors='coerce') / el['isin'].map(tot) * 100
+                filed = pd.to_numeric(el['holding_change_pct'], errors='coerce').abs()
+                ok = mine.notna() & filed.notna()
+                gap = (mine - filed).abs()[ok]
+                print('% of the company, shares / latest total shares vs as filed: rows', int(ok.sum()),
+                      ' within 0.01 pt', int(gap.le(0.01).sum()), ' 0.01-0.1', int(gap.between(0.01, 0.1, inclusive='right').sum()),
+                      ' over 0.1', int(gap.gt(0.1).sum()))
+                w = el[ok].assign(_mine=mine[ok], _filed=filed[ok], _gap=gap)
+                show(w.sort_values('_gap', ascending=False), ['company', 'person_name', 'quantity', '_mine', '_filed', '_gap', 'trade_date_to'], 12)
+
+    if on('unpaired'):
+        head('open-market rows the signals read twice: an NSE and a BSE primary of one person, security, side, shares, day')
+        el = signals.eligible(tr)
+        k = ['isin', 'person_id', 'side', 'quantity', 'trade_date_to']
+        two = el[el.duplicated(k, keep=False) & el.groupby(k)['exchange'].transform('nunique').gt(1)]
+        print('rows', len(two), 'groups', two.groupby(k).ngroups, f'value Rs {pd.to_numeric(two["value"], errors="coerce").sum() / 2e7:,.1f} Cr once')
+        cols = ['company', 'exchange', 'is_primary', 'primary_id', 'person_name', 'person_id', 'kind', 'side', 'quantity', 'value',
+                'trade_date_from', 'trade_date_to', 'broadcast_date', 'app_id', 'source_id', 'isin', 'security_match', 'flags']
+        for g in list(two.groupby(k).groups.values())[:6]:
+            r = two.loc[g[0]]
+            every = tr[tr['isin'].eq(r['isin']) & tr['person_id'].eq(r['person_id'])
+                       & pd.to_numeric(tr['quantity'], errors='coerce').eq(r['quantity'])]
+            print(f'-- {r["company"]}: every row of this person and size ({len(every)})')
+            show(every, cols, 12)
 
     if on('cases'):
         head('cases: rows behind the findings')
