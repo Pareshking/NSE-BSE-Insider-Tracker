@@ -542,6 +542,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['person_raw'] = _col(raw, 'canonical_person', 'acqName', 'person')
     df['person_category_raw'] = _col(raw, 'canonical_person_category', 'personCategory', 'person_category')
     df['mode_raw'] = _col(raw, 'canonical_mode', 'modeOfAcquisition', 'mode')
+    df['security_type_raw'] = _col(raw, 'secType', 'security_type')
     df['transaction_type_raw'] = _col(raw, 'canonical_transaction_type', 'transactionType', 'transaction_type')
     df['source_url'] = _col(raw, 'canonical_source_url', 'xmlFileName').astype('string')   # NSE's XBRL file for the filing
     df['quantity'] = _num(_col(raw, 'canonical_quantity'))
@@ -722,6 +723,11 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             flags[i].append(name)
 
     flag(df['isin'].isna(), 'unmatched_security')
+    # Only equity shares are the company's shares: a trade in ADRs/GDRs/FCCBs, warrants, derivatives, debentures or
+    # 'any other instrument' is held back (audit 22 Oct: 30 eligible NSE rows filed as ADR/GDR/FCCB, 12 as any other
+    # instrument, 2 as convertible debentures; BSE 25 as any other instrument). Blank: taken as shares, as filed before.
+    st = df['security_type_raw'].astype('string').str.strip().str.lower().fillna('')
+    flag(pd.Series(st.ne('') & ~st.str.contains('equity'), index=df.index), 'not_equity_shares')
     flag(df['kind'].isin(['unrecognised', 'missing']), 'unrecognised_mode')
     flag(df['pct_of_mcap'] > VALUE_SHARE_OF_MCAP_REVIEW * 100, 'value_over_25pct_of_mcap')
     multiple = df['holding_after'] / df['holding_before'].where(df['holding_before'] > 0)
@@ -809,7 +815,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             'prev_app_id', 'nse_submission_type', 'nse_revision_remark',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
             'person_id', 'person_name', 'person_role', 'person_role_source', 'person_category_raw',
-            'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw',
+            'side', 'kind', 'is_market', 'mode_raw', 'transaction_type_raw', 'security_type_raw',
             'quantity', 'value', 'signed_value', 'price', 'day_low', 'day_high', 'price_check',
             'holding_before', 'holding_after', 'holding_check',
             'holding_change_pct', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'market_cap_basis',

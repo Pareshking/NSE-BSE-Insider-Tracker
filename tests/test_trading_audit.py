@@ -161,6 +161,16 @@ def test_a_promoter_buy_against_an_outsiders_sale_stays_a_buy(master, calendar, 
     assert out['is_market'].all()
 
 
+def test_a_market_trade_in_adrs_or_warrants_is_held_back(master, calendar, report, code):
+    # NSE secType 'ADR/GDR/FCCB' (220 archive rows, 30 eligible) and BSE 'Any other instrument': not the company's shares.
+    rows = [dict(nse('A Promoter', 10_000, 1e7, '2026-09-01', '2026-09-01', app='1'), secType='ADR/GDR/FCCB'),
+            dict(nse('B Promoter', 10_000, 1e7, '2026-09-01', '2026-09-01', app='2'), secType='Equity Shares')]
+    out = run(master, calendar, report, rows).set_index('person_name')
+    assert 'not_equity_shares' in out.loc['A Promoter', 'flags'] and out.loc['A Promoter', 'security_type_raw'] == 'ADR/GDR/FCCB'
+    assert out.loc['B Promoter', 'flags'] == ''
+    assert signals.eligible(out.reset_index())['person_name'].tolist() == ['B Promoter']
+
+
 # --- T5: Today: invocations, SAST encumbrances, promoters' own bulk/block deals -----------------------------------
 
 REF = pd.Timestamp('2026-10-21')
