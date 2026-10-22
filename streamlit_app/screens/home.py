@@ -12,7 +12,7 @@ from data import store
 from ui import kit
 from ui.kit import Tile, esc
 
-from insiders_clean import ideas, signals
+from insiders_clean import ideas
 from screens import buybacks
 from screens.ctx import issue_rows, load, need_data, split_since
 
@@ -28,20 +28,21 @@ SHORT = {'Insiders buying': 'Insiders buying', 'Promoters pay up': 'Promoters pa
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=2)
 def _inputs(_ctx, ref_key: str) -> tuple:
-    """What every period shares: the track summary, the issues and the buybacks on today's prices."""
+    """What every period shares: the track summary, the issues and the buybacks on today's prices, and the
+    cluster and spotlight companies (their own 30-day windows)."""
     ctx = _ctx
     summary = store.artifact('artifacts/track_summary.parquet')
     issues = issue_rows(ctx.preferential, ctx.prices) if ctx.preferential is not None and not ctx.preferential.empty else None
-    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices)
+    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices), ideas.marked(ctx.eligible, ctx.ref)
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def _lists(_ctx, ref_key: str, days: int) -> tuple:
     """(look, warn) for one period; `ref_key` (the data's as-of day) keys the cache."""
     ctx, ref, sh = _ctx, _ctx.ref, _ctx.shareholding
-    summary, issues, bb = _inputs(ctx, ref_key)
+    summary, issues, bb, marks = _inputs(ctx, ref_key)
     return ideas.today([
-        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days), ideas.pledge_events(ctx.trades, ref, sh, days=days),
+        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days),
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.issue_events(issues, ref, sh, days=days), ideas.buyback_events(bb, ref, sh, days=days)], summary)
 
@@ -155,15 +156,19 @@ def render():
                                        label_visibility='collapsed', width='content') or DEFAULT_PERIOD
     every = {p: _lists(ctx, key, d) for p, d in ideas.PERIODS.items()}
 
-    px = ({i: r for i, r in zip(ctx.prices['isin'], ctx.prices.to_dict('records'))} if not ctx.prices.empty else {})
+    # The lookups below hold only the columns a row reads: a dict of every column of every price and
+    # shareholding row took most of each rerun (22 Oct).
+    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket') if c in ctx.prices]
+    px = ({i: r for i, r in zip(ctx.prices['isin'], ctx.prices[pcols].to_dict('records'))} if not ctx.prices.empty else {})
     sec = ctx.securities
     sectors = (dict(zip(sec['isin'], sec['sector'])) if sec is not None and not sec.empty and {'isin', 'sector'} <= set(sec.columns)
                else {})
     # Each company's latest quarter that has the promoter holding (a newer row can still be waiting for it).
-    latest = signals.latest_shareholding(ctx.shareholding)
-    if not latest.empty:
-        s = ctx.shareholding.assign(quarter_end=pd.to_datetime(ctx.shareholding['quarter_end'], errors='coerce'),
-                                    promoter_holding_pct=pd.to_numeric(ctx.shareholding['promoter_holding_pct'], errors='coerce'))
+    shd, latest = ctx.shareholding, pd.DataFrame()
+    if shd is not None and not shd.empty:
+        s = shd[[c for c in ('isin', 'symbol', 'quarter_end', 'promoter_holding_pct', 'promoter_pledge_pct') if c in shd]]
+        s = s.assign(quarter_end=pd.to_datetime(shd['quarter_end'], errors='coerce'),
+                     promoter_holding_pct=pd.to_numeric(shd['promoter_holding_pct'], errors='coerce'))
         latest = s.dropna(subset=['promoter_holding_pct']).sort_values('quarter_end')
     holding = {}
     if not latest.empty:

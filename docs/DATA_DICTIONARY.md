@@ -13,6 +13,9 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/sast.parquet` | One SAST Reg 29 disclosure line | NSE `/api/corporate-sast-reg29` | Daily (NSE Corporate Events) |
 | `clean/current/actions.parquet` | One corporate action | NSE `/api/corporates-corporateActions` | Daily |
 | `clean/current/bse_sast.parquet`, `bse_actions.parquet` | One BSE SAST disclosure line / corporate action, linked to NSE's | BSE `Corporatesast`, `DefaultData` | Nightly (R2 Storage Write) |
+| `clean/current/bse_meetings.parquet` | One BSE board meeting, linked to NSE's | BSE `boardmeeting_fno` | Nightly (R2 Storage Write) |
+| `clean/current/bse_shareholding.parquet` | One BSE-only company x quarter, in NSE's shareholding columns | BSE `Corp_Shareholding_ng` + each filing's inline XBRL | Nightly (R2 Storage Write) |
+| `clean/current/bse_promoter_group.parquet` | One BSE-only company x quarter x promoter-group member | The same inline XBRL (Table II) | Nightly (R2 Storage Write) |
 | `clean/current/meetings.parquet` | One board meeting | NSE `/api/corporate-board-meetings` | Daily |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 | `clean/current/promoter_group.parquet` | One company x quarter x promoter-group member | The same shareholding XBRL (Table II) | Daily (NSE Corporate Events) |
@@ -375,9 +378,10 @@ quarter, so year-on-year comparisons need our own history.
 
 ## Insider trades: results dates and the trading window
 
-Added by `scripts/clean_writer.py` from `clean/current/meetings.parquet`
-(`insiders_clean/trading_window.py`); blank when the company has no results
-meeting in our data in the 100 days before the trade.
+Added by `scripts/clean_writer.py` from `clean/current/meetings.parquet` plus the BSE meetings NSE has not got
+(`bse_meetings.parquet` rows with `on_nse` false, e.g. BSE-only companies; `insiders_clean/trading_window.py`),
+joined on ISIN, or on NSE symbol where a meeting has no ISIN; blank when the company has no results meeting in
+our data in the 100 days before the trade. The cleaning report's `trading_window.meetings_read` counts both parts.
 
 | Column | Meaning |
 |---|---|
@@ -405,6 +409,59 @@ Pages read NSE's table plus the BSE rows with `on_nse` false (`insiders_clean/bs
 | SAST `is_promoter` | BSE's promoter-group column (Yes/No) |
 | SAST `diluted_post_pct` | % after on a diluted basis, as filed |
 | actions `ratio`, `dividend_per_share`, `face_value_from/to` | From BSE's purpose text (`Bonus issue 1:2`, `Final Dividend - Rs. - 5.0000`, `Stock Split From Rs.5/- to Rs.1/-`). BSE gives no rights ratio or price |
+
+### bse_meetings — BSE board meetings (from 22 Oct 2026)
+
+NSE's `meetings` columns (`results`, `dividend`, `buyback`, `bonus`, `fund_raising`, `split`, `rights`,
+`preferential`, `purposes`, `description`, `intimation_ts`) plus the BSE columns above. Archive:
+`archive/bse_events/meetings/year=YYYY.parquet`; raw: `raw_v2/bse/board_meetings/`. Kept when a purpose flag is set;
+meetings on other business only (`General`, authorised capital, ...) are dropped and counted
+(`dropped_other_purposes`).
+
+| Column | Meaning |
+|---|---|
+| `meeting_date` | BSE's `MEETING_BOARD_DATE` |
+| flags | From BSE's purpose names (`PURPOSE_NAME`, joined by `;`): `Quarterly Results`, `Audited Results` -> results; `Issue Of Warrants` -> preferential; a rights issue of NCDs is not `rights`. BSE's purpose list has no fund-raising name (a QIP meeting is filed as `General`), so `fund_raising` is set only when a purpose says so |
+| `description` | BSE's purposes, joined by ` \| ` |
+| `intimation_ts` | BSE's `DT_TM`, the time the meeting was intimated |
+| `moved` | Archive only: a date BSE lists in `Table1` as moved away from (`CancelFla` `Revised`). The clean step drops these rows and the meeting listed on that date when it was intimated no later than the move (`moved_away`) |
+| `on_nse`, `nse_event_id` | NSE's table has a meeting of the same ISIN on the same day |
+
+Each window is read whole and in 15-day pieces, the rows united (`collectors/bse/events.py::meetings_window`): on
+22 Oct 2026 October 2026 asked as one month answered 892 meetings (twice), its two halves 916, the 24 missing being
+recent listings. The report counts `rows_only_in_whole_window` and `rows_only_in_pieces`.
+
+### bse_shareholding — shareholding patterns of BSE-only companies (from 22 Oct 2026)
+
+NSE's filing wins for a company on both exchanges: BSE's filing is neither read nor shown when the security master
+gives the company an NSE symbol, or its ISIN is in NSE's `shareholding` table. So the two tables never hold the same
+company and can be stacked (`insiders_clean/bse_events.py::with_bse(nse, bse)`). One row per company and quarter
+(the newest submission; older ones are `superseded` and never read). Same columns and meaning as NSE's `shareholding`
+above, read from each filing's inline XBRL (SEBI's `in-bse-shp` taxonomy, the contexts NSE's XBRL uses) by NSE's own
+parsers through `collectors/bse/parsers.py::ixbrl_facts`, with these differences:
+
+| Column | Meaning |
+|---|---|
+| `promoter_holding_pct`, `public_holding_pct`, `employee_trust_pct` | BSE's list has no holdings: computed from the XBRL as % of `pct_base_shares` (SEBI's base, as NSE's listing), to 4 decimals. `employee_trust_pct` = `non_public_other_pct` |
+| `xbrl_status` | As NSE's, plus `superseded` (a later submission of the quarter exists) and `on_nse` (an archive row whose company NSE's table has since got) |
+| `symbol`, `bse_code`, `isin`, `nse_symbol`, `listed_on`, `on_nse` | `symbol` is the BSE code (BSE-only); `listed_on` `bse` |
+| `quarter_id`, `revised` | BSE's quarter number (`nqtrid`); a fraction (`129.01`) marks a revised filing |
+| `exchange` | `BSE` |
+
+A filing whose XBRL is not read yet holds no figure and is left out (`not_parsed_yet`; it waits in the archive as
+`pending`, at most 150 read a night). Run-report counts (`clean/reports/bse_events/{date}.json`, stream
+`shareholding`): `listed`, `dual_listed_skipped`, `isin_in_nse_table_skipped`, `xbrl_fetched`, `xbrl_status`,
+`categories_status`, and in `clean`: `dual_listed_left_out`, `isin_in_nse_table_left_out`, `not_parsed_yet`,
+`unmatched_securities`; `coverage` is NSE's coverage block. Archive: `archive/bse_events/shareholding/year=YYYY.parquet`;
+raw: `raw_v2/bse/shareholding_filings/` (the lists) and `raw_v2/bse/shareholding_xbrl/` (each file gzip-compressed with
+no timestamp, `params.sha256_as_sent` the hash of the bytes BSE sent). Checked live on 22 Oct 2026: Oscar Global
+(530173) and BKM Industries (539043), Sep 2026: investor types `match`, members add up to the promoter total.
+
+### bse_promoter_group — promoter-group members of BSE-only companies
+
+NSE's `promoter_group` columns, from the same inline XBRL; write-once batches in
+`archive/bse_events/promoter_group/batch=<run time>.parquet`, the table rebuilt from all of them. The clean step adds
+these lists to NSE's for the insider filings' promoter-group link (`promoter_group_id` = `group:<ISIN>`).
 
 ## BSE insider and deals history (archive columns)
 
@@ -444,7 +501,6 @@ for a model comes later. We keep no PDFs.
 
 ## Not yet collected
 
-Board meetings and shareholding patterns from BSE (NSE's cover dual-listed companies; BSE-only companies have none).
 BSE-only companies have no Company page (it is keyed by NSE symbol).
 Results filed before 15 Oct 2026's first run in the integrated format beyond the nightly window (NSE's
 `corporates-financial-results` answers only for the old format; integrated filing is collected from 15 Oct 2026,

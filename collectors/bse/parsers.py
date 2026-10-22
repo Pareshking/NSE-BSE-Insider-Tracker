@@ -7,8 +7,12 @@ functions, no I/O.
   deal seen by both gets one canonical_event_id; the insider CSV names modes
   and dates differently from the nightly JSON, so those copies are linked in
   the clean layer instead (insiders_clean/insider.py).
-* SAST and corporate actions -> the columns of NSE's tables
-  (collectors/nse_events/parsers.py), with `exchange` = 'BSE' and `bse_code`.
+* SAST, corporate actions, board meetings and the shareholding filings list
+  -> the columns of NSE's tables (collectors/nse_events/parsers.py), with
+  `exchange` = 'BSE' and `bse_code`.
+* a shareholding pattern's inline XBRL -> the plain facts NSE's XBRL parsers
+  read (ixbrl_facts), so promoter %, pledge and the promoter-group members
+  come from the same code for both exchanges.
 """
 from __future__ import annotations
 
@@ -18,10 +22,11 @@ import io
 import json
 import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 
-from collectors.nse_events.parsers import CA_COLUMNS, SAST_COLUMNS, action_purpose
+from collectors.nse_events.parsers import BM_COLUMNS, CA_COLUMNS, SAST_COLUMNS, SH_COLUMNS, action_purpose
 from insiders_clean.dates import parse_dates
 from insiders_clean.entities import entity_display, entity_key
 from insiders_clean.history import BSE_DEALS_SOURCE as DEALS_SOURCE
@@ -269,3 +274,145 @@ def parse_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
     for c in ('ex_date', 'record_date', 'broadcast_date'):
         df[c] = parse_dates(df[c])
     return df.drop_duplicates('event_id'), dropped
+
+
+# --- board meetings --------------------------------------------------------------
+
+BSE_BM_COLUMNS = BM_COLUMNS + ['exchange', 'bse_code', 'moved']
+# BSE's purpose list (Corp_GetBoardPurposeMaster_ng, 27 names on 12 Oct 2026)
+# -> NSE's flags. It has no fund-raising name: a meeting on a QIP or another
+# raise is filed as 'General', so `fund_raising` stays false on BSE rows unless
+# the purpose says so. 'Issue Of Warrants' counts as preferential (warrants are
+# allotted preferentially, ICDR Chapter V); a rights issue of NCDs is not an
+# equity rights issue.
+BM_FLAGS = {
+    'results': r'results',
+    'dividend': r'^(interim |final |special )?dividend$',
+    'buyback': r'buy\s*-?\s*back',
+    'bonus': r'bonus',
+    'fund_raising': r'fund\s*-?\s*rais|\bqip\b|qualified\s+institution',
+    'split': r'split|sub\s*-?\s*division',
+    'rights': r'^rights?\s+issue(?!.*\bncd\b)',
+    'preferential': r'preferential|^issue of warrants$',
+}
+
+
+def _bse_ts(v) -> str | None:
+    """BSE writes the intimation time two ways: '2026-01-30T14:32:22.893'
+    (Table) and 'Jan 30 2026  2:32PM' (Table1); both -> ISO, to the minute
+    or finer."""
+    s = re.sub(r'\s+', ' ', _clean(v))
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, '%b %d %Y %I:%M%p').isoformat()
+    except ValueError:
+        return s
+
+
+def parse_board_meetings(payload: dict) -> tuple[pd.DataFrame, dict]:
+    """(meetings that consider results, dividend, buyback, bonus, split,
+    rights or a preferential issue, counts). `Table` rows are meetings as
+    listed, one row a meeting; `Table1` rows, one a purpose, are dates a
+    meeting was moved away from: kept with moved = true, so the clean step
+    can drop the date they replace (insiders_clean/bse_events.py)."""
+    out, dropped, moved_dates = [], 0, 0
+    groups: dict = {}
+    for moved, rows in ((False, (payload or {}).get('Table') or []), (True, (payload or {}).get('Table1') or [])):
+        for r in rows:
+            code, day = _clean(r.get('scrip_code')), _clean(r.get('MEETING_BOARD_DATE'))[:10]
+            if not code or not day:
+                dropped += 1
+                continue
+            g = groups.setdefault((moved, code, day), {'rows': [], 'purposes': []})
+            g['rows'].append(r)
+            g['purposes'] += [re.sub(r'\s+', ' ', p).strip() for p in str(r.get('PURPOSE_NAME') or '').split(';')]
+    for (moved, code, day), g in groups.items():
+        purposes = [p for p in dict.fromkeys(g['purposes']) if p]
+        flags = {k: any(re.search(pat, p, re.IGNORECASE) for p in purposes) for k, pat in BM_FLAGS.items()}
+        if not any(flags.values()):
+            dropped += 1
+            continue
+        moved_dates += moved
+        first = g['rows'][0]
+        ts = max((_bse_ts(r.get('DT_TM')) or '' for r in g['rows']), default='') or None
+        out.append({
+            'event_id': _id('bse_bm_moved' if moved else 'bse_bm', code, day, ts if moved else None),
+            'symbol': code, 'bse_code': code, 'isin': None,
+            'company': re.sub(r'\s*-\$\s*$', '', _clean(first.get('Long_Name') or first.get('Long_name'))) or None,
+            'meeting_date': day, **flags, 'purposes': ','.join(k for k in BM_FLAGS if flags[k]),
+            'description': ' | '.join(purposes), 'intimation_ts': ts, 'exchange': 'BSE', 'moved': moved,
+            'raw_json': _raw(first) if len(g['rows']) == 1 else '[' + ','.join(_raw(r) for r in g['rows']) + ']',
+        })
+    df = pd.DataFrame(out, columns=BSE_BM_COLUMNS) if out else pd.DataFrame(columns=BSE_BM_COLUMNS)
+    df['meeting_date'] = parse_dates(df['meeting_date'])
+    return df.drop_duplicates('event_id').reset_index(drop=True), {'dropped_other_purposes': dropped,
+                                                                   'moved_dates': moved_dates}
+
+
+# --- shareholding pattern ------------------------------------------------------------
+
+BSE_SH_COLUMNS = SH_COLUMNS + ['exchange', 'bse_code', 'quarter_id']
+XBRL_HOME = 'https://www.bseindia.com'
+
+
+def parse_shareholding_listing(rows: list[dict]) -> pd.DataFrame:
+    """Corp_Shareholding_ng rows -> NSE's shareholding listing columns. BSE's
+    list holds no holdings: promoter and public % come from the XBRL
+    (collectors/bse/events.py). `quarter_id` is BSE's quarter number; a
+    fraction (129.01) marks a revised filing of that quarter, filed later. A
+    row BSE marks IsXBRL 0 has no XBRL to read (xbrl_url blank)."""
+    out = []
+    for r in rows or []:
+        code = _clean(r.get('FLD_ScripCode'))
+        qid = str(r.get('nqtrid') or '').split('&', 1)[0].strip()
+        att = _clean(r.get('XBRLAttachment'))
+        has_xbrl = str(r.get('IsXBRL')).strip() == '1' and bool(att)
+        out.append({
+            'event_id': _id('bse_shp', code, qid, att, r.get('D')),
+            'record_id': f'{code}:{qid}', 'symbol': code or None, 'bse_code': code or None, 'isin': None,
+            'company': re.sub(r'\s*-\$\s*$', '', _clean(r.get('Company_NAme'))) or None,
+            'quarter_end': _clean(r.get('EndDate'))[:10] or None,
+            'submission_date': _clean(r.get('D')) or None,
+            'promoter_holding_pct': None, 'public_holding_pct': None, 'employee_trust_pct': None,
+            'revised': bool(re.search(r'\.\d*[1-9]\d*$', qid)),
+            'xbrl_url': (XBRL_HOME + att if att.startswith('/') else att) if has_xbrl else None,
+            'quarter_id': qid or None, 'exchange': 'BSE', 'raw_json': _raw(r),
+        })
+    df = pd.DataFrame(out, columns=BSE_SH_COLUMNS) if out else pd.DataFrame(columns=BSE_SH_COLUMNS)
+    df['quarter_end'] = parse_dates(df['quarter_end'])
+    df['submission_date'] = pd.to_datetime(df['submission_date'], errors='coerce')
+    return df.drop_duplicates('event_id').reset_index(drop=True)
+
+
+_IX_FACT = re.compile(r'<ix:(nonFraction|nonNumeric)\b([^>]*?)(?:/>|>(.*?)</ix:\1>)', re.S)
+_IX_ATTR = re.compile(r"""([\w:]+)\s*=\s*(?:'([^']*)'|"([^"]*)")""")
+_IX_CONTEXT = re.compile(r"""<xbrli:context\b[^>]*?\bid\s*=\s*['"]([^'"]+)['"]""")
+
+
+def ixbrl_facts(text: str) -> str:
+    """BSE's inline-XBRL shareholding pattern -> one plain fact a line, as in
+    the XBRL NSE serves (`<in-bse-shp:Tag contextRef="ctx">value</...>`), plus
+    each context id, so collectors/nse_events/parsers.parse_shp_xbrl and
+    parse_shp_members read it unchanged. Numbers are the stored value: the
+    figure shown times 10^scale (BSE shows 94.04 with scale -2 where NSE's
+    XML holds 0.9404), negative with sign='-', commas dropped. Checked on 4
+    filings of 12 Oct 2026 (Valencia Nutrition, Netripples Software, Cantabil
+    Retail, Utique Enterprises; taxonomy 2025-10-31): each promoter-group
+    member list adds up to its promoter total."""
+    out = [f'<xbrli:context id="{c}"/>' for c in _IX_CONTEXT.findall(text)]
+    for kind, attrs, body in _IX_FACT.findall(text):
+        a = {k: v1 or v2 for k, v1, v2 in _IX_ATTR.findall(attrs)}
+        name, ctx = a.get('name', ''), a.get('contextRef', '')
+        if not name.startswith('in-bse-shp:') or not ctx:
+            continue
+        v = re.sub(r'<[^>]+>', '', body or '').strip()
+        if kind == 'nonFraction' and v:
+            try:
+                d = Decimal(v.replace(',', '')).scaleb(int(a.get('scale') or 0))
+            except (InvalidOperation, ValueError):
+                continue
+            d = -d if a.get('sign') == '-' else d
+            v = str(int(d)) if d == d.to_integral() else format(d.normalize(), 'f')
+        out.append(f'<{name} contextRef="{ctx}">{v}</{name}>')
+    return '\n'.join(out)
