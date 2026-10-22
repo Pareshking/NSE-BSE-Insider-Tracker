@@ -38,10 +38,12 @@ class Ctx:
 
 
 def _display_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Columns only the pages use: value in crores, exchange in capitals."""
+    """Columns only the pages use: value in crores, exchange in capitals. On a shallow copy: the table's
+    other columns stay shared with the store's cached one, not held twice (setting a column replaces it in
+    this frame only)."""
     if df.empty:
         return df
-    df = df.copy()
+    df = df.copy(deep=False)
     if 'value' in df:
         df['value_cr'] = pd.to_numeric(df['value'], errors='coerce') / 1e7
     if 'listed_on' in df:
@@ -55,6 +57,7 @@ def load() -> Ctx:
 
 @st.cache_resource(ttl=600, show_spinner=False, max_entries=1)
 def _shared() -> Ctx:
+    store.prefetch()   # every object a first visit reads, from R2 at once rather than one by one
     trades = _display_columns(store.table('insider_trades'))
     elig = signals.eligible(trades) if not trades.empty else trades
     deals = _display_columns(store.table('deals'))

@@ -125,6 +125,53 @@ def test_whole_app_renders_with_bar(data_dir, monkeypatch):
     assert not at.exception, at.exception[0].value
 
 
+def test_pages_never_change_the_shared_tables(data_dir, monkeypatch):
+    """store.table, store.prices and the page context hand every visitor the same frames, not copies
+    (st.cache_resource, 22 Oct): after every page has run, each one still equals what it was."""
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    frames = "('trades', 'eligible', 'deals', 'securities', 'sast', 'actions', 'meetings', 'shareholding', 'preferential', 'rights', 'prices', 'results')"
+    snap = AppTest.from_string(APP_PATHS + f"""
+import sys
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from data import store
+from screens import ctx as C
+c = C.load()
+names = [n for n in store.TABLES if n not in store.FRESH]
+sys.__dict__['_shared_before'] = ({{n: store.table(n).copy() for n in names}}, {{f: getattr(c, f).copy() for f in {frames}}})
+""", default_timeout=60)
+    snap.run()
+    assert not snap.exception, snap.exception[0].value
+    for screen, params in PAGES:
+        code = APP_PATHS + f"""
+import streamlit as st
+for k, v in {params!r}.items():
+    st.query_params[k] = v
+from ui import theme
+theme.inject()
+import importlib
+importlib.import_module('screens.{screen}').render()
+"""
+        at = AppTest.from_string(code, default_timeout=60)
+        at.run()
+        assert not at.exception, at.exception[0].value
+    check = AppTest.from_string(APP_PATHS + f"""
+import sys
+import streamlit as st
+from data import store
+from screens import ctx as C
+tables, ctx_frames = sys.__dict__.pop('_shared_before')
+c = C.load()
+changed = [n for n, df in tables.items() if not store.table(n).equals(df)]
+changed += ['ctx.' + f for f, df in ctx_frames.items() if not getattr(c, f).equals(df)]
+st.write('changed: ' + ','.join(changed) + '|' + str(len(tables)))
+""", default_timeout=60)
+    check.run()
+    assert not check.exception, check.exception[0].value
+    out = [m.value for m in check.markdown if m.value.startswith('changed')]
+    assert out and out[0].split('|')[0] == 'changed: ' and int(out[0].split('|')[1]) > 10, out
+
+
 def test_company_board_survives_two_symbols_on_one_isin(real_nse_rows, master, calendar, report):
     """Seen on real data: two shareholding rows with one ISIN broke the
     Screener (pandas InvalidIndexError on the pledge lookup)."""
@@ -195,7 +242,7 @@ def test_universe_filter_on_pages(data_dir, monkeypatch, tmp_path):
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(root))
     at = AppTest.from_string(APP_PATHS + """
 import streamlit as st
-st.cache_data.clear()   # earlier tests cached tables from a folder without a universe
+st.cache_data.clear(); st.cache_resource.clear()   # earlier tests cached tables from a folder without a universe
 from data import store
 import pandas as pd
 st_t = store.table('insider_trades')

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
 import pandas as pd
 
 from . import evidence, signals
@@ -44,7 +45,8 @@ def _shares_out(sh: pd.DataFrame | None) -> dict:
     """ISIN -> total shares in the latest shareholding XBRL."""
     if sh is None or sh.empty or 'total_shares' not in sh:
         return {}
-    s = sh.dropna(subset=['isin']).assign(total=pd.to_numeric(sh['total_shares'], errors='coerce'))
+    # Only the three columns read: copying all sixty took half a second over Today's 22 calls (22 Oct).
+    s = sh[['isin', 'quarter_end']].dropna(subset=['isin']).assign(total=pd.to_numeric(sh['total_shares'], errors='coerce'))
     s = s.dropna(subset=['total']).sort_values('quarter_end').drop_duplicates('isin', keep='last')
     return dict(zip(s['isin'], s['total']))
 
@@ -118,18 +120,27 @@ def _verdicts(summary: pd.DataFrame | None) -> dict:
     return {k: evidence.verdict(summary, v)['kind'] for k, v in MEASURED_BY.items()}
 
 
+def marked(t: pd.DataFrame, ref: pd.Timestamp) -> tuple[set, set]:
+    """(cluster, spotlight) ISINs to `ref`: their own windows (signals.CLUSTER_DAYS, 30 days), whatever the
+    period, so a page showing four periods works them out once."""
+    if t.empty:
+        return set(), set()
+    return set(signals.clusters(t, ref)['isin']), set(signals.spotlight(t, ref)['isin'])
+
+
 def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None,
-                 summary: pd.DataFrame | None = None, limit: int = MAX_IDEAS, days: int = WINDOW) -> pd.DataFrame:
+                 summary: pd.DataFrame | None = None, limit: int = MAX_IDEAS, days: int = WINDOW,
+                 marks: tuple[set, set] | None = None) -> pd.DataFrame:
     """At most `limit` companies, one row each: the sentence, the size, the reasons (`kinds`), the
-    decision-makers behind it. `t` is the eligible insider table (signals.eligible)."""
+    decision-makers behind it. `t` is the eligible insider table (signals.eligible); `marks` is
+    marked(t, ref) when the caller has it already."""
     d = decisions(t, ref, 'BUY', sh, days)
     if d.empty:
         return d
     d = d[_qualifies(d)]
     if d.empty:
         return d
-    clus = set(signals.clusters(t, ref)['isin']) if not t.empty else set()
-    spot = set(signals.spotlight(t, ref)['isin']) if not t.empty else set()
+    clus, spot = marks if marks is not None else marked(t, ref)
     verdicts = _verdicts(summary)
     by: dict[str, list] = {}
     for r in d.sort_values('pct_of_company', ascending=False, kind='stable').to_dict('records'):
@@ -204,14 +215,30 @@ def _filings(n: int) -> str:
     return f'{n} filing' + ('' if n == 1 else 's')
 
 
+def _sums_by(keys: pd.Series, *cols: pd.Series) -> list[pd.Series]:
+    """Per key (sorted, as groupby), each column summed over the key's rows in their order, by the same
+    sum a Series slice uses: groupby's own sum adds in another order and can differ in the last bit,
+    and a sum on a threshold or a shown figure must not move. Keys must have no blanks."""
+    codes, uniq = pd.factorize(keys, sort=True)
+    order = np.argsort(codes, kind='stable')
+    cut = np.flatnonzero(np.diff(codes[order])) + 1
+    spans = list(zip(np.r_[0, cut], np.r_[cut, len(order)]))
+    out = []
+    for c in cols:
+        a = c.array.take(order)
+        out.append(pd.Series([a[s:e].sum() for s, e in spans] if len(order) else [], index=pd.Index(uniq, name=keys.name),
+                             dtype=object).infer_objects())
+    return out
+
+
 def _in_window(when: pd.Series, ref: pd.Timestamp, days: int) -> pd.Series:
     return (when <= ref + pd.Timedelta(days=1)) & (when > ref - pd.Timedelta(days=days))
 
 
-def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW) -> pd.DataFrame:
+def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW, marks: tuple[set, set] | None = None) -> pd.DataFrame:
     """Insider buys (Worth a look) and promoter sales (Watch out), from the two lists above."""
     rows = []
-    look = worth_a_look(t, ref, sh, summary, limit=10_000, days=days)
+    look = worth_a_look(t, ref, sh, summary, limit=10_000, days=days, marks=marks)
     for r in look.to_dict('records') if not look.empty else []:
         for k in r['kinds']:
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'look',
@@ -265,7 +292,8 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                          'value': None, 'last': g['seen'].max()})
     if sh is not None and not sh.empty and {'promoter_pledged_shares', 'total_shares', 'promoter_pledge_pct'} <= set(sh.columns):
         filed = sh['submission_date'] if 'submission_date' in sh else sh['quarter_end']
-        s = sh.assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'), filed=pd.to_datetime(filed, errors='coerce'),
+        read = [c for c in ('isin', 'symbol', 'company', 'quarter_end', 'xbrl_status', 'shareholding_stale') if c in sh]
+        s = sh[read].assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'), filed=pd.to_datetime(filed, errors='coerce'),
                       pl=pd.to_numeric(sh['promoter_pledge_pct'], errors='coerce'),
                       ps=pd.to_numeric(sh['promoter_pledged_shares'], errors='coerce'),
                       ts=pd.to_numeric(sh['total_shares'], errors='coerce')).dropna(subset=['isin'])
@@ -364,20 +392,26 @@ def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd
                  else pd.Series(float('nan'), index=d.index))
     d = d.assign(net_pct=by_shares.where(total.gt(0), pd.to_numeric(d['pct_of_mcap'], errors='coerce')) * sign,
                  net_val=pd.to_numeric(d['value'], errors='coerce') * sign)
+    # Per company without a loop of pandas calls per company (12 of Today's 17 s, 22 Oct).
+    nets, vals = _sums_by(d['isin'], d['net_pct'], d['net_val'])
+    lasts = d.groupby('isin')['date'].max()
+    nets = nets[nets.abs() >= FUND_NET_PCT]
+    if nets.empty:
+        return _ev([])
+    tail = d.drop_duplicates('isin', keep='last').set_index('isin')   # each company's last row, blanks kept
+    win = d['isin'].map(nets.gt(0).map({True: 'BUY', False: 'SELL'}))
+    named = d[d['side'].eq(win)].drop_duplicates(['isin', 'client_name'])
+    names = named.groupby('isin')['client_name'].agg(list)
     rows = []
-    for isin, g in d.groupby('isin'):
-        net = g['net_pct'].sum()
-        if abs(net) < FUND_NET_PCT:
-            continue
-        side = 'BUY' if net > 0 else 'SELL'
-        names = g.loc[g['side'] == side, 'client_name'].drop_duplicates().tolist()
-        lead = (names[0] + (f' and {len(names) - 1} more' if len(names) > 1 else '')) if names else 'Funds'
+    for isin, net in nets.items():
+        who = names.get(isin, [])
+        lead = (who[0] + (f' and {len(who) - 1} more' if len(who) > 1 else '')) if who else 'Funds'
         verb = 'bought' if net > 0 else 'sold'
-        rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
+        rows.append({'isin': isin, 'company': tail.at[isin, 'company'], 'nse_symbol': tail.at[isin, 'nse_symbol'],
                      'list': 'look' if net > 0 else 'warn', 'kind': 'Fund buying' if net > 0 else 'Funds selling',
                      'pct_of_company': abs(net),
                      'sentence': f'{lead} {verb} a net {abs(net):.2f}% of the company in bulk/block deals',
-                     'value': abs(g['net_val'].sum()), 'last': g['date'].max()})
+                     'value': abs(vals[isin]), 'last': lasts[isin]})
     return _ev(rows)
 
 
@@ -460,6 +494,13 @@ def _group(lst: str, kinds: list) -> tuple:
     return len(GROUPS[lst]), 'Other', kinds
 
 
+def _desc(v) -> tuple:
+    """Sort key: largest first, a blank last (pandas' descending order with na_position='last')."""
+    if pd.isna(v):
+        return (1, 0)
+    return (0, -v.value if isinstance(v, pd.Timestamp) else -v)
+
+
 def today(events: list, summary: pd.DataFrame | None = None) -> tuple:
     """(worth a look, watch out): one row per company and list, in its group (GROUPS), led by its largest
     event in that group, every kind as a chip with its measured read; ordered by group, then % of the
@@ -472,14 +513,22 @@ def today(events: list, summary: pd.DataFrame | None = None) -> tuple:
     out = []
     for lst in ('look', 'warn'):
         x = ev[ev['list'] == lst].dropna(subset=['isin'])
+        # One pass over the rows in plain Python, not a pandas sort per company (11 of Today's 14 s on a
+        # full-size table, 22 Oct). The same order as before: companies by ISIN; within one, its events of
+        # the group first, then the largest share of the company, then the latest, blanks last, ties as filed.
+        by: dict = {}
+        for rec in x.to_dict('records'):
+            by.setdefault(rec['isin'], []).append(rec)
         rows = []
-        for isin, g in x.groupby('isin'):
-            kinds = list(dict.fromkeys(g['kind']))
+        for isin in sorted(by):
+            g = by[isin]
+            kinds = list(dict.fromkeys(r['kind'] for r in g))
             order, name, members = _group(lst, kinds)
-            g = g.assign(_in=g['kind'].isin(members)).sort_values(['_in', 'pct_of_company', 'last'], ascending=False)
-            lead = g.iloc[0].drop(labels='_in').to_dict()
+            inside = set(members)
+            g = sorted(g, key=lambda r: (r['kind'] not in inside, _desc(r['pct_of_company']), _desc(r['last'])))
+            lead = dict(g[0])
             lead.update(kinds=kinds, group=name, group_order=order, reads={k: reads.get(k) or 'not_measured' for k in kinds},
-                        others=[t for t in g['sentence'].drop_duplicates() if t != lead['sentence']])
+                        others=[t for t in dict.fromkeys(r['sentence'] for r in g) if t != lead['sentence']])
             rows.append(lead)
         r = pd.DataFrame(rows)
         out.append(r.sort_values(['group_order', 'pct_of_company', 'last'], ascending=[True, False, False]).reset_index(drop=True)
