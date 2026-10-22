@@ -193,8 +193,8 @@ def render():
     cl, cw = _counts(look), _counts(warn)
     bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Promoters selling')
     with top:
-        st.html(f'<h1 class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
-                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(span)} to {kit.day(ctx.ref)}</span></h1>')
+        st.html(f'<div class="head"><h1 class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
+                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(span)} to {kit.day(ctx.ref)}</span></h1></div>')
     n = lambda d, k: d.get(k, 0)   # noqa: E731
     with head:
         kit.tiles([
