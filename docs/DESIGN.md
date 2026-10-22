@@ -5,7 +5,7 @@ against this list before it merges. Tokens and rules live in `streamlit_app/ui/i
 and `ui/table.css`; pages never set their own colours, sizes or fonts.
 
 ## Layout
-- A white top bar with four links (Today, Companies, Evidence, Filings) and a company search; no side menu
+- A white top bar with four links (Today, Companies, Filings, Evidence) and a company search; no side menu
   on desktop (on a phone Streamlit's slide-out menu carries the same four links).
 - The page uses the screen's width with 24 px gutters (12 px on a phone), as the owner's screener; cards are flat (1 px border, 8 px corners, no shadow).
 - Filters: search and the main choice in sight, everything else in one "Filters & sort" popover. No CSV export.

@@ -65,8 +65,8 @@ SECTIONS = {
     '': [
         st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
-        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
         st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
+        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),   # last in the menu (owner, 22 Oct)
     ],
 }
 def _search_picked():
