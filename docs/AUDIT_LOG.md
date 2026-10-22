@@ -94,6 +94,50 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
   (Rs 29.44 Cr), as shown.
 - Thyrocare "Big investor in": HSBC Mutual Fund bought 1.88% to 6.63% (SAST Reg 29(1)).
 
+## Part 5: strict investor audit of the live site (22 Oct), checked against NSE's and BSE's own files
+
+Clean rows read with `scripts/clean_peek.py` (workflow *Clean peek*, read-only).
+
+### D12 Retired ISINs hid companies' shareholding (wrong number, fixed #190; 2,820 rows re-keyed 08:19 IST)
+- **Shown**: Electrosteel, Kapston, T T, HCL Tech and others with no promoter holding, no pledge, no ownership table; their
+  % of the company on value over market cap (Electrosteel 4.21% for 4.39%).
+- **Source**: NSE's shareholding list files Electrosteel under INE086A01011 (the ISIN before its split; now INE086A01029),
+  HCL Tech under "IN9860A01017"; the site cuts every table to the universe by ISIN, so those rows were dropped.
+- **Fix**: `add_identity`: a filed ISIN the security master does not know gives way to the symbol's current one
+  (`isin_filed` kept, `isin_replaced` counted: 2,820 in the first run).
+
+### D13 Pledges counted up to three times (wrong number, fixed #190; live after Clean only)
+- **Shown**: Aequs "pledged a net 29.97% of the company"; the 30 Sep 2026 XBRL: 10,05,13,070 of 67,06,65,635 = 14.99%.
+- **Cause**: NSE's nightly mapper kept no quantity for a pledge (only buys and sales), so NSE rows never paired with their
+  BSE copies; BSE's CSV and nightly feeds disagreed on a pledge's side (ACQUISITION vs none), so its two copies stayed.
+- **Fix**: a pledge has no side; an NSE pledge takes its shares from its BSE copy before pairing; NSE's mapper keeps them
+  (`otherQuantity`, out of the row id); nobody nets more pledged than they hold. Tests on the Aequs rows.
+
+### D14 SAST stakes in warrants or voting rights called "bought" (misleading, fixed #190)
+- Craft Emerging's 5.79% of Jindal Supreme is "Voting Rights other than by shares"; the filed `acqType` is now the clean
+  column `instrument` (from raw for stored rows: 424 equity shares, 4 others, 3 warrants, 1 voting rights).
+
+### D15 Funds' net % on value over market cap (inconsistent, fixed #190)
+- Every other kind is shares over total shares; RHI Magnesita's funds: 10.09% shown, 2,19,41,224 / 20,65,00,000 = 10.62%.
+
+### D16 Results labelled "Year to" and always "consolidated" (wrong label, fixed #190, #191)
+- HCL Tech's two 30 Sep filings: NSE's `consolidated` is text, so both read as consolidated; the figures were six months.
+  The timeline now shows the quarter (the year to date in its facts); the store loads the quarter columns.
+
+### D17 Links reloaded the app; no company had an address (wrong behaviour, fixed #193)
+- A link inside the app's frame on streamlit.app loaded the whole site again inside the frame: a new session, the address
+  bar unchanged. `ui/nav.py` switches page in the session; the address changes and back works.
+
+### D18 Phone tables: one column visible, rows opened by a small arrow, all detail rows drawn up front (fixed #193)
+- Filings drew 200 hidden detail rows (about 10,000 elements, 375 KB) on every visit; on a phone only the company column
+  showed. Rows are cards on a phone, a tap opens them, facts are drawn on the first open.
+
+### Checked and right (22 Oct)
+- Bliss GVS pledge 0% to 95.8%: Anupam Rasayan, the new promoter (47.95%), pledged 5,09,84,595 of 5,32,36,264 shares.
+- RattanIndia Power 43.1%: 1,02,03,20,114 of 2,36,61,03,603 promoter shares pledged (30 Sep XBRL).
+- AXISCADES and RHI Magnesita fund buying: the promoter's (Jupiter Capital) and Dalmia Bharat Refractories' block sales
+  went to the funds named, on 29 and 22 Sep, at Rs 1,824 and Rs 360.
+
 ## Part 3: data layer (`docs/audit/data_layer.md`), batch 2
 
 Each item: before and after on the test fixture (`tests/test_audit_data_layer.py`), the rule, the test.
