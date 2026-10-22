@@ -379,15 +379,7 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 .grp h3 { margin: 0; padding: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-2); }
 .grp span { font-size: var(--fs-small); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .grp-more { margin: 6px 4px 0; font-size: var(--fs-small); } .grp-more a { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
-.trend { width: 100%; border-collapse: collapse; font-size: var(--fs-small); font-variant-numeric: tabular-nums; }
-.trend th, .trend td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
-.trend thead th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); text-align: right; }
-.trend tbody th { text-align: left; font-weight: 500; color: var(--ink-2); padding-left: 8px; }
-.trend tbody tr.look th { border-left: 2px solid var(--buy); } .trend tbody tr.warn th { border-left: 2px solid var(--sell); }
-.trend td { text-align: right; color: var(--ink); width: 13%; }
-.trend .on { background: var(--subtle); font-weight: 650; }
-.trend tr:last-child th, .trend tr:last-child td { border-bottom: 0; }
-.bar-rules { margin: 0; padding-left: 16px; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.45; }
+ .bar-rules { margin: 0; padding-left: 16px; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink-2); line-height: 1.45; }
 .bar-all { display: inline-block; margin-top: 10px; font-size: var(--fs-small); font-weight: 600; color: var(--accent-ink); text-decoration: none; }
 
 /* ---- Evidence: one small scorecard table (21 Oct) ---- */
@@ -437,7 +429,6 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 /* ---- Today, looks pass (22 Oct): the headline is the page's first line ---- */
 h1.headline, .head h1.headline { margin: 6px 0 0; font-size: 22px !important; line-height: 1.3; font-weight: 600; letter-spacing: -0.015em; }
 h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
-.trend tbody th { white-space: nowrap; }
 /* the period chips sit right of the headline and never clip */
 .st-key-td_period { display: flex; justify-content: flex-end; }
 /* the in-app link catcher (ui/nav.py): drawn empty (a hidden one sends nothing), its gap taken back */
@@ -451,20 +442,6 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
 .st-key-td_bar { margin: 4px 0 2px; }
 .st-key-td_bar [data-testid="stPopover"] button { border-radius: 8px; font-weight: 600; }
 
-/* Today's trend, at the foot: one small bar chart per group, 1D / 7D / 30D / 90D */
-.tr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-.tr-c { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 8px; background: var(--surface); }
-.tr-c p { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tr-c.look p::before, .tr-c.warn p::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
-.tr-c.look p::before { background: var(--buy); } .tr-c.warn p::before { background: var(--sell); }
-.tr-bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; height: 74px; align-items: end; }
-.tr-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 3px; }
-.tr-b b { font-size: 11.5px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.tr-b i { display: block; width: 100%; max-width: 26px; border-radius: 3px 3px 0 0; min-height: 0; }
-.tr-c.look .tr-b i { background: var(--buy-tint); } .tr-c.warn .tr-b i { background: var(--sell-tint); }
-.tr-c.look .tr-b.on i { background: var(--buy); } .tr-c.warn .tr-b.on i { background: var(--sell); }
-.tr-b.on b { color: var(--ink); font-weight: 700; }
-.tr-b span { font-size: 10px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; }
 .idea .kv span { white-space: nowrap; }   /* the three labels on one line when the lists sit side by side */
 .own-note { margin: 6px 2px 0; font-size: 12px; color: var(--ink-3); }
 
