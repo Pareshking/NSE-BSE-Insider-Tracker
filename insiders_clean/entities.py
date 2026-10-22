@@ -54,12 +54,22 @@ def entity_key(name) -> str | None:
     return s.lower().replace(' ', '-')
 
 
+# A courtesy title before a person's name ("Mr. Sachidanand H Upadhyay", Today 23 Oct 2026) and a company
+# suffix filed in capitals inside a mixed-case name ("Thirumalai Chemicals LTD"): display only, the key is
+# untouched.
+_COURTESY = re.compile(r'^(?:MR|MRS|MS|MISS|SMT|KUM)\.?\s+(?=\S+\s+\S)', re.I)
+_SUFFIX_CAPS = {'LTD': 'Ltd', 'LTD.': 'Ltd.', 'PVT': 'Pvt', 'PVT.': 'Pvt.', 'LIMITED': 'Limited', 'PRIVATE': 'Private'}
+
+
 def entity_display(name) -> str | None:
     if is_missing(name):
         return None
     s = re.sub(r'\s+', ' ', _strip_note(html.unescape(str(name)))).strip()
+    s = _COURTESY.sub('', s)
     if s.upper() == s and any(ch.isalpha() for ch in s):
         s = ' '.join(_title_word(w) for w in s.split(' '))
+    else:
+        s = ' '.join(_SUFFIX_CAPS.get(w, w) for w in s.split(' '))
     return s or None
 
 

@@ -27,6 +27,10 @@ from .missing import is_missing
 
 _SUFFIX_RE = re.compile(r'[\s,.]*\b(limited|ltd|ltd\.)\.?\s*$', re.IGNORECASE)
 _VOWELS = set('AEIOU')
+# Acronyms with a vowel that title case would spoil ("Sbi Mutual Fund", "Huf" on Today, 23 Oct 2026).
+_ACRONYMS = frozenset('SBI ICICI HDFC IDFC IDBI IIFL UTI LIC ITC DSP PPFAS HUF AMC AIF ETF FPI IPO OFS ESOP AU UCO IOB IFCI '
+                      'ONGC GAIL BHEL BEML IRB IRCON IOC ACC ABB EIH PVR IRFC IREDA HUDCO IRCTC NALCO SAIL CESC REC PFC '
+                      'HCL TCS UPL DLF JSW TVS GMR KEC KPIT NLC HAL BEL RVNL ITI'.split())
 
 
 def display_name(name) -> str | None:
@@ -48,7 +52,7 @@ def _title_word(w: str) -> str:
     letters = [ch for ch in w if ch.isalpha()]
     # Keep likely acronyms (NTPC, BSE, M&M) in capitals: no vowels, or a
     # one/two-letter token. Everything else is title-cased.
-    if not letters or len(letters) <= 2 or not (set(letters) & _VOWELS):
+    if not letters or len(letters) <= 2 or not (set(letters) & _VOWELS) or ''.join(letters).upper() in _ACRONYMS:
         return w
     return w[:1].upper() + w[1:].lower()
 

@@ -17,7 +17,7 @@ from screens import buybacks
 from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.ctx import load, need_data, with_flags
 
-READ = {'leaning_positive': 'ahead', 'drag': 'behind', 'no_edge': 'no edge', 'few': 'few cases', 'not_measured': 'not measured'}
+READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
 # Timeline kinds shown until switched off; the rest (ESOPs, gifts, transfers) on request.
 QUIET = ('Other insider filing',)
 
