@@ -139,5 +139,6 @@ inapp.links({**{p.url_path: p for p in ALL}, '': SECTIONS[''][0]})
 nav.run()
 
 st.html('<p class="foot">NSE and BSE disclosures, cleaned nightly · prices from the NSE and BSE daily bhavcopy, '
-        'split and bonus adjusted · check the exchange filing before acting.</p>')
+        'split and bonus adjusted · check the exchange filing before acting · charts by '
+        '<a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a>.</p>')
 st.page_link(DATA_PAGE, label='How clean is the data?', icon=':material/fact_check:')

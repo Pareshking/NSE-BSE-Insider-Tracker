@@ -134,6 +134,8 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
         f = _finite(v)
         if f is None:
             return NA, '', 'r'
+        if 0 < abs(f) < 0.001:   # a few lakh in a large company: no signal, so no sign and no colour (audit 22 Oct)
+            return '<span class="na">&lt;0.001%</span>', _sv(f), 'r num'
         tone = ('up' if f > 0 else 'down' if f < 0 else '') if k == 'spct' else ''
         return pct(f, 2 if abs(f) >= 0.1 else 3, signed=(k == 'spct')), _sv(f), f'r num {tone}'
     if k == 'bar':
