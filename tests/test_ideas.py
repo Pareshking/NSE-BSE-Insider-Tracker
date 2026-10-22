@@ -194,3 +194,20 @@ def test_fund_nets_are_shares_over_total_shares_when_the_xbrl_gives_the_total():
     out = ideas.fund_events(deals, None, REF, sh=sh).iloc[0]
     assert abs(out['pct_of_company'] - 21941224 / 206500000 * 100) < 1e-9
     assert abs(ideas.fund_events(deals, None, REF).iloc[0]['pct_of_company'] - 10.2) < 1e-9   # no total: value basis
+
+
+def test_a_pledge_row_names_the_lender_from_reg_31():
+    """Reg 31 names who holds the shares (free text, as filed); the row's figures stay the PIT filings'."""
+    sh = pd.DataFrame({'isin': ['INE0AEQUS011'], 'symbol': ['AEQUS'], 'company': ['Aequs'],
+                       'quarter_end': pd.to_datetime(['2026-09-30']), 'total_shares': [670e6]})
+    t = pd.DataFrame([pledge('2026-10-15', 'pledge_create', 100513070)])
+    enc = pd.DataFrame({'symbol': ['AEQUS', 'AEQUS', 'AEQUS', 'OTHER'],
+                        'event_type': ['Creation', 'Creation', 'Release', 'Creation'],
+                        'encumbrance_type': ['Pledge', 'Non disposal undertaking', 'Pledge', 'Pledge'],
+                        'lender': ['Catalyst  Trusteeship Limited', 'N.A.', 'Axis Bank', 'Someone'],
+                        'shares': [100513070, 10, 5, 1], 'broadcast_date': pd.to_datetime(['2026-10-16'] * 4)})
+    s = ideas.pledge_events(t, REF, sh, enc=enc).iloc[0]['sentence']
+    assert s.endswith('; lender as filed (Reg 31): Catalyst Trusteeship Limited; Reg 31 calls it a non-disposal undertaking')
+    assert ideas.pledge_events(t, REF, sh).iloc[0]['sentence'] == ideas.pledge_events(t, REF, sh, enc=enc.iloc[3:]).iloc[0]['sentence']
+    old = enc.assign(broadcast_date=pd.to_datetime(['2026-01-02'] * 4))         # outside the window: nothing added
+    assert 'Reg 31' not in ideas.pledge_events(t, REF, sh, enc=old).iloc[0]['sentence']

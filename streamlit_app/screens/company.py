@@ -306,7 +306,7 @@ def render():
     own = lambda f: f[f['isin'] == isin] if isin and f is not None and not f.empty and 'isin' in f else None  # noqa: E731
     bb = buybacks.rows(own(store.table('buybacks')), ctx.prices)
     pros, cons = ideas.company_view([
-        ideas.insider_events(e, ctx.ref, mine_sh, summary), ideas.pledge_events(t, ctx.ref, mine_sh),
+        ideas.insider_events(e, ctx.ref, mine_sh, summary), ideas.pledge_events(t, ctx.ref, mine_sh, enc=ctx.encumbrances),
         ideas.stake_events(own(ctx.sast), ctx.ref), ideas.fund_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
         ideas.promoter_deal_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
         ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh), ideas.buyback_events(bb, ctx.ref, mine_sh)], summary)

@@ -46,7 +46,7 @@ def _lists(_ctx, ref_key: str, days: int) -> tuple:
     ctx, ref, sh = _ctx, _ctx.ref, _ctx.shareholding
     summary, issues, bb, marks = _inputs(ctx, ref_key)
     return ideas.today([
-        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days),
+        ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days, enc=ctx.encumbrances),
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.promoter_deal_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.issue_events(issues, ref, sh, days=days), ideas.buyback_events(bb, ref, sh, days=days)], summary)
