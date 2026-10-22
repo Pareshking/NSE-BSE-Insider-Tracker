@@ -47,7 +47,18 @@ SAST_COLUMNS = ['event_id', 'symbol', 'company', 'target_company', 'transaction_
                 'percent_equity_traded', 'acquirer_name', 'acquirer_id', 'is_promoter', 'regulation',
                 'action_type', 'mode', 'is_market', 'trade_date_from', 'trade_date_to', 'shares_acquired',
                 'shares_sold', 'shares_after', 'pct_acquired', 'pct_sold', 'post_stake_pct', 'broadcast_ts',
-                'application_no', 'attachment', 'raw_json']
+                'application_no', 'attachment', 'instrument', 'raw_json']
+
+
+def sast_instrument(raw_json) -> str | None:
+    """What the stake is in, as filed (acqType: 'Equity shares', 'Warrant', 'Voting Rights other than by shares',
+    'Others'), from a stored filing's raw JSON; None when not filed. A warrant or a voting right is not a
+    share bought (audit 22 Oct: Craft Emerging's 5.79% of Jindal Supreme is voting rights)."""
+    try:
+        v = json.loads(raw_json).get('acqType') if isinstance(raw_json, str) else None
+    except (ValueError, AttributeError):
+        return None
+    return v.strip() if isinstance(v, str) and v.strip() else None
 
 
 def parse_sast(rows: list[dict]) -> pd.DataFrame:
@@ -81,6 +92,7 @@ def parse_sast(rows: list[dict]) -> pd.DataFrame:
             'broadcast_ts': r.get('timestamp') or r.get('sysTime'),
             'application_no': r.get('application_no'),
             'attachment': r.get('attachement'),
+            'instrument': (r.get('acqType') or '').strip() or None,
             'raw_json': _raw(r),
         })
     df = _frame(out, SAST_COLUMNS)

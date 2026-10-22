@@ -160,6 +160,8 @@ def to_row(rec, filing):
         'sellquantity':    qty if txn_type == 'Disposal' else '',
         'buyValue':        val if txn_type == 'Acquisition' else '',
         'sellValue':       val if txn_type == 'Disposal' else '',
+        # A pledge, release or invocation is neither: its shares were dropped before 22 Oct 2026 (audit).
+        'otherQuantity':   qty if txn_type not in ('Acquisition', 'Disposal') else '',
         'beforeSharesNo':  rec.get('SecuritiesHeldPriorToAcquisitionOrDisposalNumberOfSecurity', ''),
         'afterSharesNo':   rec.get('SecuritiesHeldPostAcquistionOrDisposalNumberOfSecurity', ''),
         'modeOfAcquisition': rec.get('ModeOfAcquisitionOrDisposal', ''),

@@ -243,8 +243,16 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
         t['seen'] = pd.to_datetime(t['broadcast_date'], errors='coerce')
         t = t[_in_window(t['seen'], ref, days)].dropna(subset=['isin'])
         t['q'] = pd.to_numeric(t['quantity'], errors='coerce') * t['kind'].map({'pledge_create': 1, 'pledge_revoke': -1})
+        # Nobody pledges more than they hold: a release filed without its shares (NSE, before 22 Oct) would
+        # otherwise leave the pledges around it summed (Aequs, 08 Oct).
+        held = pd.concat([pd.to_numeric(t[c], errors='coerce') if c in t else pd.Series(float('nan'), index=t.index)
+                          for c in ('holding_before', 'holding_after')], axis=1).max(axis=1)
+        t = t.assign(_held=held, _who=t['person_id'] if 'person_id' in t else t.index.astype(str))
+        per = t.groupby(['isin', '_who']).agg(q=('q', 'sum'), held=('_held', 'max')).reset_index()
+        per['q'] = per['q'].clip(lower=-per['held'], upper=per['held']).where(per['held'].notna(), per['q'])
+        capped = per.groupby('isin')['q'].sum()
         for isin, g in t.groupby('isin'):
-            net = g['q'].sum()
+            net = capped.get(isin, 0.0)
             pct = abs(net) / total[isin] * 100 if total.get(isin) else None
             if pct is None or pct < MIN_PCT:
                 continue
@@ -318,18 +326,23 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
         after = pd.to_numeric(r.get('post_stake_pct'), errors='coerce')
         name = str(r.get('acquirer_name') or 'An investor')
         holds = f', now holds {after:.2f}%' if pd.notna(after) else ''
+        # Filed as warrants, voting rights or 'Others': a stake, but not shares bought or sold (audit 22 Oct:
+        # Craft Emerging's 5.79% of Jindal Supreme is voting rights).
+        kind = r.get('instrument')
+        via = f' (filed as {str(kind).lower()}, not shares)' if isinstance(kind, str) and kind.lower() != 'equity shares' else ''
         base = {'isin': r['isin'], 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'),
                 'value': None, 'last': r['when']}
         if pd.notna(bought) and bought > 0 and (bought >= BIG_CHANGE or (pd.notna(after) and after >= BIG_STAKE > after - bought)):
             rows.append({**base, 'list': 'look', 'kind': 'Big investor in', 'pct_of_company': float(bought),
-                         'sentence': f'{name} bought {bought:.2f}% of the company{holds}'})
+                         'sentence': f'{name} {"took" if via else "bought"} {bought:.2f}% of the company{via}{holds}'})
         elif pd.notna(sold) and sold > 0 and (sold >= BIG_CHANGE or (pd.notna(after) and after < BIG_STAKE <= after + sold)):
             rows.append({**base, 'list': 'warn', 'kind': 'Big investor out', 'pct_of_company': float(sold),
-                         'sentence': f'{name} sold {sold:.2f}% of the company{holds}'})
+                         'sentence': f'{name} {"gave up" if via else "sold"} {sold:.2f}% of the company{via}{holds}'})
     return _ev(rows)
 
 
-def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
+def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW,
+                sh: pd.DataFrame | None = None) -> pd.DataFrame:
     """Funds' net buying (Worth a look) or selling (Watch out) in bulk/block deals over `days`: institutional
     client types only (insiders_clean/participants.py), market makers out, a deal that is an insider's own
     filed trade left to the insider lists. Size: net % of the company."""
@@ -344,7 +357,12 @@ def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd
     if d.empty:
         return _ev([])
     sign = d['side'].map({'BUY': 1, 'SELL': -1})
-    d = d.assign(net_pct=pd.to_numeric(d['pct_of_mcap'], errors='coerce') * sign,
+    # % of the company as every other kind: shares over total shares, value over market cap only where the
+    # shareholding XBRL gives no total (audit 22 Oct).
+    total = d['isin'].map(_shares_out(sh))
+    by_shares = (pd.to_numeric(d['quantity'], errors='coerce') / total * 100 if 'quantity' in d
+                 else pd.Series(float('nan'), index=d.index))
+    d = d.assign(net_pct=by_shares.where(total.gt(0), pd.to_numeric(d['pct_of_mcap'], errors='coerce')) * sign,
                  net_val=pd.to_numeric(d['value'], errors='coerce') * sign)
     rows = []
     for isin, g in d.groupby('isin'):
