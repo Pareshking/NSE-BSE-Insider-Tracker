@@ -413,7 +413,7 @@ def test_events_history_archive_clean_and_report(master):
                          'shares_sold': infy['shares_sold']}])
     r2.objects['clean/current/sast.parquet'] = parquet(nse.astype({'trade_date_to': 'datetime64[ns]'}))
     bse = EventsBSE(sast, js('actions_20251008_20251015.json'))
-    rep = events.run(events.Store(r2), bse, date(2026, 10, 12), start=date(2025, 11, 1), end=date(2025, 12, 31),
+    rep = events.run(events.Store(r2), bse, date(2026, 10, 12), ('sast', 'actions'), start=date(2025, 11, 1), end=date(2025, 12, 31),
                      master=master, log=lambda *_: None)
     s = rep['streams']['sast']
     assert s['chunks_done'] == 2 and s['dropped_other_regulations'] == {'10(5)': 2, '10(6)': 2}
@@ -427,14 +427,14 @@ def test_events_history_archive_clean_and_report(master):
     assert rep['streams']['actions']['clean']['rows'] > 0 and 'clean/current/bse_actions.parquet' in r2.objects
     # a rerun resumes: nothing fetched again, nothing added twice
     bse2 = EventsBSE(sast, js('actions_20251008_20251015.json'))
-    rep2 = events.run(events.Store(r2), bse2, date(2026, 10, 12), start=date(2025, 11, 1), end=date(2025, 12, 31),
+    rep2 = events.run(events.Store(r2), bse2, date(2026, 10, 12), ('sast', 'actions'), start=date(2025, 11, 1), end=date(2025, 12, 31),
                       master=master, log=lambda *_: None)
     assert bse2.calls == [] and rep2['streams']['sast']['chunks_skipped_done'] == 2
 
 
 def test_events_dry_run_counts_only():
     bse = EventsBSE(js('sast_202511.json'), js('actions_20251008_20251015.json'))
-    rep = events.run(None, bse, date(2025, 11, 30), days=29, log=lambda *_: None)
+    rep = events.run(None, bse, date(2025, 11, 30), ('sast', 'actions'), days=29, log=lambda *_: None)
     assert rep['dry_run'] and rep['streams']['sast']['fetched'] > 0 and rep['streams']['actions']['fetched'] > 0
 
 

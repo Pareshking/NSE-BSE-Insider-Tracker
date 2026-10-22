@@ -24,8 +24,10 @@ says where they live, what each rule does, and how storage is kept small.
 
    and rebuilds the clean tables from the whole archive. Insider trades then
    get the results date and trading-window columns from the NSE events
-   collector's `clean/current/meetings.parquet` (`insiders_clean/trading_window.py`;
-   a failure there is a note in the report, never a missing table).
+   collector's `clean/current/meetings.parquet` plus the BSE meetings NSE has not
+   got (`clean/current/bse_meetings.parquet`, written earlier in the same run;
+   `insiders_clean/trading_window.py`; a failure there is a note in the report,
+   never a missing table).
 
 Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 
@@ -80,6 +82,10 @@ filtered: round trips, duplicates, amendments and unreadable dates all stay.
 |---|---|
 | `raw_v2/{source}/{dataset}/blobs/{sha256[:2]}/{sha256}.{ext}` | Response body, byte for byte, named by its own SHA-256 (same bytes = one object) |
 | `raw_v2/{source}/{dataset}/fetches/{YYYY-MM-DD}/{utc timestamp}_{sha12}.json` | One record per fetch: URL, parameters, HTTP status, content type, UTC time, size, hash, collector, git commit, covered date range |
+
+BSE's board meetings, shareholding lists and shareholding XBRLs go to
+`raw_v2/bse/{board_meetings|shareholding_filings|shareholding_xbrl}/` (the XBRLs
+gzip-compressed, as NSE's), through the BSE client before parsing.
 
 The NSE events collector stores board meetings, tender offers and daily
 buyback reports here too (`raw_v2/nse/{meetings|tenders|daily_buybacks}/`),
@@ -149,7 +155,8 @@ needs, and left blank across a split or bonus.
 
 ## Promoter-group link (insider filings)
 
-The clean step reads `clean/current/promoter_group.parquet` and adds
+The clean step reads `clean/current/promoter_group.parquet` (plus
+`bse_promoter_group.parquet`, the lists of BSE-only companies) and adds
 `promoter_group_id` to every insider filing whose filer is in the company's
 latest promoter-group list (`insiders_clean/promoter_group.py`). Identity only:
 the filer's `person_id` (`entity_key` of the name) equals a member's key, or the
@@ -384,12 +391,15 @@ Then run **Clean only** so insider trades get the trading-window columns.
 ## BSE history
 
 `scripts/bse_history_backfill.py` (insider, bulk, block) and `collectors/bse/events.py`
-(SAST, corporate actions) read BSE's own history endpoints (`collectors/bse/client.py`;
-parameters and caps confirmed 12 Oct 2026). Run from Actions -> **BSE History Backfill**
+(SAST, corporate actions, board meetings, shareholding patterns) read BSE's own history endpoints
+(`collectors/bse/client.py`; parameters and caps confirmed 12 Oct 2026, the meetings and shareholding ones
+again on 22 Oct 2026). Run from Actions -> **BSE History Backfill**
 (dataset, from, to, redo, dry run; dry run is the default), or locally:
 
     python scripts/bse_history_backfill.py --dataset all --dry-run
     python -m collectors.bse.events --from 2025-10-08 --dataset sast --dry-run
+    python -m collectors.bse.events --from 2025-07-01 --dataset meetings
+    python -m collectors.bse.events --from 2025-10-08 --dataset shareholding --max-xbrl 900
 
 | Dataset | Endpoint | One call | Cap |
 |---|---|---|---|
@@ -397,9 +407,13 @@ parameters and caps confirmed 12 Oct 2026). Run from Actions -> **BSE History Ba
 | `bulk` / `block` | `BulkDealData_ng?DealType=1/2`, filtered on the deal date | 10 / 31 days | none seen |
 | `sast` | `Corporatesast?ddlregul=ALL`, filtered on the first acquisition date | a month, read three ways (below) | none seen, but some windows answer `[]` |
 | `actions` | `DefaultData?strSearch=S`, filtered on the ex-date | a month | none seen (a year = its months) |
+| `meetings` | `boardmeeting_fno?ddlsegment=C`, filtered on the meeting date, past and ahead | a month (nightly: 30 days back to 60 ahead), read whole and in 15-day pieces | none by size (Feb 2026 = 3,603 in one call), but a call can leave rows out: Oct 2026 as one month 892, its halves 916 (22 Oct) |
+| `shareholding` | `Corp_Shareholding_ng?flag=`, a period back from today (3 = 15 days nightly, 6 = a year in history mode), then each filing's inline XBRL | the list once; at most `--max-xbrl` files (150) | none seen (22 Oct: flag 6 = 23,672 filings of 5,106 companies) |
 
 - **Nightly** (R2 Storage Write, before the clean step): insider and deals for the
-  last 10 days (`--recent 10`), SAST and actions for the last 30. The page capture
+  last 10 days (`--recent 10`), SAST, actions and board meetings for the last 30
+  (meetings also 60 days ahead), the shareholding list of the last 15 days with at
+  most 150 XBRLs (the rest wait as `pending`). The page capture
   (`bse_raw_capture_v2.py`) reads BSE's defaults only (today's deals; the day's
   insider filings plus a fixed older block), so a missed day was never filled.
 - **Deals** map to exactly the nightly row, so a deal both stored has one id; a
@@ -414,6 +428,11 @@ parameters and caps confirmed 12 Oct 2026). Run from Actions -> **BSE History Ba
   client moves to an XHR from inside a bseindia.com page in headless Chrome for the
   rest of the run (`via: in_page_xhr` in the raw fetch record); tried 12 Oct, same
   answers as requests.
+- **Shareholding** of BSE-only companies only: NSE's filing wins for a company on both
+  exchanges (an NSE symbol in the security master, or the ISIN in NSE's
+  `shareholding` table; both counted), so `bse_shareholding` and NSE's `shareholding`
+  never hold the same company. Columns and parsers are NSE's (`docs/DATA_DICTIONARY.md`).
+  A filing's XBRL that answers 404 fails that file only.
 - Pacing 4-6 s, 3 retries, stop on 401/403/429; resumable through
   `archive/_backfill/bse_{dataset}.json`; reports in `clean/reports/backfill/` and
   `clean/reports/bse_events/`. Shares the `r2-archive-writes` concurrency group.

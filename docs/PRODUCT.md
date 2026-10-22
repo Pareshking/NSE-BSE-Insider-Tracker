@@ -148,8 +148,8 @@ reader can't get by scrolling the exchange pages:
 | Company `/company?symbol=` | Everything about one company on one page |
 | Person or fund `/entity?id=` | Everything one insider or fund did, across companies |
 
-Still to add (see `docs/TODO.md`): BSE board meetings and shareholding, a
-Company page for BSE-only companies, named-investor aliases as names are checked.
+Still to add (see `docs/TODO.md`): pages reading the BSE board meetings and shareholding
+(collected from 22 Oct 2026), a Company page for BSE-only companies, named-investor aliases as names are checked.
 
 ## What the research found (leads, not proof)
 

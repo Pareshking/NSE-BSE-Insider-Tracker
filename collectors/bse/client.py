@@ -24,6 +24,20 @@ Endpoints, parameters and caps confirmed with real answers on 12 Oct 2026
 * corporate actions: DefaultData/w?ddlcategorys=E&ddlindustrys=&segment=0
   &strSearch=S&Fdate=YYYYMMDD&TDate=YYYYMMDD&Purposecode=&scripcode=.
   Filters on the ex-date; a year in one call = the sum of its months.
+* board meetings: boardmeeting_fno/w?securityName=&txtDate=DD/MM/YYYY
+  &txtTodate=DD/MM/YYYY&ddlPurpose=&ddlindustry=&ddlsegment=C, the call behind
+  BSE's board-meetings page. Filters on the meeting date, past and ahead (Jul
+  2025 and Sep-Dec 2026 answered); no cap seen (Feb 2026: 3,603 meetings = its
+  two halves, 3,422 + 181). `Table` holds each meeting once, its purposes
+  joined by ';'; `Table1` the earlier dates of meetings that were moved
+  (CancelFla 'Revised', same intimation time as the new date in `Table`).
+* shareholding pattern: Corp_Shareholding_ng/w?scripcode=&flag=&indtype=, the
+  filings list behind BSE's shareholding search. No dates: `flag` is a period
+  back from today (1 today, 2 a week, 3 15 days, 4 a month, 5 3 months, 6 a
+  year; 12 Oct 2026: flag 6 = 23,818 filings of 5,110 companies). No holdings
+  in it: each row links its filing as inline XBRL (XBRLFILES/SHPXBRLDataXML/
+  ..._SP.html on www.bseindia.com), SEBI's in-bse-shp taxonomy with NSE's
+  context names (parsers.ixbrl_facts).
 
 Same headers as the `bse` package, which the nightly market-cap step already
 uses from GitHub's runners. 4-6 s between calls, 3 retries on network errors
@@ -39,6 +53,8 @@ response text in UTF-8, marked `via: in_page_xhr` in the fetch record.
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import random
 import time
@@ -66,6 +82,10 @@ class Blocked(RuntimeError):
 
 class Failed(RuntimeError):
     """Still failing after the retries (network error or 5xx)."""
+
+
+class Missing(Failed):
+    """A filing's file answered 404: that file only, not a refusal."""
 
 
 def ymd(d: date) -> str:
@@ -132,12 +152,18 @@ class BSEClient:
 
     def _fetch(self, url: str, params: dict) -> tuple[int, str, bytes]:
         if self.via == 'in_page_xhr':
-            return self.in_page.get(f'{url}?{urlencode(params)}')
+            return self.in_page.get(f'{url}?{urlencode(params)}' if params else url)
         r = self.session.get(url, params=params, timeout=45)
         return r.status_code, r.headers.get('Content-Type', ''), r.content
 
     def get(self, path: str, params: dict, dataset: str, covers: dict | None = None) -> bytes:
-        url = API + path
+        return self.fetch_url(API + path, params, dataset, covers)
+
+    def fetch_url(self, url: str, params: dict, dataset: str, covers: dict | None = None,
+                  file: bool = False) -> bytes:
+        """`file`: one filing's file (a 404 is Missing, not a refusal), kept
+        gzip-compressed in raw_v2 (no timestamp, so the same file is one
+        blob), with the SHA-256 of the bytes as sent."""
         last = None
         for _ in range(RETRIES + 1):
             self._wait()
@@ -159,12 +185,20 @@ class BSEClient:
             if status == 0 or status >= 500:
                 last = f'HTTP {status} from {url} ({self.via})'
                 continue
+            if status == 404 and file:
+                raise Missing(f'HTTP 404 from {url}')
             if status != 200:
                 raise Blocked(f'HTTP {status} from {url} ({self.via})')
             if self.raw is not None:
+                stored, kw = body, {}
+                if file:
+                    stored = gzip.compress(body, 9, mtime=0)
+                    kw = {'params': dict(params or {}, stored_as='gzip', sha256_as_sent=hashlib.sha256(body).hexdigest()),
+                          'content_type': 'application/gzip'}
                 try:  # exact bytes first, before any parsing
-                    self.raw.put('bse', dataset, body, url=url, params=params, status=status,
-                                 content_type=ctype or None, covers=dict(covers or {}, via=self.via))
+                    self.raw.put('bse', dataset, stored, url=url, status=status,
+                                 **({'params': params, 'content_type': ctype or None} | kw),
+                                 covers=dict(covers or {}, via=self.via))
                 except Exception as e:  # noqa: BLE001 -- never continue without the raw copy
                     raise Failed(f'raw store write failed: {type(e).__name__}: {e}') from e
             return body
@@ -181,12 +215,15 @@ class BSEClient:
             raise Blocked(f'not the insider CSV ({body[:60]!r})')
         return body
 
-    def _json(self, path, params, dataset, covers):
+    def _payload(self, path, params, dataset, covers):
         body = self.get(path, params, dataset, covers)
         try:
-            payload = json.loads(body.decode('utf-8', errors='replace'))
+            return json.loads(body.decode('utf-8', errors='replace'))
         except ValueError:
             raise Blocked(f'not JSON from {path} ({body[:60]!r})') from None
+
+    def _json(self, path, params, dataset, covers):
+        payload = self._payload(path, params, dataset, covers)
         rows = payload.get('Table') if isinstance(payload, dict) else payload
         if not isinstance(rows, list):
             raise Blocked(f'JSON without a row list from {path}')
@@ -222,6 +259,25 @@ class BSEClient:
             raise Blocked('JSON without a row list from AnnSubCategoryGetData')
         total = (payload.get('Table1') or [{}])[0].get('ROWCNT')
         return rows, int(total) if isinstance(total, (int, float)) else None
+
+    def board_meetings(self, a: date, b: date) -> dict:
+        """{'Table': meetings in [a, b] by meeting date, 'Table1': moved-from dates}."""
+        payload = self._payload('boardmeeting_fno/w', {'securityName': '', 'txtDate': dmy(a), 'txtTodate': dmy(b),
+                                                       'ddlPurpose': '', 'ddlindustry': '', 'ddlsegment': 'C'},
+                                'board_meetings', {'from': a.isoformat(), 'to': b.isoformat()})
+        if not isinstance(payload, dict) or not isinstance(payload.get('Table'), list):
+            raise Blocked('board meetings: JSON without a Table list')
+        return {'Table': payload['Table'], 'Table1': payload.get('Table1') or []}
+
+    def shareholding_filings(self, flag: int) -> list[dict]:
+        return self._json('Corp_Shareholding_ng/w', {'scripcode': '', 'flag': str(flag), 'indtype': ''},
+                          'shareholding_filings', {'flag': flag})
+
+    def shareholding_xbrl(self, url: str, covers: dict | None = None) -> bytes:
+        """One filing's inline XBRL, as sent (raw copy gzip-compressed)."""
+        if url.startswith('/'):
+            url = HOME.rstrip('/') + url
+        return self.fetch_url(url, {}, 'shareholding_xbrl', covers, file=True)
 
     def close(self):
         if self.in_page is not None:
