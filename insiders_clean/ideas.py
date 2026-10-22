@@ -255,12 +255,43 @@ def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW, marks: tup
     return _ev(rows)
 
 
-def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = WINDOW) -> pd.DataFrame:
+# Reg 31's lender field as filed: blank, 'N.A.', '-' or 'Nil' names nobody.
+LENDER_BLANK = re.compile(r'^\s*(?:n\.?\s*a\.?|nil|none|not applicable|-+)?\s*$', re.I)
+_REG31_TYPE = {'Pledge created': 'Creation', 'Pledge released': 'Release', 'Pledge invoked': 'Invocation'}
+_REG31_NOT_PLEDGE = {'Non disposal undertaking': 'a non-disposal undertaking', 'Others': 'an encumbrance other than a pledge'}
+
+
+def _reg31(enc: pd.DataFrame | None, symbol, kind: str, ref: pd.Timestamp, days: int) -> str:
+    """What the company's SAST Reg 31 disclosures of the same period and type add to a PIT pledge row: the
+    lender as filed (the largest event's first; the field is free text, so it is shown as written, cut at 80
+    characters) and the encumbrance when it is not a pledge. Empty when Reg 31 has no such event: the row's
+    figures always come from the PIT filings, this only names who holds the shares."""
+    if enc is None or enc.empty or not symbol or kind not in _REG31_TYPE or not {'symbol', 'event_type'} <= set(enc.columns):
+        return ''
+    e = enc[enc['symbol'].astype(str).str.upper().eq(str(symbol).upper()) & enc['event_type'].eq(_REG31_TYPE[kind])]
+    e = e[_in_window(pd.to_datetime(e['broadcast_date'], errors='coerce'), ref, days)]
+    if e.empty:
+        return ''
+    e = e.assign(_s=pd.to_numeric(e['shares'], errors='coerce')).sort_values('_s', ascending=False, na_position='last')
+    named = [x for x in dict.fromkeys(' '.join(str(v).split()) for v in e['lender'].dropna()) if not LENDER_BLANK.match(x)]
+    out = ''
+    if named:
+        first = named[0] if len(named[0]) <= 80 else named[0][:79].rstrip(' ,;') + '…'
+        more = f' and {len(named) - 1} more' if len(named) > 1 else ''
+        out += f'; lender as filed (Reg 31): {first}{more}'
+    other = [_REG31_NOT_PLEDGE[t] for t in dict.fromkeys(e['encumbrance_type'].dropna().astype(str)) if t in _REG31_NOT_PLEDGE]
+    if other:
+        out += f'; Reg 31 calls it {" and ".join(other)}'
+    return out
+
+
+def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = WINDOW, enc=None) -> pd.DataFrame:
     """Promoters pledging (Watch out) or releasing a pledge (Worth a look). From the PIT filings of the
     period, net per company: shares released and pledged again (a renewal, a change of lender) are no new
     pledge (Aequs, Sep-Oct 2026: 10.05 crore shares pledged, released, pledged again). And from a
     shareholding XBRL made public in the period whose pledge moved 5+ points of promoter shares from the
-    quarter before, both quarters parsed. Size: shares over total shares."""
+    quarter before, both quarters parsed. Size: shares over total shares. `enc`, the SAST Reg 31 table,
+    names the lender on the PIT rows (`_reg31`)."""
     rows = []
     total = _shares_out(sh)
     if trades is not None and not trades.empty and 'kind' in trades:
@@ -285,10 +316,12 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                 continue
             made, freed = int((g['kind'] == 'pledge_create').sum()), int((g['kind'] == 'pledge_revoke').sum())
             how = f' ({made} pledged, {freed} released)' if made and freed else f' ({_filings(len(g))})'
+            kind = 'Pledge created' if net > 0 else 'Pledge released'
             rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
-                         'list': 'warn' if net > 0 else 'look', 'kind': 'Pledge created' if net > 0 else 'Pledge released',
+                         'list': 'warn' if net > 0 else 'look', 'kind': kind,
                          'pct_of_company': pct,
-                         'sentence': f'Promoters {"pledged" if net > 0 else "released"} a net {pct:.2f}% of the company{how}',
+                         'sentence': f'Promoters {"pledged" if net > 0 else "released"} a net {pct:.2f}% of the company{how}'
+                                     + _reg31(enc, g['nse_symbol'].iloc[-1], kind, ref, days),
                          'value': None, 'last': g['seen'].max()})
         # A lender invoking a pledge takes the shares (and usually sells them): a forced sale, the warning a
         # pledge stands for. Left out of Today before 22 Oct (Sigachi, RPS Industries, 1,15,03,000 shares, Jan 2026;
@@ -304,7 +337,8 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                 continue
             rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
                          'list': 'warn', 'kind': 'Pledge invoked', 'pct_of_company': pct,
-                         'sentence': f'Lenders invoked pledged promoter shares: {pct:.2f}% of the company ({_filings(len(g))})',
+                         'sentence': f'Lenders invoked pledged promoter shares: {pct:.2f}% of the company ({_filings(len(g))})'
+                                     + _reg31(enc, g['nse_symbol'].iloc[-1], 'Pledge invoked', ref, days),
                          'value': None, 'last': g['seen'].max()})
     if sh is not None and not sh.empty and {'promoter_pledged_shares', 'total_shares', 'promoter_pledge_pct'} <= set(sh.columns):
         filed = sh['submission_date'] if 'submission_date' in sh else sh['quarter_end']

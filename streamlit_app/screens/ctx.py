@@ -35,6 +35,7 @@ class Ctx:
     latest: dict
     marks: dict | None = None   # ISIN -> [(day made public, side)], for the sparklines
     results: pd.DataFrame | None = None   # NSE results (columns the cards use), for the size against the last full year
+    encumbrances: pd.DataFrame | None = None   # SAST Reg 31 events: the lender on the pledge rows
 
 
 def _display_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -69,7 +70,7 @@ def _shared() -> Ctx:
                shareholding=with_bse(store.table('shareholding'), store.table('bse_shareholding')),
                preferential=store.table('preferential'),
                rights=store.table('rights'), prices=store.prices(), ref=signals.as_of(trades), latest=store.latest(),
-               marks=_marks(elig), results=store.table('results'))
+               marks=_marks(elig), results=store.table('results'), encumbrances=store.table('encumbrances'))
 
 
 def need_data(ctx: Ctx) -> bool:
