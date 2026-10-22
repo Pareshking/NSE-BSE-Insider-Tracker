@@ -356,6 +356,26 @@ def main() -> int:
                 odd = e[~e[st].astype(str).str.lower().str.contains('equity|share|^none$|^nan$|^$', regex=True)]
                 show(odd.sort_values('value', ascending=False), TR_COLS + [st], 20)
 
+    if on('pgroup'):
+        from insiders_clean import promoter_group as pgm
+        pg = read_parquet(r2, 'clean/current/promoter_group.parquet')
+        head(f'promoter_group members: {0 if pg is None else len(pg)} rows')
+        if pg is not None and not pg.empty:
+            lists = pgm.latest_lists(pg)
+            ids = set(zip(lists['co'], lists['member_id'])) | set(zip(lists['co'], lists['member_alt_id'].dropna()))
+            d = deals[~b(deals['client_is_market_maker'])].copy()
+            d['value'] = pd.to_numeric(d['value'], errors='coerce')
+            d['member'] = [(i, c) in ids for i, c in zip(d['isin'], d['client_id'])]
+            f = d[d['member'] & d['client_type'].isin(signals.FUND_TYPES)]
+            print('fund-typed legs by promoter-group members:', len(f), 'Rs', round(f['value'].sum() / 1e7, 1), 'Cr')
+            show(f.sort_values('value', ascending=False), ['date', 'company', 'client_name', 'client_type', 'side', 'quantity', 'value'], 25)
+            allm = d[d['member']]
+            print('all legs by members:', len(allm), allm['client_type'].value_counts().to_dict())
+            for sym in ('GLAND', 'EPL', 'FOSECOIND', 'TENNIND'):
+                x = pg[pg['symbol'].astype(str).str.upper().eq(sym)]
+                q = x['quarter_end'].max() if len(x) else None
+                print(f'-- {sym} latest {q}:', x[x['quarter_end'] == q]['member_name'].astype(str).tolist()[:12])
+
     if on('cases'):
         head('cases: rows behind the findings')
         tv = pd.to_datetime(tr['trade_date_to'], errors='coerce')
