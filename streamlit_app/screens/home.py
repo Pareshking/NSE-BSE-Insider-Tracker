@@ -12,7 +12,7 @@ from data import store
 from ui import kit
 from ui.kit import Tile, esc
 
-from insiders_clean import ideas, signals
+from insiders_clean import ideas
 from screens import buybacks
 from screens.ctx import issue_rows, load, need_data, split_since
 
@@ -150,15 +150,19 @@ def render():
                                    label_visibility='collapsed') or DEFAULT_PERIOD
     every = {p: _lists(ctx, key, d) for p, d in ideas.PERIODS.items()}
 
-    px = ({i: r for i, r in zip(ctx.prices['isin'], ctx.prices.to_dict('records'))} if not ctx.prices.empty else {})
+    # The lookups below hold only the columns a row reads: a dict of every column of every price and
+    # shareholding row took most of each rerun (22 Oct).
+    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket') if c in ctx.prices]
+    px = ({i: r for i, r in zip(ctx.prices['isin'], ctx.prices[pcols].to_dict('records'))} if not ctx.prices.empty else {})
     sec = ctx.securities
     sectors = (dict(zip(sec['isin'], sec['sector'])) if sec is not None and not sec.empty and {'isin', 'sector'} <= set(sec.columns)
                else {})
     # Each company's latest quarter that has the promoter holding (a newer row can still be waiting for it).
-    latest = signals.latest_shareholding(ctx.shareholding)
-    if not latest.empty:
-        s = ctx.shareholding.assign(quarter_end=pd.to_datetime(ctx.shareholding['quarter_end'], errors='coerce'),
-                                    promoter_holding_pct=pd.to_numeric(ctx.shareholding['promoter_holding_pct'], errors='coerce'))
+    shd, latest = ctx.shareholding, pd.DataFrame()
+    if shd is not None and not shd.empty:
+        s = shd[[c for c in ('isin', 'symbol', 'quarter_end', 'promoter_holding_pct', 'promoter_pledge_pct') if c in shd]]
+        s = s.assign(quarter_end=pd.to_datetime(shd['quarter_end'], errors='coerce'),
+                     promoter_holding_pct=pd.to_numeric(shd['promoter_holding_pct'], errors='coerce'))
         latest = s.dropna(subset=['promoter_holding_pct']).sort_values('quarter_end')
     holding = {}
     if not latest.empty:
