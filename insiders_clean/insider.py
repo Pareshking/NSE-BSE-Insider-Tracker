@@ -71,10 +71,19 @@ _MODE_RULES = [
     (r'buy[\s-]*back', 'buyback'),
     (r'transmission|inherit|succession', 'transmission'),
     (r'allot', 'allotment'),
+    # A block or bulk deal is a trade on the exchange: BSE files the block-window sales NSE files as 'Market
+    # Sale' (Stylam, Bajaj Finserv, Thyrocare 2183, audit 22 Oct), so the two copies must read alike.
+    (r'block\s*deal|bulk\s*deal', 'market'),
     (r'market\s*(purchase|sale|sell|buy)|open market|on[\s-]*market|market', 'market'),
     (r'^others?$|^any other', 'other'),
 ]
 _ROLE_RULES = [
+    # A relative is filed under the insider's own word ("Directors Immediate Relative"), so the relative rules
+    # come first: a director's relative is no director (audit 22 Oct: Mkventures Capital's "director" cluster of
+    # 23 Sep 2026 was three relatives and an HUF). A promoter's immediate relative is promoter group by SEBI's
+    # definition (ICDR Reg 2(1)(pp)(ii)).
+    (r'promoters?\W*(immediate\s*)?relative', 'promoter_group'),
+    (r'immediate\s*relative|relative', 'immediate_relative'),
     (r'promoter\s*group', 'promoter_group'),
     (r'promoter', 'promoter'),
     (r'director', 'director'),
@@ -84,6 +93,18 @@ _ROLE_RULES = [
     (r'employee', 'employee'),
     (r'other', 'other'),
 ]
+# The transaction type says pledge, release or invocation where the mode is blank (NSE 'PLEDGE REVOKE' 111 rows,
+# BSE 'REVOKE' 60, audit 22 Oct): the kind is taken from it. First match wins.
+_TYPE_KIND_RULES = [(r'invo[ck]', 'pledge_invoke'), (r'revo[ck]|releas', 'pledge_revoke'), (r'pledge|encumb', 'pledge_create')]
+
+
+def kind_from_type(transaction_type) -> str | None:
+    """A pledge kind from the filed transaction type, or None."""
+    s = '' if is_missing(transaction_type) else str(transaction_type).strip().lower()
+    for pat, kind in _TYPE_KIND_RULES:
+        if re.search(pat, s):
+            return kind
+    return None
 
 
 # What filers write when a field is empty.
@@ -364,33 +385,95 @@ def _pledge_quantity_from_bse(df: pd.DataFrame) -> int:
     """NSE's nightly rows carry no quantity for a pledge (its mapper keeps one only for a buy or a sale),
     so they never pair with their BSE copy and the pledge is counted on both exchanges. An NSE pledge row
     without shares takes them from the BSE row of the same security, person and kind whose trade dates
-    agree (`_dates_agree`), one BSE row each; the pairing that follows then links the two. Returns how
-    many were filled (in the run report)."""
+    agree (`_dates_agree`), one BSE row each; the pairing that follows then links the two. BSE's nightly
+    feed files some pledges with neither a mode nor a transaction type (kind 'missing'): such a row, with no
+    side and the holding unchanged as a pledge leaves it, is the copy too and takes the NSE row's kind
+    (Thyrocare, Docon Technologies' release of 7,94,69,696 shares on 17 Aug 2026, NSE appId 2325: the BSE
+    copy stood as a Rs 4,916 Cr trade of no kind, audit 22 Oct). Returns how many were filled (in the run
+    report)."""
     pledge = df['kind'].astype(str).str.startswith('pledge')
+    nan = pd.Series(np.nan, index=df.index)
+    hb, ha = (pd.to_numeric(df[c], errors='coerce') if c in df else nan for c in ('holding_before', 'holding_after'))
+    side = df['side'] if 'side' in df else nan
+    blank = df['kind'].eq('missing') & side.isna() & _true(hb.notna() & (hb == ha))
     n = df[pledge & df['exchange'].eq('nse') & df['quantity'].isna()].dropna(subset=['isin', 'person_id'])
-    b = df[pledge & df['exchange'].eq('bse') & df['quantity'].notna()].dropna(subset=['isin', 'person_id'])
+    b = df[(pledge | blank) & df['exchange'].eq('bse') & df['quantity'].notna()].dropna(subset=['isin', 'person_id'])
     if n.empty or b.empty:
         return 0
-    groups = {k: g for k, g in b.groupby(['isin', 'person_id', 'kind'], sort=False)}
+    groups = {k: g for k, g in b.groupby(['isin', 'person_id'], sort=False)}
     used, filled = set(), 0
     for i, r in n.iterrows():
-        cand = groups.get((r['isin'], r['person_id'], r['kind']))
+        cand = groups.get((r['isin'], r['person_id']))
         if cand is None:
             continue
-        for j, c in cand.iterrows():
+        cand = cand[cand['kind'].isin([r['kind'], 'missing'])]
+        # A BSE row of the NSE row's own kind first, a blank one after.
+        for j, c in sorted(cand.iterrows(), key=lambda x: x[1]['kind'] == 'missing'):
             if j not in used and _dates_agree(r['trade_date_from'], r['trade_date_to'], c['trade_date_from'],
                                               c['trade_date_to'], not bool(c.get('_bse_csv', False))):
                 df.at[i, 'quantity'] = c['quantity']
+                if c['kind'] == 'missing':
+                    df.at[j, 'kind'] = r['kind']
                 used.add(j)
                 filled += 1
                 break
     return filled
 
 
+def _refiled_with_other_holdings(order: pd.DataFrame, key_cols: list[str]) -> pd.Index:
+    """Rows of `order` (latest first) that repeat a later row but for the holdings (see the caller)."""
+    key = [c for c in key_cols if c not in ('holding_before', 'holding_after')]
+    sized = order[_true(order['quantity'] > 0) & _true(order['value'] > 0)].dropna(subset=['person_id'])
+    many = sized[sized.duplicated(subset=key, keep=False)]
+    out = []
+    for _, g in many.groupby(key, dropna=False, sort=False):
+        before, after = set(g['holding_before'].dropna()), set(g['holding_after'].dropna())
+        if before & after:
+            continue   # tranches: one row starts where another ended
+        out.extend(g.index[1:])
+    return pd.Index(out)
+
+
+GROUP_TRANSFER_PRICE_GAP = 0.02
+
+
+def _promoter_group_transfers(df: pd.DataFrame) -> pd.Series:
+    """Market trades that move shares inside the promoter group: on one exchange, a promoter or promoter-group
+    filer's market buy and another's market sale of the same company, on the same trade dates, of the same
+    number of shares at prices within 2%, paired one to one. The group holds what it held: no decision to buy
+    or sell, so they are read as an inter-se transfer (kind 'inter_se', never market), marked
+    `promoter_group_transfer`. P&G Hygiene, 19 Jun 2026: P&G Home Products bought 6,19,683 shares from Temple
+    Trees Impex at Rs 8,995.50; Bajaj Finserv, 27 Apr 2026: Bajaj Holdings & Investment bought 20,90,050 from
+    Bajaj Auto Holdings in the block window (audit 22 Oct: 41 such pairs, Rs 1,745 Cr, both sides shown)."""
+    out = pd.Series(False, index=df.index)
+    m = df[df['kind'].eq('market') & df['person_role'].isin(['promoter', 'promoter_group']) & df['side'].isin(['BUY', 'SELL'])
+           & _true(df['quantity'] > 0)].dropna(subset=['isin', 'person_id', 'trade_date_to'])
+    if m.empty:
+        return out
+    frm = m['trade_date_from'].where(m['trade_date_from'].notna(), m['trade_date_to'])
+    m = m.assign(gt_from=frm, gt_px=(m['value'] / m['quantity']))
+    for _, g in m.groupby(['exchange', 'isin', 'gt_from', 'trade_date_to', 'quantity'], sort=False):
+        if g['side'].nunique() < 2:
+            continue
+        sells = list(g[g['side'].eq('SELL')].itertuples())
+        for b in g[g['side'].eq('BUY')].itertuples():
+            for k, s_ in enumerate(sells):
+                close = (pd.notna(b.gt_px) and pd.notna(s_.gt_px) and s_.gt_px > 0
+                         and abs(b.gt_px - s_.gt_px) <= GROUP_TRANSFER_PRICE_GAP * s_.gt_px)
+                if s_.person_id != b.person_id and close:
+                    out.loc[[b.Index, s_.Index]] = True
+                    sells.pop(k)
+                    break
+    return out
+
+
 def _revision_marked(d: pd.DataFrame) -> pd.Series:
-    """NSE rows of a filing NSE lists as a 'Revision' that carry no prevAppId."""
+    """NSE rows of a filing NSE lists as a 'Revision' that carry no prevAppId we can follow."""
     st = d['nse_submission_type'].astype('string').str.strip().str.lower().fillna('')
-    return d['exchange'].eq('nse') & st.str.startswith('revis') & d['prev_app_id'].isna()
+    # A prevAppId that names no filing we hold says no more than a blank one: NSE's list numbers filings
+    # apart from its prevAppId (Info Edge's revision 3962 of 08 Oct 2026 points at 47977; its original is 2427).
+    known = set(d['app_id'].dropna()) - {''}
+    return d['exchange'].eq('nse') & st.str.startswith('revis') & (d['prev_app_id'].isna() | ~d['prev_app_id'].isin(known))
 
 
 def _superseded_by_marker(d: pd.DataFrame) -> tuple[pd.Index, dict]:
@@ -480,6 +563,11 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
 
     # --- classification ---
     df['kind'] = df['mode_raw'].map(classify_mode)
+    # No mode filed, but the transaction type says pledge, release or invocation: that is the kind.
+    by_type = df['transaction_type_raw'].map(kind_from_type)
+    from_type = df['kind'].eq('missing') & by_type.notna()
+    df.loc[from_type, 'kind'] = by_type[from_type]
+    t['kind_from_transaction_type'] = int(from_type.sum())
     df['is_market'] = df['kind'].eq('market')
     df['side'] = [side_of(tt, m) for tt, m in zip(df['transaction_type_raw'], df['mode_raw'])]
     df['person_role'] = df['person_category_raw'].map(classify_role)
@@ -557,6 +645,9 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # otherwise a repeat (Prakash Steelage appIds 3136 and 3138, identical).
     df = _merge_truncated_names(df)
     df = _fill_missing_roles(df, report)
+    df['_bse_csv'] = df['source'].eq(BSE_INSIDER_SOURCE).fillna(False).astype(bool)
+    # Before the removals and the flags, so a blank BSE pledge copy is read with the kind it takes.
+    t['pledge_quantity_from_bse'] = _pledge_quantity_from_bse(df)
     keep = pd.Series(True, index=df.index)
     known_app = set(df['app_id'].dropna()) - {''}
     superseded = df['app_id'].isin(set(df['prev_app_id'].dropna()) & known_app)
@@ -567,7 +658,6 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # revision that corrects the quantity or the value changes the very
     # fields the content match below compares, so both rows would count.
     # The marker settles it (`_superseded_by_marker`).
-    df['_bse_csv'] = df['source'].eq(BSE_INSIDER_SOURCE).fillna(False).astype(bool)
     by_marker, t['revision_marker'] = _superseded_by_marker(df[keep])
     report.removed('insider_trades', 'superseded_by_revision_marker', df.loc[by_marker, 'source_id'])
     keep.loc[by_marker] = False
@@ -588,10 +678,15 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # `bse_same_filing_two_feeds` (its mode is spelt differently in each feed,
     # so it would otherwise read as a correction).
     df['_key_to'] = df['trade_date_to'].where(df['exchange'] != 'bse', df['trade_date_from'])
-    key_cols = ['exchange', 'isin', 'symbol', 'person_id', 'side', 'quantity', 'value',
+    # The value to the nearest Rs 10: NSE's nightly XBRL parse and its history file round one value apart by a
+    # rupee (Vikram Solar's two releases of 19 Feb 2026, Rs 1,577.56 Cr each, audit 22 Oct).
+    df['_value_key'] = df['value'].round(-1)
+    df['_has_mode'] = df['mode_raw'].notna()
+    key_cols = ['exchange', 'isin', 'symbol', 'person_id', 'side', 'quantity', '_value_key',
                 'trade_date_from', '_key_to', 'holding_before', 'holding_after']
+    # Latest first; on a tie the copy that files a mode.
     order = (df[keep].assign(_b=df['broadcast_ts'])
-             .sort_values(['_b', 'app_num', '_bse_csv'], ascending=False, na_position='last'))
+             .sort_values(['_b', 'app_num', '_has_mode', '_bse_csv'], ascending=False, na_position='last'))
     groups = order.groupby(key_cols, dropna=False)
     latest_mode = groups['mode_raw'].transform('first')
     dup = order.duplicated(subset=key_cols, keep='first')
@@ -604,7 +699,20 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
                              'nightly_json': int((df['exchange'].eq('bse') & ~df['_bse_csv']).sum())}
     report.table('insider_trades')['removal_breakdown'] = _removal_breakdown(raw, df, order, dup, key_cols)
     keep.loc[dup[dup].index] = False
+    # A trade filed again with other holdings: the same person, security, side, shares, value and trade dates,
+    # the holdings before and after typed differently, and the rows not one after the other (no row's holding
+    # after is another's holding before, as two tranches of one day would be). The latest broadcast is kept.
+    # VIP Industries, 24 Dec 2025: BSE carries Multiples Private Equity's two buys (Rs 539.88 Cr and Rs 489.55
+    # Cr) twice each, holdings 8,876 and 8,049 shares apart; Info Edge, Kapil Kapoor's Rs 68.05 Cr sale of
+    # 18-20 Aug 2026, NSE appIds 2427 and 3962 (audit 22 Oct).
+    refiled = _refiled_with_other_holdings(order[~dup], key_cols)
+    report.removed('insider_trades', 'refiled_with_other_holdings', df.loc[refiled, 'source_id'])
+    keep.loc[refiled] = False
     df = df[keep].copy()
+    group_transfer = _promoter_group_transfers(df)
+    df.loc[group_transfer, 'kind'] = 'inter_se'
+    df.loc[group_transfer, 'is_market'] = False
+    t['promoter_group_transfers_on_market'] = int(group_transfer.sum())
 
     # --- flags: kept, but held back from rankings until checked ---
     flags = [[] for _ in range(len(df))]
@@ -660,6 +768,8 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     marks = [[] for _ in range(len(df))]
     for i in np.flatnonzero(_true(market & pc.isin(['below', 'above']))):
         marks[i].append('price_outside_day_range')
+    for i in np.flatnonzero(group_transfer.to_numpy()):
+        marks[i].append('promoter_group_transfer')
     df['flags'] = [','.join(f) for f in flags]
     df['marks'] = [','.join(m) for m in marks]
     df['needs_review'] = df['flags'] != ''
@@ -685,7 +795,6 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['is_primary'] = True
     df['primary_id'] = None
     df['listed_on'] = df['exchange']
-    t['pledge_quantity_from_bse'] = _pledge_quantity_from_bse(df)
     pairs = _pair_copies(df[df['exchange'].eq('nse')], df[df['exchange'].eq('bse')])
     if pairs:
         n_idx, b_idx = (list(x) for x in zip(*pairs))

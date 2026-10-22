@@ -11,6 +11,7 @@ puts one fund's trades on another's page, which is worse than a split.
 """
 from __future__ import annotations
 
+import html
 import re
 
 import numpy as np
@@ -40,7 +41,9 @@ def _strip_note(name: str) -> str:
 def entity_key(name) -> str | None:
     if is_missing(name):
         return None
-    s = _strip_note(str(name)).upper().replace('&', ' & ')
+    # An HTML entity as filed ("Procter &amp; Gamble Home Products", NSE PIT, 19 Jun 2026) is the character it
+    # stands for: one company, not two filers (audit 22 Oct).
+    s = _strip_note(html.unescape(str(name))).upper().replace('&', ' & ')
     s = re.sub(r"[.,'()\"/\\-]", ' ', s)
     for pat, rep in _EQUIVALENTS:
         s = re.sub(pat, rep, s)
@@ -54,7 +57,7 @@ def entity_key(name) -> str | None:
 def entity_display(name) -> str | None:
     if is_missing(name):
         return None
-    s = re.sub(r'\s+', ' ', _strip_note(str(name))).strip()
+    s = re.sub(r'\s+', ' ', _strip_note(html.unescape(str(name)))).strip()
     if s.upper() == s and any(ch.isalpha() for ch in s):
         s = ' '.join(_title_word(w) for w in s.split(' '))
     return s or None

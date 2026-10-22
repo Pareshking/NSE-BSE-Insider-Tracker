@@ -67,7 +67,7 @@ class Calendar:
 
     def sessions_after(self, start, end):
         """Sessions in (start, end]. None when the calendar can't answer."""
-        if start is None or end is None or not self.covers(start, end):
+        if start is None or end is None or start != start or end != end or not self.covers(start, end):   # NaT != NaT
             return None
         if end <= start:
             return 0
