@@ -32,28 +32,28 @@ Status: open / checked (right) / fixed (PR) / not done (why).
 ## 2. Questions an investor would ask of each (the checklist)
 
 Insider trades
-- [ ] Is every "buy" a buy with the person's own money on the market? ESOP exercise, gift, inheritance, inter-se
+- [x] (T3, T4, T8; right otherwise) Is every "buy" a buy with the person's own money on the market? ESOP exercise, gift, inheritance, inter-se
       transfer, off-market, conversion of warrants, preferential allotment, pledge, bonus/split credits: which
       reach `is_market` and the signals?
-- [ ] Value: as filed vs shares x price; units (rupees vs lakh); zero or missing values; price outside the
+- [x] (checked; T8) Value: as filed vs shares x price; units (rupees vs lakh); zero or missing values; price outside the
       day's range (power of ten, swapped quantity/value).
-- [ ] The same trade counted twice: NSE + BSE copies, revisions, BSE's two feeds, multi-day filings.
-- [ ] Who: promoter vs promoter group vs director vs KMP vs designated person vs immediate relative; one
+- [x] (T2, T3; JB Chemicals open) The same trade counted twice: NSE + BSE copies, revisions, BSE's two feeds, multi-day filings.
+- [x] (T1, T4, T5) Who: promoter vs promoter group vs director vs KMP vs designated person vs immediate relative; one
       family split into many "decision-makers"; a company (promoter entity) vs an individual.
 - [ ] Timing: trade date vs intimation vs exchange broadcast; late filings; trades inside a closed trading
       window; the date we mark on the chart.
 - [ ] Holdings before/after vs shares traded (holding_check); % of the company basis.
 
 Pledges
-- [ ] Pledge vs encumbrance vs non-disposal undertaking vs invocation; renewals and top-ups; release then
+- [x] (T2, T6; Reg 31 #199) Pledge vs encumbrance vs non-disposal undertaking vs invocation; renewals and top-ups; release then
       re-pledge; quantity missing on NSE rows; the quarterly XBRL vs the PIT flow.
 
 Bulk / block deals
-- [ ] Client classification (fund, FPI, broker, market maker, individual, promoter); intraday round trips;
+- [x] (T5; desks open) Client classification (fund, FPI, broker, market maker, individual, promoter); intraday round trips;
       the same order on both exchanges; deals that are an insider's own filed trade.
 
 SAST
-- [ ] Acquirer type (investor vs lender's trustee vs promoter); instrument (shares vs warrants vs voting
+- [x] (T7, D8, D14) Acquirer type (investor vs lender's trustee vs promoter); instrument (shares vs warrants vs voting
       rights); "Acquisition" filed for an encumbrance; the % base (total voting capital).
 
 Shareholding
@@ -166,6 +166,136 @@ and `tests/test_bse_meetings_shareholding.py`.
 - Results: Rajesh Exports' quarterly revenue Rs 2.35-4.72 lakh crore against a Rs 1,614 Cr market cap; 8 rows with the
   quarter above the year to date. Not checked against the filings yet.
 
+### Trading data (insider trades, pledges, deals, SAST): audit of 22 Oct, branch `audit/trading-data`
+
+Read on real rows with the read-only workflow *Trading audit* (`scripts/trading_audit.py`, sections `insider`,
+`dups`, `dups2`, `roles`, `price`, `deals`, `sast`, `pledge`, `intra`, `fundpromoter`, `pgroup`, `enc`, `after`), clean
+tables as of 21 Oct; NSE's own files fetched for appIds 2325, 2427, 3934, 3962 (`corporates-pit-gg` + XBRL). The
+`after` section applies this branch's rules to the same rows: the changes quoted below are its counts. Tests:
+`tests/test_trading_audit.py`, fixtures shaped like the rows named.
+
+#### T1 A director's relative counted as a director (wrong signal, fixed)
+- **Shown**: Today, "Cluster: Director Padma Bahety and 3 more bought 4.26% of the company" (Mkventures Capital, BSE
+  514238, 23 Sep 2026, four market buys at Rs 1,000).
+- **Exchange**: every one of the four filed as "Directors Immediate Relative" (BSE's category); NSE XBRL 3934 (Innova
+  Captab, 03 Oct 2026) files Gian Parkash Aggarwal and Veena Devi the same way.
+- **Cause**: `insider._ROLE_RULES` matched "director" before "relative": 246 rows were directors (41 eligible buys, 88
+  sales); "Promoter(s) Immediate Relative" (124) read as promoter.
+- **Fix**: relatives first; a promoter's immediate relative is promoter group (ICDR 2(1)(pp)(ii)), anyone else's an
+  immediate relative (no decision role). After: 245 rows director -> immediate_relative, 124 promoter -> promoter group;
+  Mkventures leaves Clusters and Insiders buying.
+- **Present**: "relative of a director" in the row, never "Director".
+
+#### T2 Pledge releases filed without a mode kept as trades of no kind (wrong number, fixed)
+- **Shown**: Thyrocare, Docon Technologies, 17 Aug 2026: a BSE row of kind `missing` worth Rs 4,916 Cr (held back);
+  its NSE row (appId 2325) a release with no shares; 171 more rows (NSE `PLEDGE REVOKE` 111, BSE `REVOKE` 60) `missing`.
+- **Exchange**: XBRL 2325: TransactionType Pledge, Mode "Pledge Release", 7,94,69,696 shares, held 8,12,00,000 before.
+  SAST Reg 31 (#199) agrees: Release, Pledge, 7,94,69,696 (49.93%) on 17 Aug and 1,75,00,000 on 11 Aug (appId 2183).
+- **Cause**: `kind` came from the mode only; BSE's nightly feed files some pledges with neither mode nor type, so the
+  NSE row found no BSE copy of its kind to take the shares from (`_pledge_quantity_from_bse`).
+- **Fix**: a blank mode takes the kind from the transaction type (`kind_from_type`); a BSE row with no mode, no side and
+  an unchanged holding is the copy of the NSE pledge of the same person and dates and takes its kind; done before the
+  removals and flags. Against Reg 31: of 244 PIT promoter pledge rows matched to an event, 37 were `missing` and every
+  one is a Release; after the fix 232 of 244 agree with Reg 31's type (10 create/release crossed: open).
+- **Present**: a pledge row says pledged / released / invoked, shares and % of the company, the lender from Reg 31.
+
+#### T3 One trade kept two or more times (wrong number, fixed)
+- **VIP Industries, 24 Dec 2025** (BSE 507880): Multiples Private Equity Fund IV and Gift Fund IV bought 1,26,17,212 and
+  1,39,14,505 shares (Rs 489.55 and 539.88 Cr); BSE carries each twice, holdings typed 8,049 and 8,876 shares apart: both
+  eligible, 9.31% + 9.31% of the company. No NSE row of these.
+- **Info Edge, Kapil Kapoor** (NSE 2427 Original, 20 Aug; 3962 Revision, 08 Oct, prevAppId 47977): 5,00,000 sold for
+  Rs 68,04,78,416, holding before 1,12,55,795 in 2427 and 1,15,55,795 in 3962 (XBRL of both read): counted twice, and
+  BSE's two copies too. NSE's prevAppId is not an appId of its list, so the `superseded` link never fires.
+- **Vikram Solar, 19 Feb 2026**: one release of 7,30,86,090 shares from NSE's two files, valued a rupee apart
+  (Rs 15,775,632,527 / ...526), one with no mode (Reg 31: one Release).
+- **Cause**: the content match (`clean_insider`, removals) needed equal holdings and an equal value to the rupee;
+  `_revision_marked` only took revisions with no prevAppId.
+- **Fix**: value compared to the nearest Rs 10, the copy with a filed mode kept on a tie; a trade filed again with other
+  holdings (same person, security, side, shares, value, dates; not a chain of tranches) keeps the latest broadcast
+  (`refiled_with_other_holdings`, counted); a revision whose prevAppId we do not hold goes through the marker match.
+  After: 44 primary rows removed (NSE 26, BSE 18), Rs 1,106.7 Cr, 30 of them in the signals.
+- **Also**: BSE (and NSE 2183) "Block Deal" was `unrecognised`, so the NSE "Market Sale" and BSE copies never paired and
+  Docon's 1,31,68,657-share block sale (Rs 815 Cr, 13 Aug) was out of the signals: a block or bulk deal is a market
+  trade. "Procter &amp; Gamble Home Products" (HTML entity as filed) was a second filer beside "Procter & Gamble":
+  entities are unescaped.
+- **Present**: each trade once, "on NSE and BSE" as a tag; a re-filed trade shows the filing kept and the one replaced.
+
+#### T4 Shares moved inside the promoter group shown as a promoter buying and a promoter selling (wrong signal, fixed)
+- **Shown**: P&G Hygiene 19 Jun 2026, P&G Home Products bought 6,19,683 at Rs 8,995.50 (Rs 557 Cr) and Temple Trees
+  Impex sold the same; Bajaj Finserv 27 Apr 2026, Bajaj Holdings & Investment bought 20,90,050 from Bajaj Auto Holdings
+  (block window); Dalmia Bharat 25 Sep 2026 (Dalmia Bharat Refractories from Rama Investment). 41 such pairs in 23
+  companies (Rs 1,745 Cr) on the eligible rows; 80 primary rows, 24 companies, Rs 2,322.5 Cr after T3's fixes.
+- **Cause**: each side is a filed market trade; nothing paired them.
+- **Fix**: `_promoter_group_transfers`: on one exchange, a promoter / promoter-group market buy and another's market sale
+  of the same company, dates and shares, prices within 2%, paired one to one: kind `inter_se`, mark
+  `promoter_group_transfer`. After: Dalmia Bharat, Jhaveri Credits, Nalin Lease, Orbit Exports and Sodhani Academy leave
+  Insiders buying (and three of them Promoters selling).
+- **Present**: "moved within the promoter group" in Filings, never on Worth a look / Watch out.
+
+#### T5 A promoter's own bulk/block sale read as "Funds selling" (wrong signal, fixed)
+- **Shown**: Gland Pharma, "Funds selling 6.16%"; EPL "Funds selling 17.51% (Epsilon Bidco Pte)".
+- **Exchange**: BSE block deals 04 Sep 2026: Fosun Pharma Industrial Pte sold 1,74,02,500 shares at Rs 2,827.84
+  (Rs 4,921 Cr); mutual funds and insurers bought. Gland's 30 Sep shareholding XBRL names Fosun Pharma Industrial Pte as
+  promoter; EPL's 30 Jun names Epsilon Bidco. No PIT filing of either sale is in our data (open: missing filing or
+  collection gap). The client type rule read "PTE" as a foreign investor.
+- **Fix**: `promoter_group.mark_deal_promoters`: `deals.client_is_promoter` (and `client_promoter_basis`) from the
+  company's promoter-group list or a PIT promoter filing; such legs leave fund events, and `ideas.promoter_deal_events`
+  shows "X (promoter) sold N% in bulk/block deals; no insider filing of it in the data" where no PIT promoter market
+  trade of the company is in the period. After: 518 legs are promoters' (398 by the list, 120 by PIT); EPL and Gland turn
+  to Fund buying (8.83%, 4.38%), and 20 companies get a promoter line (EPL 26.33%, Gland 10.55%, Kfin 8.76%...).
+- **Present**: the promoter's deal under Promoters, the funds that took the shares under Funds.
+
+#### T6 Pledge invocations shown nowhere (missing signal, fixed)
+- 159 PIT rows of kind `pledge_invoke` (forced sales by lenders: Mangalam Industrial Finance 9 Cr shares, Mar 2026;
+  Sigachi 1,15,03,000, Jan 2026; Hubtown 27 Mar 2026, which Reg 31 lists as Invocation 14,00,000 + 17,11,170) reached no
+  list: `pledge_events` read only create and revoke. Now "Pledge invoked" in Watch out, Pledges group (in the last 90
+  days: Vishnu Prakash R Punglia, 2.33%, 9 filings).
+- **Present**: an invocation leads the Pledges group: it is the risk a pledge stands for, realised.
+
+#### T7 SAST rows that are encumbrances could read as "Big investor in" (fragile, fixed); allotments said "bought"
+- BSE's Reg 29 list has 224 non-promoter rows whose mode is Pledge / Creation Of Encumbrance / Release ...; 37 by names
+  the trustee pattern misses ("Deutsche Bank AG," for Horizon Industrial Parks, Piramal Pharma, Manipal; Comfort Fincap
+  "Pledge Creation" 0.33%). None passed the size test on 21 Oct, by chance. `ideas.stake_events` now leaves out any row
+  whose mode says pledge, encumbrance, release, invocation or NDU.
+- Off-market modes are said: "Amit Kumar Saraogi took 21.42% of the company (pref. allotment)", not "bought".
+- **Present**: big investors by how they came in: market, allotment, off market, open offer.
+
+#### T8 Trades in ADRs, warrants, debentures counted as share trades (wrong signal, fixed)
+- The filed security type was never read: NSE's archive has ADR/GDR/FCCB 220 rows, warrants 102, derivatives 45,
+  debentures 12; among the eligible rows 30 NSE "ADR/GDR/FCCB", 12 "Any other instrument", 2 "Convertible Debenture",
+  25 BSE "Any other instrument". Now `security_type_raw` is kept and a type that is not equity flags `not_equity_shares`
+  (held back, counted). A blank type is taken as shares, as before.
+- **Present**: an instrument other than shares is said in the row and never sized as % of the company.
+
+#### Checked and right (22 Oct)
+- Market only: `is_market` is true for "Market Purchase" / "Market Sale" (and now block/bulk deals) and nothing else;
+  ESOP/ESOS (3,780), gift, inter-se, off-market, conversion, preferential, allotment, scheme, buyback, rights, bonus,
+  transmission never reach the signals. Employee trusts' market buys (category Trust, role other) are not decision-makers.
+- Units: of the eligible rows' value, 93.1% is inside the day's traded range; 257 "value filed as price per share", 53
+  powers of ten, 1 swap and 131 far outside are held back; 1.5% (no print) and 4.5% (span over the limit, e.g. BHEL
+  "11 Feb 2025-12 Feb 2026", a typo of the from-date) are unchecked.
+- Thyrocare 17 Aug (Reg 31 and XBRL 2325), Vikram Solar 19 Feb (Reg 31), Paradeep Phosphates 19 Aug (Reg 31 Release
+  4,00,00,000 = BSE REVOKE row), Aequs 21 Sep / 14 Oct (Reg 31 Creation 10,05,13,070 twice): PIT and Reg 31 agree.
+- Deals: market makers measured (8,017 legs); same client both sides one day (4,548 legs) netted per client in fund
+  events; equal legs on both exchanges: 2 (Ohana India Growth Fund, Shankara Buildpro, 04 Sep), kept as two (DL-W8).
+
+#### Open (trading data)
+- JB Chemicals, 21-23 Jan 2026 (Tau -> Torrent, Rs 11,917 Cr): NSE (JBCHEPHARM) and BSE (506943) copies both primary
+  because neither has an ISIN (`security_match` unmatched; 117 such NSE+BSE groups). Held back (`unmatched_security`),
+  so out of signals; the fix is the security master's (a delisted or merged symbol), the other audit's scope.
+- 13 NSE revision + BSE pairs left unpaired (Indo-mim 3307/3327, 360 One 3855, Aurionpro 2780; Rs 27 Cr): cause not found.
+- 90 market rows whose other exchange's copy files another kind (BSE "ESOP" vs NSE "Market Sale", Shaily Engineering,
+  Jubilant Ingrevia trust; Rs 2,612 Cr, mostly held back by other flags): which copy is right needs the filing's PDF.
+- 10 of 244 PIT pledges whose create/release is the reverse of Reg 31's; PIT pledges should take the lender and type
+  from Reg 31 (#199) on the pages.
+- Global banks' trading desks (BNP Paribas Financial Markets, Integrated Core Strategies, Societe Generale ODI) are typed
+  `fpi` and can be named as "funds" (LEAP India "BNP Paribas Financial Markets and 4 more bought 5.70%"): a desk list.
+
+#### Leads from Chain stats (22 Oct, 09:15 IST)
+- JB Chemicals -> Open (no ISIN on either copy); Thyrocare -> T2; `price_check`: of the
+  2,063 `far_below` primaries 81 are market trades, all held back; the rest are ESOP (595), off-market (286),
+  preferential (128) and allotments (116), priced off the market by design; `face_value` 23 market rows, held back.
+
 ## 4. Log
 
 - 09:10 IST: inventory and checklist written; Chain stats workflow added; two audits started (trading data;
@@ -173,3 +303,5 @@ and `tests/test_bse_meetings_shareholding.py`.
 - 20:30 IST: corporate data: C1-C4 fixed on audit/corporate-data. After merge: *Clean only* (issues, results),
   `python -m collectors.bse.events --from 2025-10-08 --dataset shareholding --max-xbrl 900` (repeat until no
   `pending`), then *Precompute slim assets* (adjusted prices, track record).
+- 19:20-20:15 IST: trading data audited (T1-T8 above) on real rows with *Trading audit*; NSE XBRL 2325, 2427, 3934,
+  3962 fetched; PIT pledges compared with Reg 31 (#199). Fixes and tests on `audit/trading-data`.

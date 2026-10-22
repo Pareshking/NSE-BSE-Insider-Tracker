@@ -290,6 +290,22 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                          'pct_of_company': pct,
                          'sentence': f'Promoters {"pledged" if net > 0 else "released"} a net {pct:.2f}% of the company{how}',
                          'value': None, 'last': g['seen'].max()})
+        # A lender invoking a pledge takes the shares (and usually sells them): a forced sale, the warning a
+        # pledge stands for. Left out of Today before 22 Oct (Sigachi, RPS Industries, 1,15,03,000 shares, Jan 2026;
+        # Vishnu Prakash R Punglia, three promoters, Jun 2026).
+        inv = trades[trades['is_primary'].astype('boolean').fillna(False) & ~trades['needs_review'].astype('boolean').fillna(False)
+                     & trades['person_role'].isin(signals.PROMOTER_ROLES) & trades['kind'].eq('pledge_invoke')].copy()
+        inv['seen'] = pd.to_datetime(inv['broadcast_date'], errors='coerce')
+        inv = inv[_in_window(inv['seen'], ref, days)].dropna(subset=['isin'])
+        for isin, g in inv.groupby('isin'):
+            q = pd.to_numeric(g['quantity'], errors='coerce').sum()
+            pct = q / total[isin] * 100 if total.get(isin) else None
+            if pct is None or pct < MIN_PCT:
+                continue
+            rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
+                         'list': 'warn', 'kind': 'Pledge invoked', 'pct_of_company': pct,
+                         'sentence': f'Lenders invoked pledged promoter shares: {pct:.2f}% of the company ({_filings(len(g))})',
+                         'value': None, 'last': g['seen'].max()})
     if sh is not None and not sh.empty and {'promoter_pledged_shares', 'total_shares', 'promoter_pledge_pct'} <= set(sh.columns):
         filed = sh['submission_date'] if 'submission_date' in sh else sh['quarter_end']
         read = [c for c in ('isin', 'symbol', 'company', 'quarter_end', 'xbrl_status', 'shareholding_stale') if c in sh]
@@ -331,6 +347,13 @@ SECURITY_HOLDER = re.compile(r'truste|security agent|\bagent\b|on behalf of|debe
                              r'|international trust|\bbank\b.*\bbranch\b', re.I)
 
 
+# A mode that says the shares were pledged, encumbered or released is security, never a stake bought or sold,
+# whoever files it: BSE's Reg 29 list holds 224 such non-promoter rows to 21 Oct 2026, 37 by names the trustee
+# pattern misses (Deutsche Bank AG for Horizon Industrial Parks, Piramal Pharma, Manipal; Comfort Fincap).
+ENCUMBRANCE_MODE = re.compile(r'pledge|encumb|releas|invoc|revoc|non.?disposal|lien', re.I)
+_MARKET_MODES = {'', 'open market', 'market'}
+
+
 def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
     """Big investors (not promoters) crossing 5% or adding 2%+ (Worth a look), or selling 2%+ or falling
     below 5% (Watch out), from SAST Reg 29 disclosures; lenders' trustees and agents holding shares as
@@ -338,8 +361,10 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
     company they bought or sold."""
     if sast is None or sast.empty or 'isin' not in sast:
         return _ev([])
+    mode = sast['mode'].fillna('').astype(str) if 'mode' in sast else pd.Series('', index=sast.index)
     s = sast[~sast['is_promoter'].astype('boolean').fillna(False)
-             & ~sast['acquirer_name'].fillna('').astype(str).str.contains(SECURITY_HOLDER)].copy()
+             & ~sast['acquirer_name'].fillna('').astype(str).str.contains(SECURITY_HOLDER)
+             & ~mode.str.contains(ENCUMBRANCE_MODE)].copy()
     when = pd.to_datetime(s['broadcast_date'], errors='coerce') if 'broadcast_date' in s else pd.Series(pd.NaT, index=s.index)
     if 'transaction_date' in s:
         when = when.fillna(pd.to_datetime(s['transaction_date'], errors='coerce'))
@@ -358,6 +383,11 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
         # Craft Emerging's 5.79% of Jindal Supreme is voting rights).
         kind = r.get('instrument')
         via = f' (filed as {str(kind).lower()}, not shares)' if isinstance(kind, str) and kind.lower() != 'equity shares' else ''
+        # Off the market (a preferential allotment, an off-market transfer, an open offer): said, and not 'bought'
+        # as if on the market (audit 22 Oct: Cubical Financial's 21.42% to Amit Kumar Saraogi was an allotment).
+        how = str(r.get('mode') or '').strip()
+        if how.lower() not in _MARKET_MODES:
+            via += f' ({how.lower()})'
         base = {'isin': r['isin'], 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'),
                 'value': None, 'last': r['when']}
         if pd.notna(bought) and bought > 0 and (bought >= BIG_CHANGE or (pd.notna(after) and after >= BIG_STAKE > after - bought)):
@@ -376,8 +406,12 @@ def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd
     filed trade left to the insider lists. Size: net % of the company."""
     if deals is None or deals.empty or 'client_type' not in deals:
         return _ev([])
+    promoter = (deals['client_is_promoter'].astype('boolean').fillna(False) if 'client_is_promoter' in deals
+                else pd.Series(False, index=deals.index))
+    # A promoter's own deal is never a fund's, however foreign its name looks (Fosun Pharma Industrial Pte for
+    # Gland Pharma, audit 22 Oct); it is read under the promoters (promoter_deal_events).
     d = deals[deals['is_primary'].astype('boolean').fillna(False) & ~deals['client_is_market_maker'].astype('boolean').fillna(False)
-              & deals['client_type'].isin(signals.FUND_TYPES)].copy()
+              & deals['client_type'].isin(signals.FUND_TYPES) & ~promoter].copy()
     d['date'] = pd.to_datetime(d['date'], errors='coerce')
     d = d[(d['date'] <= ref) & (d['date'] > ref - pd.Timedelta(days=days))].dropna(subset=['isin'])
     if trades is not None and not trades.empty and len(d):
@@ -412,6 +446,44 @@ def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd
                      'pct_of_company': abs(net),
                      'sentence': f'{lead} {verb} a net {abs(net):.2f}% of the company in bulk/block deals',
                      'value': abs(vals[isin]), 'last': lasts[isin]})
+    return _ev(rows)
+
+
+def promoter_deal_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW,
+                         sh: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Promoters selling (or buying) in bulk/block deals in a company with no promoter market trade filed under
+    PIT in the period: the deal is then the only record Today has of it. Gland Pharma, 04 Sep 2026: Fosun Pharma
+    Industrial Pte sold 1,74,02,500 shares (10.56%) on BSE; no PIT filing of it is in the data (audit 22 Oct).
+    Size: shares over total shares."""
+    if deals is None or deals.empty or 'client_is_promoter' not in deals:
+        return _ev([])
+    d = deals[deals['is_primary'].astype('boolean').fillna(False) & deals['client_is_promoter'].astype('boolean').fillna(False)].copy()
+    d['date'] = pd.to_datetime(d['date'], errors='coerce')
+    d = d[(d['date'] <= ref) & (d['date'] > ref - pd.Timedelta(days=days))].dropna(subset=['isin'])
+    if d.empty:
+        return _ev([])
+    if trades is not None and not trades.empty:
+        t = trades[trades['person_role'].isin(signals.PROMOTER_ROLES) & trades['is_market'].astype('boolean').fillna(False)]
+        seen = pd.to_datetime(t['broadcast_date'], errors='coerce')
+        filed = set(t.loc[(seen <= ref + pd.Timedelta(days=1)) & (seen > ref - pd.Timedelta(days=days)), 'isin'].dropna())
+        d = d[~d['isin'].isin(filed)]
+    total = _shares_out(sh)
+    rows = []
+    for isin, g in d.groupby('isin'):
+        if not total.get(isin):
+            continue
+        net = (pd.to_numeric(g['quantity'], errors='coerce') * g['side'].map({'BUY': 1, 'SELL': -1})).sum()
+        pct = abs(net) / total[isin] * 100
+        if pct < MIN_PCT:
+            continue
+        who = list(dict.fromkeys(g.loc[g['side'].eq('BUY' if net > 0 else 'SELL'), 'client_name'].astype(str)))
+        lead = (who[0] + (f' and {len(who) - 1} more' if len(who) > 1 else '')) if who else 'Promoters'
+        rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
+                     'list': 'look' if net > 0 else 'warn', 'kind': 'Promoter buying' if net > 0 else 'Promoter selling',
+                     'pct_of_company': pct,
+                     'sentence': f'{lead} (promoter) {"bought" if net > 0 else "sold"} {pct:.2f}% of the company in '
+                                 f'bulk/block deals; no insider filing of it in the data',
+                     'value': abs(pd.to_numeric(g['signed_value'], errors='coerce').sum()), 'last': g['date'].max()})
     return _ev(rows)
 
 
@@ -481,7 +553,7 @@ GROUPS = {
              ('Big investors and funds in', ['Big investor in', 'Fund buying']),
              ('Buybacks at a premium', ['Buyback at a premium'])],
     'warn': [('Promoters selling', ['Promoter selling']),
-             ('Pledges', ['Pledge created', 'Pledge rising']),
+             ('Pledges', ['Pledge invoked', 'Pledge created', 'Pledge rising']),
              ('Cheap shares to promoters', ['Cheap shares to promoters']),
              ('Big investors and funds out', ['Big investor out', 'Funds selling'])],
 }

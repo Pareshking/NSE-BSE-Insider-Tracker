@@ -135,3 +135,33 @@ def link(trades: pd.DataFrame, group: pd.DataFrame | None) -> tuple[pd.DataFrame
         f'{s}: {n}' for s, n in zip(un.get('nse_symbol', un['isin']).astype(str), un['person_name'].astype(str))][:20]
     return t, rep
 
+
+def mark_deal_promoters(deals: pd.DataFrame, group: pd.DataFrame | None,
+                        trades: pd.DataFrame | None) -> tuple[pd.DataFrame, dict]:
+    """Adds `client_is_promoter` to bulk/block deals: the client is in the company's latest promoter-group list
+    (by name, or the name before a bracket) or filed under PIT as the company's promoter or promoter group. Such a
+    deal is the promoter's own trade, never a fund's, whatever the name looks like (audit 22 Oct: Fosun Pharma
+    Industrial Pte, Gland Pharma's promoter, sold 1,74,02,500 shares on BSE on 04 Sep 2026, Rs 4,921 Cr, and Today
+    read it as "Funds selling"). `client_promoter_basis`: 'promoter_group_list' or 'pit_filing'."""
+    d = deals.copy()
+    d['client_is_promoter'] = False
+    d['client_promoter_basis'] = None
+    if d.empty:
+        return d, {'legs': 0}
+    pairs = list(zip(d['isin'], d['client_id']))
+    alts = list(zip(d['isin'], d['client_name'].map(alt_key) if 'client_name' in d else [None] * len(d)))
+    lists = latest_lists(group)
+    members = (set(zip(lists['co'], lists['member_id'])) | set(zip(lists['co'], lists['member_alt_id'].dropna()))
+               if not lists.empty else set())
+    filed = set()
+    if trades is not None and not trades.empty:
+        p = trades[trades['person_role'].isin(PROMOTER_ROLES)]
+        filed = set(zip(p['isin'], p['person_id']))
+    in_list = pd.Series([k in members or (a[1] is not None and a in members) for k, a in zip(pairs, alts)],
+                        index=d.index, dtype=bool)
+    in_pit = pd.Series([k in filed for k in pairs], index=d.index, dtype=bool) & ~in_list
+    d.loc[in_list | in_pit, 'client_is_promoter'] = True
+    d.loc[in_list, 'client_promoter_basis'] = 'promoter_group_list'
+    d.loc[in_pit, 'client_promoter_basis'] = 'pit_filing'
+    return d, {'legs': int((in_list | in_pit).sum()), 'by_list': int(in_list.sum()), 'by_pit_filing': int(in_pit.sum())}
+

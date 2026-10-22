@@ -249,6 +249,14 @@ Insider trades (`insiders_clean/insider.py`):
   files only that), the CSV's row is kept (it adds the to-date and the
   intimation date) and the other is removed as `bse_same_filing_two_feeds`.
   The report counts BSE input rows by feed (`bse_rows_by_feed`).
+- **Audit of 22 Oct (trading data, `docs/DATA_CHAIN_AUDIT.md` T2-T4)**: the content match compares the value
+  to the nearest Rs 10 (NSE's two files of one filing round a rupee apart) and keeps, on a tie, the copy with a
+  filed mode; a trade filed again with other holdings (same person, security, side, shares, value and dates, not
+  a chain of tranches) keeps the latest broadcast, removed as `refiled_with_other_holdings`; an NSE 'Revision'
+  whose prevAppId is no appId we hold goes through the revision-marker match. A blank BSE pledge row (no mode, no
+  type, holding unchanged) is the copy of the NSE pledge of the same person and dates and takes its kind
+  (`pledge_quantity_from_bse`). A block or bulk deal is a market trade. Promoter-group buys and sales of one size
+  on one day are an inter-se transfer (`promoter_group_transfers_on_market`).
 
 ## Data checks (insider filings, from the 09 Oct brief)
 
