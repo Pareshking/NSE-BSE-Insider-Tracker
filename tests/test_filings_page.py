@@ -113,3 +113,12 @@ st.write(json.dumps({
     assert got['deals'] == 2             # the two fixture deals; the NSE copy of one is not a third
     _, html = _run(site, monkeypatch, 'Insider other')
     assert 'ex-bse' in html              # the one row says it was filed on both exchanges
+
+
+def test_converted_warrants_say_the_amount_is_the_balance():
+    """Warrants are paid 25% at allotment and 75% on conversion: the listing record raises the balance."""
+    from screens import filings_all
+    x = {'instruments': 'Warrants', 'shares_allotted': 1_000_000, 'offer_price': 100.0, 'amount_raised': 75_000_000}
+    assert 'Raised on conversion (the 75% balance on warrants)' in filings_all._issue_facts('pref', x, {})
+    assert 'Raised on conversion' not in filings_all._issue_facts('pref', {**x, 'amount_raised': 100_000_000}, {})
+    assert 'Raised on conversion' not in filings_all._issue_facts('pref', {**x, 'instruments': 'Equity shares'}, {})
