@@ -682,3 +682,30 @@ def clean_qip(filings: pd.DataFrame | None) -> tuple[pd.DataFrame, pd.DataFrame,
                   amount_unreliable=int(df['amount_unreliable'].sum()), posted_before_product_start=int(old.sum()),
                   allottee_rows=len(allottees), listings_with_allottees=int(allottees['app_id'].nunique()))
     return df, allottees, report
+
+
+ISSUE_TABLES = ('preferential', 'rights', 'qip', 'preferential_allottees', 'preferential_lockins', 'qip_allottees')
+
+
+def current_isins(tables: dict, securities: pd.DataFrame | None) -> dict:
+    """Each issue table re-keyed to its NSE symbol's ISIN in the run's own `securities` (today's NSE list), as
+    shareholding is (collectors/nse_events/run_daily.add_identity): 265 preferential rows carried a retired or
+    unknown ISIN, so the Rs 100 Cr universe cut dropped them from every page (audit 22 Oct). The filed ISIN stays
+    in `isin_filed` when it differs; a symbol not in the list keeps its row as filed. Returns the count per table."""
+    if securities is None or securities.empty or not {'nse_symbol', 'isin'} <= set(securities.columns):
+        return {}
+    s = securities.dropna(subset=['nse_symbol', 'isin'])
+    by_symbol = dict(zip(s['nse_symbol'].astype(str).str.strip().str.upper(), s['isin']))
+    counts = {}
+    for name in ISSUE_TABLES:
+        df = tables.get(name)
+        if df is None or df.empty or 'symbol' not in df or 'isin' not in df:
+            continue
+        cur = df['symbol'].astype(str).str.strip().str.upper().map(by_symbol)
+        change = cur.notna() & df['isin'].ne(cur)
+        df = df.copy()
+        df['isin_filed'] = df['isin'].where(change)
+        df.loc[change, 'isin'] = cur[change]
+        tables[name] = df
+        counts[name] = int(change.sum())
+    return counts
