@@ -57,7 +57,7 @@ SAST
       rights); "Acquisition" filed for an encumbrance; the % base (total voting capital).
 
 Shareholding
-- [ ] Retired ISINs; % base (total vs total less DR shares); stale quarters; pledge as % of promoter shares vs
+- [x] (C4, #204; checked and right) Retired ISINs; % base (total vs total less DR shares); stale quarters; pledge as % of promoter shares vs
       of the company; promoter group membership.
 
 Issues (preferential, QIP, rights, warrants)
@@ -65,11 +65,11 @@ Issues (preferential, QIP, rights, warrants)
       against today's price on the same split basis; approved vs allotted vs listed; amounts in the wrong unit.
 
 Buybacks, corporate actions, results
-- [ ] Tender vs open market; premium at announcement vs now; split/bonus ratios applied to prices; results
+- [x] (C1, C3, #211, #212; checked and right) Tender vs open market; premium at announcement vs now; split/bonus ratios applied to prices; results
       standalone vs consolidated, quarter vs year to date, rupee unit (lakh / crore / rupees).
 
 Prices and market cap
-- [ ] Split/bonus adjustment; market cap on the trade's day vs today; companies under Rs 100 Cr; SME and T2T.
+- [x] (C1; checked and right) Split/bonus adjustment; market cap on the trade's day vs today; companies under Rs 100 Cr; SME and T2T.
 
 Presentation
 - [ ] Every number says what it is (as filed vs estimated, % of company vs of market cap), its date, and its

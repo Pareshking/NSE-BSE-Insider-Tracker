@@ -386,6 +386,8 @@ SECURITY_HOLDER = re.compile(r'truste|security agent|\bagent\b|on behalf of|debe
 # pattern misses (Deutsche Bank AG for Horizon Industrial Parks, Piramal Pharma, Manipal; Comfort Fincap).
 ENCUMBRANCE_MODE = re.compile(r'pledge|encumb|releas|invoc|revoc|non.?disposal|\blien\b', re.I)
 _MARKET_MODES = {'', 'open market', 'market'}
+_OTHER = {'others', 'other'}
+_ACRONYMS = {'ipo': 'IPO', 'fpo': 'FPO', 'ofs': 'OFS', 'qip': 'QIP', 'esop': 'ESOP', 'esops': 'ESOPs', 'sast': 'SAST'}
 
 
 def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
@@ -416,12 +418,17 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
         # Filed as warrants, voting rights or 'Others': a stake, but not shares bought or sold (audit 22 Oct:
         # Craft Emerging's 5.79% of Jindal Supreme is voting rights).
         kind = r.get('instrument')
-        via = f' (filed as {str(kind).lower()}, not shares)' if isinstance(kind, str) and kind.lower() != 'equity shares' else ''
+        via = ''
+        if isinstance(kind, str) and kind.lower() != 'equity shares':
+            k = kind.strip().lower()
+            via = (' (filed as other than shares)' if k in _OTHER else f' (filed as {k})' if 'other than' in k
+                   else f' (filed as {k}, not shares)')
         # Off the market (a preferential allotment, an off-market transfer, an open offer): said, and not 'bought'
         # as if on the market (audit 22 Oct: Cubical Financial's 21.42% to Amit Kumar Saraogi was an allotment).
+        # A mode of 'Others' says nothing more ("(filed as others, not shares) (others)" on Today, 23 Oct).
         how = str(r.get('mode') or '').strip()
-        if how.lower() not in _MARKET_MODES:
-            via += f' ({how.lower()})'
+        if how.lower() not in _MARKET_MODES | _OTHER:
+            via += f' ({" ".join(_ACRONYMS.get(w, w) for w in how.lower().split())})'
         base = {'isin': r['isin'], 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'),
                 'value': None, 'last': r['when']}
         if pd.notna(bought) and bought > 0 and (bought >= BIG_CHANGE or (pd.notna(after) and after >= BIG_STAKE > after - bought)):

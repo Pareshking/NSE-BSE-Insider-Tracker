@@ -179,8 +179,20 @@ def test_a_stake_filed_as_voting_rights_or_warrants_is_not_called_bought():
                          'broadcast_date': pd.to_datetime(['2026-10-10'] * 2)})
     out = dict(zip(ideas.stake_events(sast, REF)['nse_symbol'], ideas.stake_events(sast, REF)['sentence']))
     assert out['JSIPL'] == ('Craft Emerging Marketing Fund PCC took 5.79% of the company '
-                            '(filed as voting rights other than by shares, not shares), now holds 5.79%')
+                            '(filed as voting rights other than by shares), now holds 5.79%')
     assert out['THYROCARE'].startswith('HSBC Mutual Fund bought 1.88%')
+
+
+def test_a_stake_filed_as_others_says_it_once_and_an_ipo_in_capitals():
+    """Today, 23 Oct: 'ITC Infotech India Ltd took 11.11% of the company (filed as others, not shares) (others)'."""
+    sast = pd.DataFrame({'isin': ['INE0HAPP0011', 'INE0FXMT0011'], 'symbol': ['HAPPSTMNDS', 'FXMT'], 'company': ['H', 'F'],
+                         'is_promoter': [False, False], 'acquirer_name': ['ITC Infotech India Ltd', 'Rajasthan Global Securities'],
+                         'pct_acquired': [11.11, 5.01], 'pct_sold': [None, None], 'post_stake_pct': [11.11, 5.01],
+                         'instrument': ['Others', 'Equity shares'], 'mode': ['Others', 'ipo'],
+                         'broadcast_date': pd.to_datetime(['2026-10-10'] * 2)})
+    out = dict(zip(ideas.stake_events(sast, REF)['nse_symbol'], ideas.stake_events(sast, REF)['sentence']))
+    assert out['HAPPSTMNDS'] == 'ITC Infotech India Ltd took 11.11% of the company (filed as other than shares), now holds 11.11%'
+    assert out['FXMT'] == 'Rajasthan Global Securities took 5.01% of the company (IPO), now holds 5.01%'
 
 
 def test_fund_nets_are_shares_over_total_shares_when_the_xbrl_gives_the_total():
