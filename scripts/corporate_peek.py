@@ -407,6 +407,99 @@ def meetings(r2, ctx):
         print(f'  market trades after a quarter end whose results date is from the quarter before (window may be closed): {len(inside)}')
 
 
+def probe(r2, ctx):
+    """Second pass (22 Oct evening): rows behind the first pass's leads."""
+    print('\n################ PROBE')
+    sh = ctx['sh'].copy()
+    sh['quarter_end'] = pd.to_datetime(sh['quarter_end'], errors='coerce')
+    lt = sh.sort_values(['quarter_end', 'submission_date']).drop_duplicates('symbol', keep='last')
+    print('SHL|symbol|isin|company|quarter_end|pledged|promoter|total|pledge_pct|status')
+    for r in lt.itertuples():
+        print(f'SHL|{r.symbol}|{r.isin}|{r.company}|{r.quarter_end:%Y-%m-%d}|{r.promoter_pledged_shares}|{r.promoter_shares}|{r.total_shares}|{r.promoter_pledge_pct}|{r.xbrl_status}')
+    # companies with no shareholding row: are they in the archive at all?
+    keys = sorted(k for k in list_keys(r2, 'archive/nse_events/shareholding/') if k.endswith('.parquet'))
+    arch = pd.concat([read_parquet(r2, k) for k in keys], ignore_index=True)
+    arch['quarter_end'] = pd.to_datetime(arch['quarter_end'], errors='coerce')
+    print(f'shareholding archive: {len(arch)} rows, {arch["symbol"].nunique()} symbols; by quarter:\n     ' + vc(arch['quarter_end'].dt.date, 12))
+    if 'first_seen' in arch:
+        print('  archive first_seen by month:\n     ' + vc(pd.to_datetime(arch['first_seen'], errors='coerce').dt.to_period('M'), 12))
+    for sym in ('ABBOTINDIA', 'MCX', 'BAYERCROP', 'KIRLFER', 'NOVARTIND', 'TIMEX', 'HAWKINCOOK', 'WPIL', 'KENNAMET', 'ELANTAS'):
+        a = arch[arch['symbol'].astype(str).str.upper() == sym]
+        c = sh[sh['symbol'].astype(str).str.upper() == sym]
+        print(f'  {sym}: archive {len(a)} rows {sorted(a["quarter_end"].dt.date.astype(str).unique())[-3:]} isins {sorted(a["isin"].astype(str).unique())}; clean {len(c)} isins {sorted(c["isin"].astype(str).unique())}')
+    u = ctx['uni']
+    nose = u[u['in_universe'].astype(bool) & u['nse_symbol'].notna() & ~u['isin'].isin(set(sh['isin'].dropna()))]
+    in_arch = nose['nse_symbol'].isin(set(arch['symbol'].astype(str).str.upper()))
+    print(f'  universe companies with an NSE symbol and no clean shareholding: {len(nose)}; their symbol in the archive: {int(in_arch.sum())}')
+    show('in the archive but not in the clean table', nose[in_arch], ['isin', 'nse_symbol', 'company', 'market_cap'], 15)
+    show('not in the archive either (largest)', nose[~in_arch].sort_values('market_cap', ascending=False), ['isin', 'nse_symbol', 'company', 'market_cap'], 15)
+    # splits and bonuses: NSE and BSE actions, prints around the ex-date
+    acts = pd.concat([table(r2, 'actions').assign(src='nse'), table(r2, 'bse_actions').assign(src='bse')], ignore_index=True)
+    acts['ex_date'] = pd.to_datetime(acts['ex_date'], errors='coerce')
+    px = ctx['raw_px']
+    sb = acts[acts['purpose'].isin(['split', 'bonus']) & (acts['ex_date'] >= '2025-05-01') & (acts['ex_date'] <= px['date'].max())]
+    sb = sb.drop_duplicates(['isin', 'ex_date', 'purpose'])
+    f = ctx['factors']
+    hist = ctx['hist']
+    rows = []
+    for r in sb.to_dict('records'):
+        d = r['ex_date']
+        sym = r.get('nse_symbol') if r['src'] == 'bse' else r['symbol']
+        isin = r['isin']
+        if isinstance(sym, str) and sym:
+            n = px[(px['exchange'] == 'NSE') & ((px['symbol'] == sym) | (px['isin'] == isin))]
+        else:
+            n = px[(px['exchange'] == 'BSE') & (px['isin'] == isin)]
+        n = n.sort_values(['date', 'value'], ascending=[True, False]).drop_duplicates('date')
+        b, a = n[n['date'] < d].tail(1), n[n['date'] >= d].head(1)
+        if r['purpose'] == 'bonus':
+            exp = adjust._ratio_factor(r['ratio'])
+        else:
+            exp = r['face_value_to'] / r['face_value_from'] if r.get('face_value_from') else np.nan
+        ia = a['isin'].iloc[0] if len(a) else None
+        fa = f[(f['isin'] == ia) & (f['date'] == (a['date'].iloc[0] if len(a) else None)) & (f['exchange'] == (a['exchange'].iloc[0] if len(a) else None))]
+        h = hist[hist['isin'] == ia].sort_values('date')
+        hb = h[h['date'] < d].tail(1)
+        rows.append({'src': r['src'], 'sym': sym, 'isin': isin, 'p': r['purpose'][0], 'ex': d.date(), 'exp': round(exp, 3) if pd.notna(exp) else None,
+                     'isin_b': b['isin'].iloc[0][-4:] if len(b) else None, 'isin_a': ia[-4:] if ia else None,
+                     'close_b': b['close'].iloc[0] if len(b) else None, 'prev_a': a['prev_close'].iloc[0] if len(a) else None,
+                     'close_a': a['close'].iloc[0] if len(a) else None,
+                     'got': round(a['close'].iloc[0] / b['close'].iloc[0], 3) if len(a) and len(b) and b['close'].iloc[0] else None,
+                     'factor': round(fa['factor'].iloc[0], 3) if len(fa) and pd.notna(fa['factor'].iloc[0]) else None,
+                     'kind': fa['kind'].iloc[0] if len(fa) else None, 'basis': fa['kind_basis'].iloc[0] if len(fa) else None,
+                     'hist_b': round(float(hb['close'].iloc[0]), 2) if len(hb) else None, 'hist_from': h['date'].min().date() if len(h) else None})
+    res = pd.DataFrame(rows)
+    show('splits and bonuses May 2025 .. now (got = close after / close before)', res, None, 300)
+    if len(res):
+        print('  kind:\n     ' + vc(res['kind']))
+        print('  isin changed:', int((res['isin_b'] != res['isin_a']).sum()), 'of', len(res))
+    # preferential approvals whose amount is far from proposed x ICDR minimum: the XBRL as filed
+    keys = sorted(k for k in list_keys(r2, 'archive/nse_events/issues/') if k.endswith('.parquet'))
+    fl = pd.concat([read_parquet(r2, k) for k in keys], ignore_index=True)
+    pref = table(r2, 'preferential')
+    ip = pref[pref['stage'] == 'in_principle'].copy()
+    ip['implied'] = num(ip['securities_proposed']) * num(ip['icdr_min_price'])
+    ip['ratio'] = num(ip['amount_total']) / ip['implied']
+    odd = ip[(ip['ratio'] < 0.5) | (ip['ratio'] > 2)]
+    for r in odd.to_dict('records'):
+        x = fl[(fl['kind'] == 'preferential') & (fl['stage'] == 'in_principle') & (fl['app_id'].astype(str) == str(r['app_id']))]
+        xb = json.loads(x['xbrl_json'].iloc[0]) if len(x) and isinstance(x['xbrl_json'].iloc[0], str) else {}
+        raw = json.loads(x['raw_json'].iloc[0]) if len(x) else {}
+        secs = {k: v for k, v in (xb.get('groups') or {}).items() if k.startswith('IssuedSecurity')}
+        print(f"  {r['symbol']} app {r['app_id']} {r['posted_on']}: list totalAmtRaised {raw.get('totalAmtRaised')};"
+              f" xbrl AmountToBeRaised {(xb.get('main') or {}).get('AmountToBeRaised')};"
+              f" securities {json.dumps(secs)[:400]}; xbrl {x['xbrl_url'].iloc[0] if len(x) else ''}")
+    ls = pref[(pref['stage'] == 'listing')]
+    ls = ls.assign(ratio=num(ls['amount_raised']) / (num(ls['shares_allotted']) * num(ls['offer_price'])))
+    q = ls[(ls['ratio'] - 0.75).abs() < 0.01]
+    print(f'  listing records with amount = 75% of shares x price: {len(q)}; instruments:\n     ' + vc(q['instruments']))
+    for r in q.head(3).to_dict('records'):
+        x = fl[(fl['kind'] == 'preferential') & (fl['stage'] == 'listing') & (fl['app_id'].astype(str) == str(r['app_id']))]
+        print('   ', r['symbol'], x['raw_json'].iloc[0][:700] if len(x) else '(snapshot only)')
+        if len(x) and isinstance(x['xbrl_json'].iloc[0], str):
+            print('    xbrl', x['xbrl_json'].iloc[0][:900])
+
+
 def main() -> int:
     r2 = r2_client()
     sections = [x.strip() for x in (os.environ.get('SECTIONS') or 'shareholding,issues,buybacks,actions,results,universe,meetings').split(',') if x.strip()]
@@ -423,7 +516,7 @@ def main() -> int:
     ctx['px'] = pd.read_parquet(io.BytesIO(body))
     ctx['hist'] = pd.read_parquet(io.BytesIO(r2.get_object(Bucket=BUCKET, Key='artifacts/price_history.parquet')['Body'].read()))
     ctx['trades'] = table(r2, 'insider_trades')
-    if 'actions' in sections:
+    if 'actions' in sections or 'probe' in sections:
         keys = [k for k in list_keys(r2, 'prices/daily/') if k.endswith('.parquet') and k.split('/')[-1][:7] >= '2025-04']
         cols = ['date', 'exchange', 'isin', 'symbol', 'series', 'close', 'prev_close', 'value']
         px = pd.concat([read_parquet(r2, k)[cols] for k in keys], ignore_index=True)
