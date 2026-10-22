@@ -309,7 +309,7 @@ def render():
         ideas.insider_events(e, ctx.ref, mine_sh, summary), ideas.pledge_events(t, ctx.ref, mine_sh, enc=ctx.encumbrances),
         ideas.stake_events(own(ctx.sast), ctx.ref), ideas.fund_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
         ideas.promoter_deal_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
-        ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh), ideas.buyback_events(bb, ctx.ref, mine_sh)], summary)
+        ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh, allottees=store.table('preferential_allottees')), ideas.buyback_events(bb, ctx.ref, mine_sh)], summary)
 
     # Risks: standing facts and the last 12 months, always shown.
     risks = []
@@ -321,7 +321,7 @@ def render():
     if not sold.empty:
         risks.append(f'Promoters sold {kit.rupees(sold["value"].sum())} on the market in 12 months '
                      f'({kit.pct(pd.to_numeric(sold["pct_of_mcap"], errors="coerce").sum(), 2)} of market cap)')
-    cheap = ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh, days=365)
+    cheap = ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh, days=365, allottees=store.table('preferential_allottees'))
     for s_ in cheap.loc[cheap['list'] == 'warn', 'sentence'] if not cheap.empty else []:
         risks.append(s_)
     tp = t[t['is_primary'].astype('boolean').fillna(False)] if not t.empty else t

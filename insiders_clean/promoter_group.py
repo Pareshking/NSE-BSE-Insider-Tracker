@@ -136,6 +136,30 @@ def link(trades: pd.DataFrame, group: pd.DataFrame | None) -> tuple[pd.DataFrame
     return t, rep
 
 
+def mark_allottee_promoters(allottees: pd.DataFrame, group: pd.DataFrame | None,
+                            trades: pd.DataFrame | None) -> tuple[pd.DataFrame, dict]:
+    """Adds `in_promoter_group` to preferential allottees: the allottee is in the company's latest promoter-group
+    list (by name, or the name before a bracket) or filed under PIT as the company's promoter or promoter group.
+    The issue XBRL names each allottee but not whether it is a promoter, so a mixed issue ("promoters and
+    others") said nothing of how much went to the promoters (audit 23 Oct: Spectrum Electrical's 8.04% to
+    "promoters and others" at 45.8% below the price). Matched by identity only, as `link`."""
+    a = allottees.copy()
+    a['in_promoter_group'] = False
+    if a.empty or 'allottee_id' not in a:
+        return a, {'allottees': 0}
+    lists = latest_lists(group)
+    members = (set(zip(lists['co'], lists['member_id'])) | set(zip(lists['co'], lists['member_alt_id'].dropna()))
+               if not lists.empty else set())
+    if trades is not None and not trades.empty:
+        p = trades[trades['person_role'].isin(PROMOTER_ROLES)]
+        members |= set(zip(p['isin'], p['person_id']))
+    alts = a['allottee'].map(alt_key) if 'allottee' in a else pd.Series(None, index=a.index)
+    hit = [k in members or (x is not None and (i, x) in members) for k, i, x in zip(zip(a['isin'], a['allottee_id']), a['isin'], alts)]
+    a['in_promoter_group'] = pd.Series(hit, index=a.index, dtype=bool)
+    listed = a['isin'].isin(set(lists['co'])) if not lists.empty else pd.Series(False, index=a.index)
+    return a, {'allottees': int(len(a)), 'company_has_list': int(listed.sum()), 'in_promoter_group': int(a['in_promoter_group'].sum())}
+
+
 def mark_deal_promoters(deals: pd.DataFrame, group: pd.DataFrame | None,
                         trades: pd.DataFrame | None) -> tuple[pd.DataFrame, dict]:
     """Adds `client_is_promoter` to bulk/block deals: the client is in the company's latest promoter-group list

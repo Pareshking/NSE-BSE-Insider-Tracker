@@ -211,3 +211,29 @@ def test_a_pledge_row_names_the_lender_from_reg_31():
     assert ideas.pledge_events(t, REF, sh).iloc[0]['sentence'] == ideas.pledge_events(t, REF, sh, enc=enc.iloc[3:]).iloc[0]['sentence']
     old = enc.assign(broadcast_date=pd.to_datetime(['2026-01-02'] * 4))         # outside the window: nothing added
     assert 'Reg 31' not in ideas.pledge_events(t, REF, sh, enc=old).iloc[0]['sentence']
+
+
+def test_an_issue_to_promoters_and_others_counts_only_the_promoter_groups_part():
+    """Spectrum Electrical, 23 Oct: 8.04% to "promoters and others" said nothing of the promoters' part. The
+    allottees matched to the promoter-group list size it; none matched, no warning."""
+    from insiders_clean import promoter_group
+    sh = pd.DataFrame({'isin': ['INE0MIXD0011', 'INE0NONE0011'], 'symbol': ['MIXCO', 'NONECO'], 'company': ['M', 'N'],
+                       'quarter_end': pd.to_datetime(['2026-09-30'] * 2), 'total_shares': [1e8, 1e8]})
+    issues = pd.DataFrame({'isin': ['INE0MIXD0011', 'INE0NONE0011'], 'symbol': ['MIXCO', 'NONECO'], 'company': ['M', 'N'],
+                           'app_id': ['L1', 'L2'], 'linked_app_id': ['A1', 'A2'],
+                           'allottee_category': ['MIXED', 'MIXED'], 'vs_market': [-30.0, -30.0],
+                           'shares_allotted': [8e6, 8e6], 'securities_proposed': [None, None], 'instruments': ['Warrants'] * 2,
+                           'posted_on': pd.to_datetime(['2026-10-05'] * 2), 'status': ['Allotted or listed'] * 2, 'amount': [1e8] * 2})
+    allottees = pd.DataFrame({'app_id': ['A1', 'A1', 'A2'], 'isin': ['INE0MIXD0011', 'INE0MIXD0011', 'INE0NONE0011'],
+                              'allottee': ['Ravi Kumar Gupta', 'Some Fund LLP', 'Other Fund LLP'],
+                              'allottee_id': ['RAVI KUMAR GUPTA', 'SOME FUND LLP', 'OTHER FUND LLP'], 'securities': [2e6, 6e6, 8e6]})
+    group = pd.DataFrame({'isin': ['INE0MIXD0011'], 'quarter_end': ['2026-09-30'], 'member_id': ['RAVI KUMAR GUPTA'],
+                          'member_alt_id': [None]})
+    marked, rep = promoter_group.mark_allottee_promoters(allottees, group, None)
+    assert marked['in_promoter_group'].tolist() == [True, False, False] and rep['in_promoter_group'] == 1
+    out = ideas.issue_events(issues, REF, sh, allottees=marked)
+    assert out['nse_symbol'].tolist() == ['MIXCO']                                    # NONECO: no promoter among the named
+    r = out.iloc[0]
+    assert abs(r['pct_of_company'] - 2.0) < 1e-9                                       # a quarter of the 8% issue
+    assert '(1 of 2 named allottees in the promoter group)' in r['sentence']
+    assert len(ideas.issue_events(issues, REF, sh)) == 2                               # no allottee table: as before
