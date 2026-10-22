@@ -360,6 +360,33 @@ def _pair_copies(nse: pd.DataFrame, bse: pd.DataFrame) -> list[tuple]:
     return pairs
 
 
+def _pledge_quantity_from_bse(df: pd.DataFrame) -> int:
+    """NSE's nightly rows carry no quantity for a pledge (its mapper keeps one only for a buy or a sale),
+    so they never pair with their BSE copy and the pledge is counted on both exchanges. An NSE pledge row
+    without shares takes them from the BSE row of the same security, person and kind whose trade dates
+    agree (`_dates_agree`), one BSE row each; the pairing that follows then links the two. Returns how
+    many were filled (in the run report)."""
+    pledge = df['kind'].astype(str).str.startswith('pledge')
+    n = df[pledge & df['exchange'].eq('nse') & df['quantity'].isna()].dropna(subset=['isin', 'person_id'])
+    b = df[pledge & df['exchange'].eq('bse') & df['quantity'].notna()].dropna(subset=['isin', 'person_id'])
+    if n.empty or b.empty:
+        return 0
+    groups = {k: g for k, g in b.groupby(['isin', 'person_id', 'kind'], sort=False)}
+    used, filled = set(), 0
+    for i, r in n.iterrows():
+        cand = groups.get((r['isin'], r['person_id'], r['kind']))
+        if cand is None:
+            continue
+        for j, c in cand.iterrows():
+            if j not in used and _dates_agree(r['trade_date_from'], r['trade_date_to'], c['trade_date_from'],
+                                              c['trade_date_to'], not bool(c.get('_bse_csv', False))):
+                df.at[i, 'quantity'] = c['quantity']
+                used.add(j)
+                filled += 1
+                break
+    return filled
+
+
 def _revision_marked(d: pd.DataFrame) -> pd.Series:
     """NSE rows of a filing NSE lists as a 'Revision' that carry no prevAppId."""
     st = d['nse_submission_type'].astype('string').str.strip().str.lower().fillna('')
@@ -470,6 +497,10 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df.loc[holding_only, 'kind'] = 'holding_only'
     df.loc[holding_only, 'is_market'] = False
     df.loc[holding_only, 'side'] = None
+    # A pledge moves no shares between owners, so it has no side: BSE's insider CSV files a pledge as
+    # 'Acquisition', its nightly feed with none, and the two feeds' copies of one filing must match to be
+    # one row (Aequs and Sical Logistics pledges were kept twice from BSE, audit 22 Oct).
+    df.loc[_true(df['kind'].str.startswith('pledge')), 'side'] = None
     report.unrecognised('mode_of_acquisition', df.loc[df['kind'].eq('unrecognised'), 'mode_raw'].astype(str))
     df = add_entity_columns(df, 'person_raw', prefix='person')
 
@@ -654,6 +685,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df['is_primary'] = True
     df['primary_id'] = None
     df['listed_on'] = df['exchange']
+    t['pledge_quantity_from_bse'] = _pledge_quantity_from_bse(df)
     pairs = _pair_copies(df[df['exchange'].eq('nse')], df[df['exchange'].eq('bse')])
     if pairs:
         n_idx, b_idx = (list(x) for x in zip(*pairs))

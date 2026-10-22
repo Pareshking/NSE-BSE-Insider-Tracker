@@ -158,3 +158,39 @@ def test_each_period_counts_only_its_own_days():
                       row('INE556B01011', 'NEWBUY', 'New Promoter', 'promoter', 'BUY', 500000, 100, '2026-10-19')])
     got = {d: set(ideas.insider_events(t, REF, days=d)['nse_symbol']) for d in ideas.PERIODS.values()}
     assert got == {1: {'NEWBUY'}, 7: {'NEWBUY'}, 30: {'NEWBUY'}, 90: {'NEWBUY', 'OLDBUY'}}
+
+
+def test_a_pledge_cannot_exceed_what_the_person_holds():
+    """Aequs as stored before 22 Oct: NSE's release of 08 Oct carries no shares, the pledges around it do."""
+    sh = pd.DataFrame({'isin': ['INE0AEQUS011'], 'symbol': ['AEQUS'], 'company': ['Aequs'],
+                       'quarter_end': pd.to_datetime(['2026-09-30']), 'total_shares': [670665635]})
+    rows = [pledge('2026-09-21', 'pledge_create', 100513070), {**pledge('2026-10-09', 'pledge_revoke', 0), 'quantity': None},
+            pledge('2026-10-15', 'pledge_create', 100513070)]
+    t = pd.DataFrame([{**r, 'holding_before': 100513070, 'holding_after': 100513070} for r in rows])
+    out = ideas.pledge_events(t, REF, sh)
+    assert abs(out.iloc[0]['pct_of_company'] - 100513070 / 670665635 * 100) < 1e-9      # 14.99%, as the 30 Sep XBRL
+
+
+def test_a_stake_filed_as_voting_rights_or_warrants_is_not_called_bought():
+    sast = pd.DataFrame({'isin': ['INE0JSIPL011', 'INE0HSBC0011'], 'symbol': ['JSIPL', 'THYROCARE'], 'company': ['J', 'T'],
+                         'is_promoter': [False, False], 'acquirer_name': ['Craft Emerging Marketing Fund PCC', 'HSBC Mutual Fund'],
+                         'pct_acquired': [5.79, 1.88], 'pct_sold': [None, None], 'post_stake_pct': [5.79, 6.63],
+                         'instrument': ['Voting Rights other than by shares', 'Equity shares'],
+                         'broadcast_date': pd.to_datetime(['2026-10-10'] * 2)})
+    out = dict(zip(ideas.stake_events(sast, REF)['nse_symbol'], ideas.stake_events(sast, REF)['sentence']))
+    assert out['JSIPL'] == ('Craft Emerging Marketing Fund PCC took 5.79% of the company '
+                            '(filed as voting rights other than by shares, not shares), now holds 5.79%')
+    assert out['THYROCARE'].startswith('HSBC Mutual Fund bought 1.88%')
+
+
+def test_fund_nets_are_shares_over_total_shares_when_the_xbrl_gives_the_total():
+    """RHI Magnesita, 22 Sep 2026 block deals at Rs 360: SBI, Nippon and Bandhan MFs bought 2,19,41,224 shares."""
+    deals = pd.DataFrame({'isin': ['INE0RHIM0011'] * 3, 'company': ['RHI'] * 3, 'nse_symbol': ['RHIM'] * 3,
+                          'client_id': list('abc'), 'client_name': ['SBI Mutual Fund', 'Nippon India Mutual Fund', 'Bandhan Mutual Fund'],
+                          'client_type': ['mutual_fund'] * 3, 'client_is_market_maker': [False] * 3, 'is_primary': [True] * 3,
+                          'side': ['BUY'] * 3, 'quantity': [16666667, 2496780, 2777777], 'pct_of_mcap': [7.7, 1.2, 1.3],
+                          'value': [q * 360 for q in (16666667, 2496780, 2777777)], 'date': pd.to_datetime(['2026-09-22'] * 3)})
+    sh = pd.DataFrame({'isin': ['INE0RHIM0011'], 'quarter_end': pd.to_datetime(['2026-09-30']), 'total_shares': [206500000]})
+    out = ideas.fund_events(deals, None, REF, sh=sh).iloc[0]
+    assert abs(out['pct_of_company'] - 21941224 / 206500000 * 100) < 1e-9
+    assert abs(ideas.fund_events(deals, None, REF).iloc[0]['pct_of_company'] - 10.2) < 1e-9   # no total: value basis

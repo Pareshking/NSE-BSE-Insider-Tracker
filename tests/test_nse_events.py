@@ -315,3 +315,25 @@ def test_issue_xbrl_cap_leaves_the_rest_pending_and_retries_them(events):
     run_daily.run(r2, FakeNSE(), date(2026, 10, 10), 10, streams=(run_daily.ISSUES,))
     arch = run_daily.merge_into_archive(r2, run_daily.ISSUES, None, '')[0]
     assert (arch['xbrl_status'] == 'pending').sum() == 0
+
+
+class _Master:
+    """The two lookups add_identity uses: Electrosteel's current ISIN only (audit 22 Oct)."""
+    recs = {'INE086A01029': {'display_name': 'Electrosteel Castings'}, 'INE467B01029': {'display_name': 'TCS'}}
+    syms = {'ELECTCAST': 'INE086A01029', 'TCS': 'INE467B01029'}
+
+    def resolve(self, exchange, symbol=None, isin=None):
+        return self.syms.get(symbol), 'symbol'
+
+    def record(self, isin):
+        return self.recs.get(isin)
+
+
+def test_a_retired_isin_filed_with_the_shareholding_gives_way_to_the_current_one():
+    from collectors.nse_events.run_daily import add_identity
+    df = pd.DataFrame({'symbol': ['ELECTCAST', 'TCS', 'NEWCO'], 'company': ['Electrosteel Castings Limited', 'TCS', 'New Co'],
+                       'isin': ['INE086A01011', 'INE467B01029', 'INE999X01019']})
+    out = add_identity(df, _Master())
+    assert list(out['isin']) == ['INE086A01029', 'INE467B01029', 'INE999X01019']   # unknown to the master and no symbol: kept
+    assert list(out['isin_filed'].fillna('')) == ['INE086A01011', '', '']
+    assert out.loc[0, 'company_display'] == 'Electrosteel Castings' and not out['unmatched_security'].any()

@@ -39,7 +39,7 @@ def _reload_changed_pipeline_modules():
 _reload_changed_pipeline_modules()
 
 st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
-                   initial_sidebar_state='expanded')
+                   initial_sidebar_state='collapsed')   # the phone menu opened over every page (audit 22 Oct)
 
 from screens import (
     coming,
