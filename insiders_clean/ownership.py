@@ -24,7 +24,10 @@ def by_quarter(rows: pd.DataFrame | None, quarters: int = 5) -> tuple[pd.DataFra
         return pd.DataFrame(), []
     r = rows.assign(q=pd.to_datetime(rows['quarter_end'], errors='coerce')).dropna(subset=['q'])
     r = r.sort_values('q').drop_duplicates('q', keep='last').tail(quarters)
-    ok = (r['categories_check'] == 'match') if 'categories_check' in r else pd.Series(False, index=r.index)
+    # A blank check (pd.NA in a text column, e.g. a BSE-only quarter) is not parsed: `== 'match'` alone gave NA,
+    # and the Company page stopped on it (Site preview, 22 Oct).
+    ok = (r['categories_check'].eq('match').fillna(False).astype(bool) if 'categories_check' in r
+          else pd.Series(False, index=r.index))
     table = pd.DataFrame(index=[label for label, _ in ROWS])
     for (_, x), good in zip(r.iterrows(), ok):
         col = []

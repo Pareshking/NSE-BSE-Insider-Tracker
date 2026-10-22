@@ -35,6 +35,14 @@ def test_ownership_with_one_parsed_quarter_has_no_change():
     assert missing == [] and table['change'].isna().all()
 
 
+def test_ownership_reads_a_blank_check_in_a_text_column_as_not_parsed():
+    """Real data, 22 Oct: a quarter whose check is pd.NA in a text column stopped the Company page."""
+    rows = pd.DataFrame([quarter('2026-06-30', promoter=56.0), quarter('2026-09-30', check=None, promoter=55.0)])
+    rows['categories_check'] = rows['categories_check'].astype('string')
+    table, missing = ownership.by_quarter(rows)
+    assert missing == [pd.Timestamp('2026-09-30')] and table.loc['Promoter', pd.Timestamp('2026-06-30')] == 56.0
+
+
 def test_timeline_dates_with_and_without_a_zone_sort_together():
     """Real data, 21 Oct: results carry an IST time with its zone, other filings a plain date; the
     timeline's sort broke on the mix (company-hcltech screenshot)."""
