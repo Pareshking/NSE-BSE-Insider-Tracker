@@ -51,6 +51,7 @@ on:
         default: '0'
   schedule:
     - cron: '0 16 * * 1-6'  # 21:30 IST, Monday-Saturday
+    - cron: '30 19 * * 1-6'  # 01:00 IST: backup, runs only when tonight's run did not succeed
 
 permissions:
   contents: read
@@ -61,7 +62,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    # The backup schedule runs only when no scheduled run of this workflow succeeded in the last 10 hours
+    # (GitHub starts scheduled runs late, or drops them: 21 and 22 Oct 2026). Every other start runs as asked.
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.g.outputs.run }}
+    steps:
+      - id: g
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+        run: |
+          if [ "$EVENT" != "schedule" ] || [ "$CRON" != "30 19 * * 1-6" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          since=$(date -u -d '10 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nse-events.yml --event schedule --status success --created ">=$since" --json databaseId --jq length || echo 0)
+          if [ "${n:-0}" -gt 0 ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "tonight's run succeeded: backup skipped"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+
   collect:
+    needs: guard
+    if: ${{ needs.guard.outputs.run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
