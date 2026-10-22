@@ -20,7 +20,7 @@ from clean_writer import read_parquet  # noqa: E402
 
 pd.set_option('display.width', 250)
 pd.set_option('display.max_columns', 40)
-pd.set_option('display.max_colwidth', 40)
+pd.set_option('display.max_colwidth', 28)
 
 
 def show(title: str, df: pd.DataFrame, cols: list[str]) -> None:
@@ -52,8 +52,9 @@ def main() -> int:
         t = tr[tr['isin'].isin(isins) | (tr['nse_symbol'].astype(str).str.upper() == sym)] if 'nse_symbol' in tr else tr[tr['isin'].isin(isins)]
         t = t[t['kind'].astype(str).str.startswith('pledge')] if 'kind' in t else t.iloc[0:0]
         show('pledge filings', t.sort_values('broadcast_date') if 'broadcast_date' in t else t,
-             ['broadcast_date', 'exchange', 'is_primary', 'needs_review', 'person_name', 'person_role', 'kind', 'quantity',
-              'holding_before', 'holding_after', 'trade_date_to', 'app_id', 'record_id', 'event_id'])
+             ['broadcast_date', 'exchange', 'is_primary', 'primary_id', 'person_id', 'kind', 'side', 'quantity', 'value',
+              'holding_before', 'holding_after', 'trade_date_from', 'trade_date_to', 'app_id', 'source_id', 'mode_raw',
+              'transaction_type_raw', 'listed_on'])
     return 0
 
 

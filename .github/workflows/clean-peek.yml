@@ -7,7 +7,7 @@ on:
       symbols:
         description: 'Comma-separated NSE symbols'
         required: true
-        default: 'ELECTCAST,AEQUS,MKVENTURES'
+        default: 'AEQUS,SICALLOG,HCLTECH'
   push:
     branches: [audit/investor-22oct]
     paths:
@@ -34,5 +34,5 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-          SYMBOLS: ${{ inputs.symbols || 'ELECTCAST,AEQUS,MKVENTURES,KAPSTON,TTL,WESTLIFE' }}
+          SYMBOLS: ${{ inputs.symbols || 'AEQUS,SICALLOG,HCLTECH' }}
         run: python -u scripts/clean_peek.py
