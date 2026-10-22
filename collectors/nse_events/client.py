@@ -104,6 +104,14 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-share-holdings-master?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
+    def integrated_results_url(self, start: date, end: date, page: int = 1, size: int = 100) -> str:
+        """Financial results filed as NSE's integrated filing, newest first, `size` a page
+        (confirmed 15 Oct 2026: {'data', 'size', 'page', 'totalCount'}; page=2 is the second page). The nightly
+        results stream lists by it (run_daily.results_filings); it was dropped on 19 Oct (2d4f670) and every
+        night's results fetch failed until 22 Oct."""
+        return (f'{BASE}/api/integrated-filing-results?index=equities&from_date={self._d(start)}'
+                f'&to_date={self._d(end)}&type=Integrated%20Filing-%20Financials&page={page}&size={size}')
+
     def integrated_filing_financials_url(self, symbol: str | None = None,
                                           quarter_end_date: str | None = None) -> str:
         """NSE's dedicated Integrated Filing-Financials API, scoped to one issuer or quarter."""

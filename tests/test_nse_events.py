@@ -363,3 +363,14 @@ def test_the_nightly_run_writes_the_encumbrances_table(events):
     assert rep['streams']['encumbrances']['fetched'] == 2
     out = pd.read_parquet(io.BytesIO(r2.objects['clean/current/encumbrances.parquet']))
     assert set(out['symbol']) == {'VINCOFE', 'LLOYDSENGG'} and 'isin_filed' in out
+
+
+def test_the_client_has_every_method_the_nightly_calls():
+    """run_daily called nse.integrated_results_url after 2d4f670 (19 Oct 2026) removed it: results failed
+    every night until 22 Oct. Every nse.<method>( the collector calls must exist on NSEClient."""
+    import inspect
+    import re
+    from collectors.nse_events import run_daily
+    from collectors.nse_events.client import NSEClient
+    called = set(re.findall(r'\bnse\.([a-z_]+)\(', inspect.getsource(run_daily)))
+    assert called and not [m for m in called if not hasattr(NSEClient, m)], called
