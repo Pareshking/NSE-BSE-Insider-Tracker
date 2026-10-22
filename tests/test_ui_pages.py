@@ -138,9 +138,10 @@ def test_company_board_survives_two_symbols_on_one_isin(real_nse_rows, master, c
     assert not board.empty
 
 
-def test_company_page_shows_capital_raises_tab_only_when_the_company_has_them(data_dir, monkeypatch):
+def test_company_timeline_shows_issues_only_when_the_company_has_them(data_dir, monkeypatch):
+    """One dossier, no tabs (21 Oct): an issue is a row in the timeline, with its own filter."""
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
-    labels = {}
+    html, kinds = {}, {}
     for sym in ('HCLTECH', 'ZEEL'):
         code = APP_PATHS + f"""
 import streamlit as st
@@ -153,9 +154,14 @@ company.render()
         at = AppTest.from_string(code, default_timeout=60)
         at.run()
         assert not at.exception, at.exception[0].value
-        labels[sym] = [t.label for t in at.tabs]
-    assert 'Capital raises' in labels['HCLTECH']
-    assert 'Capital raises' not in labels['ZEEL']
+        assert not at.tabs
+        html[sym] = ' '.join(e.proto.body for e in at.get('html'))
+        kinds[sym] = {o.split(' · ')[0] for w in at.get('button_group') for o in w.options}
+    assert 'Rights issue' in kinds['HCLTECH'] and 'Rights issue' not in kinds['ZEEL']
+    assert {'Insider buy', 'Insider sell'} <= kinds['HCLTECH']
+    assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
+    for part in ('>For<', '>Against<', '>Risks<', '>Ownership<', '>Timeline<'):
+        assert part in html['HCLTECH']
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):

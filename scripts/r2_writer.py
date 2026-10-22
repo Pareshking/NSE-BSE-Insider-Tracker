@@ -172,7 +172,7 @@ def r2_client():
 # Fields added to a row after the archive began. Left out of the hash so that
 # a row keeps the id it had before the field existed (otherwise every archived
 # row would be stored a second time under a new id).
-ID_IGNORED_FIELDS = frozenset({'prevAppId', 'typeOfSubmission', 'revisionRemark'})
+ID_IGNORED_FIELDS = frozenset({'prevAppId', 'typeOfSubmission', 'revisionRemark', 'otherQuantity'})   # otherQuantity: added 22 Oct, so a filing seen before keeps its id
 
 
 def canonical_event_id(exchange, category, row):
@@ -200,7 +200,7 @@ def canonicalize(exchange, category, row):
     result = None
     if category == 'insider_trading':
         if exchange == 'nse':
-            qty = row.get('buyQuantity') or row.get('sellquantity')
+            qty = row.get('buyQuantity') or row.get('sellquantity') or row.get('otherQuantity')
             val = row.get('buyValue') or row.get('sellValue')
         else:
             qty = row.get('quantity')

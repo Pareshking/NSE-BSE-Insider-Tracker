@@ -38,7 +38,7 @@ def _lists(_ctx, ref_key: str, days: int) -> tuple:
     summary, issues, bb = _inputs(ctx, ref_key)
     return ideas.today([
         ideas.insider_events(ctx.eligible, ref, sh, summary, days=days), ideas.pledge_events(ctx.trades, ref, sh, days=days),
-        ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days),
+        ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.issue_events(issues, ref, sh, days=days), ideas.buyback_events(bb, ref, sh, days=days)], summary)
 
 
@@ -175,7 +175,13 @@ def render():
     text = c3.text_input('Company', key='td_text', placeholder='Filter by company or symbol', label_visibility='collapsed')
     sector = '' if sector == 'All sectors' else sector
 
-    view = {p: tuple(_filter(x, size, sector, text, px, sectors) for x in lw) for p, lw in every.items()}
+    # One name per company, the security master's, whichever filing the row came from (audit 22 Oct:
+    # "RHI MAGNESITA INDIA LTD" beside "Rhi Magnesita India", "PENNAR INDUSTRIES LIMTIED" as filed).
+    disp = (dict(zip(sec['isin'], sec['display_name'])) if sec is not None and not sec.empty
+            and {'isin', 'display_name'} <= set(sec.columns) else {})
+    named = {p: tuple(x.assign(company=x['isin'].map(disp).fillna(x['company'])) if not x.empty else x for x in lw)
+             for p, lw in every.items()}
+    view = {p: tuple(_filter(x, size, sector, text, px, sectors) for x in lw) for p, lw in named.items()}
     look, warn = view[period]
     span = 'today' if ideas.PERIODS[period] == 1 else period.lower()
     cl, cw = _counts(look), _counts(warn)

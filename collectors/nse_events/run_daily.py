@@ -151,12 +151,21 @@ def security_master(r2, run_date: str, notes: list, *, max_age_days: int = 10) -
 
 
 def add_identity(df: pd.DataFrame, master: SecurityMaster) -> pd.DataFrame:
-    """ISIN and display name from the security master; the row's own ISIN
-    (corporate actions, shareholding) wins when present."""
+    """ISIN and display name from the security master. The row's own ISIN (corporate actions, shareholding)
+    wins when the master knows it; one the master does not know is a retired ISIN (NSE's shareholding list
+    still files Electrosteel under INE086A01011, the ISIN before its split; the company is INE086A01029,
+    audit 22 Oct), so the symbol's current ISIN replaces it and `isin_filed` keeps what was filed."""
     df = df.copy()
     own = df['isin'] if 'isin' in df.columns else pd.Series([None] * len(df), index=df.index)
     resolved = [master.resolve('nse', s)[0] for s in df['symbol']]
-    df['isin'] = [o if isinstance(o, str) and o.strip() else r for o, r in zip(own, resolved)]
+    known = {i: master.record(i) is not None for i in pd.Series(own).dropna().unique() if isinstance(i, str) and i.strip()}
+
+    def pick(o, r):
+        o = o.strip() if isinstance(o, str) and o.strip() else None
+        return o if o and (known.get(o) or not r) else r
+
+    df['isin'] = [pick(o, r) for o, r in zip(own, resolved)]
+    df['isin_filed'] = [o if isinstance(o, str) and o.strip() and o.strip() != i else None for o, i in zip(own, df['isin'])]
     recs = {i: master.record(i) for i in pd.Series(df['isin']).dropna().unique()}
     df['company_display'] = [(recs.get(i) or {}).get('display_name') or c for i, c in zip(df['isin'], df['company'])]
     df['unmatched_security'] = df['isin'].isna()
@@ -800,6 +809,10 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             put_parquet(r2, f'clean/current/{stream}.parquet', clean)
             continue
         clean = add_identity(arch, master)
+        if stream == 'sast' and 'raw_json' in clean:   # rows stored before the column existed
+            filed = clean['instrument'] if 'instrument' in clean else pd.Series(None, index=clean.index, dtype=object)
+            clean['instrument'] = filed.where(filed.notna(), clean['raw_json'].map(parsers.sast_instrument))
+            entry['instrument'] = clean['instrument'].fillna('not filed').value_counts().to_dict()
         if stream == 'shareholding':
             clean = clean_shareholding(clean)
             entry['coverage'] = shareholding_coverage(clean)
@@ -807,6 +820,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             report['pending_members'] = entry['coverage']['pending_members']
             report['pending_categories'] = entry['coverage']['pending_categories']
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
+        entry['isin_replaced'] = int(clean['isin_filed'].notna().sum())   # a retired ISIN filed, the current one used
         entry['clean_rows'] = len(clean)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
     nse.on_response = None
