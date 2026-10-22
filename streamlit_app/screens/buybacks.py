@@ -39,7 +39,7 @@ def card(bb: pd.DataFrame, prices: pd.DataFrame) -> None:
             kit.Col('offer_price', 'Offer price', 'price'), kit.Col('latest_close', 'Market price now', 'price', phone=False),
             kit.Col('vs_market', 'Offer vs market now', 'spct', help='Positive = the company offers more than today\'s price'),
             kit.Col('offer_value', 'Size', 'money', phone=False), kit.Col('times_tendered', 'Tendered ×', 'num', phone=False),
-            kit.Col('record_date', 'Record date', 'date', phone=False)], limit=100, download='buybacks')
+            kit.Col('record_date', 'Record date', 'date', phone=False)], limit=100)
         kit.caption("Tender offers: price, shares sought and times tendered from NSE's tender-offer list. Open market: the "
                     "company files a daily buyback report with NSE; its maximum price is only in the PDF announcement, so "
                     "it is blank. A 'Buy Back' corporate action with no tender record on NSE shows no route. Market price "

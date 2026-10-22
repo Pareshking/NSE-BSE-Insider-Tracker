@@ -95,10 +95,9 @@ def data_dir(tmp_path_factory, real_nse_rows):
     return root
 
 
-PAGES = [('actions', {}), ('other_filings', {}), ('today', {}), ('screener', {}), ('insider_trades', {}), ('deals', {}), ('capital_raises', {}),
+PAGES = [('home', {}), ('filings_all', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
-         ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('sast', {}), ('transfers', {}),
-         ('shareholding', {}), ('coming', {}), ('filings', {})]
+         ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
 
 
 @pytest.mark.parametrize(('screen', 'params'), PAGES, ids=[f'{s}-{bool(p)}' for s, p in PAGES])
@@ -214,8 +213,10 @@ company.render()
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     out = {}
-    for screen in ('insider_trades', 'capital_raises'):
+    for screen in ('filings_all', 'capital_raises'):
         at = AppTest.from_string(APP_PATHS + f"""
+import streamlit as st
+st.session_state.setdefault('fa_days', max(__import__('screens.filings_all', fromlist=['x']).PERIODS))   # the fixture's trades are older than 30 days
 from ui import theme
 theme.inject()
 from screens import {screen}
@@ -224,7 +225,7 @@ from screens import {screen}
         at.run()
         assert not at.exception, at.exception[0].value
         out[screen] = ' '.join(e.proto.body for e in at.get('html'))  # tables are drawn in the page (st.html)
-    assert 'after the trading window reopened' in out['insider_trades']
+    assert 'after the trading window reopened' in out['filings_all']
     assert 'Tender offer' in out['capital_raises'] and 'Open market' in out['capital_raises'] and '₹1,800' in out['capital_raises']
 
 
@@ -256,19 +257,9 @@ st.write(f'{st_t["isin"].nunique()}|{all_t["isin"].nunique()}')
     assert shown == '1' and int(everything) == len(isins) > 1
 
 
-def test_market_page_renders_and_old_addresses_redirect(data_dir, monkeypatch):
-    """Market (21 Oct redesign) replaces Actions, Morning brief, Latest session, Screener and Shareholding."""
-    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
-    at = AppTest.from_string(APP_PATHS + """
-from ui import theme
-theme.inject()
-from screens import market
-market.render()
-""", default_timeout=60)
-    at.run()
-    assert not at.exception, at.exception[0].value if at.exception else ''
-    html = ' '.join(e.proto.body for e in at.get('html'))
-    assert 'Market' in html and 'ev-line' in html
+def test_old_addresses_redirect():
+    """The retired pages (Market, Actions, Morning brief, Screener, Shareholding, Insider trades, Deals, Other
+    filings, Capital raises; 21-22 Oct) are gone; their addresses lead to Today or Filings."""
     import re
     app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
     for old in ('market', 'actions', 'brief', 'screener', 'shareholding'):

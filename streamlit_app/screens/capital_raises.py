@@ -79,7 +79,7 @@ def render():
                 kit.Col('amount', 'Amount', 'money'), kit.Col('shares_allotted', 'Shares allotted', 'shares', phone=False),
                 kit.Col('icdr_min_price', 'ICDR minimum', 'price', phone=False, help='Minimum issue price per SEBI ICDR, as the company filed it'),
                 kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)],
-                limit=100, download='preferential_issues')
+                limit=100)
             kit.caption(link_summary(pref))
         with kit.card('Offer price against the ICDR minimum and the market', 'cr_px', 'allotted issues'):
             allotted = issues[(issues['status'] == 'Allotted or listed') & issues['offer_price'].notna()]
@@ -103,7 +103,7 @@ def render():
                     kit.Col('allottee', 'Allottee', 'client', sub='security_type'),
                     kit.Col('securities', 'Securities', 'shares'),
                     kit.Col('promoter_text', 'Promoter', phone=False, help='From the issue\'s category; blank for an issue to promoters and others')],
-                    limit=150, download='preferential_allottees')
+                    limit=150)
                 kit.caption('The XBRL names each proposed allottee but not whether that allottee is a promoter: an issue filed as '
                             'to promoters marks all its allottees Yes, one to non-promoters No, a mixed issue leaves it blank.')
         with kit.card('Lock-in expiries', 'cr_lock', 'when newly allotted shares can first be sold'):
@@ -126,7 +126,7 @@ def render():
                 kit.Col('vs_market', 'Rights vs market now', 'spct', phone=False),
                 kit.Col('record_date', 'Record date', 'date', phone=False),
                 kit.Col('issue_close_date', 'Closes', 'date', phone=False), kit.Col('amount', 'Amount', 'money', phone=False)],
-                limit=100, download='rights_issues')
+                limit=100)
             kit.caption(link_summary(ctx.rights, "the approval's amount"))
     qip = qip_rows(store.table('qip'), ctx.prices)
     if not qip.empty:
@@ -139,7 +139,7 @@ def render():
                 kit.Col('vs_market', 'Issue vs market now', 'spct', phone=False),
                 kit.Col('amount', 'Amount', 'money'), kit.Col('allottees', 'Allottees', 'num', phone=False),
                 kit.Col('trading_approval_date', 'Trading approval', 'date', phone=False)],
-                limit=100, download='qips')
+                limit=100)
             kit.caption('From NSE\'s QIP filings, both stages. Floor price and discount are as filed: some filings give the '
                         'issue price as the floor. Market price now is the latest close.')
         buyers = allottee_rows(store.table('qip_allottees'), known)
@@ -148,7 +148,7 @@ def render():
                 kit.table(buyers, [
                     kit.Col('allotment_date', 'Allotted', 'date'), kit.Col('company', 'Company', 'co'),
                     kit.Col('allottee', 'Allottee', 'client', sub='category'), kit.Col('shares', 'Shares', 'shares', phone=False),
-                    kit.Col('pct_of_issue', '% of issue', 'pct')], limit=150, download='qip_allottees')
+                    kit.Col('pct_of_issue', '% of issue', 'pct')], limit=150)
 
     with kit.card('Upcoming board meetings on capital moves', 'cr_meet', 'from NSE board-meeting intimations'):
         m = ctx.meetings
@@ -188,7 +188,7 @@ def render():
                 kit.Col('subject', 'As filed', phone=False), kit.Col('ratio', 'Ratio'),
                 kit.Col('rights_issue_price', 'Rights price', 'price', phone=False),
                 kit.Col('dividend_per_share', 'Dividend/share', 'price', phone=False),
-                kit.Col('record_date', 'Record date', 'date', phone=False)], limit=150, download='corporate_actions')
+                kit.Col('record_date', 'Record date', 'date', phone=False)], limit=150)
             kit.caption("Rights price = face value + the premium NSE lists; BSE's list gives no rights ratio or price. "
                         "An action on both exchanges is shown once (NSE's row); BSE rows are tagged BSE. Buyback price and "
                         "route are not in either corporate-actions feed; the Buybacks list above takes them from NSE's "

@@ -91,7 +91,7 @@ def render():
                 kit.Col('company', 'Company', 'co'), kit.Col('side', 'Side', 'side'),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
                 kit.Col('seen', 'Made public', 'date'), kit.Col('mode', 'Mode as filed', phone=False),
-                kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=100, download='person_filings')
+                kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=100)
     if len(d):
         with kit.card('Deals', 'en_dl'):
             s = d.sort_values('date', ascending=False)
@@ -99,4 +99,4 @@ def render():
                 kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'), kit.Col('side', 'Side', 'side'),
                 kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
-                kit.Col('feeds', 'Feed', phone=False)], limit=100, download='person_deals')
+                kit.Col('feeds', 'Feed', phone=False)], limit=100)

@@ -584,4 +584,4 @@ def render():
                                                 'allotted, else the approved size; for a buyback its size'),
         kit.Col('pct_of_mcap', '% of mcap', 'bar', phone=False),
         kit.Col('made_public', 'Made public', 'date', sub='day_note'),
-    ], limit=LIMIT, height=760, download='filings', detail=detail, key=f'fa_{kind}')
+    ], limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}')
