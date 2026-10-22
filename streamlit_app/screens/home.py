@@ -20,6 +20,10 @@ READ = {'leaning_positive': 'ahead', 'drag': 'behind', 'no_edge': 'no edge', 'fe
 WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
 DEFAULT_PERIOD = 'Last 30 days'
 SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
+# Short names where space is tight (the group pills, the trend panel); the list headings keep the full ones.
+SHORT = {'Insiders buying': 'Insiders buying', 'Promoters pay up': 'Promoters pay up', 'Pledges released': 'Pledges released',
+         'Big investors and funds in': 'Investors in', 'Buybacks at a premium': 'Buybacks', 'Promoters selling': 'Promoters selling',
+         'Pledges': 'Pledges up', 'Cheap shares to promoters': 'Cheap to promoters', 'Big investors and funds out': 'Investors out'}
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=2)
@@ -142,12 +146,14 @@ def _list(ctx, df: pd.DataFrame, lst: str, pick: str, holding, px) -> None:
 
 def render():
     ctx = load()
-    kit.head('Today', 'What people with skin in the game did, across every listed company.')
     if not need_data(ctx):
         return
     key = str(ctx.ref)
-    period = st.segmented_control('Period', list(ideas.PERIODS), default=DEFAULT_PERIOD, key='td_period',
-                                   label_visibility='collapsed') or DEFAULT_PERIOD
+    # The headline is the page's first line, the period beside it (no title repeating the menu).
+    top, right = st.columns([2.2, 1.8], vertical_alignment='center')
+    with right:
+        period = st.segmented_control('Period', list(ideas.PERIODS), default=DEFAULT_PERIOD, key='td_period',
+                                       label_visibility='collapsed', width='content') or DEFAULT_PERIOD
     every = {p: _lists(ctx, key, d) for p, d in ideas.PERIODS.items()}
 
     # The lookups below hold only the columns a row reads: a dict of every column of every price and
@@ -191,22 +197,23 @@ def render():
     span = 'today' if ideas.PERIODS[period] == 1 else period.lower()
     cl, cw = _counts(look), _counts(warn)
     bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Promoters selling')
+    with top:
+        st.html(f'<div class="head"><h1 class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
+                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(span)} to {kit.day(ctx.ref)}</span></h1></div>')
+    n = lambda d, k: d.get(k, 0)   # noqa: E731
     with head:
-        st.html(f'<p class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
-                f'worth a look and <b class="down">{len(warn)}</b> to watch out, {esc(span)} to {kit.day(ctx.ref)}.</p>')
         kit.tiles([
-            Tile('Insiders buying', str(cl.get('Insiders buying', 0)), f'{kit.rupees(bought)} bought' if bought else 'companies', 'up'),
-            Tile('Promoters selling', str(cw.get('Promoters selling', 0)), f'{kit.rupees(sold)} sold' if sold else 'companies', 'down'),
-            Tile('Pledges', f'{cl.get("Pledges released", 0)} · {cw.get("Pledges", 0)}', 'released · made or up'),
-            Tile('Big investors & funds', f'{cl.get("Big investors and funds in", 0)} · {cw.get("Big investors and funds out", 0)}', 'in · out'),
-            Tile('Preferential to promoters', f'{cl.get("Promoters pay up", 0)} · {cw.get("Cheap shares to promoters", 0)}',
-                 'at or above the price · below'),
+            Tile('Insiders buying', str(n(cl, 'Insiders buying')), f'{kit.rupees(bought)} bought' if bought else 'companies', 'up'),
+            Tile('Promoters selling', str(n(cw, 'Promoters selling')), f'{kit.rupees(sold)} sold' if sold else 'companies', 'down'),
+            Tile('Pledges up', str(n(cw, 'Pledges')), f'{n(cl, "Pledges released")} released', 'down' if n(cw, 'Pledges') else ''),
+            Tile('Big investors in', str(n(cl, 'Big investors and funds in')), f'{n(cw, "Big investors and funds out")} out, with funds', 'up'),
+            Tile('Promoters pay up', str(n(cl, 'Promoters pay up')), f'{n(cw, "Cheap shares to promoters")} took cheap shares'),
         ])
 
     groups = [n for lst in ('look', 'warn') for n, _ in ideas.GROUPS[lst]]
     have = {**cl, **cw}
     pick = st.pills('Group', ['All'] + [g for g in groups if have.get(g)], default='All', key='td_group',
-                    format_func=lambda g: g if g == 'All' else f'{g} · {have.get(g, 0)}',
+                    format_func=lambda g: g if g == 'All' else f'{SHORT.get(g, g)} · {have.get(g, 0)}',
                     label_visibility='collapsed') or 'All'
 
     main, side = st.columns([2.7, 1], gap='medium')
@@ -226,7 +233,7 @@ def render():
                 for name, _ in ideas.GROUPS[lst]:
                     n = [_counts(view[p][0 if lst == 'look' else 1]).get(name, 0) for p in ideas.PERIODS]
                     cells = ''.join(f'<td class="{"on" if p == period else ""}">{v or "·"}</td>' for p, v in zip(ideas.PERIODS, n))
-                    body += f'<tr class="{lst}"><th>{esc(name)}</th>{cells}</tr>'
+                    body += f'<tr class="{lst}"><th title="{esc(name, quote=True)}">{esc(SHORT.get(name, name))}</th>{cells}</tr>'
             st.html(f'<table class="trend"><thead><tr><th></th>{heads}</tr></thead><tbody>{body}</tbody></table>')
         with kit.card('The bar', 'td_bar'):
             st.html('<ul class="bar-rules">'
