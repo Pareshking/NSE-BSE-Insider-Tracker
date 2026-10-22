@@ -34,3 +34,20 @@ def test_groups_and_market_maker_override():
     assert out['investor_group_id'].iloc[0] == out['investor_group_id'].iloc[1]
     assert tuple(out.iloc[2][['client_type', 'client_type_confidence']]) == ('prop_hft', 'high')
     assert report(out)['groups_with_several_ids'] == 1
+
+
+def test_a_global_banks_dealing_arm_is_a_dealer_not_an_investor():
+    """BNP Paribas Financial Markets, Citigroup Global Markets: dealing arms (trading audit, 22 Oct 2026)."""
+    from insiders_clean.participants import classify
+    assert classify('BNP PARIBAS FINANCIAL MARKETS')[0] == 'broker'
+    assert classify('CITIGROUP GLOBAL MARKETS MAURITIUS PRIVATE LIMITED')[0] == 'broker'
+    assert classify('GOLDMAN SACHS (SINGAPORE) PTE')[0] == 'fpi' and classify('SOCIETE GENERALE')[0] == 'fpi'
+
+
+def test_no_source_file_holds_a_control_character():
+    """A '\b' written through a shell became a backspace in two regexes on 22 Oct ('lien' never matched)."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    bad = [str(p) for d in ('insiders_clean', 'streamlit_app', 'collectors', 'scripts') for p in (root / d).rglob('*.py')
+           if any(c in p.read_text(encoding='utf-8') for c in ('\x08', '\x00', '\x01'))]
+    assert not bad, bad

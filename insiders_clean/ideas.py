@@ -350,7 +350,7 @@ SECURITY_HOLDER = re.compile(r'truste|security agent|\bagent\b|on behalf of|debe
 # A mode that says the shares were pledged, encumbered or released is security, never a stake bought or sold,
 # whoever files it: BSE's Reg 29 list holds 224 such non-promoter rows to 21 Oct 2026, 37 by names the trustee
 # pattern misses (Deutsche Bank AG for Horizon Industrial Parks, Piramal Pharma, Manipal; Comfort Fincap).
-ENCUMBRANCE_MODE = re.compile(r'pledge|encumb|releas|invoc|revoc|non.?disposal|lien', re.I)
+ENCUMBRANCE_MODE = re.compile(r'pledge|encumb|releas|invoc|revoc|non.?disposal|\blien\b', re.I)
 _MARKET_MODES = {'', 'open market', 'market'}
 
 

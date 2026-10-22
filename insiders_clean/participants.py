@@ -52,6 +52,9 @@ RULES = [
     ('domestic pension', 'pension', 'high', r'NATIONAL PENSION|\bNPS\b|PROVIDENT FUND|EMPLOYEES.{0,20}(PENSION|FUND)'),
     ('sovereign or foreign pension', 'fpi', 'high',
      r'GOVERNMENT OF|INVESTMENT AUTHORITY|NORGES BANK|MONETARY AUTHORITY|PENSION FUND|PENSION PLAN|RETIREMENT'),
+    # A global bank's dealing arm (BNP Paribas Financial Markets, Citigroup Global Markets Mauritius) trades for its own
+    # book or hedges what it sold clients: a dealer, not an investor with a view (trading audit, 22 Oct 2026).
+    ('global bank dealing arm', 'broker', 'medium', r'(?:' + _GLOBAL_BANKS + r').*\b(?:FINANCIAL|GLOBAL) MARKETS\b'),
     ('global bank', 'fpi', 'medium', _GLOBAL_BANKS),
     ('indian bank', 'bank', 'high', r'\bBANK (LIMITED|LTD)\b|\bBANK OF\b'),
     ('AIF or PMS', 'pms_aif', 'medium', r'\bAIF\b|ALTERNATIVE INVESTMENT|PORTFOLIO MANAGEMENT|\bPMS\b|CATEGORY I+\b|'
