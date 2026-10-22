@@ -145,7 +145,28 @@ def test_multi_day_nse_filing_links_to_the_bse_nightly_copy(master, calendar, re
               [bse(hcl['bse_code'], 'Shiv Nadar', 50_000, 75_000_000, '01/09/2026')])
     assert out['is_primary'].sum() == 1 and set(out['listed_on']) == {'bse,nse'}
     assert signals.eligible(out)['value'].sum() == 75_000_000
-    assert report.data['tables']['insider_trades']['nse_bse_copies'] == {'linked': 1, 'linked_bse_nightly_on_span': 1}
+    assert report.data['tables']['insider_trades']['nse_bse_copies'] == {'linked': 1, 'linked_bse_nightly_on_span': 1,
+                                                                          'bse_refiled': 0}
+
+
+def test_a_trade_bse_files_again_is_a_copy_too(master, calendar, report, hcl):
+    """Gateway Distriparks, 04 Dec 2025: BSE files the buy with no value, then again on 23 Jan 2026 with it; the
+    NSE row pairs with one, and the other was read by the signals as a second buy (audit 23 Oct)."""
+    again = {**bse(hcl['bse_code'], 'Shiv Nadar', 50_000, 75_000_000, '02/09/2026'), 'broadcast_date': '2026-10-01T00:00:00'}
+    out = run(master, calendar, report, [nse('Shiv Nadar', 50_000, 75_000_000, '2026-09-02', '2026-09-02')],
+              [bse(hcl['bse_code'], 'Shiv Nadar', 50_000, 0, '02/09/2026'), again])
+    assert out['is_primary'].sum() == 1 and out.loc[out['is_primary'], 'exchange'].tolist() == ['nse']
+    assert set(out.loc[~out['is_primary'], 'primary_id']) == set(out.loc[out['is_primary'], 'trade_id'])
+    assert signals.eligible(out)['value'].sum() == 75_000_000
+    assert report.data['tables']['insider_trades']['nse_bse_copies']['bse_refiled'] == 1
+
+
+def test_two_trades_of_one_size_on_both_exchanges_stay_two(master, calendar, report, hcl):
+    code = hcl['bse_code']
+    out = run(master, calendar, report, [nse('Shiv Nadar', 50_000, 75_000_000, '2026-09-02', '2026-09-02', app='9010'),
+                                         nse('Shiv Nadar', 50_000, 75_000_000, '2026-09-02', '2026-09-02', b=1_050_000, app='9011')],
+              [bse(code, 'Shiv Nadar', 50_000, 75_000_000, '02/09/2026'), bse(code, 'Shiv Nadar', 50_000, 75_000_000, '02/09/2026', b=1_050_000)])
+    assert out.loc[out['is_primary'], 'exchange'].tolist() == ['nse', 'nse']
 
 
 def test_bse_nightly_row_outside_the_span_is_its_own_trade(master, calendar, report, hcl):

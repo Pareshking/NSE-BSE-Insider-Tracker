@@ -807,9 +807,25 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
         df.loc[b_idx, 'is_primary'] = False
         df.loc[b_idx, 'primary_id'] = df.loc[n_idx, 'trade_id'].to_numpy()
         df.loc[n_idx + b_idx, 'listed_on'] = 'bse,nse'
+    # BSE re-files a trade it already has (a revision, a value filed as 0 corrected: Gateway Distriparks' buy of
+    # 04 Dec 2025 again on 23 Jan 2026, Indo-mim's NSE revisions 3307/3327). The NSE row pairs with one BSE copy and
+    # the other stood as a trade of its own, read twice by the signals (28 groups, Rs 43 Cr, audit 23 Oct). A BSE
+    # row left over that is a copy of an NSE row already paired is that NSE row's copy too.
+    refiled = []
+    linked = sorted({i for i, _ in pairs})
+    for _ in range(3):
+        more = _pair_copies(df.loc[linked], df[df['exchange'].eq('bse') & df['is_primary']]) if linked else []
+        if not more:
+            break
+        n_idx, b_idx = (list(x) for x in zip(*more))
+        df.loc[b_idx, 'is_primary'] = False
+        df.loc[b_idx, 'primary_id'] = df.loc[n_idx, 'trade_id'].to_numpy()
+        df.loc[b_idx, 'listed_on'] = 'bse,nse'
+        refiled += more
     bse_night = df['exchange'].eq('bse') & ~df['_bse_csv']
     t['nse_bse_copies'] = {'linked': len(pairs),
-                           'linked_bse_nightly_on_span': int(bse_night.loc[[j for _, j in pairs]].sum()) if pairs else 0}
+                           'linked_bse_nightly_on_span': int(bse_night.loc[[j for _, j in pairs]].sum()) if pairs else 0,
+                           'bse_refiled': len(refiled)}
 
     cols = ['trade_id', 'source_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'app_id',
             'prev_app_id', 'nse_submission_type', 'nse_revision_remark',
