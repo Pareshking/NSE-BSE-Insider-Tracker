@@ -11,6 +11,7 @@ on:
       - 'streamlit_app/**'
       - 'insiders_clean/signals.py'
       - 'scripts/site_screenshots.py'
+      - 'scripts/site_profile.py'
       - '.github/workflows/site-preview.yml'
 
 permissions:
@@ -42,6 +43,21 @@ jobs:
           for i in $(seq 1 60); do curl -sf http://localhost:8501/_stcore/health && break; sleep 2; done
       - name: Screenshot every page
         run: python scripts/site_screenshots.py http://localhost:8501 screenshots
+      - name: Memory of the site after every page
+        if: always()
+        continue-on-error: true
+        run: |
+          pid=$(pgrep -f "streamlit run streamlit_app/app.py" | head -1)
+          grep -E '^Vm(RSS|HWM)' /proc/$pid/status | tee screenshots/memory.txt
+      - name: Profile each page (time, memory, hot functions)
+        if: always()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/site_profile.py screenshots/profile.txt
       - name: Site log on failure
         if: failure()
         run: tail -100 streamlit.log
