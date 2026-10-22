@@ -344,7 +344,7 @@ def coverage_html(c: dict) -> str:
     if c['not_read']:
         parts.append(f'<b>{sum(c["not_read"].values()):,}</b> not read (' + ', '.join(f'{v:,} {esc(k)}' for k, v in c['not_read'].items()) + ')')
     if c.get('below_500_cr'):
-        parts.append(f'{c["below_500_cr"]:,} at or below Rs 500 Cr (not sent to a model)')
+        parts.append(f'{c["below_500_cr"]:,} at or below ₹500 Cr (not sent to a model)')
     if c.get('sme_excluded'):
         parts.append(f'{c["sme_excluded"]:,} SME-board filings excluded')
     return (f'<p class="evl">Of {c["looked_at"]:,} filings the reader looked at: ' + '; '.join(parts)
