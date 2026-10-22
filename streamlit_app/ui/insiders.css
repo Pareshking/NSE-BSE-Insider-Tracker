@@ -467,3 +467,15 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
 .tr-b span { font-size: 10px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; }
 .idea .kv span { white-space: nowrap; }   /* the three labels on one line when the lists sit side by side */
 .own-note { margin: 6px 2px 0; font-size: 12px; color: var(--ink-3); }
+
+/* Company price chart (ui/lwchart.py, TradingView Lightweight Charts) */
+.lw { position: relative; }
+.lw-range { display: flex; gap: 4px; justify-content: flex-end; margin: -4px 0 6px; }
+.lw-range button { font: 600 11.5px var(--ui); color: var(--ink-3); background: transparent; border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 9px; cursor: pointer; }
+.lw-range button.on { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-tint); }
+.lw-tip { position: absolute; top: 34px; z-index: 5; width: 220px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); box-shadow: 0 4px 14px rgba(14, 23, 38, .08); font-size: 12px; line-height: 1.45; pointer-events: none; }
+.lw-tip b { font-weight: 650; color: var(--ink); } .lw-tip span { color: var(--ink-3); margin-left: 6px; }
+.lw-tip div { margin-top: 4px; } .lw-tip .b { color: var(--buy); } .lw-tip .s { color: var(--sell); }
+.foot a { color: var(--ink-3); }

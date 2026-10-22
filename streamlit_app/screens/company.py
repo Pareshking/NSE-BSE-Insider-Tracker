@@ -8,7 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import charts, kit
+from ui import kit, lwchart
 from ui.kit import esc
 from ui.table import facts, range_bar
 
@@ -341,12 +341,12 @@ def render():
                 + (f'<ul class="co-risk">{"".join(f"<li>{esc(x)}</li>" for x in risks)}</ul>' if risks else '<p class="co-none">None found.</p>'))
 
     left, right = st.columns([3, 2], gap='medium')
-    with left, kit.card('Price and insider trades', 'co_px', '12 months · ▲ bought ▼ sold, on the day made public'):
-        chart = charts.price_with_trades(*hist, e.assign(role=e['person_role'].map(kit.role))) if hist else None
+    with left, kit.card('Price and insider trades', 'co_px', '▲ bought ▼ sold, on the day made public · hover for who'):
+        chart = lwchart.price_chart(*hist, e.assign(role=e['person_role'].map(kit.role)), key=sym) if hist else None
         if chart is None:
             kit.empty('No price history for this stock in our NSE/BSE price files yet.')
         else:
-            st.altair_chart(chart, width='stretch')
+            st.html(chart, unsafe_allow_javascript=True)
     # Net open-market money by who, 12 months, each rupee once: a bulk/block deal that is an insider's own
     # filed trade counts under the insider, not again under deals (audit D3, D6).
     other = win[~win['person_role'].isin(list(signals.PROMOTER_ROLES) + ['director', 'kmp'])]
