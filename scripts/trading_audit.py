@@ -376,6 +376,79 @@ def main() -> int:
                 q = x['quarter_end'].max() if len(x) else None
                 print(f'-- {sym} latest {q}:', x[x['quarter_end'] == q]['member_name'].astype(str).tolist()[:12])
 
+    if on('after'):
+        # What the fixes of this branch change, applied to the clean rows of today (before the next Clean only).
+        from insiders_clean import insider as ins
+        from insiders_clean import promoter_group as pgm
+        head('after: roles re-read from the filed category')
+        new_role = tr['person_category_raw'].map(ins.classify_role)
+        moved = tr[(new_role != tr['person_role']) & tr['person_role_source'].eq('filing')]
+        print(pd.crosstab(moved['person_role'], new_role[moved.index]).to_string())
+        el_before = signals.eligible(tr)
+        t2 = tr.copy()
+        t2.loc[moved.index, 'person_role'] = new_role[moved.index]
+        head('after: kinds from the transaction type (kind missing before)')
+        by_type = tr['transaction_type_raw'].map(ins.kind_from_type)
+        hit = tr['kind'].eq('missing') & by_type.notna()
+        print(pd.crosstab(by_type[hit], tr.loc[hit, 'exchange']).to_string())
+        head('after: one trade kept more than once (primaries, refiled with other holdings)')
+        p2 = t2[b(t2['is_primary'])].copy()
+        for c in ('value', 'quantity', 'holding_before', 'holding_after'):
+            p2[c] = pd.to_numeric(p2[c], errors='coerce')
+        p2['_value_key'] = p2['value'].round(-1)
+        p2['_key_to'] = p2['trade_date_to'].where(p2['exchange'] != 'bse', p2['trade_date_from'])
+        p2 = p2.sort_values('broadcast_date', ascending=False)
+        refiled = ins._refiled_with_other_holdings(p2, ['exchange', 'isin', 'symbol', 'person_id', 'side', 'quantity', '_value_key',
+                                                       'trade_date_from', '_key_to', 'holding_before', 'holding_after'])
+        r = p2.loc[refiled]
+        print('rows', len(r), 'by exchange', r['exchange'].value_counts().to_dict(), 'Rs', round(r['value'].sum() / 1e7, 1), 'Cr;',
+              'eligible among them', int(r.index.isin(el_before.index).sum()))
+        show(r.sort_values('value', ascending=False), TR_COLS, 12)
+        head('after: promoter-group transfers on the market (primaries)')
+        gt = ins._promoter_group_transfers(p2.assign(kind=p2['kind'].astype(str)))
+        g = p2[gt]
+        print('rows', len(g), 'companies', g['isin'].nunique(), 'Rs', round(g['value'].sum() / 1e7, 1), 'Cr')
+        t2.loc[refiled, 'is_primary'] = False
+        t2.loc[g.index, 'is_market'] = False
+        t2.loc[g.index, 'kind'] = 'inter_se'
+        el_after = signals.eligible(t2)
+        for side in ('BUY', 'SELL'):
+            head(f'after: Today insider events (90 days), {side}: before vs after')
+            fn = ideas.worth_a_look if side == 'BUY' else ideas.watch_out
+            a, z = fn(el_before, ref, sh, limit=10_000), fn(el_after, ref, sh, limit=10_000)
+            ka = set(a['company']) if len(a) else set()
+            kz = set(z['company']) if len(z) else set()
+            print('gone:', sorted(ka - kz)[:30])
+            print('new:', sorted(kz - ka)[:30])
+            if len(a) and len(z):
+                col = 'pct_of_company' if 'pct_of_company' in a else 'size'
+                m = a.set_index('company')[col].to_frame('before').join(z.set_index('company')[col].to_frame('after'), how='inner')
+                ch = m[(m['before'] - m['after']).abs() > 0.01]
+                print('size changed:', ch.round(2).head(20).to_dict('index'))
+        head('after: clusters (30 days) before vs after')
+        ca, cz = signals.clusters(el_before, ref), signals.clusters(el_after, ref)
+        print('gone:', sorted(set(ca['company']) - set(cz['company'])), ' new:', sorted(set(cz['company']) - set(ca['company'])))
+        head('after: deal clients who are promoters; Today fund and promoter-deal events')
+        pg = read_parquet(r2, 'clean/current/promoter_group.parquet')
+        dm, rep = pgm.mark_deal_promoters(deals, pg, t2)
+        print(rep)
+        x = dm[dm['client_is_promoter'] & dm['client_type'].isin(signals.FUND_TYPES)]
+        show(x.assign(value=pd.to_numeric(x['value'], errors='coerce')).sort_values('value', ascending=False),
+             ['date', 'company', 'client_name', 'client_type', 'client_promoter_basis', 'side', 'quantity', 'value'], 15)
+        fa, fz = ideas.fund_events(deals, tr, ref, days=90, sh=sh), ideas.fund_events(dm, t2, ref, days=90, sh=sh)
+        m = fa.set_index('company')[['kind', 'pct_of_company']].join(fz.set_index('company')[['kind', 'pct_of_company']],
+                                                                     how='outer', lsuffix='_before', rsuffix='_after')
+        print(m[(m['kind_before'] != m['kind_after']) | ((m['pct_of_company_before'] - m['pct_of_company_after']).abs() > 0.01)]
+              .round(2).to_string())
+        pe = ideas.promoter_deal_events(dm, t2, ref, days=90, sh=sh)
+        show(pe.sort_values('pct_of_company', ascending=False), ['company', 'list', 'kind', 'pct_of_company', 'sentence'], 20)
+        head('after: pledge invocations and SAST events (90 days)')
+        pv = ideas.pledge_events(t2, ref, sh, days=90)
+        show(pv[pv['kind'].eq('Pledge invoked')], ['company', 'kind', 'pct_of_company', 'sentence', 'last'], 20)
+        st = ideas.stake_events(with_bse(sast, bsast), ref, days=90)
+        show(st[st['sentence'].str.contains(r'\(', regex=True)].sort_values('pct_of_company', ascending=False),
+             ['company', 'kind', 'pct_of_company', 'sentence'], 15)
+
     if on('cases'):
         head('cases: rows behind the findings')
         tv = pd.to_datetime(tr['trade_date_to'], errors='coerce')
