@@ -112,6 +112,57 @@ def parse_sast(rows: list[dict]) -> pd.DataFrame:
     return df[SAST_COLUMNS]
 
 
+# --- SAST Regulation 31: encumbrances ---------------------------------------------
+
+ENCUMBRANCE_COLUMNS = ['event_id', 'symbol', 'company', 'promoter_name', 'promoter_id', 'lender', 'event_type',
+                       'encumbrance_type', 'event_from', 'event_to', 'shares', 'pct_of_company',
+                       'encumbered_shares', 'encumbered_pct', 'pre_event_holding', 'pre_event_holding_pct',
+                       'post_event_holding', 'post_event_holding_pct', 'reporting_date', 'broadcast_ts',
+                       'broadcast_date', 'attachment', 'raw_json']
+
+
+def parse_encumbrances(rows: list[dict]) -> pd.DataFrame:
+    """Reg 31(1)/(2): a promoter's pledge, non-disposal undertaking or other encumbrance created, released or
+    invoked, one row per disclosure as NSE lists it. `shares` / `pct_of_company` are the event's
+    (eventDetailsHolding / eventDetailsPerc), the lender is eventDetailsEntity; the encumbered and pre/post
+    holdings are kept under NSE's own names, as filed, not reinterpreted."""
+    out = []
+    for r in rows or []:
+        out.append({
+            'event_id': _id('reg31', r.get('seqId'), r.get('symbol'), r.get('promoterName'), r.get('eventDetailsType'),
+                            r.get('eventDetailsHolding'), r.get('eventDetailsFromDate')),
+            'symbol': (r.get('symbol') or '').strip().upper() or None,
+            'company': r.get('companyName'),
+            'promoter_name': entity_display(r.get('promoterName')),
+            'promoter_id': entity_key(r.get('promoterName')),
+            'lender': (r.get('eventDetailsEntity') or '').strip() or None,
+            'event_type': (r.get('eventDetailsType') or '').strip() or None,            # Creation / Release / Invocation
+            'encumbrance_type': (r.get('eventDetailsTypeEncumb') or '').strip() or None,  # Pledge / Non disposal undertaking / Others
+            'event_from': r.get('eventDetailsFromDate'),
+            'event_to': r.get('eventDetailsToDate'),
+            'shares': _num(r.get('eventDetailsHolding')),
+            'pct_of_company': _num(r.get('eventDetailsPerc')),
+            'encumbered_shares': _num(r.get('encumbHolding')),
+            'encumbered_pct': _num(r.get('encumbPerc')),
+            'pre_event_holding': _num(r.get('preeventHolding')),
+            'pre_event_holding_pct': _num(r.get('preeventHoldingPerc')),
+            'post_event_holding': _num(r.get('postEventHolding')),
+            'post_event_holding_pct': _num(r.get('postEventHoldingPerc')),
+            'reporting_date': r.get('reportingDate'),
+            'broadcast_ts': r.get('broadcastdate') or r.get('sysTime'),
+            'broadcast_date': r.get('broadcastdate'),
+            'attachment': r.get('attachment'),
+            'raw_json': _raw(r),
+        })
+    df = _frame(out, ENCUMBRANCE_COLUMNS)
+    for c in ('event_from', 'event_to', 'reporting_date', 'broadcast_date'):
+        df[c] = parse_dates(df[c])
+    for c in ('shares', 'pct_of_company', 'encumbered_shares', 'encumbered_pct', 'pre_event_holding', 'pre_event_holding_pct',
+              'post_event_holding', 'post_event_holding_pct'):
+        df[c] = pd.to_numeric(df[c], errors='coerce')
+    return df[ENCUMBRANCE_COLUMNS]
+
+
 # --- Corporate actions -----------------------------------------------------------
 
 CA_COLUMNS = ['event_id', 'symbol', 'isin', 'company', 'series', 'purpose', 'subject', 'ex_date', 'record_date',

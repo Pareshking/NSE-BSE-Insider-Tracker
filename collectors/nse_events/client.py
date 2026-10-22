@@ -85,6 +85,13 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-sast-reg29?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j.get('data', []) if isinstance(j, dict) else j
 
+    def encumbrances(self, start: date, end: date) -> list[dict]:
+        """SAST Reg 31(1)/(2) disclosures: each creation, release or invocation of a pledge, a non-disposal
+        undertaking or another encumbrance by a promoter, with the lender (the page
+        /companies-listing/corporate-filings-regulation-31, seen 22 Oct 2026)."""
+        j = self.get(f'{BASE}/api/corporate-pledgedata-sast3132?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
+        return j.get('data', []) if isinstance(j, dict) else j
+
     def corporate_actions(self, start: date, end: date) -> list[dict]:
         j = self.get(f'{BASE}/api/corporates-corporateActions?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])

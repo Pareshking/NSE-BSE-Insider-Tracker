@@ -139,7 +139,9 @@ jobs:
           if [ "$PENDING" -gt 0 ] && [ "$FETCHED" -gt 0 ] && [ "$BLOCKED" -eq 0 ] && [ "$ROUND" -lt "$LIMIT" ]; then
             # A queued run (the nightly collection) must not be replaced by the next round: GitHub keeps only the newest
             # waiting run (15 Oct 2026: the nightly was cancelled that way). Pause; the resume line below restarts it.
-            WAITING=$(gh run list --workflow nse-events.yml --status queued --json databaseId --jq length 2>/dev/null || echo 0)
+            # Every waiting state counts: a run held by the concurrency group shows as pending, not queued, and the
+            # check on queued alone let round 5 cancel the nightly of 21 Oct 2026 (run 39663939917).
+            WAITING=$(gh run list --workflow nse-events.yml --limit 20 --json status --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested")] | length' 2>/dev/null || echo 0)
             if [ "${WAITING:-0}" -gt 0 ]; then
               echo "another run is waiting; the catch-up pauses. Resume with: $NEXT"
             else

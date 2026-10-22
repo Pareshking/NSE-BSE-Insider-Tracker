@@ -106,27 +106,32 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python scripts/nse_insider.py
+        # Three tries, two minutes apart: one NSE timeout lost a night's filings (9 Oct 2026, run 37999495517).
+        run: for i in 1 2 3; do python scripts/nse_insider.py && exit 0; echo "try $i failed"; [ $i -lt 3 ] && sleep 120; done; exit 1
       - name: NSE Bulk
         if: always()
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/nse_bulk.py
+        # Three tries, two minutes apart: one NSE timeout lost a night's filings (9 Oct 2026, run 37999495517).
+        run: for i in 1 2 3; do python scripts/nse_bulk.py && exit 0; echo "try $i failed"; [ $i -lt 3 ] && sleep 120; done; exit 1
       - name: NSE Block
         if: always()
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/nse_block.py
+        # Three tries, two minutes apart: one NSE timeout lost a night's filings (9 Oct 2026, run 37999495517).
+        run: for i in 1 2 3; do python scripts/nse_block.py && exit 0; echo "try $i failed"; [ $i -lt 3 ] && sleep 120; done; exit 1
       - name: NSE Rights
         if: always()
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/nse_rights.py
+        # Three tries, two minutes apart: one NSE timeout lost a night's filings (9 Oct 2026, run 37999495517).
+        run: for i in 1 2 3; do python scripts/nse_rights.py && exit 0; echo "try $i failed"; [ $i -lt 3 ] && sleep 120; done; exit 1
       - name: NSE Preferential
         if: always()
         env:
           TARGET_DATE: ${{ steps.target.outputs.date }}
-        run: python scripts/nse_preferential.py
+        # Three tries, two minutes apart: one NSE timeout lost a night's filings (9 Oct 2026, run 37999495517).
+        run: for i in 1 2 3; do python scripts/nse_preferential.py && exit 0; echo "try $i failed"; [ $i -lt 3 ] && sleep 120; done; exit 1
       - name: NSE evidence validation
         if: always()
         env:

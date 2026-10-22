@@ -137,6 +137,9 @@ class FakeNSE:
     def daily_buybacks(self, s, e):
         return self._n(load('daily_buybacks.json')['data'])
 
+    def encumbrances(self, s, e):
+        return self._n(load('encumbrances_202610.json')['data'])
+
     def xbrl(self, url):
         self.calls += 1
         if self.block_xbrl and self.calls > 6:
@@ -341,3 +344,22 @@ def test_a_retired_isin_filed_with_the_shareholding_gives_way_to_the_current_one
     assert list(out['isin']) == ['INE086A01029', 'INE467B01029', 'INE999X01019', 'INE133A01029']
     assert list(out['isin_filed'].fillna('')) == ['INE086A01011', '', '', 'INE133A01011']
     assert out.loc[0, 'company_display'] == 'Electrosteel Castings' and not out['unmatched_security'].any()
+
+
+def test_reg31_encumbrances_are_read_as_filed_with_the_lender():
+    """SAST Reg 31 (NSE /api/corporate-pledgedata-sast3132), two real disclosures broadcast 21 Oct 2026."""
+    df = parsers.parse_encumbrances(load('encumbrances_202610.json')['data'])
+    lloyds = df[df['symbol'] == 'LLOYDSENGG'].iloc[0]
+    assert lloyds['event_type'] == 'Release' and lloyds['encumbrance_type'] == 'Pledge' and lloyds['lender'] == 'Tata Capital Limited'
+    assert lloyds['shares'] == 18_000_000 and lloyds['pct_of_company'] == 1.16
+    assert lloyds['encumbered_shares'] == 127_200_000 and lloyds['post_event_holding'] == 109_200_000
+    assert str(lloyds['event_to']) == '2026-10-08' and str(lloyds['broadcast_date']) == '2026-10-21'
+    assert df['event_id'].is_unique and len(df) == 2
+
+
+def test_the_nightly_run_writes_the_encumbrances_table(events):
+    r2, run_daily = events
+    rep = run_daily.run(r2, FakeNSE(), date(2026, 10, 22), 10, streams=('encumbrances',))
+    assert rep['streams']['encumbrances']['fetched'] == 2
+    out = pd.read_parquet(io.BytesIO(r2.objects['clean/current/encumbrances.parquet']))
+    assert set(out['symbol']) == {'VINCOFE', 'LLOYDSENGG'} and 'isin_filed' in out
