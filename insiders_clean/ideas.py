@@ -528,11 +528,29 @@ def promoter_deal_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None
     return _ev(rows)
 
 
-def issue_events(issues: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: int = WINDOW) -> pd.DataFrame:
+def _promoter_part(allottees: pd.DataFrame | None, r: dict) -> tuple[float, int, int] | None:
+    """(share of the issue's named securities going to promoter-group members, members, allottees named) for
+    a mixed issue, from its approval's allottee list (`in_promoter_group`, promoter_group.mark_allottee_promoters);
+    None when the list or the match is not there."""
+    if allottees is None or allottees.empty or 'in_promoter_group' not in allottees:
+        return None
+    ids = {str(x) for x in (r.get('app_id'), r.get('linked_app_id')) if isinstance(x, str) or pd.notna(x)}
+    a = allottees[allottees['app_id'].astype(str).isin(ids)]
+    n = pd.to_numeric(a['securities'], errors='coerce')
+    if a.empty or not n.gt(0).any():
+        return None
+    mine = a['in_promoter_group'].astype('boolean').fillna(False).to_numpy(dtype=bool)
+    return float(n[mine].sum() / n.sum()), int(mine.sum()), int(len(a))
+
+
+def issue_events(issues: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: int = WINDOW,
+                 allottees: pd.DataFrame | None = None) -> pd.DataFrame:
     """Preferential shares or warrants to promoters at or above today's price (Worth a look: promoters pay
     up) or below it (Watch out: cheap shares to themselves). `issues` is screens.ctx.issue_rows output, whose
     `vs_market` puts the offer on today's split basis against today's close. Size: shares allotted (or
-    proposed) over total shares."""
+    proposed) over total shares; for an issue to promoters and others, the part going to the promoter group
+    by the named allottees (`allottees`, the preferential_allottees table), and none when no named allottee is
+    in it."""
     if issues is None or issues.empty or 'vs_market' not in issues or 'allottee_category' not in issues:
         return _ev([])
     total = _shares_out(sh)
@@ -551,6 +569,13 @@ def issue_events(issues: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: 
         pct = float(n / total[isin] * 100) if pd.notna(n) and total.get(isin) else 0.0
         what = 'warrants' if 'warrant' in str(r.get('instruments') or '').lower() else 'shares'
         who = 'promoters' if r.get('allottee_category') == 'PROMOTER' else 'promoters and others'
+        part = _promoter_part(allottees, r) if r.get('allottee_category') == 'MIXED' else None
+        if part is not None:
+            share, members, named = part
+            if members == 0:
+                continue   # no named allottee is in the promoter group: not shares to promoters
+            pct *= share
+            who = f'promoters and others ({members} of {named} named allottees in the promoter group)'
         up = vs >= ISSUE_PREMIUM
         where = 'above' if up else 'below'
         size = f', {pct:.2f}% of the company' if pct else ''

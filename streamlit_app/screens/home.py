@@ -49,7 +49,7 @@ def _lists(_ctx, ref_key: str, days: int) -> tuple:
         ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days, enc=ctx.encumbrances),
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.promoter_deal_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
-        ideas.issue_events(issues, ref, sh, days=days), ideas.buyback_events(bb, ref, sh, days=days)], summary)
+        ideas.issue_events(issues, ref, sh, days=days, allottees=store.table('preferential_allottees')), ideas.buyback_events(bb, ref, sh, days=days)], summary)
 
 
 def _num(label: str, value: str, tip: str = '') -> str:

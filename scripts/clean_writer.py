@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import adjust, archive, day_range, issues, market_cap, trading_window
+from insiders_clean import adjust, archive, day_range, issues, market_cap, promoter_group, trading_window
 from insiders_clean.bse_events import with_bse
 from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
@@ -335,6 +335,9 @@ def main():
         issue_out, report['issues'] = issue_tables(client)
         tables.update(issue_out)
         report['issues']['isin_replaced'] = issues.current_isins(tables, tables.get('securities'))
+        if tables.get('preferential_allottees') is not None:
+            tables['preferential_allottees'], report['issues']['allottee_promoters'] = promoter_group.mark_allottee_promoters(
+                tables['preferential_allottees'], group, tables.get('insider_trades'))
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
     try:  # results dates: NSE's meetings plus the BSE meetings NSE has not got; never stops the insider table
