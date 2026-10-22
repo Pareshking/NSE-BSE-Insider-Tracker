@@ -550,6 +550,21 @@ def main() -> int:
                 w = el[ok].assign(_mine=mine[ok], _filed=filed[ok], _gap=gap)
                 show(w.sort_values('_gap', ascending=False), ['company', 'person_name', 'quantity', '_mine', '_filed', '_gap', 'trade_date_to'], 12)
 
+    if on('unpaired'):
+        head('open-market rows the signals read twice: an NSE and a BSE primary of one person, security, side, shares, day')
+        el = signals.eligible(tr)
+        k = ['isin', 'person_id', 'side', 'quantity', 'trade_date_to']
+        two = el[el.duplicated(k, keep=False) & el.groupby(k)['exchange'].transform('nunique').gt(1)]
+        print('rows', len(two), 'groups', two.groupby(k).ngroups, f'value Rs {pd.to_numeric(two["value"], errors="coerce").sum() / 2e7:,.1f} Cr once')
+        cols = ['company', 'exchange', 'is_primary', 'primary_id', 'person_name', 'person_id', 'kind', 'side', 'quantity', 'value',
+                'trade_date_from', 'trade_date_to', 'broadcast_date', 'app_id', 'source_id', 'isin', 'security_match', 'flags']
+        for g in list(two.groupby(k).groups.values())[:6]:
+            r = two.loc[g[0]]
+            every = tr[tr['isin'].eq(r['isin']) & tr['person_id'].eq(r['person_id'])
+                       & pd.to_numeric(tr['quantity'], errors='coerce').eq(r['quantity'])]
+            print(f'-- {r["company"]}: every row of this person and size ({len(every)})')
+            show(every, cols, 12)
+
     if on('cases'):
         head('cases: rows behind the findings')
         tv = pd.to_datetime(tr['trade_date_to'], errors='coerce')
