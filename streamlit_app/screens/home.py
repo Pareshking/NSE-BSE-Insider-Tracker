@@ -84,6 +84,11 @@ def _row(ctx, r, holding, px) -> str:
     nums = [_num('Of company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
             _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
     facts = [('Made public', kit.day(r['last']) if pd.notna(r.get('last')) else '')]
+    # A filing made public weeks after the trade (239 open-market rows over 30 sessions late, audit 23 Oct): the
+    # period counts it on the day it was made public, so the card says how old the trade already was.
+    late = (pd.Timestamp(r['last']) - pd.Timestamp(r['trade_to'])).days if pd.notna(r.get('last')) and pd.notna(r.get('trade_to')) else 0
+    if late > 14:
+        facts.append(('Filed late', f'last traded {kit.day(r["trade_to"])}, made public {late} days later'))
     if pd.notna(r.get('avg_price')) and r.get('avg_price'):
         f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
         if f == f and now:

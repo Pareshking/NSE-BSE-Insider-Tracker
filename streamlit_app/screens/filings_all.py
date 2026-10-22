@@ -424,8 +424,13 @@ def _allottees(app_ids, table: pd.DataFrame, share_col: str, pct_col: str | None
 
 def _issue_facts(src: str, x: dict, extra: dict) -> str:
     approved, raised = _num(x.get('amount_total')), _num(x.get('amount_raised'))
+    # Warrants are paid 25% at allotment and 75% on conversion: a listing record of converted warrants raises the
+    # 75% balance, not shares x price (30 such records, audit 22 Oct), so the amount says which part it is.
+    implied = (_num(x.get('shares_allotted')) or 0) * (_num(x.get('offer_price')) or 0)
+    balance = bool(raised and implied and 'warrant' in _txt(x.get('instruments')).lower() and 0.73 <= raised / implied <= 0.77)
     items = [('Stage', _txt(x.get('status'))), ('Board meeting', _d(x.get('board_date'))),
-             ('Approved size', _money(approved)), ('Raised', _money(raised)),
+             ('Approved size', _money(approved)),
+             ('Raised on conversion (the 75% balance on warrants)' if balance else 'Raised', _money(raised)),
              ('Amount note', 'flagged unreliable by the cleaner' if bool(x.get('amount_unreliable')) else '')]
     if src == 'pref':
         items += [('Shares go to', ALLOTTEE_LABEL.get(_txt(x.get('allottee_category')), '')),
