@@ -37,7 +37,7 @@ def _inputs(_ctx, ref_key: str) -> tuple:
     ctx = _ctx
     summary = store.artifact('artifacts/track_summary.parquet')
     issues = issue_rows(ctx.preferential, ctx.prices) if ctx.preferential is not None and not ctx.preferential.empty else None
-    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices), ideas.marked(ctx.eligible, ctx.ref)
+    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings), ideas.marked(ctx.eligible, ctx.ref)
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)

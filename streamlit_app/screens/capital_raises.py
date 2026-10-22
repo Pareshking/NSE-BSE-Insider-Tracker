@@ -170,7 +170,7 @@ def render():
                     kit.Col('what', 'To consider'), kit.Col('description', 'As filed', phone=False)], limit=100)
 
     from screens import buybacks  # buyback price and route (TODO 12)
-    buybacks.card(store.table('buybacks'), ctx.prices)
+    buybacks.card(store.table('buybacks'), ctx.prices, ctx.meetings)
 
     with kit.card('Corporate actions', 'cr_actions', 'buybacks, rights, bonuses, splits, dividends'):
         a = ctx.actions
