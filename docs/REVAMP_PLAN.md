@@ -116,3 +116,14 @@ defect log, and a short delivery note to the owner.
 - Pushing needs the Pareshking GitHub account active on this machine.
 - Streamlit Community Cloud memory: tables are cut to the needed columns and the
   study universe (PR #55) before any page reads them.
+
+## Phase 8: typography and wording pass (owner, 22 Oct; after the data chain audit)
+
+The owner: "typography is also bad, no first letter in cap etc, please clean your mess in free time".
+Once the data tasks are done, one pass over every page:
+- Sentence case everywhere text starts: tile labels, chips, pills, list subtitles, table cells and facts
+  ("Largest share of the company first", "Not measured", "Worth a look"); caps-styled labels stay caps.
+- One spelling per term across pages (e.g. "made public", "open-market" vs "on the market", "KMP").
+- Names as the security master gives them; no shouting capitals from filings.
+- Numbers: one format per kind (Rs, %, dates) per docs/DESIGN.md; check alignment again at 1440 and 390 px.
+- Checked on the Site preview screenshots of every page before merge.
