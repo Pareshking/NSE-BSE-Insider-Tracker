@@ -78,7 +78,10 @@ jobs:
           if [ "$EVENT" != "schedule" ] || [ "$CRON" != "30 19 * * 1-6" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           since=$(date -u -d '10 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nse-events.yml --event schedule --status success --created ">=$since" --json databaseId --jq length || echo 0)
-          if [ "${n:-0}" -gt 0 ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "tonight's run succeeded: backup skipped"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+          # Tonight's run started late and still running (or waiting for the group) is no failure either: a second
+          # full run behind it would only repeat it.
+          busy=$(gh run list -R "$GITHUB_REPOSITORY" --workflow nse-events.yml --event schedule --created ">=$since" --json databaseId,status --jq "[.[] | select(.status != \"completed\" and .databaseId != $GITHUB_RUN_ID)] | length" || echo 0)
+          if [ "${n:-0}" -gt 0 ] || [ "${busy:-0}" -gt 0 ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "tonight's run succeeded or is running: backup skipped"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
 
   collect:
     needs: guard
