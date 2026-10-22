@@ -65,7 +65,7 @@ PREFETCH = tuple(f'clean/current/{t}.parquet' for t in (
     'universe', 'insider_trades', 'deals', 'securities', 'sast', 'bse_sast', 'actions', 'bse_actions', 'meetings',
     'shareholding', 'preferential', 'rights', 'results', 'buybacks', 'tradability', 'qip', 'promoter_group',
     'preferential_lockins', 'preferential_allottees', 'qip_allottees')) + tuple(f'artifacts/{a}' for a in (
-        'prices_summary_slim.parquet', 'price_history.parquet', 'market_strip.json', 'track_summary.parquet',
+        'prices_summary_slim.parquet', 'price_history.parquet', 'track_summary.parquet',
         'track_events.parquet', 'forward_outcomes.parquet', 'basket_positions.parquet', 'basket_nav.parquet')) + (
     'clean/latest.json',)
 READS = {'clean/current/securities.parquet': 2}
@@ -213,12 +213,6 @@ def artifact(key: str) -> pd.DataFrame:
     """A parquet the precompute job writes under artifacts/ (empty if absent)."""
     body = _read(key)
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
-
-
-@st.cache_data(ttl=1800, show_spinner=False)
-def market_strip() -> list:
-    body = _read('artifacts/market_strip.json')
-    return json.loads(body) if body else []
 
 
 @st.cache_data(ttl=600, show_spinner=False, max_entries=500)

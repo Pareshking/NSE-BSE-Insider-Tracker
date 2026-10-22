@@ -80,6 +80,10 @@ def render():
     rep = store.report()
     kit.head('Data quality', 'What the last cleaning run took in, removed and held back, so every number on the '
                             'site can be traced.')
+    # TradingView Lightweight Charts (Apache-2.0) draws the price and trend charts with its logo off; its NOTICE
+    # asks for this credit on a page of the site.
+    st.html('<p class="cap">Charts: <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView '
+            'Lightweight Charts</a>, Copyright © TradingView, Inc.</p>')
     if not rep:
         kit.note('No cleaning report yet.', 'The nightly run writes clean/reports/{date}.json.')
         return

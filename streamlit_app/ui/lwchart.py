@@ -1,7 +1,7 @@
 """The company price chart in TradingView's Lightweight Charts (owner, 22 Oct 2026): closes as an area,
 3M / 6M / 1Y / All, every open-market insider trade marked on the day it was made public (one marker per day
 and side, sized by value), and a hover box with the close and who traded. The library is Apache-2.0; its
-logo is off and the site credits it in the footer (app.py), as its NOTICE asks.
+logo is off and the site credits it on the Data quality page (screens/data_status.py), as its NOTICE asks.
 """
 from __future__ import annotations
 
