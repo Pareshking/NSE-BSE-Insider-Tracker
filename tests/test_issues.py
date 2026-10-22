@@ -205,3 +205,17 @@ def test_link_summary_counts_each_outcome():
                      pref('Listing Stage', 4, isin='INE000000009', posted='12-MAR-2026', **LIST))
     text = cr.link_summary(df)
     assert '2 allotment records: 1 matched' in text and '1 whose approval is not in' in text
+
+
+def test_issue_tables_take_the_symbols_current_isin():
+    """265 preferential rows carried a retired or unknown ISIN, so the universe cut dropped them (audit 22 Oct)."""
+    sec = pd.DataFrame({'nse_symbol': ['ELECTCAST', 'TCS'], 'isin': ['INE086A01029', 'INE467B01029']})
+    tables = {'preferential': pd.DataFrame({'app_id': ['1', '2', '3'], 'symbol': ['ELECTCAST', 'TCS', 'GONE'],
+                                            'isin': ['INE086A01011', 'INE467B01029', 'INE000X01011']}),
+              'preferential_allottees': pd.DataFrame({'app_id': ['1'], 'symbol': ['electcast'], 'isin': [None]})}
+    counts = issues.current_isins(tables, sec)
+    assert counts == {'preferential': 1, 'preferential_allottees': 1}
+    p = tables['preferential']
+    assert list(p['isin']) == ['INE086A01029', 'INE467B01029', 'INE000X01011']   # a symbol not in the list stays as filed
+    assert p.loc[0, 'isin_filed'] == 'INE086A01011' and pd.isna(p.loc[1, 'isin_filed'])
+    assert tables['preferential_allottees'].loc[0, 'isin'] == 'INE086A01029'

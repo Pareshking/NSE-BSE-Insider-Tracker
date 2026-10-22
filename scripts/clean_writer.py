@@ -334,6 +334,7 @@ def main():
     try:  # a failure here must never stop the insider and deal tables
         issue_out, report['issues'] = issue_tables(client)
         tables.update(issue_out)
+        report['issues']['isin_replaced'] = issues.current_isins(tables, tables.get('securities'))
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
     try:  # results dates: NSE's meetings plus the BSE meetings NSE has not got; never stops the insider table
