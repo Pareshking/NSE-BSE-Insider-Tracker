@@ -99,6 +99,12 @@ def _row(date, what, who='', sub='', text='', value=None, pct=None, items=(), li
             'value': value, 'pct': pct, '_facts': list(items), '_links': list(links)}
 
 
+def _months(start, end) -> int | None:
+    """Whole months from the year-to-date start to the period end (6 for Apr-Sep), None when not filed."""
+    a, b = pd.to_datetime(start, errors='coerce'), pd.to_datetime(end, errors='coerce')
+    return None if pd.isna(a) or pd.isna(b) else (b.year - a.year) * 12 + b.month - a.month + 1
+
+
 def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
     """Every filing of the company, one row each, newest first: insider filings (one per trade, not per
     exchange copy), bulk and block deals, SAST disclosures, issues, buybacks, corporate actions, board
@@ -163,10 +169,15 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
     isin = t['isin'].dropna().iloc[0] if not t.empty and t['isin'].notna().any() else None
     if res is not None and not res.empty and isin:
         for r in res[res['isin'] == isin].to_dict('records'):
-            rows.append(_row(r.get('broadcast_at'), 'Results', f'Year to {kit.day(r.get("period_end"))}',
-                             'consolidated' if r.get('consolidated') else 'standalone',
-                             f'revenue {kit.rupees(r.get("ytd_revenue"))} · profit {kit.rupees(r.get("ytd_profit"))}'
-                             if kit._finite(r.get('ytd_revenue')) is not None else ''))
+            # NSE's `consolidated` is text ("Consolidated" / "Non-Consolidated"): both read as true (audit 22 Oct).
+            basis = 'consolidated' if str(r.get('consolidated') or '').strip().lower().startswith('consolidated') else 'standalone'
+            months = _months(r.get('ytd_start'), r.get('period_end'))
+            q = (f'quarter: revenue {kit.rupees(r.get("quarter_revenue"))} · profit {kit.rupees(r.get("quarter_profit"))}'
+                 if kit._finite(r.get('quarter_revenue')) is not None else '')
+            ytd = (f'{months} months: revenue {kit.rupees(r.get("ytd_revenue"))} · profit {kit.rupees(r.get("ytd_profit"))}'
+                   if months and months > 3 and kit._finite(r.get('ytd_revenue')) is not None else '')
+            rows.append(_row(r.get('broadcast_at'), 'Results', f'Quarter to {kit.day(r.get("period_end"))}', basis,
+                             q or ytd, None, None, [('Year to date', ytd)] if q and ytd else ()))
     out = pd.DataFrame(rows)
     return out.dropna(subset=['date']).sort_values('date', ascending=False, kind='stable') if not out.empty else out
 
