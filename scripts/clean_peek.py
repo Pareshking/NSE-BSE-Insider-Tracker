@@ -1,0 +1,61 @@
+"""The clean rows behind a few companies (read-only), for audits: SYMBOLS=comma list of NSE symbols.
+
+For each symbol: its securities and universe rows, every shareholding quarter (holding, pledge, XBRL status,
+ISIN), and its pledge filings in insider_trades of the last 120 days with the fields that decide netting.
+Prints only; writes nothing to R2, calls no exchange.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))
+from r2_writer import r2_client  # noqa: E402
+from clean_writer import read_parquet  # noqa: E402
+
+pd.set_option('display.width', 250)
+pd.set_option('display.max_columns', 40)
+pd.set_option('display.max_colwidth', 40)
+
+
+def show(title: str, df: pd.DataFrame, cols: list[str]) -> None:
+    print(f'--- {title}: {len(df)} rows')
+    if len(df):
+        print(df[[c for c in cols if c in df]].to_string(index=False))
+
+
+def main() -> int:
+    r2 = r2_client()
+    syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    uni = read_parquet(r2, 'clean/current/universe.parquet')
+    sh = read_parquet(r2, 'clean/current/shareholding.parquet')
+    tr = read_parquet(r2, 'clean/current/insider_trades.parquet')
+    print('shareholding columns:', [c for c in sh.columns if not c.endswith(('_shares', '_pct')) or c.startswith('promoter')])
+    print('insider_trades columns:', list(tr.columns))
+    for sym in syms:
+        print(f'\n===== {sym}')
+        s = sec[sec['nse_symbol'].astype(str).str.upper() == sym]
+        show('securities', s, ['isin', 'nse_symbol', 'bse_code', 'display_name', 'market_cap'])
+        isins = set(s['isin'].dropna())
+        if uni is not None and 'isin' in uni:
+            show('universe', uni[uni['isin'].isin(isins)], list(uni.columns)[:8])
+        q = sh[(sh['symbol'].astype(str).str.upper() == sym) | sh['isin'].isin(isins)]
+        show('shareholding', q.sort_values('quarter_end'),
+             ['isin', 'symbol', 'quarter_end', 'submission_date', 'promoter_holding_pct', 'promoter_shares', 'total_shares',
+              'promoter_pledged_shares', 'promoter_pledge_pct', 'xbrl_status', 'shareholding_stale', 'categories_status'])
+        t = tr[tr['isin'].isin(isins) | (tr['nse_symbol'].astype(str).str.upper() == sym)] if 'nse_symbol' in tr else tr[tr['isin'].isin(isins)]
+        t = t[t['kind'].astype(str).str.startswith('pledge')] if 'kind' in t else t.iloc[0:0]
+        show('pledge filings', t.sort_values('broadcast_date') if 'broadcast_date' in t else t,
+             ['broadcast_date', 'exchange', 'is_primary', 'needs_review', 'person_name', 'person_role', 'kind', 'quantity',
+              'holding_before', 'holding_after', 'trade_date_to', 'app_id', 'record_id', 'event_id'])
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
