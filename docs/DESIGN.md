@@ -7,7 +7,10 @@ and `ui/table.css`; pages never set their own colours, sizes or fonts.
 ## Layout
 - A white top bar with four links (Today, Companies, Evidence, Filings) and a company search; no side menu
   on desktop (on a phone Streamlit's slide-out menu carries the same four links).
-- One content column, at most 1240 px wide; cards are flat (1 px border, 8 px corners, no shadow).
+- The page uses the screen's width with 24 px gutters (12 px on a phone), as the owner's screener; cards are flat (1 px border, 8 px corners, no shadow).
+- Filters: search and the main choice in sight, everything else in one "Filters & sort" popover. No CSV export.
+- On a phone a table is a list of cards (each cell under its column's label); a tap anywhere on a row opens its facts.
+- Links between pages stay in the session and change the address (ui/nav.py), so every company has its own URL.
 - Two columns only where two things are compared or read together (the price chart and the money flow).
 
 ## Type

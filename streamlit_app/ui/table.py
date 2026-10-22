@@ -179,12 +179,19 @@ SORT_JS = """
   if (!wrap || wrap.dataset.ready) return;
   wrap.dataset.ready = '1';
   const tb = wrap.querySelector('tbody');
-  // A row with a detail row under it opens in place; clicks on links still follow the link.
+  // A tap anywhere on a row with facts behind it opens them in place (links still follow the link). The
+  // facts wait in an inert template element until the first open, so a table of 200 rows is not 400 rows of
+  // page (audit 22 Oct: 10,000 elements and 375 KB on Filings before anything was opened).
   tb.addEventListener('click', e => {
     if (e.target.closest('a')) return;
     const tr = e.target.closest('tr.has-dt');
     if (!tr) return;
-    const dt = tr.nextElementSibling;
+    let dt = tr.nextElementSibling;
+    if (dt && dt.tagName === 'TEMPLATE') {
+      const row = document.createElement('tr'); row.className = 'dt'; row.hidden = true;
+      const td = document.createElement('td'); td.colSpan = tr.cells.length;
+      td.appendChild(dt.content.cloneNode(true)); row.appendChild(td); dt.replaceWith(row); dt = row;
+    }
     if (dt && dt.classList.contains('dt')) { dt.hidden = !dt.hidden; tr.classList.toggle('open', !dt.hidden); }
   });
   wrap.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => {
@@ -195,7 +202,7 @@ SORT_JS = """
     const val = tr => { const v = tr.cells[i].dataset.v;
       return num ? (v === '' ? NaN : parseFloat(v)) : (v || '').toLowerCase(); };
     const groups = [];   // each row with its detail row, so they move together
-    Array.from(tb.rows).forEach(r => { if (r.classList.contains('dt')) groups[groups.length - 1].push(r); else groups.push([r]); });
+    Array.from(tb.children).forEach(r => { if (r.tagName === 'TEMPLATE' || r.classList.contains('dt')) groups[groups.length - 1].push(r); else groups.push([r]); });
     groups.sort((a, b) => {
       const x = val(a[0]), y = val(b[0]);
       if (num) { if (isNaN(x)) return 1; if (isNaN(y)) return -1; return dir === 'asc' ? x - y : y - x; }
@@ -215,11 +222,11 @@ def facts(items: list[tuple[str, str]], links: list[tuple[str, str]] = ()) -> st
 
 
 def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str = 'Nothing here.',
-          height: int = 600, download: str = '', row_px: int = 53, detail=None, key: str = '') -> None:
-    """A ranked, sortable table drawn in the page (so it shares the page's
-    styles and links work as links): the first `limit` rows drawn, the rest
-    counted (and offered as a CSV when `download` names the file).
-    `detail(row) -> html` adds a row under each row that opens on a click."""
+          height: int = 600, row_px: int = 53, detail=None, key: str = '') -> None:
+    """A ranked, sortable table drawn in the page (so it shares the page's styles and links work as
+    links): the first `limit` rows drawn, the rest counted. `detail(row) -> html` gives a row facts that
+    open under it on a tap. On a phone each row is a card, every cell under its column's label.
+    No CSV export (owner, 22 Oct)."""
     if rows is None or rows.empty:
         empty(empty_text)
         return
@@ -238,23 +245,16 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
         cells = []
         for c in cols:
             inner, sv, cls = _cell(c, r, bar_max)
-            cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}">{inner}</td>')
+            cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}" data-l="{esc(c.label, quote=True)}">{inner}</td>')
         more_html = detail(r) if detail else ''
         opener = ' class="has-dt"' if more_html else ''   # no backslash inside an f-string: Python 3.11 runs the site
         body.append(f'<tr{opener}>' + ''.join(cells) + '</tr>')
         if more_html:
-            body.append(f'<tr class="dt" hidden><td colspan="{len(cols)}">{more_html}</td></tr>')
-    tid = 'tb_' + hashlib.sha1(f'{key}|{download}|{len(rows)}|{"|".join(c.key for c in cols)}'.encode()).hexdigest()[:10]
+            body.append(f'<template>{more_html}</template>')
+    tid = 'tb_' + hashlib.sha1(f'{key}|{len(rows)}|{"|".join(c.key for c in cols)}'.encode()).hexdigest()[:10]
     st.html(f'<div class="tbl-wrap" id="{tid}" style="max-height:{height}px"><table class="tbl"><thead><tr>{head}</tr></thead>'
             f'<tbody>{"".join(body)}</tbody></table></div><script>{SORT_JS}("{tid}");</script>',
             unsafe_allow_javascript=True)
     more = len(rows) - len(shown)
-    if more > 0 or download:
-        c1, c2 = st.columns([3, 1], vertical_alignment='center')
-        if more > 0:
-            c1.html(f'<p class="tbl-cap">Top {len(shown):,} of {len(rows):,}</p>')
-        if download:
-            flat = rows[[c for c in rows.columns if not str(c).startswith('_')
-                         and not rows[c].map(lambda x: isinstance(x, (list, dict))).any()]]
-            c2.download_button('CSV', flat.to_csv(index=False).encode(), f'{download}.csv',
-                               'text/csv', key=f'dl_{download}', type='tertiary', width='stretch')
+    if more > 0:
+        st.html(f'<p class="tbl-cap">Top {len(shown):,} of {len(rows):,}</p>')

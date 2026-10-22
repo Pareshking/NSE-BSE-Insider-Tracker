@@ -281,3 +281,15 @@ home.render()
     assert not at.exception, at.exception[0].value if at.exception else ''
     html = ' '.join(e.proto.body for e in at.get('html'))
     assert 'Worth a look' in html and 'Watch out' in html
+
+
+def test_in_app_links_map_to_pages_with_their_query():
+    """ui/nav.py: a link the pages draw goes to its page, query kept; any other path is left alone."""
+    import sys
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    from ui import nav
+    pages = {'': 'TODAY', 'company': 'COMPANY', 'filings-all': 'FILINGS'}
+    assert nav.target('/company?symbol=HCLTECH#1792634659117', pages) == ('COMPANY', {'symbol': 'HCLTECH'})
+    assert nav.target('/filings-all', pages) == ('FILINGS', {})
+    assert nav.target('/', pages) == ('TODAY', {})
+    assert nav.target('/elsewhere?x=1', pages) is None and nav.target(None, pages) is None

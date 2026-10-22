@@ -440,3 +440,28 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
 .trend tbody th { white-space: nowrap; }
 /* the period chips sit right of the headline and never clip */
 .st-key-td_period { display: flex; justify-content: flex-end; }
+/* the in-app link catcher (ui/nav.py): drawn empty (a hidden one sends nothing), its gap taken back */
+.st-key-navhook { margin-bottom: -1rem; }
+
+/* ---- Wide layout (owner, 22 Oct, as paresh.streamlit.app): the page uses the screen, 24 px gutters ---- */
+[data-testid="stMainBlockContainer"] { max-width: 100% !important; padding-left: 24px !important; padding-right: 24px !important; }
+@media (max-width: 720px) { [data-testid="stMainBlockContainer"] { padding-left: 12px !important; padding-right: 12px !important; } }
+
+/* Today's filter bar: search, groups, "Filters & sort" on one line */
+.st-key-td_bar { margin: 4px 0 2px; }
+.st-key-td_bar [data-testid="stPopover"] button { border-radius: 8px; font-weight: 600; }
+
+/* Today's trend, at the foot: one small bar chart per group, 1D / 7D / 30D / 90D */
+.tr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tr-c { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 8px; background: var(--surface); }
+.tr-c p { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-c.look p::before, .tr-c.warn p::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+.tr-c.look p::before { background: var(--buy); } .tr-c.warn p::before { background: var(--sell); }
+.tr-bars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; height: 74px; align-items: end; }
+.tr-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 3px; }
+.tr-b b { font-size: 11.5px; font-weight: 600; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.tr-b i { display: block; width: 100%; max-width: 26px; border-radius: 3px 3px 0 0; min-height: 0; }
+.tr-c.look .tr-b i { background: var(--buy-tint); } .tr-c.warn .tr-b i { background: var(--sell-tint); }
+.tr-c.look .tr-b.on i { background: var(--buy); } .tr-c.warn .tr-b.on i { background: var(--sell); }
+.tr-b.on b { color: var(--ink); font-weight: 700; }
+.tr-b span { font-size: 10px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; }

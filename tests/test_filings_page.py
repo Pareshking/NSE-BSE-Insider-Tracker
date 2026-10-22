@@ -67,7 +67,7 @@ def test_every_kind_is_listed_and_rows_open(site, monkeypatch):
                   'Stake crossed 5%', 'Preferential issue', 'Rights issue', 'QIP', 'Buyback', 'Split'):
         assert f'>{words}<' in html, words
     assert BSE_ONLY in html                               # BSE's SAST rows NSE has not got
-    assert 'class="dt"' in html and 'dt-grid' in html     # every row opens to its facts
+    assert '<template>' in html and 'dt-grid' in html     # every row opens to its facts (drawn on the first open)
     assert 'Shares' in html and 'Holding before' in html and 'Made public' in html
     labels = {o.split(' · ')[0]: int(o.split(' · ')[1].replace(',', '')) for o in at.pills(key='fa_kind').options}
     assert all(labels[k] > 0 for k in labels), labels
