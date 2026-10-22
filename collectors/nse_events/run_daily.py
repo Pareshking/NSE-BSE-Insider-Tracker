@@ -891,6 +891,13 @@ def main(argv=None):
     for n in report['notes']:
         print(f'  note: {n}')
     print(f'  NSE calls: {report["nse_calls"]}; bucket {"set" if BUCKET else "MISSING"}')
+    # A stream that failed must turn the run red (everything else is written by now): results failed every night
+    # from 19 to 22 Oct 2026 on a missing client method while the run kept reporting success.
+    failed = [n for n in report['notes'] if ': fetch failed (' in n or ': failed (' in n]
+    if failed:
+        for n in failed:
+            print(f'::error::{n}')
+        sys.exit(1)
 
 
 if __name__ == '__main__':
