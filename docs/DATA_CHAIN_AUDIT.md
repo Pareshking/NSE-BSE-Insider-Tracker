@@ -28,6 +28,7 @@ Status: open / checked (right) / fixed (PR) / not done (why).
 | Tradability | NSE ASM/GSM/ESM lists, sec_list, bhavcopy bands | `tradability` | flags on rows, Evidence's "tradable only" |
 | Security master | VR export (01 Sep) + NSE/BSE lists | `securities`, `universe` | names, ISIN, the Rs 100 Cr universe |
 | Announcements | NSE/BSE announcements (counts only; the AI reader is stopped) | archive | not shown |
+| **Encumbrances (SAST Reg 31), new 22 Oct** | NSE `corporate-pledgedata-sast3132` (page *Regulation 31(1) and 31(2)*) | `encumbrances` | to come: pledges with the lender (PR #199) |
 
 ## 2. Questions an investor would ask of each (the checklist)
 
@@ -79,7 +80,29 @@ Presentation
 
 (each: what the site shows, what the exchange's file says, the cause, the fix, the PR)
 
+### F1 The authoritative pledge data was not collected (missing data, fixed #199)
+- Pledges came only from PIT filings (no lender; NSE rows carry no share count, D13) and the quarterly XBRL.
+- NSE publishes every SAST Reg 31(1)/(2) disclosure: creation / release / invocation of a pledge, a non-disposal
+  undertaking or another encumbrance, with the lender, shares and % of the company (`/api/corporate-pledgedata-sast3132`,
+  seen in the page's own requests). 1 Sep-21 Oct 2026: 147 events, of which 15 NDUs and 17 "Others" the PIT kinds do
+  not separate. Collected daily from #199 (raw kept), backfilled 400 days.
+- **Present**: on Today and the Company page, a pledge row should name the lender and the kind (pledge / NDU / other),
+  from this table first; the PIT filing is the corroboration.
+
+### F2 A night's NSE filings lost to one timeout; the nightly NSE events run cancelled by the catch-up (reliability, fixed #199)
+- R2 Storage Write of 9 Oct (run 37999495517): NSE Insider, Rights and Preferential failed on one read timeout; the
+  steps now try three times. NSE Corporate Events of 12, 15 and 21 Oct were cancelled: the catch-up's guard looked
+  only for queued runs, a run held by the concurrency group is pending.
+
+### Leads from Chain stats (22 Oct, 09:15 IST), passed to the audits
+- JB Chemicals 21 Jan 2026: the Tau Investment sale and Torrent's purchase (Rs 11,917 Cr) each appear twice as
+  primary rows (one copy without market cap).
+- Thyrocare 17 Aug 2026: Docon's release of 7,94,69,696 pledged shares filed with no mode: kind `missing`, valued Rs 4,916 Cr.
+- `price_check`: 2,063 `far_below` and 1,047 `face_value` rows (ESOPs at exercise price are expected; market trades are not).
+- Deals: 8,017 of 22,205 legs are market makers (prop/HFT), left out of every signal.
+
 ## 4. Log
 
 - 09:10 IST: inventory and checklist written; Chain stats workflow added; two audits started (trading data;
   corporate data).
+- 09:40 IST: nightly reliability reviewed (F2); the Reg 31 encumbrance stream added (F1), PR #199, backfill after merge.
