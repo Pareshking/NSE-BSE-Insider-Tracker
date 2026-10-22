@@ -240,7 +240,7 @@ def _issues(ctx, since, names) -> dict:
 
 
 def _buybacks(ctx, since, names) -> tuple[pd.DataFrame, pd.DataFrame]:
-    r = buybacks.rows(store.table('buybacks'), ctx.prices)
+    r = buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings)
     if r.empty:
         return r, pd.DataFrame(columns=COLUMNS)
     r = r[r['when'] >= since]

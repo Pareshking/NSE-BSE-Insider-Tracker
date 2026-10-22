@@ -159,9 +159,10 @@ and `tests/test_bse_meetings_shareholding.py`.
 - Preferential rows keep the ISIN NSE filed: 265 carry an ISIN the security master does not know (retired, e.g. before a
   split), so the universe cut drops them; `issues` needs `add_identity` as the NSE events tables have (D12).
 - Warrant conversions: 30 listing records raise 75% of shares x price (the balance on warrants; the 25% came at
-  allotment). Shown as the amount raised, as filed; the label should say "balance on conversion of warrants".
-- Buybacks show the offer against today's close only; the premium at announcement (close before the board meeting)
-  is what an investor weighs. 869 large resets since Oct 2025 with no filed action stay unadjusted (demergers,
+  allotment). Labelled "Raised on conversion (the 75% balance on warrants)" (#210).
+- Buybacks: the offer against the close of the session before the board meeting that considered the buyback (NSE
+  meetings flagged buyback, 120 days before the record date; split-adjusted closes) is on the Buybacks card, the
+  Company timeline and the Today sentence, beside the offer against today's close. 869 large resets since Oct 2025 with no filed action stay unadjusted (demergers,
   rights, Sanofi's special dividend), as designed.
 - Results: Rajesh Exports' quarterly revenue Rs 2.35-4.72 lakh crore against a Rs 1,614 Cr market cap; 8 rows with the
   quarter above the year to date. Not checked against the filings yet.

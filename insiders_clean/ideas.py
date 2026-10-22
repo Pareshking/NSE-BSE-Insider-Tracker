@@ -578,9 +578,11 @@ def buyback_events(bb: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: in
         n = pd.to_numeric(r.get('shares_sought'), errors='coerce')
         pct = float(n / total[isin] * 100) if isinstance(isin, str) and pd.notna(n) and total.get(isin) else 0.0
         size = f', {pct:.2f}% of the shares' if pct else ''
+        va = pd.to_numeric(r.get('vs_announce'), errors='coerce')
+        then = f' ({va:+.0f}% against the close before the board meeting)' if pd.notna(va) else ''
         rows.append({'isin': isin, 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'), 'list': 'look',
                      'kind': 'Buyback at a premium', 'pct_of_company': pct,
-                     'sentence': f'Tender buyback at {r["vs_market"]:.0f}% above the price now{size}',
+                     'sentence': f'Tender buyback at {r["vs_market"]:.0f}% above the price now{then}{size}',
                      'value': pd.to_numeric(r.get('offer_value'), errors='coerce'), 'last': r['when']})
     return _ev(rows)
 

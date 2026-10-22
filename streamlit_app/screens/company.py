@@ -149,7 +149,7 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
                               ('Instruments', str(r.get('instruments') or '')),
                               ('Trading approval', kit.day(r.get('trading_approval_date')) if pd.notna(pd.to_datetime(r.get('trading_approval_date'), errors='coerce')) else '')],
                              _link(r.get('xbrl_url'))))
-    bb = buybacks.rows(own(store.table('buybacks')), ctx.prices)
+    bb = buybacks.rows(own(store.table('buybacks')), ctx.prices, ctx.meetings)
     for r in (bb.to_dict('records') if not bb.empty else []):
         vs = kit._finite(r.get('vs_market'))
         rows.append(_row(r.get('when'), 'Buyback', str(r.get('how') or 'route not on NSE'), '',
@@ -304,7 +304,7 @@ def render():
     # For and against: the Today builders on this company's rows, 90 days.
     summary = store.artifact('artifacts/track_summary.parquet')
     own = lambda f: f[f['isin'] == isin] if isin and f is not None and not f.empty and 'isin' in f else None  # noqa: E731
-    bb = buybacks.rows(own(store.table('buybacks')), ctx.prices)
+    bb = buybacks.rows(own(store.table('buybacks')), ctx.prices, ctx.meetings)
     pros, cons = ideas.company_view([
         ideas.insider_events(e, ctx.ref, mine_sh, summary), ideas.pledge_events(t, ctx.ref, mine_sh, enc=ctx.encumbrances),
         ideas.stake_events(own(ctx.sast), ctx.ref), ideas.fund_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
