@@ -8,6 +8,7 @@ work, point INSIDERS_LOCAL_DATA at a folder with the same layout.
 import sys
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 HERE = Path(__file__).resolve().parent
@@ -105,15 +106,24 @@ ctx = load()
 if not ctx.trades.empty:
     e = ctx.eligible
     parts = []   # the index line (Nifty 500, Smallcap 250, Microcap 250 vs 200D) is off the site (owner, 22 Oct)
-    # Each filing and deal once: NSE and BSE copies and market-maker legs are not counted (audit W1, W2).
+    # The latest day only (owner, 22 Oct): what was made public that day, each filing and deal once (NSE and BSE
+    # copies and market-maker legs are not counted, audit W1, W2). Deals carry their own last session.
+    day = pd.Timestamp(ctx.ref).normalize() if ctx.ref is not None else None
     prim = ctx.trades['is_primary'].astype('boolean').fillna(False)
+    on_day = pd.to_datetime(ctx.trades['broadcast_date'], errors='coerce').dt.normalize().eq(day)
+    mkt = e['is_market'].astype('boolean').fillna(False) & pd.to_datetime(e['seen'], errors='coerce').dt.normalize().eq(day)
     dl = ctx.deals
-    n_deals = int((dl['is_primary'].astype('boolean').fillna(False)
-                   & ~dl['client_is_market_maker'].astype('boolean').fillna(False)).sum()) if not dl.empty else 0
-    parts += [f'<span class="opt"><b>{int(prim.sum()):,}</b> filings</span>',
-              f'<span class="opt"><b>{int(e["is_market"].sum()):,}</b> open-market</span>',
-              f'<span class="opt"><b>{n_deals:,}</b> deals</span>']
-    parts.insert(0, f'<b>Filings to {kit.day(ctx.ref)}</b>' if ctx.ref is not None else 'No clean data yet')
+    real = (dl['is_primary'].astype('boolean').fillna(False) & ~dl['client_is_market_maker'].astype('boolean').fillna(False)
+            if not dl.empty else pd.Series(dtype=bool))
+    when = pd.to_datetime(dl['date'], errors='coerce').dt.normalize() if not dl.empty else pd.Series(dtype='datetime64[ns]')
+    deal_day = when[real].max() if real.any() else None
+    n_deals = int((real & when.eq(deal_day)).sum()) if deal_day is not None and pd.notna(deal_day) else 0
+    other_day = deal_day is not None and pd.notna(deal_day) and deal_day != day
+    deals_word = 'deals' + (f' on {kit.day(deal_day, with_year=False)}' if other_day else '')
+    parts += [f'<span class="opt"><b>{int((prim & on_day).sum()):,}</b> filings</span>',
+              f'<span class="opt"><b>{int(mkt.sum()):,}</b> on the market</span>',
+              f'<span class="opt"><b>{n_deals:,}</b> {deals_word}</span>']
+    parts.insert(0, f'<b>{kit.day(ctx.ref)}</b>' if ctx.ref is not None else 'No clean data yet')
     # One row under the top bar, as on screener.in: the data line on the left, a company search on the right.
     left, right = st.columns([5, 2], vertical_alignment='center', gap='small')
     with left:
