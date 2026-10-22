@@ -2,10 +2,12 @@
 like the real rows of the exchanges' files."""
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
-from insiders_clean import adjust, slim
+from insiders_clean import adjust, issues, slim
 
 
 def _p(rows):
@@ -66,3 +68,32 @@ def test_no_bridge_between_two_issuers_or_across_a_long_gap():
              ('2026-03-01', 'NSE', 'INE333C01029', 'ABC', 'EQ', 5.0, 10.0, 1e6)]       # two months apart
     _, links = adjust.bridge_isins(_p(other))
     assert links == {}
+
+
+# --- C2: preferential approvals filed a power of ten off ---------------------------------------------------------
+
+def _approval(app, sym, amount, n, minimum, kind='Warrants', terms='0.25'):
+    """An archive row of NSE's preferential in-principle list with its parsed XBRL, as stored (archive/nse_events/issues/)."""
+    row = {'appId': app, 'nseSymbol': sym, 'isin': f'INE{app}X01010', 'nameOfTheCompany': sym + ' LIMITED',
+           'stage': 'In-Principle', 'systemDate': '05-JAN-2026', 'dateOfSubmission': '23-DEC-2025',
+           'dateBrdResoln': '12-NOV-2025', 'categoryOfAllottee': 'Non Promoter', 'considerationBy': 'Cash',
+           'totalAmtRaised': str(amount), 'xmlFileName': f'https://nsearchives.nseindia.com/corporate/xbrl/PREF_ISSUE_IP_{app}_WEB.xml'}
+    x = {'main': {'AmountToBeRaised': str(amount), 'CategoryOfAllottee': 'Non Promoter'},
+         'groups': {'IssuedSecurity1': {'SecurityType': kind, 'NumberOfSecurities': str(n), 'AmountToBeRaised': str(amount),
+                                        'RecordDateOrFutureRelevantDate': '2025-11-12',
+                                        'MinimumIssuePricePerUnit': str(minimum), 'TermsOfPaymentInPercentage': terms}}}
+    return issues.filing_rows('preferential', 'in_principle', [row]).assign(xbrl_status='ok', xbrl_json=json.dumps(x))
+
+
+def test_approved_amount_a_power_of_ten_off_is_held_back():
+    f = pd.concat([_approval('63777', 'RKFORGE', 19992000, 3400000, 586.77),                      # a hundredth of Rs 199.92 Cr
+                   _approval('67204', 'SANGINITA', 449400000, 3444436, 13.05, 'Equity Shares', '1'),  # ten times too much
+                   _approval('69999', 'INNOMET', 250362000, 1192200, 208.79),                     # at the minimum: as filed
+                   _approval('59198', 'RKFORGE', 2047500000, 975000, 712.34)],                    # priced well above it: kept
+                  ignore_index=True)
+    df, rep = issues.clean_issues(None, 'preferential', f)
+    by = df.set_index('app_id')
+    assert pd.isna(by.at['63777', 'amount_total']) and pd.isna(by.at['67204', 'amount_total'])
+    assert by.at['69999', 'amount_total'] == 250362000 and by.at['59198', 'amount_total'] == 2047500000
+    assert by['amount_unreliable'].to_dict() == {'63777': True, '67204': True, '69999': False, '59198': False}
+    assert rep['amount_power_of_ten'] == 2
