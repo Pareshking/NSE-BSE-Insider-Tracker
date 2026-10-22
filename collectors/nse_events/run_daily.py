@@ -104,6 +104,10 @@ RESULTS = 'results'   # financial results (integrated filing) with their XBRL: i
 STREAMS = STREAMS + (RESULTS,)
 DATE_COLUMN[RESULTS] = 'broadcast_date'
 MAX_RESULTS_XBRL_PER_RUN = 500   # results XBRLs (20-60 KB each) a night; the rest wait for the next night
+ENCUMBRANCES = 'encumbrances'   # SAST Reg 31: promoters' pledges / NDUs created, released, invoked, with the lender (22 Oct 2026)
+STREAMS = STREAMS + (ENCUMBRANCES,)
+DATE_COLUMN[ENCUMBRANCES] = 'broadcast_date'
+RAW_STREAMS = RAW_STREAMS + (ENCUMBRANCES,)
 RESULTS_PAGE = 100
 
 
@@ -781,6 +785,8 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                     new = parsers.parse_tender_offers(nse.tender_offers_past(), nse.tender_offers_active())
                 elif stream == 'daily_buybacks':
                     new = parsers.parse_daily_buybacks(nse.daily_buybacks(start, today))
+                elif stream == ENCUMBRANCES:
+                    new = parsers.parse_encumbrances(nse.encumbrances(start, today))
                 elif reparse_raw:   # no NSE call: the kept XBRLs, read again
                     report['shareholding_reparse'] = reparse_shareholding_raw(r2)
                 else:
