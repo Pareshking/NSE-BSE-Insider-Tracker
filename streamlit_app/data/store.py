@@ -74,7 +74,7 @@ _FETCHED: dict[str, list] = {}   # key -> [bytes, reads left, fetched at]
 _LOCK = threading.Lock()
 
 
-def prefetch(keys=PREFETCH, workers: int = 10) -> int:
+def prefetch(keys=PREFETCH, workers: int = 30) -> int:
     """Fetch `keys` from R2 in parallel into the read-once buffer `_read` takes them from. A key that fails
     is left out (its reader fetches it again and reports the error as before). Returns how many arrived.
     Nothing to do for a local folder."""

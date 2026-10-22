@@ -318,7 +318,7 @@ def test_prefetch_reads_side_by_side_and_each_object_is_used_once(fake_r2):
                                                                  'clean/current/missing.parquet', 'clean/current/broken.parquet']
     t0 = time.monotonic()
     assert store.prefetch(keys) == 21
-    assert time.monotonic() - t0 < 0.05 * len(keys) / 2   # ten at a time, not one after another
+    assert time.monotonic() - t0 < 0.05 * len(keys) / 2   # side by side, not one after another
     calls.clear()
     assert store._read('clean/current/t3.parquet') == b'body of clean/current/t3.parquet' and not calls
     assert store._read('clean/current/t3.parquet') == b'body of clean/current/t3.parquet' and calls == ['clean/current/t3.parquet']

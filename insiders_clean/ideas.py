@@ -45,7 +45,8 @@ def _shares_out(sh: pd.DataFrame | None) -> dict:
     """ISIN -> total shares in the latest shareholding XBRL."""
     if sh is None or sh.empty or 'total_shares' not in sh:
         return {}
-    s = sh.dropna(subset=['isin']).assign(total=pd.to_numeric(sh['total_shares'], errors='coerce'))
+    # Only the three columns read: copying all sixty took half a second over Today's 22 calls (22 Oct).
+    s = sh[['isin', 'quarter_end']].dropna(subset=['isin']).assign(total=pd.to_numeric(sh['total_shares'], errors='coerce'))
     s = s.dropna(subset=['total']).sort_values('quarter_end').drop_duplicates('isin', keep='last')
     return dict(zip(s['isin'], s['total']))
 
@@ -291,7 +292,8 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                          'value': None, 'last': g['seen'].max()})
     if sh is not None and not sh.empty and {'promoter_pledged_shares', 'total_shares', 'promoter_pledge_pct'} <= set(sh.columns):
         filed = sh['submission_date'] if 'submission_date' in sh else sh['quarter_end']
-        s = sh.assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'), filed=pd.to_datetime(filed, errors='coerce'),
+        read = [c for c in ('isin', 'symbol', 'company', 'quarter_end', 'xbrl_status', 'shareholding_stale') if c in sh]
+        s = sh[read].assign(q=pd.to_datetime(sh['quarter_end'], errors='coerce'), filed=pd.to_datetime(filed, errors='coerce'),
                       pl=pd.to_numeric(sh['promoter_pledge_pct'], errors='coerce'),
                       ps=pd.to_numeric(sh['promoter_pledged_shares'], errors='coerce'),
                       ts=pd.to_numeric(sh['total_shares'], errors='coerce')).dropna(subset=['isin'])

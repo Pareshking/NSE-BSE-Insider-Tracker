@@ -30,6 +30,7 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config
 import pandas as pd
 import streamlit as st
 
@@ -190,6 +191,8 @@ def get_client():
         aws_access_key_id=_cfg("R2_ACCESS_KEY_ID"),
         aws_secret_access_key=_cfg("R2_SECRET_ACCESS_KEY"),
         region_name="auto",
+        # data/store.prefetch reads a first visit's ~30 objects at once; botocore's default pool is 10.
+        config=Config(max_pool_connections=32),
     )
 
 
