@@ -150,7 +150,7 @@ def render():
         return
     key = str(ctx.ref)
     # The headline is the page's first line, the period beside it (no title repeating the menu).
-    top, right = st.columns([3, 1.3], vertical_alignment='center')
+    top, right = st.columns([2.2, 1.8], vertical_alignment='center')
     with right:
         period = st.segmented_control('Period', list(ideas.PERIODS), default=DEFAULT_PERIOD, key='td_period',
                                        label_visibility='collapsed', width='content') or DEFAULT_PERIOD

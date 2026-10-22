@@ -438,3 +438,5 @@ header[data-testid="stHeader"] { background: var(--surface) !important; border-b
 h1.headline, .head h1.headline { margin: 6px 0 0; font-size: 22px !important; line-height: 1.3; font-weight: 600; letter-spacing: -0.015em; }
 h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
 .trend tbody th { white-space: nowrap; }
+/* the period chips sit right of the headline and never clip */
+.st-key-td_period { display: flex; justify-content: flex-end; }
