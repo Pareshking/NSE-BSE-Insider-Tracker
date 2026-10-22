@@ -288,7 +288,7 @@ def render():
     bb = buybacks.rows(own(store.table('buybacks')), ctx.prices)
     pros, cons = ideas.company_view([
         ideas.insider_events(e, ctx.ref, mine_sh, summary), ideas.pledge_events(t, ctx.ref, mine_sh),
-        ideas.stake_events(own(ctx.sast), ctx.ref), ideas.fund_events(own(ctx.deals), t, ctx.ref),
+        ideas.stake_events(own(ctx.sast), ctx.ref), ideas.fund_events(own(ctx.deals), t, ctx.ref, sh=mine_sh),
         ideas.issue_events(raises.get('Preferential issue'), ctx.ref, mine_sh), ideas.buyback_events(bb, ctx.ref, mine_sh)], summary)
 
     # Risks: standing facts and the last 12 months, always shown.
