@@ -35,6 +35,17 @@ def test_ownership_with_one_parsed_quarter_has_no_change():
     assert missing == [] and table['change'].isna().all()
 
 
+def test_timeline_dates_with_and_without_a_zone_sort_together():
+    """Real data, 21 Oct: results carry an IST time with its zone, other filings a plain date; the
+    timeline's sort broke on the mix (company-hcltech screenshot)."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'streamlit_app'))
+    from screens.company import _day
+    days = pd.Series([_day('2026-10-14 18:05:00+05:30'), _day('2026-10-15'), _day(pd.Timestamp('2026-10-13'))])
+    assert days.sort_values().tolist() == [pd.Timestamp('2026-10-13'), pd.Timestamp('2026-10-14 18:05'), pd.Timestamp('2026-10-15')]
+
+
 def test_company_view_keeps_every_event_with_its_kinds_and_reads():
     ev = pd.DataFrame([
         {'isin': 'X', 'list': 'look', 'kind': 'Promoter buying', 'pct_of_company': 0.4, 'sentence': 'Promoter group bought 0.40%', 'last': pd.Timestamp('2026-10-01')},

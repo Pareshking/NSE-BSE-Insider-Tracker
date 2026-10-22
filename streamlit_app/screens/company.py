@@ -22,7 +22,7 @@ READ = {'leaning_positive': 'ahead', 'drag': 'behind', 'no_edge': 'no edge', 'fe
 QUIET = ('Other insider filing',)
 
 
-def _headroom(ctx, e, shr, sym):
+def _headroom(ctx, e, shr, mine_sh):
     """Room to the 75% promoter ceiling (SCRR 19A) and creeping-acquisition room this financial year (SAST
     Reg 3(2): holders of 25% to under 75% may add 5% a year, gross, without an open offer), in one tile.
     The year's use is shares bought by promoters on the market over the company's total shares in the latest
@@ -32,7 +32,7 @@ def _headroom(ctx, e, shr, sym):
     ph = float(shr['promoter_holding_pct'].iloc[0])
     fy = pd.Timestamp(year=ctx.ref.year if ctx.ref.month >= 4 else ctx.ref.year - 1, month=4, day=1)
     fy_buys = e[(e['seen'] >= fy) & (e['side'] == 'BUY') & e['person_role'].isin(signals.PROMOTER_ROLES)]
-    mine = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
+    mine = mine_sh if mine_sh is not None else pd.DataFrame()
     tot = pd.to_numeric(mine.sort_values('quarter_end')['total_shares'], errors='coerce').dropna() if 'total_shares' in mine else pd.Series(dtype=float)
     used = (pd.to_numeric(fy_buys['quantity'], errors='coerce').sum() / tot.iloc[-1] * 100 if len(tot) and tot.iloc[-1]
             else pd.to_numeric(fy_buys['pct_of_mcap'], errors='coerce').sum())
@@ -80,8 +80,16 @@ def _link(url) -> list:
     return [('The filing', url)] if isinstance(url, str) and url.startswith('http') else []
 
 
+def _day(v) -> pd.Timestamp:
+    """A date on one basis: results carry an IST time with its zone, other filings a plain date."""
+    d = pd.to_datetime(v, errors='coerce')
+    if pd.notna(d) and d.tzinfo is not None:
+        d = d.tz_convert('Asia/Kolkata').tz_localize(None)
+    return d
+
+
 def _row(date, what, who='', sub='', text='', value=None, pct=None, items=(), links=()) -> dict:
-    return {'date': pd.to_datetime(date, errors='coerce'), 'what': what, 'who': who, 'sub': sub, 'text': text,
+    return {'date': _day(date), 'what': what, 'who': who, 'sub': sub, 'text': text,
             'value': value, 'pct': pct, '_facts': list(items), '_links': list(links)}
 
 
@@ -236,11 +244,13 @@ def render():
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]  # same 12 months as the insider flow
         d = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))
-    mine_sh = ctx.shareholding[ctx.shareholding['symbol'].astype(str).str.upper() == sym] if not ctx.shareholding.empty else pd.DataFrame()
+    shd = ctx.shareholding
+    mine_sh = shd[(shd['symbol'].astype(str).str.upper() == sym) | ((shd['isin'] == isin) if isin and 'isin' in shd else False)] \
+        if not shd.empty else pd.DataFrame()
     sh = signals.latest_shareholding(mine_sh)
     shr = sh.head(1)
     pledge = shr['promoter_pledge_pct'].iloc[0] if len(shr) else None
-    headroom = _headroom(ctx, e, shr, sym)
+    headroom = _headroom(ctx, e, shr, mine_sh)
     enc = pd.to_numeric(mine_sh.sort_values('quarter_end')['promoter_encumbered_pct'], errors='coerce').iloc[-1] \
         if len(mine_sh) and 'promoter_encumbered_pct' in mine_sh else None
     kit.tiles([
