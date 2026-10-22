@@ -34,8 +34,12 @@ Added by the data checks (`docs/CLEAN_LAYER.md`, "Data checks").
 | `holding_check` | Holding after - before against the shares traded: `match`, `differs`, `against_side`, `against_side_and_differs`, `not_filed`, `not_applicable` |
 | `price_check` | Implied price (`price` = value / shares) against the trade's sessions in our price layer: `inside`, `below`, `above`, `far_below`, `far_above`, `power_of_ten`, `swapped`, or why it was not checked |
 | `day_low`, `day_high` | Lowest low and highest high printed on NSE or BSE over the trade's sessions, unadjusted; empty when not checked |
-| `marks` | Comma list of checks that failed but hold nothing back (`price_outside_day_range`); `flags` holds those that do |
+| `marks` | Comma list of checks that failed but hold nothing back (`price_outside_day_range`, `promoter_group_transfer`); `flags` holds those that do |
 | `kind` = `holding_only` | A disclosure of a holding with no shares traded; never a trade (`is_market` false, no side) |
+| `security_type_raw` | The security as filed (NSE `secType`, BSE `security_type`): Equity Shares, ADR/GDR/FCCB, Warrants, Derivative ... A filed type that is not equity flags the row `not_equity_shares` (held back) (audit 22 Oct) |
+| `kind` = `inter_se` + mark `promoter_group_transfer` | A filed market buy by a promoter / promoter-group filer paired, on one exchange, with another's market sale of the same company, dates and shares (prices within 2%): shares moved inside the group, never a market decision (audit 22 Oct, T4) |
+| `person_role` of a relative | "Directors / Employees Immediate Relative" -> `immediate_relative`; "Promoter(s) Immediate Relative" -> `promoter_group` (ICDR 2(1)(pp)(ii)) |
+| `kind` from the transaction type | A blank mode with a transaction type of pledge / revoke / invoke takes that pledge kind (counted `kind_from_transaction_type`) |
 
 ## insider_trades and deals: market cap and copies (audit batch 2, 21 Oct 2026)
 
@@ -64,6 +68,7 @@ NSE and BSE publish nothing else about the client.
 | `client_type` | mutual_fund, insurer, pension, bank, fpi (foreign investor, incl. sovereign funds and global banks), pms_aif, fund_other (a fund not told apart as AIF or foreign by its name), prop_hft (a measured market maker), broker, corporate, trust, individual, unknown |
 | `client_type_confidence` | high (the name says it, or the behaviour was measured), medium (a strong marker), low (a weak marker or a person-like name) |
 | `client_type_rule` | The rule that matched, e.g. `mutual fund`, `foreign vehicle form`, `looks like a person`, `measured two-way volume` |
+| `client_is_promoter`, `client_promoter_basis` | The client is the company's promoter: in its latest promoter-group list (`promoter_group_list`) or filed under PIT as its promoter / promoter group (`pit_filing`). Never a fund, whatever `client_type` says (audit 22 Oct, T5: Fosun Pharma Industrial Pte for Gland Pharma). Counted in `tables.deals.promoter_clients` |
 | `investor_group`, `investor_group_id` | One investor across spellings, share classes and series; never merges entity IDs. From `insiders_clean/investor_aliases.csv` (each line with its reason) or a suffix rule |
 | `investor_group_rule` | `alias`, `share class`, `series`, or blank (the name itself) |
 
