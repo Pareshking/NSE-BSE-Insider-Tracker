@@ -409,7 +409,7 @@ def meetings(r2, ctx):
 
 def main() -> int:
     r2 = r2_client()
-    sections = [x.strip() for x in os.environ.get('SECTIONS', 'shareholding,issues,buybacks,actions,results,universe,meetings').split(',') if x.strip()]
+    sections = [x.strip() for x in (os.environ.get('SECTIONS') or 'shareholding,issues,buybacks,actions,results,universe,meetings').split(',') if x.strip()]
     symbols = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
     ctx = {'symbols': symbols}
     ctx['uni'] = table(r2, 'universe')
