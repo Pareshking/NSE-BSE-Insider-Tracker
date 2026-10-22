@@ -413,9 +413,6 @@ def probe(r2, ctx):
     sh = ctx['sh'].copy()
     sh['quarter_end'] = pd.to_datetime(sh['quarter_end'], errors='coerce')
     lt = sh.sort_values(['quarter_end', 'submission_date']).drop_duplicates('symbol', keep='last')
-    print('SHL|symbol|isin|company|quarter_end|pledged|promoter|total|pledge_pct|status')
-    for r in lt.itertuples():
-        print(f'SHL|{r.symbol}|{r.isin}|{r.company}|{r.quarter_end:%Y-%m-%d}|{r.promoter_pledged_shares}|{r.promoter_shares}|{r.total_shares}|{r.promoter_pledge_pct}|{r.xbrl_status}')
     # companies with no shareholding row: are they in the archive at all?
     keys = sorted(k for k in list_keys(r2, 'archive/nse_events/shareholding/') if k.endswith('.parquet'))
     arch = pd.concat([read_parquet(r2, k) for k in keys], ignore_index=True)
@@ -524,7 +521,11 @@ def main() -> int:
         ctx['raw_px'] = px
         ctx['last_session'] = px['date'].max()
         acts = pd.concat([table(r2, 'actions'), table(r2, 'bse_actions')], ignore_index=True)
-        ctx['factors'] = adjust.inherit_nse(adjust.implied_factors(px, actions=acts))
+        bridged, links = adjust.bridge_isins(px)
+        print(f"bridged ISINs (old -> new, a split): {len(links)}")
+        ctx["raw_px"] = bridged
+        ctx["factors"] = adjust.inherit_nse(adjust.implied_factors(bridged, actions=acts))
+        print("factors after the fix:", adjust.coverage(ctx["factors"]))
     ctx['mcap_daily'] = pd.DataFrame()
     if 'universe' in sections:
         keys = sorted(k for k in list_keys(r2, 'marketcap/daily/nse/') if k.endswith('.parquet'))[-1:]
