@@ -517,18 +517,20 @@ def render():
     kit.head('Filings', f'Every insider filing, deal, stake change, issue and corporate action, newest first · '
                         f'insider filings to {kit.day(ctx.ref)}')
     kind_slot = st.container()
+    # One bar (22 Oct, as the owner's screener): search and period in sight, the rest in "Filters & sort",
+    # so a phone shows filings on its first screen, not four rows of filters.
     with st.container(key='fa_filters', horizontal=True, vertical_alignment='center', gap='small'):
+        q = st.text_input('Search', placeholder='Company, symbol or name', key='fa_q', type='search',
+                          label_visibility='collapsed', width=260)
         days = st.segmented_control('Period', list(PERIODS), default=30, format_func=PERIODS.get, required=True,
                                     key='fa_days', label_visibility='collapsed') or 30
-        side = st.segmented_control('Side', ['Buy and sell', 'Buy', 'Sell'], default='Buy and sell', required=True,
-                                    key='fa_side', label_visibility='collapsed') or 'Buy and sell'
-        roles = st.pills('Role', ROLES, selection_mode='multi', key='fa_roles', label_visibility='collapsed')
-        q = st.text_input('Search', placeholder='Company, symbol or name', key='fa_q', type='search',
-                          label_visibility='collapsed', width=230)
-        floor = st.selectbox('Min value', list(MIN_VALUE), format_func=MIN_VALUE.get, key='fa_min',
-                             label_visibility='collapsed', width=130)
-        mm = st.toggle('Market makers', value=False, key='fa_mm',
-                       help='Bulk/block clients measured buying and selling in equal measure; left out unless on')
+        with st.popover('Filters & sort', icon=':material/tune:', width='content'):
+            side = st.segmented_control('Side', ['Buy and sell', 'Buy', 'Sell'], default='Buy and sell', required=True,
+                                        key='fa_side') or 'Buy and sell'
+            roles = st.pills('Who', ROLES, selection_mode='multi', key='fa_roles')
+            floor = st.selectbox('Smallest value', list(MIN_VALUE), format_func=MIN_VALUE.get, key='fa_min')
+            mm = st.toggle('Market makers', value=False, key='fa_mm',
+                           help='Bulk/block clients measured buying and selling in equal measure; left out unless on')
 
     rows, sources = build(ctx, int(days))
     if not rows.empty:
@@ -577,11 +579,11 @@ def render():
 
     kit.table(shown, [
         kit.Col('company', 'Company', 'co'),
-        kit.Col('who', 'Who', 'client', sub='who_sub', phone=False),
-        kit.Col('what', 'What', sub='what_sub', phone=False),
+        kit.Col('who', 'Who', 'client', sub='who_sub'),
+        kit.Col('what', 'What', sub='what_sub'),
         kit.Col('side', 'Side', 'side'),
         kit.Col('value', 'Value', 'money', help='Insider and deal value as filed; for an issue the amount raised once '
                                                 'allotted, else the approved size; for a buyback its size'),
         kit.Col('pct_of_mcap', '% of mcap', 'bar', phone=False),
         kit.Col('made_public', 'Made public', 'date', sub='day_note'),
-    ], limit=LIMIT, height=760, download='filings', detail=detail, key=f'fa_{kind}')
+    ], limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}')

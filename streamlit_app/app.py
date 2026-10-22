@@ -41,6 +41,7 @@ _reload_changed_pipeline_modules()
 st.set_page_config(page_title='Insiders', page_icon='\U0001f4c8', layout='wide',
                    initial_sidebar_state='collapsed')   # the phone menu opened over every page (audit 22 Oct)
 
+from ui import nav as inapp  # noqa: E402
 from screens import (
     coming,
     company,
@@ -131,6 +132,9 @@ if not ctx.trades.empty:
     go = st.session_state.pop('_go_symbol', None)
     if go:
         st.switch_page(COMPANY_PAGE, query_params={'symbol': go})
+
+# A link the pages draw (a company, a person, Filings) switches page in this session, with its own address.
+inapp.links({**{p.url_path: p for p in ALL}, '': SECTIONS[''][0]})
 
 nav.run()
 

@@ -39,7 +39,7 @@ table.table(rows, [table.Col('company', 'Company', 'co'), table.Col('value', 'Va
     html = ' '.join(e.proto.body for e in at.get('html'))
     assert 'iframe' not in html and 'target="_top"' not in html
     assert 'company?symbol=ALPHA" target="_self"' in html
-    assert html.count('class="dt" hidden') == 2 and 'has-dt' in html and 'groups.sort' in html
+    assert html.count('<template>') == 2 and 'data-l=' in html and 'has-dt' in html and 'groups.sort' in html
 
 def test_flags_given_as_one_string_are_badges_not_letters():
     """The forward record's flags arrive as "ESM I, T2T, 5% band" and were drawn letter by letter (21 Oct)."""

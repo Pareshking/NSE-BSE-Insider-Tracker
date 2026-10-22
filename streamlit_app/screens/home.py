@@ -20,6 +20,10 @@ READ = {'leaning_positive': 'ahead', 'drag': 'behind', 'no_edge': 'no edge', 'fe
 WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
 DEFAULT_PERIOD = 'Last 30 days'
 SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
+# Sort inside each group: (column, the list's subtitle)
+SORTS = {'Share of the company': ('pct_of_company', 'largest share of the company first'),
+         'Value': ('_val', 'largest value first'), 'Latest': ('last', 'newest first')}
+DEFAULT_SORT = 'Share of the company'
 # Short names where space is tight (the group pills, the trend panel); the list headings keep the full ones.
 SHORT = {'Insiders buying': 'Insiders buying', 'Promoters pay up': 'Promoters pay up', 'Pledges released': 'Pledges released',
          'Big investors and funds in': 'Investors in', 'Buybacks at a premium': 'Buybacks', 'Promoters selling': 'Promoters selling',
@@ -76,8 +80,8 @@ def _row(ctx, r, holding, px) -> str:
         worth, tip = '≈ ' + kit.rupees(pct / 100 * mcap), "The shares at today's market cap"
     else:
         worth, tip = '—', ''
-    nums = [_num('Of the company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
-            _num('Promoters hold', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
+    nums = [_num('Of company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
+            _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
     facts = [('Made public', kit.day(r['last']) if pd.notna(r.get('last')) else '')]
     if pd.notna(r.get('avg_price')) and r.get('avg_price'):
         f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
@@ -115,6 +119,20 @@ def _filter(df: pd.DataFrame, size: str, sector: str, text: str, px: dict, secto
         keep &= (df['company'].fillna('').str.lower().str.contains(q, regex=False)
                  | df['nse_symbol'].fillna('').str.lower().str.contains(q, regex=False))
     return df[keep]
+
+
+def _sorted(df: pd.DataFrame, order: str, px: dict) -> pd.DataFrame:
+    """Each group's rows in the chosen order (the groups keep theirs). Value is as filed, else the shares at
+    today's market cap, as the Value column shows it."""
+    if df.empty or order == DEFAULT_SORT:
+        return df
+    col = SORTS[order][0]
+    if col == '_val':
+        mcap = pd.to_numeric(df['isin'].map(lambda i: (px.get(i) or {}).get('market_cap')), errors='coerce')
+        est = pd.to_numeric(df['pct_of_company'], errors='coerce') / 100 * mcap
+        filed = pd.to_numeric(df['value'], errors='coerce')
+        df = df.assign(_val=filed.where(filed > 0, est))
+    return df.sort_values(['group_order', col], ascending=[True, False], na_position='last', kind='stable')
 
 
 def _counts(df: pd.DataFrame) -> dict:
@@ -179,11 +197,16 @@ def render():
                     holding[k] = r
 
     head = st.container()
-    c1, c2, c3 = st.columns([1, 1.4, 2], vertical_alignment='bottom')
-    size = c1.selectbox('Size', SIZES, key='td_size', label_visibility='collapsed')
-    names = sorted({v for v in sectors.values() if isinstance(v, str) and v})
-    sector = c2.selectbox('Sector', ['All sectors'] + names, key='td_sector', label_visibility='collapsed')
-    text = c3.text_input('Company', key='td_text', placeholder='Filter by company or symbol', label_visibility='collapsed')
+    # One bar under the tiles (as the owner's screener): search, the groups, and the rest in "Filters & sort".
+    with st.container(key='td_bar', horizontal=True, vertical_alignment='center', gap='small'):
+        text = st.text_input('Company', key='td_text', placeholder='Search company or symbol', label_visibility='collapsed',
+                             width=280)
+        pills = st.container(width='stretch')
+        with st.popover('Filters & sort', icon=':material/tune:', width='content'):
+            size = st.segmented_control('Size', SIZES, default=SIZES[0], key='td_size', required=True) or SIZES[0]
+            names = sorted({v for v in sectors.values() if isinstance(v, str) and v})
+            sector = st.selectbox('Sector', ['All sectors'] + names, key='td_sector')
+            order = st.segmented_control('Sort by', list(SORTS), default=DEFAULT_SORT, key='td_sort', required=True) or DEFAULT_SORT
     sector = '' if sector == 'All sectors' else sector
 
     # One name per company, the security master's, whichever filing the row came from (audit 22 Oct:
@@ -193,7 +216,7 @@ def render():
     named = {p: tuple(x.assign(company=x['isin'].map(disp).fillna(x['company'])) if not x.empty else x for x in lw)
              for p, lw in every.items()}
     view = {p: tuple(_filter(x, size, sector, text, px, sectors) for x in lw) for p, lw in named.items()}
-    look, warn = view[period]
+    look, warn = (_sorted(x, order, px) for x in view[period])
     span = 'today' if ideas.PERIODS[period] == 1 else period.lower()
     cl, cw = _counts(look), _counts(warn)
     bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Promoters selling')
@@ -212,35 +235,38 @@ def render():
 
     groups = [n for lst in ('look', 'warn') for n, _ in ideas.GROUPS[lst]]
     have = {**cl, **cw}
-    pick = st.pills('Group', ['All'] + [g for g in groups if have.get(g)], default='All', key='td_group',
-                    format_func=lambda g: g if g == 'All' else f'{SHORT.get(g, g)} · {have.get(g, 0)}',
-                    label_visibility='collapsed') or 'All'
+    with pills:
+        pick = st.pills('Group', ['All'] + [g for g in groups if have.get(g)], default='All', key='td_group',
+                        format_func=lambda g: g if g == 'All' else f'{SHORT.get(g, g)} · {have.get(g, 0)}',
+                        label_visibility='collapsed') or 'All'
 
-    main, side = st.columns([2.7, 1], gap='medium')
-    with main:
-        if pick == 'All' or pick in dict(ideas.GROUPS['look']):
-            with kit.card('Worth a look', 'td_look', 'largest share of the company first'):
-                _list(ctx, look, 'look', pick, holding, px)
-        if pick == 'All' or pick in dict(ideas.GROUPS['warn']):
-            with kit.card('Watch out', 'td_warn', 'largest share of the company first'):
-                _list(ctx, warn, 'warn', pick, holding, px)
-    with side:
-        with kit.card('Trend', 'td_trend', 'companies per period'):
-            heads = ''.join(f'<th class="{"on" if p == period else ""}">{esc(h)}</th>'
-                            for p, h in zip(ideas.PERIODS, ('1D', '7D', '30D', '90D')))
-            body = ''
-            for lst in ('look', 'warn'):
-                for name, _ in ideas.GROUPS[lst]:
-                    n = [_counts(view[p][0 if lst == 'look' else 1]).get(name, 0) for p in ideas.PERIODS]
-                    cells = ''.join(f'<td class="{"on" if p == period else ""}">{v or "·"}</td>' for p, v in zip(ideas.PERIODS, n))
-                    body += f'<tr class="{lst}"><th title="{esc(name, quote=True)}">{esc(SHORT.get(name, name))}</th>{cells}</tr>'
-            st.html(f'<table class="trend"><thead><tr><th></th>{heads}</tr></thead><tbody>{body}</tbody></table>')
-        with kit.card('The bar', 'td_bar'):
-            st.html('<ul class="bar-rules">'
-                    f'<li>Insiders: per decision-maker in the period, ₹{ideas.MIN_VALUE / 1e5:.0f} L and {ideas.MIN_PCT:g}% '
-                    f'of the company, or {ideas.ALONE_PCT:g}% alone, or buying on {ideas.STEADY_DAYS}+ days</li>'
-                    f'<li>Big investors: crossing {ideas.BIG_STAKE:g}% or moving {ideas.BIG_CHANGE:g}%+ (SAST); lenders\' trustees left out</li>'
-                    f'<li>Funds: net {ideas.FUND_NET_PCT:g}%+ of the company in bulk/block deals</li>'
-                    f'<li>Pledges: net of releases; or {ideas.PLEDGE_RISE_PTS:g}+ points in a quarter</li>'
-                    '<li>Evidence is a tag, never a filter</li>'
-                    '</ul><a class="bar-all" href="/filings-all" target="_self">Every filing →</a>')
+    # Worth a look and Watch out side by side on a wide screen (one under the other on a phone).
+    sides = [lst for lst in ('look', 'warn') if pick == 'All' or pick in dict(ideas.GROUPS[lst])]
+    holders = st.columns(len(sides), gap='medium') if len(sides) > 1 else [st.container()]
+    for col, lst in zip(holders, sides):
+        with col, kit.card('Worth a look' if lst == 'look' else 'Watch out', f'td_{lst}', SORTS[order][1]):
+            _list(ctx, look if lst == 'look' else warn, lst, pick, holding, px)
+
+    # The trend at the foot of the page, its full width: each group's companies in each period.
+    with kit.card('Trend', 'td_trend', 'companies per period · the period chosen above in bold'):
+        cards = []
+        for lst in ('look', 'warn'):
+            for name, _ in ideas.GROUPS[lst]:
+                counts = [_counts(view[p][0 if lst == 'look' else 1]).get(name, 0) for p in ideas.PERIODS]
+                most = max(counts) or 1
+                bars = ''.join(
+                    f'<div class="tr-b{" on" if p == period else ""}"><b>{c or "·"}</b>'
+                    f'<i style="height:{max(c / most * 100, 4 if c else 0):.0f}%"></i><span>{h}</span></div>'
+                    for p, c, h in zip(ideas.PERIODS, counts, ('1D', '7D', '30D', '90D')))
+                cards.append(f'<div class="tr-c {lst}"><p title="{esc(name, quote=True)}">{esc(SHORT.get(name, name))}</p>'
+                             f'<div class="tr-bars">{bars}</div></div>')
+        st.html('<div class="tr-grid">' + ''.join(cards) + '</div>')
+    with st.expander('How a filing makes the list'):
+        st.html('<ul class="bar-rules">'
+                f'<li>Insiders: per decision-maker in the period, ₹{ideas.MIN_VALUE / 1e5:.0f} L and {ideas.MIN_PCT:g}% '
+                f'of the company, or {ideas.ALONE_PCT:g}% alone, or buying on {ideas.STEADY_DAYS}+ days</li>'
+                f'<li>Big investors: crossing {ideas.BIG_STAKE:g}% or moving {ideas.BIG_CHANGE:g}%+ (SAST); trustees for lenders left out</li>'
+                f'<li>Funds: net {ideas.FUND_NET_PCT:g}%+ of the company in bulk/block deals</li>'
+                f'<li>Pledges: net of releases; or {ideas.PLEDGE_RISE_PTS:g}+ points in a quarter</li>'
+                '<li>Evidence is a tag, never a filter</li>'
+                '</ul><a class="bar-all" href="/filings-all" target="_self">Every filing &rarr;</a>')

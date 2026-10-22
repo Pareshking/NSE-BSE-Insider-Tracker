@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / 'fixtures'
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
+os.environ.setdefault('INSIDERS_NO_INAPP_LINKS', '1')   # ui/nav.py's component needs a browser
 os.environ.setdefault('SECURITY_MASTER_PATH', str(ROOT / 'reference_data' / 'security_master_20260901.csv'))
 
 import r2_writer

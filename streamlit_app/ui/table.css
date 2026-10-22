@@ -73,3 +73,30 @@ td.tags { min-width: 110px; }
 .tbl .dt-grid span { color: var(--ink); font-variant-numeric: tabular-nums; }
 .tbl .dt-links { margin-top: 10px; font-size: 12.5px; } .tbl .dt-links a { color: var(--accent-ink); margin-right: 14px; }
 .tbl-cap { display: flex; justify-content: space-between; align-items: center; margin: 6px 2px 0; font-size: 12px; color: var(--ink-3); }
+
+/* ---- Phone (22 Oct): each row a card, every cell under its column's label; no box scrolling inside the
+   page; a tap anywhere on the card opens its facts, the chevron on the card's right. ---- */
+@media (max-width: 640px) {
+  .tbl-wrap { max-height: none !important; overflow: visible; border: 0; background: transparent; }
+  .tbl, .tbl tbody { display: block; }
+  .tbl thead { display: none; }
+  .tbl tbody tr:not(.dt) { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; height: auto; position: relative;
+    padding: 12px 34px 12px 14px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  .tbl tbody tr:hover td, .tbl tbody tr:hover td:first-child { background: transparent; }
+  .tbl td { display: block; height: auto; padding: 0 !important; border: 0; white-space: normal; text-align: left !important;
+    max-width: none; min-width: 0; position: static !important; box-shadow: none !important; background: transparent !important; }
+  .tbl td:first-child { grid-column: 1 / -1; }
+  .tbl td:not(:first-child)::before { content: attr(data-l); display: block; font-size: 10px; font-weight: 600; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 1px; }
+  .tbl td.opt { display: none; }
+  .tbl td:has(> .na:only-child) { display: none; }   /* an empty field says nothing on a card */
+  .tbl td.who, .tbl td.tx { grid-column: 1 / -1; }   /* who and what read as lines, not half-width boxes */
+  td.co, td.who, td.tx { overflow: visible; } td.co a, td.who a { white-space: normal; }
+  .tbl tr.has-dt td:first-child { padding-left: 0 !important; }
+  .tbl tr.has-dt td:first-child::before { left: auto; right: 12px; top: 14px; margin-top: 0; font-size: 20px; }
+  .tbl tr.dt { display: block; margin: -10px 0 8px; }
+  .tbl tr.dt td { display: block; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 10px 10px; padding: 12px 14px !important; }
+  .tbl tr.dt td::before { content: none; }
+  .tbl tr.dt td > div { position: static; max-width: none; }
+  .tbl .dt-grid { grid-template-columns: 1fr 1fr; }
+}

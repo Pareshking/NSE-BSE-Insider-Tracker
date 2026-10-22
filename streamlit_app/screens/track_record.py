@@ -115,7 +115,7 @@ def render():
             *([kit.Col('restriction', 'Tradability', phone=False)] if 'restriction' in rows else []),
             *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
                       phone=(h in ('1M', '3M'))) for h in track.HORIZONS],
-        ], limit=200, download=f'track_{pick}')
+        ], limit=200)
 
 
 def _forward(ctx, sized: bool):
@@ -143,7 +143,7 @@ def _forward(ctx, sized: bool):
             kit.Col('close_at_record', 'Close then', 'price', phone=False), kit.Col('entry_price', 'Entry', 'price', phone=False),
             *[kit.Col(f'excess_sm_{h}' if sized else f'excess_{h}', f'{h} vs {"size" if sized else "Nifty"}', 'spct',
                       phone=(h == '1M')) for h in track.HORIZONS],
-        ], limit=200, download='forward_record')
+        ], limit=200)
 
 
 def _basket(ctx):
@@ -175,4 +175,4 @@ def _basket(ctx):
             kit.Col('company', 'Company', 'co'), kit.Col('label', 'Signal', 'text', phone=False),
             kit.Col('entry_date', 'Entry', 'date'), kit.Col('entry_price', 'Entry price', 'price', phone=False),
             kit.Col('status', 'Status', 'text', phone=False), kit.Col('ret', 'Return after costs', 'spct'),
-        ], limit=200, download='model_basket')
+        ], limit=200)
