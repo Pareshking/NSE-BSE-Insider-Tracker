@@ -17,8 +17,9 @@ Links (each counted in the run report):
   (`moved`) removes the meeting it replaces when that was intimated no later
   than the move; the moved rows themselves are not shown.
 * Shareholding: collected for companies with no NSE symbol only (NSE has the
-  rest), so no BSE row is on NSE; a filing whose XBRL is not parsed yet holds
-  no figure and is left out.
+  rest); a row whose ISIN is in NSE's shareholding table is left out too, so
+  no BSE row is on NSE and nothing is counted twice. A filing whose XBRL is
+  not parsed yet holds no figure and is left out. Each is counted.
 """
 from __future__ import annotations
 
@@ -107,8 +108,14 @@ def clean(arch: pd.DataFrame | None, master: SecurityMaster, nse: pd.DataFrame |
     if stream == 'meetings':
         df, extra['moved_away'] = drop_moved(df)
     if stream == 'shareholding':
+        # NSE's filing wins for a company on both exchanges: told apart by the NSE symbol, or by the ISIN being in
+        # NSE's shareholding table (a company the security master gives no NSE symbol).
         extra['dual_listed_left_out'] = int(df['nse_symbol'].notna().sum())
         df = df[df['nse_symbol'].isna()]
+        nse_isins = set() if nse is None or 'isin' not in nse else set(nse['isin'].dropna().astype(str))
+        in_nse = df['isin'].isin(nse_isins)
+        extra['isin_in_nse_table_left_out'] = int(in_nse.sum())
+        df = df[~in_nse]
         parsed = pd.to_numeric(df['promoter_holding_pct'], errors='coerce').notna()
         extra['not_parsed_yet'] = int((~parsed).sum())
         df = df[parsed]

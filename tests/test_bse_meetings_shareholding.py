@@ -225,3 +225,88 @@ def test_shareholding_dry_run_reads_without_writing():
     rep = events.run(None, bse, date(2026, 10, 12), ('shareholding',), max_xbrl=1, log=lambda *_: None)
     s = rep['streams']['shareholding']
     assert rep['dry_run'] and s['listed'] == 15 and s['xbrl_fetched'] == 1
+
+
+# --- added when the WIP landed on main (22 Oct 2026) ---------------------------------
+
+def test_meetings_window_reads_whole_and_pieces_and_unites_them():
+    """22 Oct 2026, live: October 2026 asked as one month answered 892 meetings,
+    its halves 916 (24 recent listings missing from the month call). A window is
+    read whole and in 15-day pieces; rows only one reading had are counted."""
+    rows = js('board_meetings_202602.json')
+    calls = []
+
+    class BM:
+        def board_meetings(self, a, b):
+            calls.append((a, b))
+            whole = (a, b) == (date(2026, 2, 1), date(2026, 2, 28))
+            t = rows['Table'][:-3] if whole else [r for r in rows['Table']
+                                                  if a.isoformat() <= r['MEETING_BOARD_DATE'][:10] <= b.isoformat()]
+            return {'Table': t, 'Table1': rows['Table1'] if whole else []}
+
+    stats = {}
+    got = events.meetings_window(BM(), date(2026, 2, 1), date(2026, 2, 28), stats)
+    assert calls == [(date(2026, 2, 1), date(2026, 2, 28)), (date(2026, 2, 1), date(2026, 2, 15)),
+                     (date(2026, 2, 16), date(2026, 2, 28))]
+    assert len(got['Table']) == len(rows['Table']) and len(got['Table1']) == len(rows['Table1'])
+    assert stats['calls'] == 3 and stats['rows_only_in_pieces'] == 3
+    assert stats['rows_only_in_whole_window'] == len(rows['Table1'])
+    stats = {}
+    events.meetings_window(BM(), date(2026, 2, 1), date(2026, 2, 10), stats)   # shorter than a piece: one call
+    assert stats == {'calls': 1}
+
+
+def test_dataset_argument_takes_a_comma_list():
+    assert events.datasets('all') == events.STREAMS
+    assert events.datasets('shareholding,meetings') == ('meetings', 'shareholding')
+    with pytest.raises(Exception):
+        events.datasets('meetings,results')
+
+
+def test_shareholding_gets_nse_columns_investor_types_and_pct_of_sebi_base(master):
+    r2, bse = FakeR2(), SHP()
+    events.run(events.Store(r2), bse, date(2026, 10, 12), ('shareholding',), start=date(2025, 10, 8),
+               master=master, max_xbrl=50, now=datetime(2026, 10, 12, 18, 0), log=lambda *_: None)
+    clean = pd.read_parquet(io.BytesIO(r2.objects['clean/current/bse_shareholding.parquet']))
+    nse_cols = set(nse_parsers.SH_COLUMNS) | {'promoter_shares', 'total_shares', 'promoter_pledge_pct',
+                                             'promoter_encumbered_pct', 'no_promoter_group', 'shareholding_stale',
+                                             'members_status', 'members_check', 'categories_status',
+                                             'categories_check', 'categories_unmapped', 'dr_shares', 'pct_base_shares'}
+    nse_cols |= {f'{t}_{k}' for t in nse_parsers.SHP_CATEGORIES for k in ('shares', 'pct')}
+    assert nse_cols <= set(clean.columns)
+    val = clean[clean['bse_code'] == '542910'].iloc[0]
+    assert val['categories_status'] == 'ok' and val['categories_check'] == 'match' and pd.isna(val['categories_unmapped'])
+    assert val['promoter_pct'] == val['promoter_holding_pct'] == 66.9215 and val['pct_base_shares'] == 19_840_341
+    assert val['retail_pct'] == 5.0753
+    total = sum(val[f'{t}_shares'] for t in nse_parsers.SHP_CATEGORIES) + val['dr_shares']
+    assert total == val['total_shares']
+    # Utique (no promoter group, 5.9574% in an employee trust): what NSE's listing calls employee_trust_pct
+    rows = pd.DataFrame([{'pct_base_shares': 55_673_122.0, 'non_public_other_pct': 5.9574}])
+    got = nse_parsers.parse_shp_xbrl(parsers.ixbrl_facts(xbrl('500014').decode()))
+    events._holding_pcts(rows, 0, got)
+    assert rows.at[0, 'promoter_holding_pct'] == 0 and rows.at[0, 'employee_trust_pct'] == 5.9574
+    assert rows.at[0, 'public_holding_pct'] == 94.0426
+
+
+def test_shareholding_of_a_company_in_nse_table_is_left_to_nse(master):
+    """Valencia Nutrition has no NSE symbol in the master; once its ISIN is in
+    NSE's shareholding table it is NSE's, neither read nor shown from BSE."""
+    r2, bse = FakeR2(), SHP()
+    nse = pd.DataFrame([{'event_id': 'n1', 'symbol': 'VALENCIA', 'isin': 'INE08RT01016',
+                         'quarter_end': pd.Timestamp('2026-09-30'), 'promoter_holding_pct': 66.92}])
+    buf = io.BytesIO()
+    nse.to_parquet(buf, index=False)
+    r2.objects[events.NSE_SHAREHOLDING] = buf.getvalue()
+    rep = events.run(events.Store(r2), bse, date(2026, 10, 12), ('shareholding',), start=date(2025, 10, 8),
+                     master=master, max_xbrl=50, now=datetime(2026, 10, 12, 18, 0), log=lambda *_: None)
+    s = rep['streams']['shareholding']
+    assert s['isin_in_nse_table_skipped'] == 1 and '542910' not in bse.files
+    clean = pd.read_parquet(io.BytesIO(r2.objects['clean/current/bse_shareholding.parquet']))
+    assert '542910' not in set(clean['bse_code'])
+    # a row read before NSE had the company is left out by the clean step, and counted
+    arch = events.Store(r2).whole('shareholding')
+    row = arch[arch['bse_code'] == '542117'].iloc[[0]].assign(bse_code='542910', event_id='x', symbol='542910')
+    from collectors.nse_events.run_daily import clean_shareholding
+    out, counts = bse_events.clean(clean_shareholding(pd.concat([arch, row], ignore_index=True)), master, nse,
+                                   'shareholding')
+    assert counts['isin_in_nse_table_left_out'] == 1 and '542910' not in set(out['bse_code'])

@@ -1,9 +1,12 @@
 name: BSE History Backfill
 
-# BSE insider filings, bulk / block deals, SAST Reg 29 and corporate actions
-# for the product window (from 08 Oct 2025) into archive/ in R2, from BSE's
-# own history endpoints (collectors/bse/client.py). insider/bulk/block:
-# scripts/bse_history_backfill.py; sast/actions: collectors/bse/events.py.
+# BSE insider filings, bulk / block deals, SAST Reg 29, corporate actions,
+# board meetings and shareholding patterns for the product window (from 08 Oct
+# 2025; board meetings from 2025-07-01 when `from` says so) into archive/ in R2,
+# from BSE's own history endpoints (collectors/bse/client.py).
+# insider/bulk/block: scripts/bse_history_backfill.py; sast/actions/meetings/
+# shareholding: collectors/bse/events.py. Shareholding ignores from/to: BSE's
+# list goes back a year from today; each run reads at most max_xbrl filings.
 # See docs/CLEAN_LAYER.md ("BSE history").
 #
 # DRY RUN by default: fetches and maps, prints counts, writes nothing.
@@ -13,9 +16,9 @@ on:
   workflow_dispatch:
     inputs:
       dataset:
-        description: 'insider, bulk, block, sast, actions, or all'
+        description: 'insider, bulk, block, sast, actions, meetings, shareholding, or all'
         type: choice
-        options: [all, insider, bulk, block, sast, actions]
+        options: [all, insider, bulk, block, sast, actions, meetings, shareholding]
         default: all
       from:
         description: 'From (YYYY-MM-DD). Blank = 2025-10-08 (product window).'
@@ -30,6 +33,10 @@ on:
         type: choice
         options: ['false', 'true']
         default: 'false'
+      max_xbrl:
+        description: 'shareholding: XBRL files to read this run (about 5 s each; blank = 150)'
+        required: false
+        default: ''
       dry_run:
         description: "'true' = fetch and map only, write nothing"
         type: choice
@@ -58,6 +65,7 @@ jobs:
       TO: ${{ inputs.to }}
       DRY_RUN: ${{ inputs.dry_run }}
       REDO: ${{ inputs.redo }}
+      MAX_XBRL: ${{ inputs.max_xbrl }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -74,11 +82,12 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           if [ "$REDO" = "true" ]; then args+=(--redo); fi
           python -u scripts/bse_history_backfill.py "${args[@]}"
-      - name: SAST and corporate actions
-        if: ${{ always() && contains(fromJSON('["all", "sast", "actions"]'), inputs.dataset) }}
+      - name: SAST, corporate actions, board meetings and shareholding
+        if: ${{ always() && contains(fromJSON('["all", "sast", "actions", "meetings", "shareholding"]'), inputs.dataset) }}
         run: |
           args=(--dataset "$DATASET" --from "${FROM:-2025-10-08}")
           if [ -n "$TO" ]; then args+=(--to "$TO"); fi
+          if [ -n "$MAX_XBRL" ]; then args+=(--max-xbrl "$MAX_XBRL"); fi
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           if [ "$REDO" = "true" ]; then args+=(--redo); fi
           python -u -m collectors.bse.events "${args[@]}"

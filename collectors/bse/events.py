@@ -32,19 +32,26 @@ for the run; what was fetched is still stored.
 Board meetings are announced ahead, so their window runs AHEAD_DAYS past the
 end (as NSE's collector does): nightly [today - days, today + 60]. A meeting
 moved to a new date comes back once at the new date and once, flagged, at the
-old one; the clean step drops the old date.
+old one; the clean step drops the old date. One board-meetings call can leave
+rows out (meetings_window), so each window is read whole and in 15-day
+pieces, the rows united; the report counts rows only one reading had.
 
-Shareholding (companies with no NSE symbol; NSE's collector has the rest):
-BSE's filings list is asked for a period back from today (client.py), 15 days
-nightly and a year in history mode. The holdings are only in each filing's
-inline XBRL, read once per filing with NSE's parsers (promoter and public %,
-promoter pledge, the promoter-group members), newest quarter first, at most
+Shareholding (BSE-only companies; NSE's collector has the rest, and NSE's
+filing wins for a company on both): a company with an NSE symbol in the
+security master, or whose ISIN is in NSE's clean/current/shareholding.parquet,
+is left out and counted. BSE's filings list is asked for a period back from
+today (client.py), 15 days nightly and a year in history mode. The holdings
+are only in each filing's inline XBRL, read once per filing with NSE's parsers
+into NSE's columns (promoter and public %, promoter pledge, ownership by
+investor type, the promoter-group members), newest quarter first, at most
 --max-xbrl a run; the rest stay `pending` and are retried on later runs, so
 repeated history runs catch up. The newest submission of a company's quarter
 is read and older ones are marked `superseded`. Members go to a write-once
 batch under archive/bse_events/promoter_group/ and
 clean/current/bse_promoter_group.parquet is rebuilt from all batches (the
 clean step links insider filings through it, as through NSE's list).
+
+--dataset takes one stream, a comma list (`meetings,shareholding`) or `all`.
 """
 from __future__ import annotations
 
@@ -75,16 +82,26 @@ IST = timezone(timedelta(hours=5, minutes=30))
 NIGHTLY_DAYS = 30  # SAST disclosures arrive days or weeks after the trade
 TILE_DAYS, TILE_SHIFT = 7, 3
 AHEAD_DAYS = 60    # board meetings, as NSE's collector
+MEETING_PIECE_DAYS = 15   # board meetings are read whole and in pieces of this size (meetings_window)
 SHP_FLAG_NIGHTLY, SHP_FLAG_HISTORY = 3, 6   # BSE's periods: 15 days, one year
 MAX_XBRL_PER_RUN = 150                      # ~5 s each: about 13 minutes
 GROUP_BATCHES = 'archive/bse_events/promoter_group/'
-SHP_FACTS = ('xbrl_status', 'xbrl_error', 'promoter_shares', 'public_shares', 'total_shares',
-             'promoter_pledged_shares', 'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct',
-             'no_promoter_group', 'promoter_holding_pct', 'public_holding_pct', 'members_status', 'promoter_members',
-             'members_check')
-SHP_NUMBERS = ('promoter_shares', 'public_shares', 'total_shares', 'promoter_pledged_shares',
-               'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct', 'promoter_holding_pct',
-               'public_holding_pct', 'promoter_members')
+NSE_SHAREHOLDING = 'clean/current/shareholding.parquet'
+# Columns read from a filing's XBRL, as NSE's collector reads them (collectors/nse_events/run_daily.py): pledges and
+# totals, the member list's summary, the holding %s, and ownership by investor type (run_daily.CATEGORY_COLS).
+SHP_BASE = ('xbrl_status', 'xbrl_error', 'promoter_shares', 'total_shares', 'promoter_pledged_shares',
+            'promoter_encumbered_shares', 'promoter_pledge_pct', 'promoter_encumbered_pct', 'no_promoter_group',
+            'promoter_holding_pct', 'public_holding_pct', 'employee_trust_pct', 'members_status', 'promoter_members',
+            'members_check')
+SHP_NUMBERS = ('promoter_shares', 'total_shares', 'promoter_pledged_shares', 'promoter_encumbered_shares',
+               'promoter_pledge_pct', 'promoter_encumbered_pct', 'promoter_holding_pct', 'public_holding_pct',
+               'employee_trust_pct', 'promoter_members')
+
+
+def _category_cols():
+    """NSE's investor-type columns and their parser (imported late: run_daily reads scripts/)."""
+    from collectors.nse_events.run_daily import CATEGORY_COLS, CATEGORY_VALUES, _set_categories
+    return CATEGORY_COLS, CATEGORY_VALUES, _set_categories
 
 
 def prefix(stream):
@@ -151,6 +168,33 @@ def sast_window(bse: BSEClient, a: date, b: date, stats: dict) -> list[dict]:
     return list(rows.values())
 
 
+def meetings_window(bse: BSEClient, a: date, b: date, stats: dict) -> dict:
+    """Every board meeting BSE gives for [a, b]: the whole window and its
+    MEETING_PIECE_DAYS pieces, rows united (a row is the same row when every
+    field is). One call can leave rows out: on 22 Oct 2026 October 2026 asked
+    as one month answered 892 meetings twice, its two halves 309 + 607 = 916,
+    and 22 Sep - 21 Dec in one call held the same 916 October meetings; the 24
+    missing were recent listings (scrip codes 5449xx). The report counts rows
+    that only one of the two readings had."""
+    readings = [[(a, b)]]
+    if (b - a).days >= MEETING_PIECE_DAYS:
+        readings.append(pieces(a, b, MEETING_PIECE_DAYS))
+    seen: list[dict] = [{}, {}]
+    for n, tiling in enumerate(readings):
+        for x, y in tiling:
+            got = bse.board_meetings(x, y)
+            stats['calls'] = stats.get('calls', 0) + 1
+            for table in ('Table', 'Table1'):
+                for r in got[table]:
+                    seen[n][(table, json.dumps(r, sort_keys=True, default=str))] = r
+    if len(readings) > 1:
+        whole, parts = set(seen[0]), set(seen[1])
+        stats['rows_only_in_whole_window'] = stats.get('rows_only_in_whole_window', 0) + len(whole - parts)
+        stats['rows_only_in_pieces'] = stats.get('rows_only_in_pieces', 0) + len(parts - whole)
+    rows = {**seen[0], **seen[1]}
+    return {t: [r for (table, _), r in rows.items() if table == t] for t in ('Table', 'Table1')}
+
+
 def fetch(bse: BSEClient, stream: str, a: date, b: date, stats: dict) -> pd.DataFrame:
     if stream == 'sast':
         frame, extra = parsers.parse_sast(sast_window(bse, a, b, stats))
@@ -158,8 +202,7 @@ def fetch(bse: BSEClient, stream: str, a: date, b: date, stats: dict) -> pd.Data
             d = stats.setdefault('dropped_other_regulations', {})
             d[reg] = d.get(reg, 0) + n
     elif stream == 'meetings':
-        frame, counts = parsers.parse_board_meetings(bse.board_meetings(a, b))
-        stats['calls'] = stats.get('calls', 0) + 1
+        frame, counts = parsers.parse_board_meetings(meetings_window(bse, a, b, stats))
         for k, n in counts.items():
             stats[k] = stats.get(k, 0) + n
     else:
@@ -170,20 +213,51 @@ def fetch(bse: BSEClient, stream: str, a: date, b: date, stats: dict) -> pd.Data
     return frame
 
 
+def _holding_pcts(rows: pd.DataFrame, i, got: dict) -> None:
+    """Promoter, public and employee-trust % as NSE's listing gives them: of
+    SEBI's base (total less shares under depository receipts,
+    `pct_base_shares`), to 4 decimals. BSE's list has no holdings, so they
+    come from the XBRL; when the investor types could not be read the base is
+    the total."""
+    base = pd.to_numeric(pd.Series([rows.at[i, 'pct_base_shares']]), errors='coerce').iloc[0]
+    if pd.isna(base) or base <= 0:
+        base = got['total_shares']
+    rows.at[i, 'promoter_holding_pct'] = round(got['promoter_shares'] / base * 100, 4)
+    public = got.get('public_shares')
+    rows.at[i, 'public_holding_pct'] = None if public is None else round(public / base * 100, 4)
+    trust = pd.to_numeric(pd.Series([rows.at[i, 'non_public_other_pct']]), errors='coerce').iloc[0]
+    rows.at[i, 'employee_trust_pct'] = None if pd.isna(trust) else float(trust)
+
+
+def _read(prev: pd.DataFrame | None, eid) -> bool:
+    """Parsed before, investor types included (ok or failed): carried over, not read again."""
+    if prev is None or eid not in prev.index or str(prev.at[eid, 'xbrl_status']) != 'ok':
+        return False
+    if 'categories_status' not in prev.columns:
+        return False
+    c = prev.at[eid, 'categories_status']
+    return isinstance(c, str) and (c == 'ok' or c.startswith('failed'))
+
+
 def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | None, stats: dict,
-                      max_xbrl: int, members: list, run_date: str) -> tuple[pd.DataFrame, bool]:
+                      max_xbrl: int, members: list, run_date: str,
+                      nse_isins: frozenset = frozenset()) -> tuple[pd.DataFrame, bool]:
     """(rows with their XBRL facts, refused). Facts already parsed are carried
     over; archive rows still `pending` are retried even when tonight's list no
-    longer holds them. Only the newest submission of a company's quarter is
-    read (others `superseded`), newest quarter first, at most max_xbrl."""
+    longer holds them (unless NSE's shareholding table has the company by
+    then: status `on_nse`, not read). Only the newest submission of a
+    company's quarter is read (others `superseded`), newest quarter first, at
+    most max_xbrl. A filing parsed without the investor types is read again."""
+    category_cols, category_values, set_categories = _category_cols()
+    facts_cols = SHP_BASE + category_cols
     rows = rows.copy()
     prev = known.set_index('event_id') if known is not None and not known.empty else None
     if prev is not None and 'xbrl_status' in known:
         retry = known[known['xbrl_status'].astype('string').eq('pending').fillna(False)
                       & ~known['event_id'].isin(rows['event_id'])]
-        rows = pd.concat([rows, retry[[c for c in retry.columns if c in rows.columns or c in SHP_FACTS]]],
+        rows = pd.concat([rows, retry[[c for c in retry.columns if c in rows.columns or c in facts_cols]]],
                          ignore_index=True)
-    for c in SHP_FACTS:
+    for c in facts_cols:
         rows[c] = rows[c].astype(object) if c in rows else None
     ids = ['event_id', 'bse_code', 'quarter_end', 'submission_date']
     every = pd.concat([rows[ids]] + ([known[ids]] if prev is not None else []), ignore_index=True)
@@ -193,41 +267,50 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
     fetched, blocked = 0, False
     order = rows.assign(_q=pd.to_datetime(rows['quarter_end'], errors='coerce'),
                         _s=pd.to_datetime(rows['submission_date'], errors='coerce'))
+
+    def mark(i, status):
+        for c in ('xbrl_status', 'members_status', 'categories_status'):
+            rows.at[i, c] = status
+
     for i, r in order.sort_values(['_q', '_s'], ascending=False, kind='stable').iterrows():
         eid = r['event_id']
-        if prev is not None and eid in prev.index and str(prev.at[eid, 'xbrl_status']) == 'ok':
-            for c in SHP_FACTS:
+        if _read(prev, eid):
+            for c in facts_cols:
                 if c in prev.columns:
                     rows.at[i, c] = prev.at[eid, c]
             continue
+        if isinstance(r.get('isin'), str) and r['isin'] in nse_isins:
+            rows.at[i, 'xbrl_status'] = 'on_nse'
+            continue
         if not isinstance(r['xbrl_url'], str) or not r['xbrl_url']:
-            rows.at[i, 'xbrl_status'] = 'no_xbrl'
+            mark(i, 'no_xbrl')
             continue
         if eid not in newest:
             rows.at[i, 'xbrl_status'] = 'superseded'
             continue
         if blocked or fetched >= max_xbrl:
-            rows.at[i, 'xbrl_status'] = rows.at[i, 'members_status'] = 'pending'
+            mark(i, 'pending')
             continue
         fetched += 1
         try:
             body = bse.shareholding_xbrl(r['xbrl_url'], {'bse_code': r['bse_code'], 'quarter_end': str(r['quarter_end'])[:10]})
         except Blocked as exc:
-            rows.at[i, 'xbrl_status'] = rows.at[i, 'members_status'] = 'pending'
+            mark(i, 'pending')
             blocked = True
             stats['stopped_at'] = {'chunk': f'xbrl {r["bse_code"]}', 'reason': str(exc)}
             continue
         except Failed as exc:   # one bad file must not stop the rest (a 404 is Missing)
-            rows.at[i, 'xbrl_status'] = rows.at[i, 'members_status'] = f'failed: {type(exc).__name__}'
+            mark(i, f'failed: {type(exc).__name__}')
             rows.at[i, 'xbrl_error'] = str(exc)[:120]
             continue
         facts = parsers.ixbrl_facts(body.decode('utf-8', errors='replace'))
+        set_categories(rows, i, facts)
         try:
             got = nse_parsers.parse_shp_xbrl(facts)
-            for k, v in got.items():
-                rows.at[i, k] = v
-            rows.at[i, 'promoter_holding_pct'] = got['promoter_holding_pct_xbrl']
-            rows.at[i, 'public_holding_pct'] = got['public_holding_pct_xbrl']
+            for k in SHP_BASE:
+                if k in got:
+                    rows.at[i, k] = got[k]
+            _holding_pcts(rows, i, got)
             rows.at[i, 'xbrl_status'], rows.at[i, 'xbrl_error'] = 'ok', None
         except ValueError as exc:
             rows.at[i, 'xbrl_status'], rows.at[i, 'xbrl_error'] = 'failed: ValueError', str(exc)[:120]
@@ -236,28 +319,37 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
         rows.at[i, 'members_check'] = check['check']
         members.append(promoter_group.member_rows(found, rows.loc[i].to_dict(), check['check'],
                                                   hashlib.sha256(body).hexdigest(), run_date))
-    for c in SHP_NUMBERS:
+    for c in SHP_NUMBERS + category_values:
         rows[c] = pd.to_numeric(rows[c], errors='coerce')
+    for c in category_cols[:3]:
+        rows[c] = rows[c].astype('string')
     rows['no_promoter_group'] = rows['no_promoter_group'].astype('boolean')
     status = rows['xbrl_status'].astype(str).str.split(':').str[0]
-    stats.update(xbrl_fetched=fetched, xbrl_status={k: int(v) for k, v in status.value_counts().items()})
-    return rows.drop(columns=[c for c in ('promoter_holding_pct_xbrl', 'public_holding_pct_xbrl') if c in rows]), blocked
+    cstatus = rows['categories_status'].astype('string').fillna('not read').str.split(':').str[0]
+    stats.update(xbrl_fetched=fetched, xbrl_status={k: int(v) for k, v in status.value_counts().items()},
+                 categories_status={k: int(v) for k, v in cstatus.value_counts().items()})
+    return rows, blocked
 
 
 def shareholding(store, bse: BSEClient, master, flag: int, max_xbrl: int, stats: dict, run_date: str,
-                 members: list) -> tuple[pd.DataFrame, bool]:
+                 members: list, nse_isins: frozenset = frozenset()) -> tuple[pd.DataFrame, bool]:
     """BSE's filings list for the period `flag`, BSE-only companies kept (with
-    a master; a dry run keeps all), their XBRL read. (rows, refused)."""
+    a master; a dry run keeps all), their XBRL read. (rows, refused). A
+    company is left to NSE's collector when the security master gives it an
+    NSE symbol (`dual_listed_skipped`) or its ISIN is in NSE's shareholding
+    table (`isin_in_nse_table_skipped`)."""
     listing = parsers.parse_shareholding_listing(bse.shareholding_filings(flag))
     stats.update(calls=stats.get('calls', 0) + 1, listed=len(listing))
     if master is not None and not listing.empty:
         listing = bse_events.add_identity(listing, master)
         nse = listing['nse_symbol'].notna()
+        on_nse = ~nse & listing['isin'].isin(nse_isins)
         stats['dual_listed_skipped'] = int(nse.sum())
-        listing = listing[~nse]
+        stats['isin_in_nse_table_skipped'] = int(on_nse.sum())
+        listing = listing[~nse & ~on_nse]
     stats['fetched'] = len(listing)
     known = store.whole('shareholding') if store is not None else None
-    return shareholding_xbrl(bse, listing, known, stats, max_xbrl, members, run_date)
+    return shareholding_xbrl(bse, listing, known, stats, max_xbrl, members, run_date, nse_isins)
 
 
 def write_promoter_group(store, batch: list, master, now: datetime) -> dict:
@@ -394,10 +486,15 @@ def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats
     """The shareholding stream (see the module notes). Returns whether BSE
     has refused this run."""
     members: list = []
+    nse_body = store.cw.get(store.r2, NSE_SHAREHOLDING) if store is not None else None
+    nse = pd.read_parquet(io.BytesIO(nse_body)) if nse_body else None
+    if store is not None and nse is None:
+        report['notes'].append('shareholding: no NSE shareholding table; companies told apart by NSE symbol only')
+    nse_isins = frozenset() if nse is None else frozenset(nse['isin'].dropna().astype(str))
     if not blocked:
         try:
             rows, blocked = shareholding(store, bse, get_master(), SHP_FLAG_HISTORY if history else SHP_FLAG_NIGHTLY,
-                                         max_xbrl, stats, run_date, members)
+                                         max_xbrl, stats, run_date, members, nse_isins)
         except Blocked as exc:
             blocked, rows = True, None
             stats['stopped_at'] = {'chunk': 'filings list', 'reason': str(exc)}
@@ -416,7 +513,7 @@ def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats
     stats['archive_rows'] = 0 if arch is None else len(arch)
     if arch is not None and not arch.empty:
         from collectors.nse_events.run_daily import clean_shareholding, shareholding_coverage
-        clean, counts = bse_events.clean(clean_shareholding(arch), get_master(), None, 'shareholding')
+        clean, counts = bse_events.clean(clean_shareholding(arch), get_master(), nse, 'shareholding')
         stats['clean'] = counts
         if not clean.empty:
             stats['coverage'] = shareholding_coverage(clean)
@@ -433,18 +530,30 @@ def _master(store: Store, run_date: str, notes: list):
     return security_master(store.r2, run_date, notes)
 
 
+def datasets(text: str) -> tuple:
+    """'all', or a comma list of STREAMS -> those streams, in STREAMS order."""
+    names = {n.strip() for n in text.split(',') if n.strip()}
+    if names == {'all'}:
+        return STREAMS
+    unknown = sorted(names - set(STREAMS))
+    if unknown or not names:
+        raise argparse.ArgumentTypeError(f'unknown dataset {unknown or text}; use all or ' + ', '.join(STREAMS))
+    return tuple(s for s in STREAMS if s in names)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--days', type=int, default=NIGHTLY_DAYS, help='nightly window (ignored with --from)')
     ap.add_argument('--from', dest='start', type=date.fromisoformat, help='history from (month by month)')
     ap.add_argument('--to', dest='end', type=date.fromisoformat, help='history to (default today)')
-    ap.add_argument('--dataset', choices=('all',) + STREAMS, default='all')
+    ap.add_argument('--dataset', type=datasets, default=STREAMS,
+                    help='all, or one or more of ' + ', '.join(STREAMS) + ' separated by commas')
     ap.add_argument('--redo', action='store_true', help='refetch months already marked done')
     ap.add_argument('--dry-run', action='store_true', help='fetch and count; write nothing')
     ap.add_argument('--max-xbrl', type=int, default=MAX_XBRL_PER_RUN, help='shareholding XBRL files to read this run')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
-    streams = STREAMS if args.dataset == 'all' else (args.dataset,)
+    streams = args.dataset
     store, raw = None, None
     if not args.dry_run:
         from r2_writer import r2_client

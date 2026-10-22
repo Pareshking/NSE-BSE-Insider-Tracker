@@ -323,6 +323,7 @@ def main():
     bse_group = read_parquet(client, 'clean/current/bse_promoter_group.parquet')  # BSE-only companies (collectors/bse/events.py)
     if bse_group is not None and not bse_group.empty:
         group = bse_group if group is None or group.empty else pd.concat([group, bse_group], ignore_index=True)
+        notes.append(f"promoter-group lists: {len(bse_group)} member rows of BSE-only companies added to NSE's")
     if group is None:
         notes.append('no promoter-group lists yet (clean/current/promoter_group.parquet): no filing linked')
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
@@ -337,10 +338,12 @@ def main():
         report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
     try:  # results dates: NSE's meetings plus the BSE meetings NSE has not got; never stops the insider table
         nse_meetings = read_parquet(client, 'clean/current/meetings.parquet')
-        meetings = with_bse(pd.DataFrame() if nse_meetings is None else nse_meetings,
-                            read_parquet(client, 'clean/current/bse_meetings.parquet'))
+        nse_meetings = pd.DataFrame() if nse_meetings is None else nse_meetings
+        meetings = with_bse(nse_meetings, read_parquet(client, 'clean/current/bse_meetings.parquet'))
         tables['insider_trades'], report['trading_window'] = trading_window.attach(
             tables['insider_trades'], meetings, Calendar.from_state(calendar_state), today=run_day)
+        report['trading_window']['meetings_read'] = {'nse': len(nse_meetings),
+                                                     'bse_not_on_nse': len(meetings) - len(nse_meetings)}
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'trading window: failed ({type(exc).__name__}: {exc})')
     report['archive'] = archive_report
