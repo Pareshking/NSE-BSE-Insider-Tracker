@@ -449,6 +449,44 @@ def main() -> int:
         show(st[st['sentence'].str.contains(r'\(', regex=True)].sort_values('pct_of_company', ascending=False),
              ['company', 'kind', 'pct_of_company', 'sentence'], 15)
 
+    if on('enc'):
+        from insiders_clean import insider as ins
+        enc = read_parquet(r2, 'clean/current/encumbrances.parquet')
+        head(f'SAST Reg 31 encumbrances: {0 if enc is None else len(enc)} rows')
+        if enc is not None and not enc.empty:
+            print(pd.crosstab(enc['event_type'].astype(str), enc['encumbrance_type'].astype(str)).to_string())
+            print('broadcast', enc['broadcast_date'].min(), '..', enc['broadcast_date'].max())
+            for sym in ('THYROCARE', 'VIKRAMSOLR', 'SIGACHI', 'HUBTOWN', 'AEQUS', 'JAYNECOIND', 'PARADEEP'):
+                x = enc[enc['symbol'].astype(str).str.upper().eq(sym)]
+                print(f'-- {sym}: {len(x)}')
+                show(x.sort_values('event_from'), ['promoter_name', 'lender', 'event_type', 'encumbrance_type', 'event_from', 'event_to',
+                                                    'shares', 'pct_of_company', 'broadcast_date'], 8)
+            # PIT pledge rows (primary, promoter roles) against Reg 31: same NSE symbol and promoter, shares within 1%,
+            # the trade dates within 7 days of the event's.
+            want = {'Creation': 'pledge_create', 'Release': 'pledge_revoke', 'Invocation': 'pledge_invoke'}
+            e = enc.assign(sym=enc['symbol'].astype(str).str.upper(), pid=enc['promoter_id'],
+                           d=pd.to_datetime(enc['event_to'], errors='coerce').fillna(pd.to_datetime(enc['event_from'], errors='coerce')),
+                           sh=pd.to_numeric(enc['shares'], errors='coerce'), k=enc['event_type'].map(want))
+            p = prim[prim['person_role'].isin(signals.PROMOTER_ROLES)].copy()
+            p['kind2'] = p['kind'].where(~(p['kind'].eq('missing') & p['transaction_type_raw'].map(ins.kind_from_type).notna()),
+                                         p['transaction_type_raw'].map(ins.kind_from_type))
+            p = p[p['kind2'].astype(str).str.startswith('pledge') | p['kind'].eq('missing')]
+            p = p.assign(sym=p['nse_symbol'].astype(str).str.upper(), d=pd.to_datetime(p['trade_date_to'], errors='coerce'))
+            m = p.merge(e[['sym', 'pid', 'd', 'sh', 'k', 'encumbrance_type']], left_on=['sym', 'person_id'], right_on=['sym', 'pid'],
+                        suffixes=('', '_e'))
+            m = m[(m['d'] - m['d_e']).abs().dt.days.le(7)]
+            m = m[m['quantity'].isna() | ((m['quantity'] - m['sh']).abs() <= (m['sh'] * 0.01).clip(lower=1))]
+            m = m.drop_duplicates('trade_id')
+            print('PIT pledge rows in the window of the Reg 31 data matched to an event:', len(m))
+            print(pd.crosstab(m['kind2'].astype(str), m['k'].astype(str)).to_string())
+            print('-- kind before the fix (missing) of matched rows:', m.loc[m['kind'].eq('missing'), 'k'].value_counts().to_dict())
+            print('-- Reg 31 type of matched rows:', m['encumbrance_type'].value_counts().to_dict())
+            lo = e['d'].min()
+            pw = p[p['d'] >= lo]
+            print('PIT promoter pledge rows since', lo, ':', len(pw), ' matched', int(pw['trade_id'].isin(m['trade_id']).sum()))
+            ew = e[e['sym'].isin(set(prim['nse_symbol'].dropna().astype(str).str.upper()))]
+            print('Reg 31 events of companies with PIT rows:', len(ew), ' by type', ew['k'].value_counts().to_dict())
+
     if on('cases'):
         head('cases: rows behind the findings')
         tv = pd.to_datetime(tr['trade_date_to'], errors='coerce')
