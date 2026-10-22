@@ -9,7 +9,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit
+from ui import kit, lwchart
 from ui.kit import Tile, esc
 
 from insiders_clean import ideas
@@ -247,20 +247,16 @@ def render():
         with col, kit.card('Worth a look' if lst == 'look' else 'Watch out', f'td_{lst}', SORTS[order][1]):
             _list(ctx, look if lst == 'look' else warn, lst, pick, holding, px)
 
-    # The trend at the foot of the page, its full width: each group's companies in each period.
-    with kit.card('Trend', 'td_trend', 'companies per period · the period chosen above in bold'):
-        cards = []
-        for lst in ('look', 'warn'):
-            for name, _ in ideas.GROUPS[lst]:
-                counts = [_counts(view[p][0 if lst == 'look' else 1]).get(name, 0) for p in ideas.PERIODS]
-                most = max(counts) or 1
-                bars = ''.join(
-                    f'<div class="tr-b{" on" if p == period else ""}"><b>{c or "·"}</b>'
-                    f'<i style="height:{max(c / most * 100, 4 if c else 0):.0f}%"></i><span>{h}</span></div>'
-                    for p, c, h in zip(ideas.PERIODS, counts, ('1D', '7D', '30D', '90D')))
-                cards.append(f'<div class="tr-c {lst}"><p title="{esc(name, quote=True)}">{esc(SHORT.get(name, name))}</p>'
-                             f'<div class="tr-bars">{bars}</div></div>')
-        st.html('<div class="tr-grid">' + ''.join(cards) + '</div>')
+    # The trend at the foot of the page, its full width: companies made public each week over 90 days, Worth a
+    # look above the line, Watch out below (TradingView Lightweight Charts, owner 22 Oct); the group pills apply.
+    wide = view['Last 90 days']
+    grp = (lambda x: x if pick == 'All' or x.empty else x[x['group'] == pick])
+    with kit.card('Trend', 'td_trend', 'companies each week, 90 days · ▲ worth a look ▼ watch out' + ('' if pick == 'All' else f' · {pick}')):
+        chart = lwchart.weekly_bars(grp(wide[0]), grp(wide[1]), key=f'td_{pick}')
+        if chart is None:
+            kit.empty('Nothing in the last 90 days.')
+        else:
+            st.html(chart, unsafe_allow_javascript=True)
     with st.expander('How a filing makes the list'):
         st.html('<ul class="bar-rules">'
                 f'<li>Insiders: per decision-maker in the period, ₹{ideas.MIN_VALUE / 1e5:.0f} L and {ideas.MIN_PCT:g}% '

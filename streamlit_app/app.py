@@ -65,8 +65,8 @@ SECTIONS = {
     '': [
         st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
-        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
         st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
+        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),   # last in the menu (owner, 22 Oct)
     ],
 }
 def _search_picked():
@@ -104,12 +104,7 @@ ctx = load()
 
 if not ctx.trades.empty:
     e = ctx.eligible
-    parts = []
-    for m in store.market_strip()[:3]:
-        vs = m.get('vs_200d')
-        tone = 'up' if vs is not None and vs >= 0 else 'down'
-        parts.append(f'{kit.esc(m["index"].replace("Nifty Smallcap", "Smallcap").replace("Nifty Microcap", "Microcap"))} <b>{m["close"]:,.0f}</b>'
-                     + (f' <em class="{tone}">{vs * 100:+.1f}% vs 200D</em>' if vs is not None else ''))
+    parts = []   # the index line (Nifty 500, Smallcap 250, Microcap 250 vs 200D) is off the site (owner, 22 Oct)
     # Each filing and deal once: NSE and BSE copies and market-maker legs are not counted (audit W1, W2).
     prim = ctx.trades['is_primary'].astype('boolean').fillna(False)
     dl = ctx.deals
@@ -119,7 +114,7 @@ if not ctx.trades.empty:
               f'<span class="opt"><b>{int(e["is_market"].sum()):,}</b> open-market</span>',
               f'<span class="opt"><b>{n_deals:,}</b> deals</span>']
     parts.insert(0, f'<b>Filings to {kit.day(ctx.ref)}</b>' if ctx.ref is not None else 'No clean data yet')
-    # One row under the top bar, as on screener.in: the market line on the left, a company search on the right.
+    # One row under the top bar, as on screener.in: the data line on the left, a company search on the right.
     left, right = st.columns([5, 2], vertical_alignment='center', gap='small')
     with left:
         kit.strip(parts)
@@ -138,7 +133,5 @@ inapp.links({**{p.url_path: p for p in ALL}, '': SECTIONS[''][0]})
 
 nav.run()
 
-st.html('<p class="foot">NSE and BSE disclosures, cleaned nightly · prices from the NSE and BSE daily bhavcopy, '
-        'split and bonus adjusted · check the exchange filing before acting · charts by '
-        '<a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts</a>.</p>')
+# No footer line (owner, 22 Oct); the charts' credit, which their licence asks for, is on the Data quality page.
 st.page_link(DATA_PAGE, label='How clean is the data?', icon=':material/fact_check:')

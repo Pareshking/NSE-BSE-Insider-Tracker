@@ -1,7 +1,7 @@
 """The company price chart in TradingView's Lightweight Charts (owner, 22 Oct 2026): closes as an area,
 3M / 6M / 1Y / All, every open-market insider trade marked on the day it was made public (one marker per day
 and side, sized by value), and a hover box with the close and who traded. The library is Apache-2.0; its
-logo is off and the site credits it in the footer (app.py), as its NOTICE asks.
+logo is off and the site credits it on the Data quality page (screens/data_status.py), as its NOTICE asks.
 """
 from __future__ import annotations
 
@@ -111,3 +111,71 @@ def price_chart(dates, closes, trades: pd.DataFrame | None, height: int = 320, k
     return (f'<div class="lw" id="{cid}"><div class="lw-range">{ranges}</div>'
             f'<div class="lw-plot" style="height:{height}px"></div><div class="lw-tip" hidden></div></div>'
             f'<script>{JS}("{cid}", {json.dumps(spec).replace("</", "<" + chr(92) + "/")});</script>')
+
+
+BARS_JS = """
+(function start(id, spec, tries) {
+  // Today's trend: companies made public each week, worth a look above the line, watch out below.
+  const el = document.getElementById(id);
+  if (!el) { if ((tries || 0) < 60) setTimeout(() => start(id, spec, (tries || 0) + 1), 50); return; }
+  if (el.dataset.ready) return;
+  el.dataset.ready = '1';
+  const go = () => {
+    const LW = window.LightweightCharts;
+    const box = el.querySelector('.lw-plot'), tip = el.querySelector('.lw-tip');
+    const chart = LW.createChart(box, {
+      autoSize: true, height: spec.height,
+      layout: { background: { color: 'transparent' }, textColor: '#5E6878', fontFamily: 'Geist, sans-serif', fontSize: 11,
+                attributionLogo: false },
+      grid: { vertLines: { visible: false }, horzLines: { color: '#F0F2F5' } },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
+      timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true, barSpacing: 26 },
+      crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '#C9CED8', width: 1, style: 2 } },
+      handleScroll: false, handleScale: false,
+    });
+    const fmt = { type: 'custom', formatter: v => String(Math.abs(Math.round(v))) };
+    const up = chart.addHistogramSeries({ color: spec.buy, priceFormat: fmt, priceLineVisible: false, lastValueVisible: false });
+    const dn = chart.addHistogramSeries({ color: spec.sell, priceFormat: fmt, priceLineVisible: false, lastValueVisible: false });
+    up.setData(spec.look); dn.setData(spec.warn);
+    chart.timeScale().fitContent();
+    const look = {}, warn = {};
+    spec.look.forEach(p => { look[p.time] = p.value; }); spec.warn.forEach(p => { warn[p.time] = -p.value; });
+    const add = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; n.textContent = text; tip.appendChild(n); };
+    chart.subscribeCrosshairMove(p => {
+      if (!p || !p.time || !p.point) { tip.hidden = true; return; }
+      tip.replaceChildren();
+      const d = new Date(p.time + 'T00:00:00');
+      add('b', '', 'Week of ' + d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+      add('div', 'b', (look[p.time] || 0) + ' worth a look');
+      add('div', 's', (warn[p.time] || 0) + ' to watch out');
+      tip.hidden = false;
+      tip.style.left = Math.min(Math.max(p.point.x + 14, 0), box.clientWidth - 190) + 'px';
+    });
+  };
+  if (window.LightweightCharts) { go(); return; }
+  let tag = document.getElementById('lw-lib');
+  if (!tag) { tag = document.createElement('script'); tag.id = 'lw-lib'; tag.src = spec.lib; document.head.appendChild(tag); }
+  tag.addEventListener('load', go);
+})
+"""
+
+
+def weekly_bars(look: pd.DataFrame, warn: pd.DataFrame, height: int = 220, key: str = '') -> str | None:
+    """Today's trend: one bar per week (Monday) of the companies whose lead event was made public that week,
+    Worth a look up, Watch out down. `look` / `warn` are Today's rows (with `last`)."""
+    def weeks(df: pd.DataFrame) -> pd.Series:
+        if df is None or df.empty or 'last' not in df:
+            return pd.Series(dtype=int)
+        d = pd.to_datetime(df['last'], errors='coerce').dropna()
+        return (d - pd.to_timedelta(d.dt.weekday, unit='D')).dt.normalize().value_counts()
+    a, b = weeks(look), weeks(warn)
+    days = sorted(set(a.index) | set(b.index))
+    if not days:
+        return None
+    span = pd.date_range(days[0], days[-1], freq='W-MON')
+    look_pts = [{'time': d.strftime('%Y-%m-%d'), 'value': int(a.get(d, 0))} for d in span]
+    warn_pts = [{'time': d.strftime('%Y-%m-%d'), 'value': -int(b.get(d, 0))} for d in span]
+    spec = {'lib': LIB, 'height': height, 'buy': BUY, 'sell': SELL, 'look': look_pts, 'warn': warn_pts}
+    cid = 'lwb_' + hashlib.sha1(f'{key}|{len(span)}|{sum(a)}|{sum(b)}'.encode()).hexdigest()[:10]
+    return (f'<div class="lw" id="{cid}"><div class="lw-plot" style="height:{height}px"></div><div class="lw-tip" hidden></div></div>'
+            f'<script>{BARS_JS}("{cid}", {json.dumps(spec)});</script>')
