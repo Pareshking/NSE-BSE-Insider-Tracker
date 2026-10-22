@@ -46,6 +46,15 @@ def test_timeline_dates_with_and_without_a_zone_sort_together():
     assert days.sort_values().tolist() == [pd.Timestamp('2026-10-13'), pd.Timestamp('2026-10-14 18:05'), pd.Timestamp('2026-10-15')]
 
 
+def test_a_sale_is_a_negative_share_of_market_cap_in_the_timeline():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'streamlit_app'))
+    from screens.company import _signed
+    assert _signed({'side': 'SELL', 'pct_of_mcap': 0.0004}) == -0.0004
+    assert _signed({'side': 'BUY', 'pct_of_mcap': 0.02}) == 0.02 and _signed({'side': 'BUY', 'pct_of_mcap': None}) is None
+
+
 def test_company_view_keeps_every_event_with_its_kinds_and_reads():
     ev = pd.DataFrame([
         {'isin': 'X', 'list': 'look', 'kind': 'Promoter buying', 'pct_of_company': 0.4, 'sentence': 'Promoter group bought 0.40%', 'last': pd.Timestamp('2026-10-01')},

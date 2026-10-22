@@ -88,6 +88,12 @@ def _day(v) -> pd.Timestamp:
     return d
 
 
+def _signed(r):
+    """% of market cap with the side's sign: a sale is negative (it showed as a green + on real data)."""
+    v = kit._finite(r.get('pct_of_mcap'))
+    return None if v is None else -abs(v) if r.get('side') == 'SELL' else abs(v)
+
+
 def _row(date, what, who='', sub='', text='', value=None, pct=None, items=(), links=()) -> dict:
     return {'date': _day(date), 'what': what, 'who': who, 'sub': sub, 'text': text,
             'value': value, 'pct': pct, '_facts': list(items), '_links': list(links)}
@@ -109,13 +115,13 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
         n = kit.shares(r.get('quantity')) if kit._finite(r.get('quantity')) is not None else ''
         rows.append(_row(r.get('broadcast_date'), what, str(r.get('person_name') or ''), kit.role(r.get('person_role')),
                          f'{verb} {n} shares'.replace('  ', ' ') + (f' at {kit.price(r["price"])}' if market and kit._finite(r.get('price')) else ''),
-                         r.get('value') if market else None, r.get('pct_of_mcap') if market else None, _trade_facts(r), _link(r.get('source_url'))))
+                         r.get('value') if market else None, _signed(r) if market else None, _trade_facts(r), _link(r.get('source_url'))))
     for r in (d.to_dict('records') if not d.empty else []):
         buy = r['side'] == 'BUY'
         rows.append(_row(r.get('date'), f'{str(r.get("feeds") or "bulk").title()} deal', str(r.get('client_name') or ''),
                          'also filed as an insider trade' if r.get('also_filed') else '',
                          f'{"bought" if buy else "sold"} {kit.shares(r.get("quantity"))} shares at {kit.price(r.get("price"))}',
-                         r.get('value'), r.get('pct_of_mcap'), [('Side', 'Buy' if buy else 'Sell')]))
+                         r.get('value'), _signed(r), [('Side', 'Buy' if buy else 'Sell')]))
     for r in own(ctx.sast).to_dict('records'):
         name = str(r.get('acquirer_name') or '')
         lender = bool(ideas.SECURITY_HOLDER.search(name))
