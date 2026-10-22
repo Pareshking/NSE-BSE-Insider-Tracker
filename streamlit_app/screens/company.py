@@ -179,8 +179,11 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
                  if kit._finite(r.get('quarter_revenue')) is not None else '')
             ytd = (f'{months} months: revenue {kit.rupees(r.get("ytd_revenue"))} · profit {kit.rupees(r.get("ytd_profit"))}'
                    if months and months > 3 and kit._finite(r.get('ytd_revenue')) is not None else '')
+            more = [('Year to date', ytd)] if q and ytd else []
+            if r.get('ytd_disagrees') == True:   # noqa: E712 -- insiders_clean/results.ytd_disagrees
+                more.append(('Check the filing', "the quarter's revenue is above the year to date's: one of the two is wrong as filed"))
             rows.append(_row(r.get('broadcast_at'), 'Results', f'Quarter to {kit.day(r.get("period_end"))}', basis,
-                             q or ytd, None, None, [('Year to date', ytd)] if q and ytd else ()))
+                             q or ytd, None, None, more))
     out = pd.DataFrame(rows)
     return out.dropna(subset=['date']).sort_values('date', ascending=False, kind='stable') if not out.empty else out
 

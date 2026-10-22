@@ -179,3 +179,14 @@ def test_nightly_writes_buybacks(monkeypatch):
     bb = pd.read_parquet(io.BytesIO(r2.objects['clean/current/buybacks.parquet']))
     assert {'tender offer', 'open market'} <= set(bb['route'].dropna())
     assert 'isin' in bb and rep['buybacks']['rows'] == len(bb)
+
+
+def test_a_quarter_above_its_own_year_to_date_is_flagged_not_fixed():
+    """Repro India's Sep 2025 revision: Rs 107.8 Cr for the quarter, Rs 22.5 Cr for the six months. A loss
+    larger in the quarter than the year (negative revenue) is no contradiction; nor is a quarter that is its year."""
+    from insiders_clean import results
+    df = pd.DataFrame({'quarter_revenue': [1.0778e9, -4.1e8, 5e8, 5e8, 9e8],
+                       'ytd_revenue': [2.245e8, -1.5e8, 9e8, 5e8, None],
+                       'ytd_start': ['2025-04-01', '2025-04-01', '2025-04-01', '2025-07-01', '2025-04-01'],
+                       'period_end': ['2025-09-30', '2026-03-31', '2025-09-30', '2025-09-30', '2025-09-30']})
+    assert results.ytd_disagrees(df).tolist() == [True, False, False, False, False]

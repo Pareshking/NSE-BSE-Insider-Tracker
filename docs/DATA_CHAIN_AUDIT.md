@@ -163,8 +163,12 @@ and `tests/test_bse_meetings_shareholding.py`.
 - Buybacks show the offer against today's close only; the premium at announcement (close before the board meeting)
   is what an investor weighs. 869 large resets since Oct 2025 with no filed action stay unadjusted (demergers,
   rights, Sanofi's special dividend), as designed.
-- Results: Rajesh Exports' quarterly revenue Rs 2.35-4.72 lakh crore against a Rs 1,614 Cr market cap; 8 rows with the
-  quarter above the year to date. Not checked against the filings yet.
+- Results, checked 22-23 Oct: Rajesh Exports' revenue is right (about Rs 2.4 lakh Cr a quarter, as Screener; the 4.7
+  lakh Cr is the half year). The 8 rows with the quarter above the year to date: 3 are losses larger in the quarter
+  than the year (negative revenue, DHUNINV, IITL: right); 1 superseded (ENRIN); 4 are two filings filed twice whose
+  own figures contradict (Repro India Sep 2025 revision, Rs 107.8 Cr quarter vs Rs 22.5 Cr six months; Sejal Glass
+  Dec 2025). Flagged `ytd_disagrees`: the Company page says one figure is wrong as filed, the cards' last full year
+  skips the filing.
 
 ### Trading data (insider trades, pledges, deals, SAST): audit of 22 Oct, branch `audit/trading-data`
 

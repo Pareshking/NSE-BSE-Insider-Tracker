@@ -29,6 +29,8 @@ def last_year(results: pd.DataFrame | None, isin, as_of) -> dict | None:
     r['_end'] = pd.to_datetime(r['period_end'], errors='coerce')
     cut = pd.to_datetime(as_of, errors='coerce')
     r = r[(r['_end'].dt.month == 3) & r['_end'].notna()]
+    if 'ytd_disagrees' in r:   # a filing whose quarter is above its own year: neither figure is taken (results.ytd_disagrees)
+        r = r[~r['ytd_disagrees'].astype('boolean').fillna(False)]
     if pd.notna(cut):
         r = r[r['_end'] <= cut.tz_localize(None) if getattr(cut, 'tzinfo', None) else r['_end'] <= cut]
     if r.empty:
