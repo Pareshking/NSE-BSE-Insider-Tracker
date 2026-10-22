@@ -465,3 +465,4 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
 .tr-c.look .tr-b.on i { background: var(--buy); } .tr-c.warn .tr-b.on i { background: var(--sell); }
 .tr-b.on b { color: var(--ink); font-weight: 700; }
 .tr-b span { font-size: 10px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; }
+.idea .kv span { white-space: nowrap; }   /* the three labels on one line when the lists sit side by side */

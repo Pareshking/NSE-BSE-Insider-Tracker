@@ -579,8 +579,8 @@ def render():
 
     kit.table(shown, [
         kit.Col('company', 'Company', 'co'),
-        kit.Col('who', 'Who', 'client', sub='who_sub', phone=False),
-        kit.Col('what', 'What', sub='what_sub', phone=False),
+        kit.Col('who', 'Who', 'client', sub='who_sub'),
+        kit.Col('what', 'What', sub='what_sub'),
         kit.Col('side', 'Side', 'side'),
         kit.Col('value', 'Value', 'money', help='Insider and deal value as filed; for an issue the amount raised once '
                                                 'allotted, else the approved size; for a buyback its size'),

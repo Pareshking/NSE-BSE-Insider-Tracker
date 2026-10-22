@@ -89,6 +89,8 @@ td.tags { min-width: 110px; }
   .tbl td:not(:first-child)::before { content: attr(data-l); display: block; font-size: 10px; font-weight: 600; color: var(--ink-3);
     text-transform: uppercase; letter-spacing: .05em; margin-bottom: 1px; }
   .tbl td.opt { display: none; }
+  .tbl td:has(> .na:only-child) { display: none; }   /* an empty field says nothing on a card */
+  .tbl td.who, .tbl td.tx { grid-column: 1 / -1; }   /* who and what read as lines, not half-width boxes */
   td.co, td.who, td.tx { overflow: visible; } td.co a, td.who a { white-space: normal; }
   .tbl tr.has-dt td:first-child { padding-left: 0 !important; }
   .tbl tr.has-dt td:first-child::before { left: auto; right: 12px; top: 14px; margin-top: 0; font-size: 20px; }

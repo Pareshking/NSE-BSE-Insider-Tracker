@@ -80,8 +80,8 @@ def _row(ctx, r, holding, px) -> str:
         worth, tip = '≈ ' + kit.rupees(pct / 100 * mcap), "The shares at today's market cap"
     else:
         worth, tip = '—', ''
-    nums = [_num('Of the company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
-            _num('Promoters hold', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
+    nums = [_num('Of company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
+            _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
     facts = [('Made public', kit.day(r['last']) if pd.notna(r.get('last')) else '')]
     if pd.notna(r.get('avg_price')) and r.get('avg_price'):
         f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
