@@ -147,4 +147,4 @@ def render():
                 pager(page, pages)
     kit.caption('Read by free models in the backend (NVIDIA, Z.ai, Groq, Gemini); a value is shown only when its quote '
                 'is in the filing, and every figure in a headline or point is one of its quote\'s numbers. Routine '
-                'filings, companies below Rs 100 Cr and concall notices are not read. Check the filing before acting.')
+                'filings, companies below ₹100 Cr and concall notices are not read. Check the filing before acting.')

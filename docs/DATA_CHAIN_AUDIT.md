@@ -327,3 +327,13 @@ tables as of 21 Oct; NSE's own files fetched for appIds 2325, 2427, 3934, 3962 (
   `pending`), then *Precompute slim assets* (adjusted prices, track record).
 - 19:20-20:15 IST: trading data audited (T1-T8 above) on real rows with *Trading audit*; NSE XBRL 2325, 2427, 3934,
   3962 fetched; PIT pledges compared with Reg 31 (#199). Fixes and tests on `audit/trading-data`.
+- 22 Oct 23:15 - 23 Oct 00:30 IST: results collection back (#205; NSE events run 39825119067 listed 428 filings,
+  added 175, none pending). Fixed: #207 banks' dealing arms, the encumbrance pattern; #208 the lender from Reg 31 on
+  pledge rows; #209 BSE re-filings read as second trades (28 groups, Rs 43 Cr); #210 warrant conversion balance,
+  "Filed late" on Today cards; #211 buyback premium at announcement; #212 results whose quarter is above its own year
+  to date; #213 stake wording; #214 the promoter group's part of a mixed preferential issue; #215 backups skip while a
+  late nightly runs; #216 a bank's ODI account is a dealer; #217 typography, first pass. Started: NSE shareholding
+  catch-up (3,898 older-quarter XBRLs pending, chain of 300 a round) and the BSE shareholding catch-up (400 files).
+  The clean-layer fixes reach the site with tonight's nightly (GitHub has been starting it near 03:00 IST).
+  Open: JB Chemicals (delisted symbol, security master), 90 kind mismatches across exchanges (need the PDFs), 10 PIT
+  pledges whose type is the reverse of Reg 31's.
