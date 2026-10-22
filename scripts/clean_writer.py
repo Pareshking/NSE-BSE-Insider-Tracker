@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
 from insiders_clean import adjust, archive, day_range, issues, market_cap, trading_window
+from insiders_clean.bse_events import with_bse
 from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
 
@@ -319,6 +320,9 @@ def main():
     ranges, price_info = load_price_ranges(client, run_day, notes)
     mcap_daily, mcap_info = load_market_cap_daily(client, run_day, notes)
     group = read_parquet(client, 'clean/current/promoter_group.parquet')  # NSE events collector; None until its first run
+    bse_group = read_parquet(client, 'clean/current/bse_promoter_group.parquet')  # BSE-only companies (collectors/bse/events.py)
+    if bse_group is not None and not bse_group.empty:
+        group = bse_group if group is None or group.empty else pd.concat([group, bse_group], ignore_index=True)
     if group is None:
         notes.append('no promoter-group lists yet (clean/current/promoter_group.parquet): no filing linked')
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
@@ -331,10 +335,12 @@ def main():
         tables.update(issue_out)
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'issues: failed ({type(exc).__name__}: {exc})')
-    try:  # results dates come from the NSE events collector's meetings table; never stops the insider table
+    try:  # results dates: NSE's meetings plus the BSE meetings NSE has not got; never stops the insider table
+        nse_meetings = read_parquet(client, 'clean/current/meetings.parquet')
+        meetings = with_bse(pd.DataFrame() if nse_meetings is None else nse_meetings,
+                            read_parquet(client, 'clean/current/bse_meetings.parquet'))
         tables['insider_trades'], report['trading_window'] = trading_window.attach(
-            tables['insider_trades'], read_parquet(client, 'clean/current/meetings.parquet'),
-            Calendar.from_state(calendar_state), today=run_day)
+            tables['insider_trades'], meetings, Calendar.from_state(calendar_state), today=run_day)
     except Exception as exc:  # noqa: BLE001
         report['notes'].append(f'trading window: failed ({type(exc).__name__}: {exc})')
     report['archive'] = archive_report
