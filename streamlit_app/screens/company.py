@@ -196,8 +196,11 @@ def _signal_list(rows: pd.DataFrame, tone: str, empty_text: str) -> str:
 
 
 def _ownership_html(table: pd.DataFrame, missing: list) -> str:
-    qs = [c for c in table.columns if c != 'change']
-    head = ''.join(f'<th>{c:%b %Y}' + ('<em>not parsed yet</em>' if c in missing else '') + '</th>' for c in qs)
+    # Only the quarters whose investor types add up; the others are counted, not drawn as empty columns.
+    qs = [c for c in table.columns if c != 'change' and c not in missing]
+    if not qs:
+        return '<div class="empty">No quarter parsed yet.</div>'
+    head = ''.join(f'<th>{c:%b %Y}</th>' for c in qs)
     body = ''
     for label, r in table.iterrows():
         cells = ''.join(f'<td>{"—" if pd.isna(r[q]) else f"{r[q]:.2f}"}</td>' for q in qs)
@@ -205,7 +208,9 @@ def _ownership_html(table: pd.DataFrame, missing: list) -> str:
         tone = '' if pd.isna(ch) or abs(ch) < 0.005 else 'up' if ch > 0 else 'down'
         cells += f'<td class="{tone}">{"—" if pd.isna(ch) else f"{ch:+.2f}"}</td>'
         body += f'<tr><th>{esc(label)}</th>{cells}</tr>'
-    return f'<div class="own-wrap"><table class="own"><thead><tr><th>% of shares</th>{head}<th>Change</th></tr></thead><tbody>{body}</tbody></table></div>'
+    note = f'<p class="own-note">{kit.plural(len(missing), "earlier quarter")} not parsed yet</p>' if missing else ''
+    return (f'<div class="own-wrap"><table class="own"><thead><tr><th>% of shares</th>{head}<th>Change</th></tr></thead>'
+            f'<tbody>{body}</tbody></table></div>{note}')
 
 
 def render():
