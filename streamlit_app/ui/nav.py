@@ -61,4 +61,14 @@ def links(pages: dict) -> None:
     st.session_state['_nav_done'] = got
     hit = target(got, pages)
     if hit:
-        st.switch_page(hit[0], query_params=hit[1])
+        # The query is set on the new page's own run (apply_query), not passed to switch_page: the frame's URL
+        # then changes from none to ?symbol=..., which is what streamlit.app copies into the address bar.
+        st.session_state['_nav_query'] = hit[1]
+        st.switch_page(hit[0])
+
+
+def apply_query() -> None:
+    """At the top of every run: the query of the link that led here (see links())."""
+    q = st.session_state.pop('_nav_query', None)
+    if q:
+        st.query_params.from_dict(q)
