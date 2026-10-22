@@ -172,7 +172,23 @@ def clean(filings: pd.DataFrame) -> pd.DataFrame:
                 s = {}
         rows.append({**{k: v for k, v in r.items() if k != 'xbrl_json'}, **s})
     out = pd.DataFrame(rows).sort_values('broadcast_at', ascending=False, na_position='last').reset_index(drop=True)
+    out['ytd_disagrees'] = ytd_disagrees(out)
     return mark_superseded(out)
+
+
+def ytd_disagrees(df: pd.DataFrame) -> pd.Series:
+    """True where a filing's own figures cannot both be right: a quarter's revenue above the revenue of the
+    longer year to date that contains it, both positive (audit 23 Oct: Repro India's Sep 2025 revision, Rs 107.8
+    Cr for the quarter and Rs 22.5 Cr for six months; Sejal Glass, Dec 2025). A loss larger in the quarter than
+    in the year (negative revenue, NBFCs' fair value losses) is no contradiction. Shown with a note, never fixed."""
+    if df.empty or not {'quarter_revenue', 'ytd_revenue', 'ytd_start', 'period_end'} <= set(df.columns):
+        return pd.Series(False, index=df.index)
+    q = pd.to_numeric(df['quarter_revenue'], errors='coerce')
+    y = pd.to_numeric(df['ytd_revenue'], errors='coerce')
+    start = pd.to_datetime(df['ytd_start'], errors='coerce')
+    end = pd.to_datetime(df['period_end'], errors='coerce')
+    longer = (end - start).dt.days > 100   # more than a quarter: the year to date is not the quarter itself
+    return (longer & q.gt(0) & y.gt(0) & (q > y * 1.001)).fillna(False).astype(bool)
 
 
 def mark_superseded(df: pd.DataFrame) -> pd.DataFrame:

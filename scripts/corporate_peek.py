@@ -339,6 +339,9 @@ def results(r2, ctx):
     q_vs_y = num(r['quarter_revenue']) / num(r['ytd_revenue'])
     print('  quarter / ytd revenue:', q_vs_y.quantile([.01, .5, .99]).round(3).to_dict(),
           f'quarter > ytd: {int((q_vs_y > 1.001).sum())}')
+    show('quarter above the year to date', r[q_vs_y > 1.001].assign(q_vs_y=q_vs_y[q_vs_y > 1.001]),
+         ['symbol', 'period_end', 'consolidated', 'revision', 'rounding', 'period_type', 'quarter_revenue', 'ytd_revenue', 'q_vs_y',
+          'quarter_profit', 'ytd_profit', 'ytd_start', 'superseded', 'broadcast_at', 'xbrl_url'], 20)
     pt = r.get('period_type')
     if 'ytd_start' in r:
         months = (pd.to_datetime(r['period_end'], errors='coerce').dt.to_period('M').astype('int64')
