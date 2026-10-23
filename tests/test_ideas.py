@@ -407,3 +407,33 @@ def test_raises_are_a_neutral_group_under_money_in_and_a_company_sits_in_one_gro
     look, _ = ideas.today(ev)
     assert len(look) == 1 and look.iloc[0]['group'] == 'Insiders buying'               # one row per company: the first group it belongs to
     assert set(look.iloc[0]['kinds']) == {'QIP', 'Promoter buying'}
+
+
+# ---- funds' and foreign investors' quarterly change (owner, 23 Oct) ---------------------------------------------------
+
+def _snap(**rows):
+    base = {'isin': 'INE0H1', 'symbol': 'HOLDCO', 'company': 'Holdco Ltd', 'market_cap': 5000e7, 'mf': 6.0, 'mf_change_pts': 1.5,
+            'mf_quarter': pd.Timestamp('2026-09-30'), 'fpi': 10.0, 'fpi_change_pts': -0.2, 'fpi_quarter': pd.Timestamp('2026-09-30')}
+    return pd.DataFrame([{**base, **r} for r in (rows or [{}])] if not rows else [{**base, **rows}])
+
+
+def test_holder_events_need_a_point_a_hundred_crore_and_a_recent_quarter():
+    ref = pd.Timestamp('2026-10-22')
+    assert ideas.holder_events(_snap(), ref, days=30).empty                    # 1.5 pts of Rs 5,000 Cr is Rs 75 Cr: under Rs 100 Cr
+    big = ideas.holder_events(_snap(market_cap=9000e7), ref, days=30)          # Rs 135 Cr
+    assert big['kind'].tolist() == ['Mutual funds adding'] and big.iloc[0]['list'] == 'look' and big.iloc[0]['pct_of_company'] == 1.5
+    assert 'from 4.50% to 6.00% in the quarter to 30 Sep 2026' in big.iloc[0]['sentence']
+    assert ideas.holder_events(_snap(market_cap=9000e7, mf_change_pts=0.9), ref, days=30).empty               # under a point
+    assert ideas.holder_events(_snap(market_cap=9000e7), pd.Timestamp('2027-03-01'), days=30).empty            # the quarter is too old
+    assert ideas.holder_events(_snap(market_cap=9000e7), ref, days=7).empty                                    # a quarterly filing has no day
+    assert ideas.holder_events(_snap(market_cap=9000e7, mf_change_pts=float('nan')), ref, days=30).empty      # no change when quarters are far apart
+
+
+def test_foreign_investors_trimming_is_a_watch_out_and_both_kinds_share_the_group():
+    ref = pd.Timestamp('2026-10-22')
+    snap = _snap(market_cap=20000e7, fpi_change_pts=-1.2)
+    got = ideas.holder_events(snap, ref, days=90)
+    assert sorted(got['kind']) == ['Foreign investors trimming', 'Mutual funds adding']
+    look, warn = ideas.today([got])
+    assert look['group'].tolist() == ['Big investors and funds in'] and warn['group'].tolist() == ['Big investors and funds out']
+    assert 'cut their share' in warn.iloc[0]['sentence'] and ideas.holder_events(None, ref).empty

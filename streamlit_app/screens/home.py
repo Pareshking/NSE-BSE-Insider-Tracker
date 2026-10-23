@@ -75,7 +75,8 @@ def _lists(_ctx, ref_key: str, days: int) -> tuple:
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.promoter_deal_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.issue_events(issues, ref, sh, days=days, allottees=store.table('preferential_allottees')), ideas.buyback_events(bb, ref, sh, days=days),
-        ideas.raise_events(issues, qip, rights, ref, sh, days=days, named=named)], summary)
+        ideas.raise_events(issues, qip, rights, ref, sh, days=days, named=named),
+        ideas.holder_events(store.snapshot(), ref, days=days)], summary)
 
 
 def _num(label: str, value: str, tip: str = '') -> str:
@@ -335,6 +336,8 @@ def render():
                 f'or {ideas.RAISE_MIN_DILUTION:g}% of the shares outstanding. Shares issued are dilution: neutral, not a verdict</li>'
                 f'<li>Big investors: crossing {ideas.BIG_STAKE:g}% or moving {ideas.BIG_CHANGE:g}%+ (SAST); trustees for lenders left out</li>'
                 f'<li>Funds: net {ideas.FUND_NET_PCT:g}%+ of the company in bulk/block deals</li>'
+                f'<li>Holdings: mutual funds or foreign investors moving {ideas.HOLDER_MIN_PTS:g}+ point of the company in the latest '
+                f'quarter filed, worth ₹{ideas.HOLDER_MIN_VALUE / 1e7:.0f} Cr+ at today\'s market cap (30 and 90 day views)</li>'
                 f'<li>Pledges: net of releases; or {ideas.PLEDGE_RISE_PTS:g}+ points in a quarter</li>'
                 '<li>Evidence is a tag, never a filter</li>'
                 '</ul><a class="bar-all" href="/filings-all" target="_self">Every filing &rarr;</a>')
