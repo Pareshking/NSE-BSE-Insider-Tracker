@@ -406,6 +406,6 @@ def render():
         shown = tl[tl['what'].isin(pick)] if not tl.empty else tl
         kit.table(shown, [
             kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
-            kit.Col('text', 'What', phone=False), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct', phone=False)],
+            kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],   # every column on a phone too: "bought" or "sold" is in What
             limit=200, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
             detail=lambda r: facts(r['_facts'], r['_links']))
