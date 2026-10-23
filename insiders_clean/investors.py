@@ -142,3 +142,32 @@ def by_manager(deals: pd.DataFrame | None, ref: pd.Timestamp | None = None, days
     out['sub_advised'] = out['sub_advised'].astype(int)
     return out.reset_index().reindex(columns=['manager', 'funds', 'sub_advised', 'buy', 'sell', 'net', 'companies', 'names']) \
         .sort_values('net', key=lambda s: s.abs(), ascending=False, kind='stable').reset_index(drop=True)
+
+
+def profile_deals(deals: pd.DataFrame | None, eid: str) -> tuple[pd.DataFrame, str | None]:
+    """Every deal leg of the investor behind `eid` (a client id or an investor-group id): all the names of one
+    `investor_group` together, the id of that group (None when the name has no alias line), primary legs only."""
+    if deals is None or deals.empty or not eid:
+        return pd.DataFrame(), None
+    own = deals['investor_group_id'] if 'investor_group_id' in deals else pd.Series(None, index=deals.index, dtype=object)
+    hit = deals[deals['client_id'].eq(eid) | own.eq(eid)]
+    gid = hit['investor_group_id'].dropna().iloc[0] if len(hit) and 'investor_group_id' in hit and hit['investor_group_id'].notna().any() else None
+    d = deals[own.eq(gid)] if gid else hit
+    return d[d['is_primary'].astype('boolean').fillna(False)], gid
+
+
+def by_company(deals: pd.DataFrame | None, ref: pd.Timestamp | None = None, days: int = 90) -> pd.DataFrame:
+    """One investor's deals per company over the period: bought, sold, net and the net share of the company, largest
+    absolute net first. Market makers' legs are not netted (a market maker's churn says nothing)."""
+    d = real_deals(deals, ref, days, types='all')
+    if d.empty:
+        return pd.DataFrame(columns=['isin', 'company', 'nse_symbol', 'buy', 'sell', 'net', 'pct', 'last'])
+    d = d.assign(_v=pd.to_numeric(d['signed_value'], errors='coerce'), _abs=pd.to_numeric(d['value'], errors='coerce'),
+                 _p=pd.to_numeric(d['pct_of_mcap'], errors='coerce') * d['side'].map({'BUY': 1, 'SELL': -1}))
+    g = d.groupby('isin')
+    out = pd.DataFrame({'company': g['company'].last(), 'nse_symbol': g['nse_symbol'].last(),
+                        'buy': d[d['side'].eq('BUY')].groupby('isin')['_abs'].sum(),
+                        'sell': d[d['side'].eq('SELL')].groupby('isin')['_abs'].sum(),
+                        'net': g['_v'].sum(), 'pct': g['_p'].sum(), 'last': g['date'].max().dt.normalize()})
+    out[['buy', 'sell']] = out[['buy', 'sell']].fillna(0.0)
+    return out.loc[out['net'].abs().sort_values(ascending=False, kind='stable').index].reset_index()

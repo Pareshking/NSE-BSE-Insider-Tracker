@@ -134,3 +134,27 @@ def test_unmatched_lists_the_fund_names_worth_a_new_line():
                       deal('SMALL FUND', 'BUY', 1e7, typ='fpi'), deal('Pastel Limited', 'SELL', 999e7, typ='corporate')])
     out = fund_managers.unmatched(d)
     assert out['client_name'].tolist() == ['NEW MANAGER GLOBAL FUND', 'SMALL FUND']
+
+
+# ---- the investor's own page -----------------------------------------------------------------------------------
+
+def test_profile_gathers_every_name_of_the_investor_group_from_either_id():
+    d = pd.DataFrame([deal('HDFC STANDARD LIFE INSURANCE CO LTD', 'BUY', 40e7, typ='insurer', group='HDFC Life', cid='hdfc-a'),
+                      deal('HDFC STANDARD LIFE INSURANCE', 'SELL', 10e7, typ='insurer', group='HDFC Life', cid='hdfc-b'),
+                      deal('SBI MUTUAL FUND', 'BUY', 50e7, cid='sbi'),
+                      deal('Copy Leg', 'BUY', 5e7, group='HDFC Life', cid='hdfc-c', primary=False)])
+    for eid in ('hdfc-a', 'hdfc-b', 'hdfc-life'):                       # a client id or the group's own id
+        got, gid = investors.profile_deals(d, eid)
+        assert gid == 'hdfc-life' and sorted(got['client_id']) == ['hdfc-a', 'hdfc-b']     # primary legs only
+    got, gid = investors.profile_deals(d, 'sbi')
+    assert got['client_id'].tolist() == ['sbi'] and gid == 'sbi-mutual-fund'
+    assert investors.profile_deals(d, 'nobody')[0].empty and investors.profile_deals(None, 'x')[0].empty
+
+
+def test_by_company_nets_one_investors_deals_per_company():
+    d = pd.DataFrame([deal('SBI MUTUAL FUND', 'BUY', 300e7, pct=0.9), deal('SBI MUTUAL FUND', 'SELL', 100e7, pct=0.3),
+                      deal('SBI MUTUAL FUND', 'BUY', 100e7, isin='INE002A01011', company='Beta Ltd', symbol='BETA', pct=0.2)])
+    out = investors.by_company(d, REF, 30).set_index('isin')
+    assert out.loc['INE001A01011', ['buy', 'sell', 'net']].tolist() == [300e7, 100e7, 200e7]
+    assert abs(out.loc['INE001A01011', 'pct'] - 0.6) < 1e-9 and out['net'].abs().is_monotonic_decreasing
+    assert investors.by_company(None, REF, 30).empty

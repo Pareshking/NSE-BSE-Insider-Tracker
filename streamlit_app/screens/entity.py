@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from ui import kit
 
-from insiders_clean import participants, signals
+from insiders_clean import fund_managers, investors, participants, signals
 from screens.ctx import load, need_data, split_since, with_prices, with_sparks
 
 
@@ -29,24 +29,32 @@ def render():
         return
     # One row per real trade: the NSE and BSE copies of a filing are the same trade.
     t = ctx.trades[(ctx.trades['person_id'] == eid) & ctx.trades['is_primary'].astype('boolean').fillna(False)]
-    d = ctx.deals[ctx.deals['client_id'] == eid] if not ctx.deals.empty else pd.DataFrame()
-    if len(d):
-        d = d[d['is_primary'].astype('boolean').fillna(False)]
-    name = (t['person_name'].dropna().iloc[0] if len(t) else d['client_name'].dropna().iloc[0] if len(d) else eid)
+    # An investor is every name of its investor group together (the same investor under different spellings).
+    d, group_id = investors.profile_deals(ctx.deals, eid)
+    shown = d['investor_group'].dropna().iloc[0] if len(d) and 'investor_group' in d and d['investor_group'].notna().any() else None
+    name = (t['person_name'].dropna().iloc[0] if len(t) else shown or d['client_name'].dropna().iloc[0] if len(d) else eid)
     kit.head(str(name), 'Every filing and deal under this name, across companies.')
     if not d.empty and d['client_is_market_maker'].astype('boolean').fillna(False).any():
         st.html('<p class="evl">' + kit.tag('Market maker', 'mute') + ' buys and sells in near-equal amounts: '
                 'liquidity, left out of signals</p>')
     if not d.empty and 'client_type' in d:
-        # Type read from the name (insiders_clean/participants.py); other names of the same investor.
-        r = d.iloc[0]
-        kind = participants.TYPES.get(r['client_type'], r['client_type'])
-        alln = ctx.deals
-        sib = alln[(alln['investor_group_id'] == r['investor_group_id']) & (alln['client_id'] != eid)].drop_duplicates('client_id')
-        links = ', '.join(f'<a href="{kit.entity_href(i)}" target="_self">{kit.esc(str(n))}</a>'
-                          for i, n in zip(sib['client_id'], sib['client_name']))
-        st.html(f'<p class="evl">{kit.esc(kind)} · {r["client_type_confidence"]} confidence ({kit.esc(str(r["client_type_rule"]))})'
-                + (f' · also deals as {links}' if links else '') + '</p>')
+        # Type read from the name (insiders_clean/participants.py); the names this investor deals under; the fund manager
+        # the name itself names (fund_managers.csv), with the other funds of that manager seen in the deals.
+        big = d.sort_values('value', ascending=False).iloc[0]
+        kind = participants.TYPES.get(big['client_type'], big['client_type'])
+        names = sorted(set(d['client_name'].dropna()))
+        manager, sub, why = fund_managers.manager_of(big['client_name'])
+        st.html(f'<p class="evl">{kit.esc(kind)} · {big["client_type_confidence"]} confidence ({kit.esc(str(big["client_type_rule"]))})'
+                + (f' · deals under {kit.plural(len(names), "name")}: {kit.esc("; ".join(names[:6]))}{" …" if len(names) > 6 else ""}'
+                   if len(names) > 1 else '') + '</p>')
+        if manager:
+            mgr = fund_managers.add_manager_columns(ctx.deals)
+            mates = mgr[mgr['manager'].eq(manager) & ~mgr['client_id'].isin(set(d['client_id']))].drop_duplicates('client_id')
+            links = ', '.join(f'<a href="{kit.entity_href(i)}" target="_self">{kit.esc(str(n))}</a>'
+                              for i, n in zip(mates['investor_group_id'].fillna(mates['client_id']).head(8), mates['client_name'].head(8)))
+            st.html(f'<p class="evl">Fund manager named in the fund name: <b>{kit.esc(manager)}</b>'
+                    + (' · likely sub-advised (another sponsor\'s name leads)' if sub else '')
+                    + (f' · other funds of this manager: {links}' if links else '') + '</p>')
     mk = ctx.eligible[ctx.eligible['person_id'] == eid]
     # Owner's spec: capital deployed in 12 months, active tickers; win rate and
     # holding period come with the signal lab (docs/DATA_TO_PAGES.md S21).
@@ -92,6 +100,13 @@ def render():
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
                 kit.Col('seen', 'Made public', 'date'), kit.Col('mode', 'Mode as filed', phone=False),
                 kit.Col('spark', '1Y price · insider trades', 'spark', phone=False)], limit=100)
+    ref_deals = pd.Timestamp(ctx.deals['date'].max()) if not ctx.deals.empty else None
+    per = investors.by_company(d, ref_deals, 90) if len(d) else pd.DataFrame()
+    if len(per):
+        with kit.card('Net by company', 'en_net', 'last 90 days, bulk and block deals'):
+            kit.table(per, [kit.Col('company', 'Company', 'co'), kit.Col('net', 'Net', 'smoney'), kit.Col('buy', 'Bought', 'money', phone=False),
+                            kit.Col('sell', 'Sold', 'money', phone=False), kit.Col('pct', 'Share of company', 'spct'),
+                            kit.Col('last', 'Last deal', 'date', phone=False)], limit=30, key='en_net_t', keep_empty=True)
     if len(d):
         with kit.card('Deals', 'en_dl'):
             s = d.sort_values('date', ascending=False)
@@ -99,4 +114,4 @@ def render():
                 kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'), kit.Col('side', 'Side', 'side'),
                 kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
                 kit.Col('value', 'Value', 'money'), kit.Col('pct_of_mcap', '% of mcap', 'bar'),
-                kit.Col('feeds', 'Feed', phone=False)], limit=100)
+                kit.Col('counterparties', 'Other side that day', phone=False, wrap=True), kit.Col('feeds', 'Feed', phone=False)], limit=100)

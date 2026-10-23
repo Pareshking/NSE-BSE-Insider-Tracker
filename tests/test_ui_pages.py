@@ -117,6 +117,25 @@ importlib.import_module('screens.{screen}').render()
     assert not at.exception, at.exception[0].value
 
 
+def test_investor_page_renders_for_a_deal_client(data_dir, monkeypatch):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    deals = pd.read_parquet(data_dir / 'clean' / 'current' / 'deals.parquet')
+    deals = deals[deals['is_primary'].astype(bool) & deals['client_id'].notna()]
+    if deals.empty:
+        pytest.skip('no deals in the fixtures')
+    cid = deals['client_id'].iloc[0]
+    at = AppTest.from_string(APP_PATHS + f"""
+import streamlit as st
+st.query_params['id'] = {cid!r}
+from ui import theme
+theme.inject()
+from screens import entity
+entity.render()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value
+
+
 def test_whole_app_renders_with_bar(data_dir, monkeypatch):
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     at = AppTest.from_file(str(ROOT / 'streamlit_app' / 'app.py'), default_timeout=60)
