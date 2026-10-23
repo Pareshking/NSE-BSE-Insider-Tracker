@@ -417,10 +417,11 @@ def _snap(**rows):
     return pd.DataFrame([{**base, **r} for r in (rows or [{}])] if not rows else [{**base, **rows}])
 
 
-def test_holder_events_need_a_point_a_hundred_crore_and_a_recent_quarter():
+def test_holder_events_need_a_point_ten_crore_and_a_recent_quarter():
     ref = pd.Timestamp('2026-10-22')
-    assert ideas.holder_events(_snap(), ref, days=30).empty                    # 1.5 pts of Rs 5,000 Cr is Rs 75 Cr: under Rs 100 Cr
+    assert ideas.holder_events(_snap(market_cap=500e7), ref, days=30).empty    # 1.5 pts of Rs 500 Cr is Rs 7.5 Cr: under Rs 10 Cr
     big = ideas.holder_events(_snap(market_cap=9000e7), ref, days=30)          # Rs 135 Cr
+    assert ideas.holder_events(_snap(market_cap=700e7), ref, days=30)['kind'].tolist() == ['Mutual funds adding']   # Rs 10.5 Cr
     assert big['kind'].tolist() == ['Mutual funds adding'] and big.iloc[0]['list'] == 'look' and big.iloc[0]['pct_of_company'] == 1.5
     assert 'from 4.50% to 6.00% in the quarter to 30 Sep 2026' in big.iloc[0]['sentence']
     assert ideas.holder_events(_snap(market_cap=9000e7, mf_change_pts=0.9), ref, days=30).empty               # under a point

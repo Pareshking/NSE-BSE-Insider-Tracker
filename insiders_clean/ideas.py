@@ -217,7 +217,7 @@ ISSUE_PREMIUM = 0.0      # promoters paying at or above today's price
 BUYBACK_PREMIUM = 10.0   # tender offer at least 10% above today's price
 MEASURED_BY.update({'Fund buying': 'fund_deal_buy'})
 HOLDER_MIN_PTS = 1.0        # a mutual-fund or foreign-investor holding that moved this many points of the company in the latest quarter ...
-HOLDER_MIN_VALUE = 100e7    # ... worth Rs 100 crore or more at today's market cap (the Raises gate)
+HOLDER_MIN_VALUE = 10e7     # ... worth Rs 10 crore or more at today's market cap (owner, 23 Oct: down from Rs 100 crore)
 HOLDER_MAX_AGE = 120        # days from the quarter's end: an older quarter is not "the latest" any more
 HOLDER_MIN_DAYS = 30        # shown for a 30 or 90 day period; the snapshot has the quarter, not the day it was filed
 
