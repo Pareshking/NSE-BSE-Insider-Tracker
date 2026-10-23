@@ -20,6 +20,9 @@ from screens.ctx import load, need_data, with_flags
 READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
 # Timeline kinds shown until switched off; the rest (ESOPs, gifts, transfers) on request.
 QUIET = ('Other insider filing',)
+# The timeline opens on the decisions that moved money; the rest is one tap away (design V3, owner 23 Oct).
+MONEY = ('Insider buy', 'Insider sell', 'Bulk deal', 'Block deal', 'SAST', 'Preferential issue', 'Rights issue', 'QIP', 'Buyback')
+DEAL_MARK_MIN = 5e7   # Rs 5 crore: a bulk or block deal smaller than this is not drawn on the price line
 
 
 def _headroom(ctx, e, shr, mine_sh):
@@ -346,8 +349,13 @@ def render():
                 + (f'<ul class="co-risk">{"".join(f"<li>{esc(x)}</li>" for x in risks)}</ul>' if risks else '<p class="co-none">None found.</p>'))
 
     left, right = st.columns([3, 2], gap='medium')
-    with left, kit.card('Price and insider trades', 'co_px', '▲ bought ▼ sold, on the day made public · hover for who'):
-        chart = lwchart.price_chart(*hist, e.assign(role=e['person_role'].map(kit.role)), key=sym) if hist else None
+    with left, kit.card('Price and money decisions', 'co_px', '▲ bought ▼ sold: insiders on the day made public, funds from Rs 5 Cr in bulk and block deals · hover for who'):
+        marks = e.assign(role=e['person_role'].map(kit.role))
+        if not d.empty:   # funds' deals under the insiders' trades; a deal that is an insider's own filing is drawn once
+            big = d[~d['also_filed'] & pd.to_numeric(d['value'], errors='coerce').ge(DEAL_MARK_MIN)]
+            marks = pd.concat([marks, big.assign(seen=big['date'], person_name=big['client_name'], role='bulk or block deal')[
+                ['seen', 'side', 'value', 'person_name', 'role']]], ignore_index=True)
+        chart = lwchart.price_chart(*hist, marks, key=sym) if hist else None
         if chart is None:
             kit.empty('No price history for this stock in our NSE/BSE price files yet.')
         else:
@@ -390,10 +398,10 @@ def render():
                         kit.Col('pledged_shares', 'Pledged', 'shares', phone=False)], limit=60, key=f'co_pg_{sym}')
 
     tl = _timeline(ctx, sym, t, d, raises)
-    with kit.card('Timeline', 'co_tl', 'every filing, newest first · a row opens to its facts'):
+    with kit.card('Timeline', 'co_tl', 'money decisions first, newest first · pick more kinds to see everything · a row opens to its facts'):
         kinds = list(dict.fromkeys(tl['what'])) if not tl.empty else []
         counts = tl['what'].value_counts().to_dict() if not tl.empty else {}
-        pick = st.pills('Show', kinds, selection_mode='multi', default=[k for k in kinds if k not in QUIET], key=f'co_tl_{sym}',
+        pick = st.pills('Show', kinds, selection_mode='multi', default=[k for k in kinds if k in MONEY] or [k for k in kinds if k not in QUIET], key=f'co_tl_{sym}',
                         format_func=lambda k: f'{k} · {counts.get(k, 0)}', label_visibility='collapsed') if kinds else []
         shown = tl[tl['what'].isin(pick)] if not tl.empty else tl
         kit.table(shown, [
