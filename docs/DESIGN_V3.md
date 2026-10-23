@@ -22,7 +22,7 @@ session that made them. The live Site preview run fills them from the price laye
 | Companies list (from the snapshot: owners, last-quarter change, pledge, insiders' 90-day net; size, sort, search) and the dossier's ratios strip | Built 23 Oct (`screens/companies_list.py`); decisions timeline on the dossier built 23 Oct (price line carries funds' deals from Rs 5 Cr beside insider trades; the timeline opens on money decisions) |
 | Company snapshot table (market line, promoter %, pledge %, funds' and FPIs' change, insider flows) in the nightly precompute | **Coded 23 Oct** (`insiders_clean/snapshot.py`); first nightly writes it; read by Companies and the dossier's strip |
 
-Not built yet: a "Real money only" switch on Filings, the investor profile page, and the headline sentence per Filings row.
+Filings "Real money only" (off by default, Today's gates applied to single rows, with a count of what it left out) and the headline sentence at the top of each opened row: built 23 Oct (`screens/filings_rules.py`). Not built yet: the investor profile page.
 
 ## Rules for Today, agreed 23 Oct (owner, with the consultant's review)
 

@@ -68,6 +68,7 @@ td.tags { min-width: 110px; }
 .tbl tr.dt td { height: auto; white-space: normal; padding: 10px 14px 14px; background: var(--subtle); position: static; }
 .tbl tr.dt:hover td { background: var(--subtle); }
 .tbl tr.dt td > div { position: sticky; left: 14px; max-width: min(920px, 84vw); }   /* stay in view in a wide table */
+.tbl .hl { margin: 0 0 8px; font-size: 13px; color: var(--ink); }
 .tbl .dt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 18px; font-size: 12.5px; }
 .tbl .dt-grid b { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .tbl .dt-grid span { color: var(--ink); font-variant-numeric: tabular-nums; }
