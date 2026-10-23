@@ -95,7 +95,7 @@ def data_dir(tmp_path_factory, real_nse_rows):
     return root
 
 
-PAGES = [('home', {}), ('filings_all', {}), ('capital_raises', {}),
+PAGES = [('home', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
          ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
 

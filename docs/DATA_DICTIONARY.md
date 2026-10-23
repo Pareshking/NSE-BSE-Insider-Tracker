@@ -571,3 +571,7 @@ insider table on every rerun. Read by `store.snapshot()`. A figure the data lack
 ## Adjustment factors (computed, not stored yet)
 
 `insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `split_bonus` (the only kind applied), `other_large`, `minor`, `none` or `unknown`; `kind_basis` says how a large reset was classified: `action` (a filed bonus or split in `actions` / `bse_actions`, factor within 1.5% of the filed ratio), `action_mismatch` (filed, but the factor differs: not applied), `action_not_split_bonus` (only a dividend, rights or buyback filed that day: not applied), `ratio` (nothing filed; the clean-ratio guess). Adjusted price at T uses only factors dated up to T.
+
+### Investors page (read from `deals`; `insiders_clean/investors.py`, `fund_managers.py`)
+
+Real deals only: primary legs (NSE and BSE legs are separate executions, both counted), market makers out. An investor is one `investor_group` (same investor, different spellings), never a fund family. Net = bought minus sold in rupees over 7, 30 or 90 days, with gross beside it; listed at Rs 25 Cr net or 0.25% of one company. Type comes from the name only; low-confidence types are left out of the default view and counted. `fund_managers.csv` (`pattern`, `manager`, `sub_advised`, `reason`; first match wins) maps a fund name to the manager the name itself names; a name with no line has no manager, and a sponsor's fund that names the manager inside is marked likely sub-advised.

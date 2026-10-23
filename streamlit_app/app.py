@@ -50,6 +50,7 @@ from screens import (
     entity,
     filings_all,
     home,
+    investors,
     track_record,
 )
 from screens.ctx import load
@@ -67,6 +68,7 @@ SECTIONS = {
         st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
         st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
+        st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors'),
         st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),   # last in the menu (owner, 22 Oct)
     ],
 }
