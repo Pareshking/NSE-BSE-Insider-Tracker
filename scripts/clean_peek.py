@@ -29,9 +29,27 @@ def show(title: str, df: pd.DataFrame, cols: list[str]) -> None:
         print(df[[c for c in cols if c in df]].to_string(index=False))
 
 
+def fund_names(r2) -> int:
+    """Institutional client names of the primary, non-market-maker deals, largest total value first, with the manager
+    line (if any) each already has: where the next `fund_managers.csv` lines are worth writing. Names only; no write."""
+    from insiders_clean import fund_managers
+    deals = read_parquet(r2, 'clean/current/deals.parquet')
+    d = deals[deals['is_primary'].astype(bool) & ~deals['client_is_market_maker'].astype(bool)]
+    d = d[d['client_type'].isin(['mutual_fund', 'fpi', 'insurer', 'pension', 'bank', 'pms_aif', 'fund_other'])]
+    g = d.groupby('client_name').agg(value=('value', 'sum'), legs=('value', 'size'), type=('client_type', 'first'))
+    g = g.sort_values('value', ascending=False).head(400)
+    g['manager'] = [fund_managers.manager_of(n)[0] or '' for n in g.index]
+    print(f'--- {len(g)} largest institutional names (Rs Cr total, legs, type, manager line)')
+    for n, r in g.iterrows():
+        print(f'{r["value"] / 1e7:10.1f} | {int(r["legs"]):4d} | {r["type"]:11s} | {r["manager"]:14s} | {n}')
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
+    if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
+        return fund_names(r2)
     sec = read_parquet(r2, 'clean/current/securities.parquet')
     uni = read_parquet(r2, 'clean/current/universe.parquet')
     sh = read_parquet(r2, 'clean/current/shareholding.parquet')
