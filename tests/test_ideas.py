@@ -351,6 +351,8 @@ def test_raises_are_shown_at_100_crore_or_2_percent_and_say_what_is_not_stated()
     assert r['kind'] == 'QIP' and r['list'] == 'look' and abs(r['pct_of_company'] - 18_110_473 / 4e8 * 100) < 1e-9
     assert '20 institutions took 18,110,473 shares at ₹165.65; ₹300 Cr raised, 4.53% of the company, 8% below the price now' in r['sentence']
     assert r['kv3_label'] == 'Issue vs now' and r['kv3'] == '-8.0%'
+    no_price = ideas.raise_events(None, pd.DataFrame([_qip(vs_market=None)]), None, REF, _total(4e8)).iloc[0]
+    assert no_price['kv3_label'] == 'Issue vs now' and no_price['kv3'] == '—'          # not the promoters' holding in its place
     # under Rs 100 Cr but over 2% of the shares: shown by dilution
     small_amount = ideas.raise_events(None, pd.DataFrame([_qip(amount=4e8, shares_allotted=3e6)]), None, REF, _total(1e8))
     assert len(small_amount) == 1 and '3.00% of the company' in small_amount.iloc[0]['sentence']

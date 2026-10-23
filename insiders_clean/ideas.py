@@ -685,7 +685,7 @@ def raise_events(pref: pd.DataFrame | None, qip: pd.DataFrame | None, rights: pd
             rows.append({'isin': isin, 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'), 'list': 'look',
                          'kind': kind, 'pct_of_company': dil if dil is not None else 0.0, 'sentence': sent,
                          'value': amount, 'last': when, 'kv3_label': 'Issue vs now' if kind != 'Rights issue' else 'Rights vs now',
-                         'kv3': f'{vs:+.1f}%' if pd.notna(vs) else None})
+                         'kv3': f'{vs:+.1f}%' if pd.notna(vs) else '—'})   # a raise keeps its own third number, a dash when no price
     return _ev(rows)
 
 
