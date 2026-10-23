@@ -200,7 +200,7 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 1. ~~Real money for a large company~~ **Decided 23 Oct (owner): yes, "or ₹25 Cr and up by one decision-maker" is an
    additional path** (a ₹82 Cr promoter-group purchase in a ₹4 lakh Cr company then shows). Applies to the
    ideas rules in `insiders_clean/ideas.py`; tests to follow with the change.
-2. Funds' and FPIs' quarterly change: now on Investors and the dossier; on Today too?
+2. ~~Funds' and FPIs' quarterly change on Today~~ **Decided 23 Oct (owner): yes.** `ideas.holder_events` (from the company snapshot): mutual funds or foreign investors moved 1 point or more of the company in the latest quarter filed, worth ₹10 Cr or more at today's market cap (owner lowered it from ₹100 Cr the same day); chips *Mutual funds adding / trimming* and *Foreign investors adding / trimming* in the Big investors groups; shown in the 30 and 90 day views only (the snapshot has the quarter, not the day it was filed); the sentence gives the share before and after.
 3. Build order: Filings kinds first (largest gap), then Today, Companies, the dossier.
 
 ## Out of scope for this document

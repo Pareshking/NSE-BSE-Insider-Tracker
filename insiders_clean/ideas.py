@@ -216,6 +216,10 @@ FUND_NET_PCT = 0.25      # funds' net bulk/block buying or selling over the peri
 ISSUE_PREMIUM = 0.0      # promoters paying at or above today's price
 BUYBACK_PREMIUM = 10.0   # tender offer at least 10% above today's price
 MEASURED_BY.update({'Fund buying': 'fund_deal_buy'})
+HOLDER_MIN_PTS = 1.0        # a mutual-fund or foreign-investor holding that moved this many points of the company in the latest quarter ...
+HOLDER_MIN_VALUE = 10e7     # ... worth Rs 10 crore or more at today's market cap (owner, 23 Oct: down from Rs 100 crore)
+HOLDER_MAX_AGE = 120        # days from the quarter's end: an older quarter is not "the latest" any more
+HOLDER_MIN_DAYS = 30        # shown for a 30 or 90 day period; the snapshot has the quarter, not the day it was filed
 
 
 def _ev(rows) -> pd.DataFrame:
@@ -501,6 +505,38 @@ def fund_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd
     return _ev(rows)
 
 
+def holder_events(snap: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW) -> pd.DataFrame:
+    """Funds' and foreign investors' quarterly change (owner, 23 Oct): the share of the company held by mutual funds, or by
+    foreign portfolio investors, moved HOLDER_MIN_PTS points or more since the quarter before, in the latest quarter filed
+    (within HOLDER_MAX_AGE days of `ref`), and that is HOLDER_MIN_VALUE or more at today's market cap. From the company
+    snapshot (insiders_clean/snapshot.py): the latest figure, the change from the quarter before (blank when the two
+    quarters are more than 120 days apart) and the quarter. A quarterly shareholding filing, not a trade: the quarter's own
+    date is the event's date, and the period buttons under 30 days leave it out. Size: points of the company."""
+    if snap is None or snap.empty or days < HOLDER_MIN_DAYS or 'market_cap' not in snap:
+        return _ev([])
+    rows = []
+    for col, who in (('mf', 'Mutual funds'), ('fpi', 'Foreign investors')):
+        need = {col, f'{col}_change_pts', f'{col}_quarter'}
+        if not need <= set(snap.columns):
+            continue
+        x = snap.assign(_chg=pd.to_numeric(snap[f'{col}_change_pts'], errors='coerce'),
+                        _now=pd.to_numeric(snap[col], errors='coerce'),
+                        _q=pd.to_datetime(snap[f'{col}_quarter'], errors='coerce'),
+                        _cap=pd.to_numeric(snap['market_cap'], errors='coerce'))
+        x = x[x['_chg'].abs().ge(HOLDER_MIN_PTS) & x['_q'].notna() & (ref - x['_q']).dt.days.between(0, HOLDER_MAX_AGE)
+              & (x['_chg'].abs() / 100 * x['_cap']).ge(HOLDER_MIN_VALUE) & x['isin'].notna()]
+        for r in x.to_dict('records'):
+            up = r['_chg'] > 0
+            was = r['_now'] - r['_chg']
+            rows.append({'isin': r['isin'], 'company': r.get('company'), 'nse_symbol': r.get('symbol'),
+                         'list': 'look' if up else 'warn', 'kind': f'{who} {"adding" if up else "trimming"}',
+                         'pct_of_company': abs(r['_chg']),
+                         'sentence': f'{who} {"raised" if up else "cut"} their share of the company from {was:.2f}% to '
+                                     f'{r["_now"]:.2f}% in the quarter to {r["_q"]:%d %b %Y}',
+                         'value': None, 'last': r['_q']})
+    return _ev(rows)
+
+
 def promoter_deal_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW,
                          sh: pd.DataFrame | None = None) -> pd.DataFrame:
     """Promoters selling (or buying) in bulk/block deals in a company with no promoter market trade filed under
@@ -695,13 +731,13 @@ GROUPS = {
     'look': [('Insiders buying', ['Promoter buying', 'Director or KMP buying', 'Cluster', 'Spotlight', 'Steady accumulation']),
              ('Promoters pay up', ['Promoters pay up']),
              ('Pledges released', ['Pledge released']),
-             ('Big investors and funds in', ['Big investor in', 'Fund buying']),
+             ('Big investors and funds in', ['Big investor in', 'Fund buying', 'Mutual funds adding', 'Foreign investors adding']),
              ('Buybacks at a premium', ['Buyback at a premium']),
              ('Raises', ['QIP', 'Preferential to others', 'Rights issue'])],
     'warn': [('Insiders selling', ['Promoter selling', 'Director or KMP selling']),
              ('Pledges', ['Pledge invoked', 'Pledge created', 'Pledge rising']),
              ('Cheap shares to promoters', ['Cheap shares to promoters']),
-             ('Big investors and funds out', ['Big investor out', 'Funds selling'])],
+             ('Big investors and funds out', ['Big investor out', 'Funds selling', 'Mutual funds trimming', 'Foreign investors trimming'])],
 }
 
 
