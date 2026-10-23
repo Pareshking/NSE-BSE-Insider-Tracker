@@ -259,3 +259,20 @@ def test_a_meeting_keeps_its_agenda_line_not_the_boilerplate():
     assert f._meeting_detail(text) == 'To consider Fund Raising and other business matters'
     assert f._meeting_detail('X has informed the Exchange about a meeting') == 'X has informed the Exchange about a meeting'
     assert f._meeting_detail(None) == ''
+
+
+def test_real_money_switch_and_headline_render(site, monkeypatch):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(site))
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from ui import theme
+theme.inject()
+from screens import filings_all
+filings_all.render()
+""", default_timeout=90)
+    at.session_state['fa_days'] = 365
+    at.session_state['fa_money'] = True
+    at.run()
+    assert not at.exception, at.exception[0].value
+    assert 'filings left out' in ' '.join(e.proto.body for e in at.get('html'))

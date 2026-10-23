@@ -25,7 +25,7 @@ from ui.table import facts
 
 from insiders_clean import participants, signals
 from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
-from screens import buybacks
+from screens import buybacks, filings_rules
 from screens.ctx import (ALLOTTEE_LABEL, flag_words, issue_rows, late_text, load, lock_in_calendar, need_data, pre_public_move,
                          qip_rows, rights_rows, split_since, window_text, with_flags, with_prices)
 
@@ -859,6 +859,11 @@ def render():
             floor = st.selectbox('Smallest value', list(MIN_VALUE), format_func=MIN_VALUE.get, key='fa_min')
             mm = st.toggle('Market makers', value=False, key='fa_mm',
                            help='Bulk/block clients measured buying and selling in equal measure; left out unless on')
+            money = st.toggle('Real money only', value=False, key='fa_money',
+                              help="Today's gates applied to single rows: a decision-maker's open-market trade of ₹25 L and 0.05% "
+                                   'of the company (0.25% alone, or ₹25 Cr), a director or KMP selling only at ₹25 Cr, deals of '
+                                   '₹25 Cr or 0.25%, stake changes except lenders, issues of ₹100 Cr or more, all buybacks. '
+                                   'Pledges, dividends, other filings and dates ahead are left out')
 
     rows, sources = build(ctx, int(days))
     if not rows.empty:
@@ -873,6 +878,11 @@ def render():
             rows = rows[hit('company') | hit('nse_symbol') | hit('who')]
         if floor:
             rows = rows[pd.to_numeric(rows['value'], errors='coerce') >= floor]
+    left_out = 0
+    if money and not rows.empty:
+        keep = filings_rules.real_money(rows)
+        left_out = int((~keep & in_kind(rows, 'All')).sum())
+        rows = rows[keep].reset_index(drop=True)
     counts = {k: int(in_kind(rows, k).sum()) if not rows.empty else 0 for k in KINDS}
     with kind_slot:
         kind = st.pills('Kind', KINDS, default='All', key='fa_kind', label_visibility='collapsed',
@@ -884,6 +894,8 @@ def render():
         kit.empty('No filings for these filters.')
         return
 
+    if left_out:
+        kit.caption(f'Real money only: {kit.count(left_out)} filings left out (pledges, dividends, small trades and other filings).')
     top = shown.head(LIMIT).copy()
     extra = _decorate(top, sources, ctx)
     ins = top['_src'] == 'insider'
@@ -908,7 +920,7 @@ def render():
         if frame is None or i not in frame.index:
             return ''
         own = extra.get(i, {}) if src == 'insider' else {}
-        return FACTS[src](frame.loc[i].to_dict(), {**own, **tables})
+        return f'<p class="hl">{kit.esc(filings_rules.headline(r))}</p>' + FACTS[src](frame.loc[i].to_dict(), {**own, **tables})
 
     kit.table(shown, spec[1] if spec else GENERIC_COLS, limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}',
               keep_empty=bool(spec))

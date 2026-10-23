@@ -30,11 +30,11 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
 - **Fix**: shares bought / total shares in issue (or the filed post-minus-pre % of shareholding in each
   PIT XBRL), net of nothing (Reg 3(2) counts gross acquisitions). Test.
 
-### D3 The same promoter / directors / deals net shown twice on the Company page (duplicate, open: Company rebuild in progress)
+### D3 The same promoter / directors / deals net shown twice on the Company page (duplicate, fixed 23 Oct: one "Money in and out" card)
 - Tiles "Promoter net, 12 months", "Directors & KMP net", "Deals net, 12 months" and the card "Net
   open-market flow by who" repeat the same three figures.
 
-### D4 Empty card drawn (cosmetic, open: Company rebuild in progress)
+### D4 Empty card drawn (cosmetic, fixed 23 Oct: the card is gone)
 - Company, Electrosteel: "Handshakes in this stock" shows only "Click a column to sort." with no rows.
 
 ### To verify
@@ -51,7 +51,7 @@ own source says, the cause, the fix and the test. Status: open / fixed (PR).
 - Screener top rows on 21 Oct: Swashthik Plascon, Dangee Dums (≈₹47 Cr), NAPS Global. Fixed by the study
   universe (PR #55) once merged.
 
-### D6 Promoters' own bulk buys counted in both "Promoter net" and "Deals net" (misleading, open: Company rebuild; Today already leaves a filed insider's deal to the insider lists)
+### D6 Promoters' own bulk buys counted in both "Promoter net" and "Deals net" (misleading, fixed 23 Oct: a deal that is a filed insider's own trade counts once, under the insider)
 - Electrosteel: Asha and Mayank Kejriwal and Wilcox Merchants appear in the PIT filing and in NSE's bulk
   list for the same trades; the Company tiles add them to both nets. Fix with D3: one flow card where a
   deal by a filed insider is shown once, under the insider.
