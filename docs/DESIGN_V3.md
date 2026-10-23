@@ -19,8 +19,8 @@ session that made them. The live Site preview run fills them from the price laye
 | Filings kinds: pills and a table of its own columns for Insider trades, Deals, Stake changes, Preferential, Rights, QIPs, Buybacks, Pledges and Upcoming; company cell with size, market cap, price and 52-week bar; "?" for a held-back amount; lock-in end dates; Upcoming (fund-raising and buyback meetings, tender closes, lock-in ends, next 60 days) | **Built 23 Oct** (`screens/filings_all.py`, `ui/table.py`; tests in `tests/test_filings_page.py`) |
 | Today as the money board: Money in / Money out / Risk changes panels, the ₹25 Cr rule, Raises, Coming up, market line on rows (`insiders_clean/ideas.py`, `screens/home.py`) | **Built 23 Oct** (rules below) |
 | Investors page v1 (net buyers and sellers, by manager, who absorbed, funds in each company, who bought the raises); investor profile later | Built 23 Oct |
-| Companies list and the dossier's ratios strip, decisions timeline | After Investors |
-| Company snapshot table (market line, promoter %, pledge %, funds' and FPIs' change, insider flows) in the nightly precompute | **Coded 23 Oct** (`insiders_clean/snapshot.py`); first nightly writes it; no page reads it yet |
+| Companies list (from the snapshot: owners, last-quarter change, pledge, insiders' 90-day net; size, sort, search) and the dossier's ratios strip | Built 23 Oct (`screens/companies_list.py`); decisions timeline on the dossier later |
+| Company snapshot table (market line, promoter %, pledge %, funds' and FPIs' change, insider flows) in the nightly precompute | **Coded 23 Oct** (`insiders_clean/snapshot.py`); first nightly writes it; read by Companies and the dossier's strip |
 
 Not built yet: a "Real money only" switch on Filings, the investor profile page, and the headline sentence per Filings row.
 

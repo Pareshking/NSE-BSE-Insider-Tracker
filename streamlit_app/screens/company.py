@@ -67,12 +67,6 @@ def _pick_symbol(ctx) -> str | None:
     sym = st.query_params.get('symbol')
     if sym:
         return sym.upper()
-    names = ctx.eligible.dropna(subset=['nse_symbol']).drop_duplicates('nse_symbol')
-    options = sorted(f'{c} · {s}' for c, s in zip(names['company'], names['nse_symbol']))
-    choice = st.selectbox('Company', options, index=None, placeholder='Search a company', key='co_pick')
-    if choice:
-        st.query_params['symbol'] = choice.rsplit(' · ', 1)[1]
-        st.rerun()
     return None
 
 
@@ -225,7 +219,8 @@ def render():
         return
     sym = _pick_symbol(ctx)
     if not sym:
-        kit.head('Company', 'Pick a company, or open one from any table on the site.')
+        from screens import companies_list
+        companies_list.render_list()
         return
     t = ctx.trades[ctx.trades['nse_symbol'].astype(str).str.upper() == sym].copy()
     sec = ctx.securities[ctx.securities['nse_symbol'].astype(str).str.upper() == sym] if not ctx.securities.empty else pd.DataFrame()
@@ -262,6 +257,9 @@ def render():
                 + (f'<span class="q-k">Mkt cap</span><b class="num">{kit.rupees(mcap)}</b>' if kit._finite(mcap) else '')
                 + (f'<span class="q-k">Size</span>{esc(str(pr["mcap_bucket"]))}' if isinstance(pr.get('mcap_bucket'), str) else '')
                 + '</div>')
+
+    from screens import companies_list
+    companies_list.strip(sym)
 
     e = ctx.eligible[ctx.eligible['nse_symbol'].astype(str).str.upper() == sym]
     win = e[e['seen'] > ctx.ref - pd.Timedelta(days=365)]

@@ -179,3 +179,22 @@ def test_the_site_reads_the_snapshot_and_an_absent_one_is_empty(tmp_path, monkey
     got = store.snapshot()
     assert len(got) == 3 and list(got.columns) == snapshot.COLUMNS
     st.cache_data.clear()
+
+
+def test_companies_list_and_strip_render_from_the_snapshot(tmp_path, monkeypatch):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'streamlit_app'))
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    (tmp_path / 'artifacts').mkdir()
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(tmp_path))
+    snapshot.build(summary(), holdings(), trades(), ref=REF).to_parquet(tmp_path / 'artifacts' / 'company_snapshot.parquet')
+    st.cache_data.clear()
+    root = Path(__file__).resolve().parent.parent
+    code = (f"import sys\nsys.path.insert(0, r'{root / 'streamlit_app'}')\nsys.path.insert(0, r'{root}')\n"
+            "from ui import theme\ntheme.inject()\nfrom screens import companies_list as c\nc.render_list()\nc.strip('AAA')\n")
+    at = AppTest.from_string(code, default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value
+    st.cache_data.clear()
