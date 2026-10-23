@@ -23,10 +23,12 @@ from ui.kit import (_finite, company_href, empty, entity_href, esc, exchange_tag
 class Col:
     key: str
     label: str
-    kind: str = 'text'  # text co person client side money smoney pct spct bar range spark date tags num
+    kind: str = 'text'  # text co co2 person client side money amt smoney pct spct npct vspct bar range spark date tags num
     help: str = ''
     sub: str = ''       # a second, muted line from another column
     phone: bool = True  # shown at phone width
+    wrap: bool = False  # the cell may wrap onto several lines (long names and notes)
+    flag: str = ''      # amt: column holding the reason a figure was held back (shown as a "?")
 
 
 TAG_TONES = {'Spotlight': 'info', 'Float absorber': 'buy', 'Cluster': 'buy', 'Promoter selling': 'sell',
@@ -103,6 +105,34 @@ def spark(dates, closes, marks=(), days: int = 365, w: int = 116, h: int = 30) -
     return svg, chg
 
 
+def _mcap(v) -> str:
+    """Market cap in rupees as the company cell shows it: ₹4.1 L Cr, ₹11,800 Cr."""
+    f = _finite(v)
+    if f is None or f <= 0:
+        return ''
+    cr = f / 1e7
+    return f'₹{cr / 1e5:.1f} L Cr' if cr >= 1e5 else f'₹{indian(cr)} Cr'
+
+
+def market_line(r: dict) -> str:
+    """Size bucket, market cap, price and a small 52-week bar from the row's mk_* columns (screens/filings_all.py)."""
+    bits = []
+    bucket = r.get('mk_bucket')
+    if isinstance(bucket, str) and bucket:
+        bits.append(esc(bucket))
+    mc = _mcap(r.get('mk_cap'))
+    if mc:
+        bits.append(mc)
+    px, lo, hi = _finite(r.get('mk_px')), _finite(r.get('mk_lo')), _finite(r.get('mk_hi'))
+    if px is not None:
+        bits.append(price(px))
+    bar = ''
+    if px is not None and lo is not None and hi is not None and hi > lo:
+        pos = max(0.0, min(100.0, (px - lo) / (hi - lo) * 100))
+        bar = (f'<span class="rgm" title="52W low {price(lo)} · high {price(hi)}"><i style="left:{pos:.0f}%"></i></span>')
+    return f'<span class="mk">{" · ".join(bits)}{(" " if bits else "") + bar}</span>' if bits or bar else ''
+
+
 def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
     """(html, sort value, class) for one cell."""
     v = r.get(c.key)
@@ -116,6 +146,23 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
             sub += f'<span class="ctx">{esc(extra)}</span>'
         flags = flag_tags(r.get('trade_flags'), r.get('trade_flag_notes'))
         return f'{_a(company_href(sym), esc(name))}<div class="sub">{sub}</div>{flags}', name, 'co'
+    if k == 'co2':
+        sym = next((x for x in (r.get('nse_symbol'), r.get('symbol')) if isinstance(x, str) and x), '')
+        name = str(v if isinstance(v, str) and v else sym)
+        listed = str(r.get('listed_on') or '').lower()
+        sub = f'<span class="sym">{esc(str(sym))}</span>' + (exchange_tags(listed) if 'bse' in listed else '') + market_line(r)   # a mark only where BSE is involved: NSE-only is the default
+        extra = r.get(c.sub) if c.sub else None
+        if isinstance(extra, str) and extra:
+            sub += f'<span class="ctx">{esc(extra)}</span>'
+        return f'{_a(company_href(sym), esc(name))}<div class="sub">{sub}</div>{flag_tags(r.get("trade_flags"), r.get("trade_flag_notes"))}', name, 'co'
+    if k == 'amt':
+        why = r.get(c.flag) if c.flag else None
+        sub = r.get(c.sub) if c.sub else None
+        tail = f'<div class="sub">{esc(str(sub))}</div>' if isinstance(sub, str) and sub else ''
+        if _finite(v) is not None:
+            return rupees(v) + tail, _sv(v), 'r num'
+        mark = f'<span class="qm" title="{esc(str(why), quote=True)}">?</span>' if isinstance(why, str) and why else ''
+        return NA + mark + tail, '', 'r num'
     if k in ('person', 'client'):
         pid = r.get('person_id' if k == 'person' else 'client_id')
         sub = role(r.get('person_role')) if k == 'person' else str(r.get(c.sub) or '') if c.sub else ''
@@ -130,14 +177,16 @@ def _cell(c: Col, r: dict, bar_max: dict) -> tuple[str, str, str]:
         f = _finite(v)
         tone = 'up' if f and f > 0 else 'down' if f and f < 0 else ''
         return (rupees(v, signed=True) if f is not None else NA), _sv(v), f'r num {tone}'
-    if k in ('pct', 'spct'):
+    if k in ('pct', 'spct', 'npct', 'vspct'):
         f = _finite(v)
         if f is None:
             return NA, '', 'r'
         if 0 < abs(f) < 0.001:   # a few lakh in a large company: no signal, so no sign and no colour (audit 22 Oct)
             return '<span class="na">&lt;0.001%</span>', _sv(f), 'r num'
-        tone = ('up' if f > 0 else 'down' if f < 0 else '') if k == 'spct' else ''
-        return pct(f, 2 if abs(f) >= 0.1 else 3, signed=(k == 'spct')), _sv(f), f'r num {tone}'
+        # vspct: now vs a trade price, coloured for a buy only: after a sale a rise is neither good nor bad news
+        coloured = k == 'spct' or (k == 'vspct' and r.get('side') == 'BUY')
+        tone = ('up' if f > 0 else 'down' if f < 0 else '') if coloured else ''
+        return pct(f, 2 if abs(f) >= 0.1 else 3, signed=k != 'pct'), _sv(f), f'r num {tone}'
     if k == 'bar':
         f = _finite(v)
         if f is None:
@@ -224,7 +273,7 @@ def facts(items: list[tuple[str, str]], links: list[tuple[str, str]] = ()) -> st
 
 
 def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str = 'Nothing here.',
-          height: int = 600, row_px: int = 53, detail=None, key: str = '') -> None:
+          height: int = 600, row_px: int = 53, detail=None, key: str = '', keep_empty: bool = False) -> None:
     """A ranked, sortable table drawn in the page (so it shares the page's styles and links work as
     links): the first `limit` rows drawn, the rest counted. `detail(row) -> html` gives a row facts that
     open under it on a tap. On a phone each row is a card, every cell under its column's label.
@@ -234,9 +283,10 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
         return
     shown = rows.head(limit)
     # A number column with no value in any shown row says nothing: drop it.
-    cols = [c for c in cols if c.kind not in ('pct', 'spct', 'bar', 'money', 'smoney', 'num', 'price', 'shares')
+    # (keep_empty: a kind table keeps its columns, a dash says "not filed", owner 23 Oct)
+    cols = [c for c in cols if keep_empty or c.kind not in ('pct', 'spct', 'npct', 'vspct', 'bar', 'money', 'smoney', 'num', 'price', 'shares')
             or c.key not in shown or pd.to_numeric(shown[c.key], errors='coerce').notna().any()]
-    bar_max = {c.key: max(pd.to_numeric(shown[c.key], errors='coerce').abs().max(), 1e-9)
+    bar_max = {c.key: max(pd.to_numeric(shown[c.key], errors='coerce').abs().max(skipna=True) if shown[c.key].notna().any() else 0, 1e-9)
                for c in cols if c.kind == 'bar' and c.key in shown}
     head = ''.join(
         f'<th data-k="{"n" if c.kind in NUMERIC_SORT else "t"}" class="{"r" if c.kind in RIGHT else ""}'
@@ -247,7 +297,7 @@ def table(rows: pd.DataFrame, cols: list[Col], limit: int = 50, empty_text: str 
         cells = []
         for c in cols:
             inner, sv, cls = _cell(c, r, bar_max)
-            cells.append(f'<td class="{cls}{"" if c.phone else " opt"}" data-v="{esc(sv, quote=True)}" data-l="{esc(c.label, quote=True)}">{inner}</td>')
+            cells.append(f'<td class="{cls}{"" if c.phone else " opt"}{" wrapc" if c.wrap else ""}" data-v="{esc(sv, quote=True)}" data-l="{esc(c.label, quote=True)}">{inner}</td>')
         more_html = detail(r) if detail else ''
         opener = ' class="has-dt"' if more_html else ''   # no backslash inside an f-string: Python 3.11 runs the site
         body.append(f'<tr{opener}>' + ''.join(cells) + '</tr>')

@@ -48,6 +48,16 @@ same day something is promised, started or finished. Pages follow the data:
 
 | UN | ~~Study universe: Rs 100 Cr and up~~ **Done 18 Oct** (owner): clean step writes the universe table, the site cuts every table to it on read, Track record uses the same list (latest market cap); collection unchanged | Pages show no company under Rs 100 Cr; the Data page counts what is left out |
 
+## Added 23 Oct 2026 (owner: design V3, the money board; detail in `docs/DESIGN_V3.md`)
+
+| # | Item | Done when |
+|---|---|---|
+| X | **Filings kinds** (built 23 Oct): a table of its own columns per kind, company cell with market line, "?" on held-back amounts, Upcoming kind | CI and Site preview green; the owner has seen it on live data |
+| X2 | **Today as the money board** with the ₹25 Cr additional rule (owner, 23 Oct: "or ₹25 Cr and up by one decision-maker") in `insiders_clean/ideas.py`, tests with it | Worth a look and Watch out rebuilt as Money in / Money out |
+| X3 | **Company snapshot** in the nightly precompute (market cap, price, 52-week range, promoter %, pledge %, last insider buy, funds' and FPIs' change) | Every page joins only it |
+| X4 | **Investors page and investor profile** (funds, FPIs, insurers, AIF/PMS; handshakes; named raise allottees); alias lines for fund families | Page live; alias list has GQG-style lines |
+| X5 | **Companies list and dossier** (ratios strip, money in and out, decisions timeline) | Pages live |
+
 ## Later
 
 | # | Item | Done when |

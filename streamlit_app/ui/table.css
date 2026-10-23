@@ -100,3 +100,13 @@ td.tags { min-width: 110px; }
   .tbl tr.dt td > div { position: static; max-width: none; }
   .tbl .dt-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Filings kinds (23 Oct): the company cell's market line, the held-back "?" and wrapped cells. */
+.tbl td.co { max-width: 300px; min-width: 230px; }
+.mk { font-size: 11.5px; color: var(--ink-3); display: inline-flex; gap: 0; align-items: center; white-space: nowrap; }
+.rgm { display: inline-block; position: relative; width: 44px; height: 4px; margin-left: 6px; border-radius: 2px;
+  background: linear-gradient(90deg, #F2D4D0, #E6E9EE 50%, #CBEAD9); vertical-align: middle; }
+.rgm i { position: absolute; top: -3px; width: 3px; height: 10px; margin-left: -1.5px; border-radius: 2px; background: var(--ink); }
+.qm { display: inline-flex; width: 15px; height: 15px; border-radius: 50%; background: var(--warn-tint); color: var(--warn-ink);
+  font-size: 10px; font-weight: 700; align-items: center; justify-content: center; margin-left: 6px; cursor: help; }
+.tbl td.wrapc { white-space: normal; max-width: 230px; min-width: 130px; line-height: 1.35; }

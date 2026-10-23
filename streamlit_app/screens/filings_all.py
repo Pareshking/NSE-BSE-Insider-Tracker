@@ -26,11 +26,16 @@ from ui.table import facts
 from insiders_clean import participants, signals
 from insiders_clean.calendar import DISCLOSURE_LIMIT_SESSIONS
 from screens import buybacks
-from screens.ctx import (ALLOTTEE_LABEL, flag_words, issue_rows, late_text, load, need_data, pre_public_move, qip_rows,
-                         rights_rows, split_since, window_text, with_flags, with_prices)
+from screens.ctx import (ALLOTTEE_LABEL, flag_words, issue_rows, late_text, load, lock_in_calendar, need_data, pre_public_move,
+                         qip_rows, rights_rows, split_since, window_text, with_flags, with_prices)
 
-KINDS = ['All', 'Insider market', 'Insider other', 'Pledges', 'Deals', 'SAST', 'Capital raises', 'Corporate actions',
-         'Held back']
+# One pill per kind of money event (docs/DESIGN_V3.md, owner 23 Oct): each has its own columns. 'All' stays the
+# mixed feed of seven; 'Other filings' holds what is not a money decision (ESOP, gifts, splits, bonuses, dividends).
+KINDS = ['All', 'Insider trades', 'Deals', 'Stake changes', 'Preferential', 'Rights', 'QIPs', 'Buybacks', 'Pledges',
+         'Upcoming', 'Other filings', 'Held back']
+UPCOMING_DAYS = 60
+MEETING_WORDS = {'fund_raising': 'fund raising', 'buyback': 'a buyback', 'preferential': 'a preferential issue',
+                 'rights': 'a rights issue'}
 PERIODS = {7: '7 days', 30: '30 days', 90: '90 days', 365: '1 year'}
 ROLES = ['Promoter', 'Director/KMP', 'Others']
 MIN_VALUE = {0: 'Any value', 1e6: '₹10 L+', 1e7: '₹1 Cr+', 1e8: '₹10 Cr+', 1e9: '₹100 Cr+'}
@@ -276,6 +281,57 @@ def _actions(ctx, since, names) -> tuple[pd.DataFrame, pd.DataFrame]:
                      is_mm=False, also_filed=False)
 
 
+def _meeting_detail(desc) -> str:
+    """NSE joins every notice of a meeting into one text: keep the short agenda line, not the 'has informed the
+    Exchange' boilerplate."""
+    parts = [x.strip() for x in _txt(desc).split('|') if x.strip()]
+    agenda = [x for x in parts if 'has informed the exchange' not in x.lower()]
+    return (agenda or parts or [''])[0][:140]
+
+
+def _upcoming(ctx, ref, names) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Money events ahead, next UPCOMING_DAYS from the data's as-of day (owner 23 Oct): board meetings that consider
+    fund raising, a buyback, a preferential or a rights issue; tender buybacks still open; lock-ins ending."""
+    today = pd.Timestamp(ref).normalize()
+    end = today + pd.Timedelta(days=UPCOMING_DAYS)
+    rows = []
+    m = ctx.meetings
+    flags = [c for c in MEETING_WORDS if m is not None and c in m]
+    if m is not None and not m.empty and 'meeting_date' in m and flags:
+        when = pd.to_datetime(m['meeting_date'], errors='coerce')
+        hit = m[(when >= today) & (when <= end) & m[flags].astype('boolean').fillna(False).any(axis=1)]
+        for r in hit.to_dict('records'):
+            said = [MEETING_WORDS[c] for c in flags if pd.notna(r.get(c)) and bool(r.get(c))]
+            rows.append(dict(kind='meeting', date=pd.Timestamp(r['meeting_date']), symbol=r.get('symbol'), isin=r.get('isin'),
+                             company=r.get('company_display') or r.get('company'), what='Board meets: ' + ', '.join(said),
+                             detail=_meeting_detail(r.get('description')), value=None))
+    bb = buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings)
+    if not bb.empty:
+        close = pd.to_datetime(bb['offer_close'], errors='coerce')
+        for r in bb[(close >= today) & (close <= end)].to_dict('records'):
+            rows.append(dict(kind='tender', date=pd.Timestamp(r['offer_close']), symbol=r.get('symbol'), isin=r.get('isin'),
+                             company=r.get('company'), what='Buyback tender closes',
+                             detail=' · '.join(x for x in (_txt(r.get('how')), f'offer {_price(r.get("offer_price"))}'
+                                                           if _num(r.get('offer_price')) is not None else '',
+                                                           f'opened {_d(r.get("offer_open"))}' if _d(r.get('offer_open')) else '') if x),
+                             value=r.get('offer_value')))
+    cal = lock_in_calendar(ctx.preferential, ctx.prices, today, store.table('preferential_lockins'))
+    if not cal.empty:
+        for r in cal[(cal['expires'] >= today) & (cal['expires'] <= end)].to_dict('records'):
+            rows.append(dict(kind='lockin', date=pd.Timestamp(r['expires']), symbol=r.get('symbol'), isin=r.get('isin'),
+                             company=r.get('company'), what='Lock-in ends',
+                             detail=' · '.join(x for x in (_txt(r.get('what')), f'{_shares(r.get("shares"))} shares'
+                                                           if _num(r.get('shares')) is not None else '', _txt(r.get('note'))) if x),
+                             value=r.get('at_market')))
+    if not rows:
+        return pd.DataFrame(), pd.DataFrame(columns=COLUMNS)
+    u = pd.DataFrame(rows)
+    u['value'] = pd.to_numeric(u['value'], errors='coerce')
+    return u, _frame('upcoming', u, group='Upcoming', held=False, made_public=u['date'], company=_name(u, names),
+                     nse_symbol=u['symbol'], isin=u['isin'], listed_on='nse', who='', what=u['what'], what_sub=u['detail'],
+                     value=u['value'], is_mm=False, also_filed=False)
+
+
 def build(ctx, days: int) -> tuple[pd.DataFrame, dict]:
     """Every filing made public in the last `days` days to the data's as-of date (forward-dated corporate
     actions included), in the common columns, newest first; and the source rows behind them by `_src`."""
@@ -286,7 +342,8 @@ def build(ctx, days: int) -> tuple[pd.DataFrame, dict]:
     if ctx.deals is not None and 'client_id' in ctx.deals:
         known |= set(ctx.deals['client_id'].dropna())
     parts = {'insider': _insider(ctx, since), 'deal': _deals(ctx, since), 'sast': _sast(ctx, since, names, known),
-             **_issues(ctx, since, names), 'buyback': _buybacks(ctx, since, names), 'action': _actions(ctx, since, names)}
+             **_issues(ctx, since, names), 'buyback': _buybacks(ctx, since, names), 'action': _actions(ctx, since, names),
+             'upcoming': _upcoming(ctx, ref, names)}
     # Columns empty in one part are left out of the concat (pandas deprecates letting them set the dtypes).
     frames = [p[1].dropna(axis=1, how='all') for p in parts.values() if not p[1].empty]
     rows = (pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()).reindex(columns=COLUMNS)
@@ -303,15 +360,18 @@ def build(ctx, days: int) -> tuple[pd.DataFrame, dict]:
 
 
 def in_kind(rows: pd.DataFrame, kind: str) -> pd.Series:
-    """Rows under a kind pill. Held-back rows appear only under 'Held back'; 'All' leaves out dividends
-    (the Corporate actions pill has them) and deals that are an insider's own filed trade (shown under
-    the insider, audit D6)."""
-    held = rows['held']
+    """Rows under a kind pill. Held-back rows appear only under 'Held back'; 'All' leaves out dividends, deals that
+    are an insider's own filed trade (shown under the insider, audit D6) and the money events ahead (their own pill)."""
+    held, src, grp = rows['held'], rows['_src'], rows['group']
     if kind == 'Held back':
         return held
     if kind == 'All':
-        return ~held & ~rows['also_filed'] & ~(rows['_src'].eq('action') & rows['what'].eq('Dividend'))
-    return ~held & rows['group'].eq(kind)
+        return ~held & ~rows['also_filed'] & ~(src.eq('action') & rows['what'].eq('Dividend')) & ~grp.eq('Upcoming')
+    pick = {'Insider trades': grp.eq('Insider market'), 'Deals': grp.eq('Deals'), 'Stake changes': src.eq('sast'),
+            'Preferential': src.eq('pref'), 'Rights': src.eq('rights'), 'QIPs': src.eq('qip'), 'Buybacks': src.eq('buyback'),
+            'Pledges': grp.eq('Pledges'), 'Upcoming': grp.eq('Upcoming'),
+            'Other filings': grp.eq('Insider other') | src.eq('action')}[kind]
+    return ~held & pick
 
 
 # ---- the facts behind each row ----------------------------------------------------------------
@@ -487,7 +547,12 @@ def _action_facts(x: dict, extra: dict) -> str:
                   ('Announced', _d(x.get('broadcast_date'))), ('Listed on', _txt(x.get('listed_on')).upper())])
 
 
-FACTS = {'insider': _insider_facts, 'deal': _deal_facts, 'sast': _sast_facts, 'buyback': _buyback_facts,
+def _upcoming_facts(x: dict, extra: dict) -> str:
+    return facts([('What', _txt(x.get('what'))), ('Date', _d(x.get('date'))), ('Detail', _txt(x.get('detail'))),
+                  ('Value', _money(x.get('value')))])
+
+
+FACTS = {'upcoming': _upcoming_facts, 'insider': _insider_facts, 'deal': _deal_facts, 'sast': _sast_facts, 'buyback': _buyback_facts,
          'action': _action_facts, 'pref': lambda x, e: _issue_facts('pref', x, e),
          'rights': lambda x, e: _issue_facts('rights', x, e), 'qip': lambda x, e: _issue_facts('qip', x, e)}
 
@@ -512,6 +577,264 @@ def _decorate(top: pd.DataFrame, sources: dict, ctx) -> dict:
     return out
 
 
+# ---- one table per kind (docs/DESIGN_V3.md): the extra columns each needs, for the shown rows only ----------
+
+MARKET = (('mk_cap', 'market_cap'), ('mk_px', 'latest_close'), ('mk_lo', 'low_52w'), ('mk_hi', 'high_52w'),
+          ('mk_bucket', 'mcap_bucket'))
+UNIT_WHY = ('The filed amount fails the unit check (zero, above ₹1 lakh crore, or far from shares × price), '
+            'so it is held back rather than shown wrong')
+
+
+def _market(df: pd.DataFrame, ctx) -> pd.DataFrame:
+    """Size bucket, market cap, price and 52-week range for the company cell (from the price summary)."""
+    out = df.copy()
+    p = ctx.prices
+    if p is None or p.empty or 'isin' not in out or 'isin' not in p:
+        for new, _ in MARKET:
+            out[new] = None
+        return out
+    q = p.drop_duplicates('isin').set_index('isin')
+    for new, old in MARKET:
+        out[new] = out['isin'].map(q[old]) if old in q else None
+    return out
+
+
+def _own(top: pd.DataFrame, sources: dict, src: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The source rows behind the shown rows of one source, indexed like `top`."""
+    mine = top[top['_src'] == src]
+    return sources[src].loc[mine['_i']].set_axis(mine.index), mine
+
+
+def _now_vs(rows: pd.DataFrame, price_col: str, ctx, date_col) -> pd.Series:
+    """Price now against a filed price, on today's split basis (audit W9): % ."""
+    paid = pd.to_numeric(rows[price_col], errors='coerce') * split_since(rows, ctx.prices, date_col)
+    close = pd.to_numeric(with_prices(rows[['isin']], ctx.prices)['latest_close'], errors='coerce')
+    return ((close / paid - 1) * 100).where(paid.gt(0) & close.gt(0))
+
+
+def _k_insider(top, sources, ctx, tables):
+    t, _ = _own(top, sources, 'insider')
+    out = top.copy()
+    out['price'] = pd.to_numeric(t['price'], errors='coerce')
+    out['vs_trade'] = _now_vs(t, 'price', ctx, 'trade_date_to')
+    out['hold_chg'] = pd.to_numeric(_col(t, 'holding_change_pct'), errors='coerce')
+    out['mode'] = _col(t, 'mode_raw').where(_col(t, 'mode_raw').notna(), top['what'])
+    out['qty'] = pd.to_numeric(_col(t, 'quantity'), errors='coerce')
+    out['hold_after'] = pd.to_numeric(_col(t, 'holding_after'), errors='coerce')
+    sess = pd.to_numeric(_col(t, 'trade_to_public_sessions'), errors='coerce')
+    out['lag_txt'] = [_after(n, 'the trade') if pd.notna(n) else '' for n in sess]
+    # What the row needs a look at, as tags (the sentences are in the row's facts): late filing, window just reopened
+    out['flags_txt'] = [','.join(x for x in ('Late' if late_text(r) else '', 'Window open' if window_text(r) else '') if x)
+                        for r in t.to_dict('records')]
+    return out
+
+
+def _k_deal(top, sources, ctx, tables):
+    d, _ = _own(top, sources, 'deal')
+    out = top.copy()
+    out['price'] = pd.to_numeric(d['price'], errors='coerce')
+    out['vs_trade'] = _now_vs(d, 'price', ctx, 'date')
+    out['counter'] = _col(d, 'counterparties').map(lambda v: '; '.join(map(str, v[:3])) if isinstance(v, (list, tuple))
+                                                  else _txt(v))
+    return out
+
+
+def _k_sast(top, sources, ctx, tables):
+    s_, _ = _own(top, sources, 'sast')
+    out = top.copy()
+    out['pct_moved'] = pd.to_numeric(_col(s_, 'percent_equity_traded'), errors='coerce')
+    out['after'] = pd.to_numeric(_col(s_, 'post_stake_pct'), errors='coerce')
+    acq, sold = (pd.to_numeric(_col(s_, c), errors='coerce') for c in ('shares_acquired', 'shares_sold'))
+    out['shares_moved'] = acq.where(acq.gt(0), sold)
+    out['mode'] = _col(s_, 'mode')
+    return out
+
+
+def _amount_cols(r: pd.DataFrame, out: pd.DataFrame) -> None:
+    """The amount, the reason a held-back one is blank, and the line under it."""
+    flag = _b(_col(r, 'amount_unreliable', False))
+    out['amount'] = pd.to_numeric(_col(r, 'amount'), errors='coerce')
+    out['amount_why'] = np.where(flag & out['amount'].isna(), UNIT_WHY, '')
+    shares_x_price = pd.to_numeric(_col(r, 'shares_allotted'), errors='coerce') * pd.to_numeric(_col(r, 'offer_price' if 'offer_price' in r else 'issue_price'), errors='coerce')
+    approved, raised = (pd.to_numeric(_col(r, c), errors='coerce') for c in ('amount_total', 'amount_raised'))
+    sub = []
+    for f, a, rz, x in zip(flag & out['amount'].isna(), approved, raised, shares_x_price):
+        if f and pd.notna(x):
+            sub.append(f'shares × price {kit.rupees(x)}')
+        elif pd.notna(a) and pd.notna(rz) and abs(a - rz) > 1:
+            sub.append(f'approved {kit.rupees(a)}')
+        else:
+            sub.append('')
+    out['amount_sub'] = sub
+
+
+def _lock_end(x: dict, lines) -> tuple[str, str]:
+    """(dates, basis) of a preferential issue's lock-in: the lines the company filed, else the rule from trading approval."""
+    if lines is not None and not lines.empty and 'app_id' in lines:
+        own = lines[lines['app_id'].astype(str) == _txt(x.get('app_id'))]
+        ends = sorted({pd.Timestamp(e) for e in own['expires'].dropna()}) if not own.empty else []
+        if ends:
+            return ' · '.join(kit.day(e) for e in ends), 'as filed'
+    ends = sorted(t for t in (pd.to_datetime(x.get('lock_in_other_until'), errors='coerce'),
+                              pd.to_datetime(x.get('lock_in_promoter_until'), errors='coerce')) if pd.notna(t))
+    if not ends:
+        return '', ''
+    return ' · '.join(kit.day(e) for e in ends), 'rule: others 6 months, promoters 18 months'
+
+
+def _k_pref(top, sources, ctx, tables):
+    r, _ = _own(top, sources, 'pref')
+    out = top.copy()
+    _amount_cols(r, out)
+    for c in ('to', 'instruments', 'status', 'posted_on'):
+        out[c] = _col(r, c)
+    for c in ('offer_price', 'icdr_min_price', 'vs_icdr_min', 'vs_market'):
+        out[c] = pd.to_numeric(_col(r, c), errors='coerce')
+    ends = [_lock_end(x, tables.get('lockins')) for x in r.to_dict('records')]
+    out['lock_end'], out['lock_sub'] = [e[0] for e in ends], [e[1] for e in ends]
+    out['to'] = out['to'].where(out['to'].notna(), 'not matched to its approval')
+    return out
+
+
+def _k_rights(top, sources, ctx, tables):
+    r, _ = _own(top, sources, 'rights')
+    out = top.copy()
+    _amount_cols(r, out)
+    for c in ('ratio', 'status'):
+        out[c] = _col(r, c)
+    for c in ('offer_price', 'vs_market'):
+        out[c] = pd.to_numeric(_col(r, c), errors='coerce')
+    for c in ('record_date', 'issue_close_date', 'posted_on'):
+        out[c] = _col(r, c)
+    return out
+
+
+def _k_qip(top, sources, ctx, tables):
+    r, _ = _own(top, sources, 'qip')
+    out = top.copy()
+    _amount_cols(r, out)
+    out['status'] = _col(r, 'status')
+    out['posted_on'] = _col(r, 'posted_on')
+    for c in ('issue_price', 'floor_price', 'discount_per_share', 'vs_market', 'allottees'):
+        out[c] = pd.to_numeric(_col(r, c), errors='coerce')
+    return out
+
+
+def _k_buyback(top, sources, ctx, tables):
+    r, _ = _own(top, sources, 'buyback')
+    out = top.copy()
+    out['route'] = _col(r, 'how').where(_col(r, 'how').notna(), 'route not on NSE')
+    out['route_note'] = _col(r, 'note')
+    for c in ('offer_price', 'vs_market', 'vs_announce', 'offer_value', 'times_tendered'):
+        out[c] = pd.to_numeric(_col(r, c), errors='coerce')
+    for c in ('offer_open', 'offer_close'):
+        out[c] = _col(r, c)
+    return out
+
+
+KIND_SPECS = {
+    'Insider trades': (_k_insider, [
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('who', 'Who', 'client', sub='who_sub'),
+        kit.Col('side', 'Side', 'side'),
+        kit.Col('value', 'Value', 'money'),
+        kit.Col('pct_of_mcap', '% of mcap', 'bar'),
+        kit.Col('price', 'Price', 'price', phone=False),
+        kit.Col('vs_trade', 'Price now vs trade', 'vspct', help='Today\'s price against the price in the filing, on today\'s split basis. '
+                'Coloured for a buy only: after a sale a rise is neither good nor bad news'),
+        kit.Col('hold_chg', 'Own holding Δ', 'spct', phone=False, help="Change in the person's own holding"),
+        kit.Col('made_public', 'Made public', 'date', sub='lag_txt'),
+        kit.Col('mode', 'Mode as filed', phone=False),
+        kit.Col('flags_txt', 'Flags', 'tags', phone=False, help='Late: filed after the 2-trading-day limit. Window open: a buy in the '
+                'first sessions after the trading window reopened. The sentences are in the row')]),
+    'Deals': (_k_deal, [
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('who', 'Client', 'client', sub='who_sub'),
+        kit.Col('side', 'Side', 'side'),
+        kit.Col('value', 'Value', 'money'),
+        kit.Col('pct_of_mcap', '% of mcap', 'bar'),
+        kit.Col('price', 'Price', 'price', phone=False),
+        kit.Col('vs_trade', 'Price now vs deal', 'vspct', phone=False),
+        kit.Col('what', 'Deal', sub='what_sub', phone=False),
+        kit.Col('counter', 'Other side', phone=False, wrap=True),
+        kit.Col('made_public', 'Date', 'date')]),
+    'Stake changes': (_k_sast, [
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('who', 'Who', 'client', sub='who_sub'),
+        kit.Col('side', 'Side', 'side'),
+        kit.Col('pct_moved', '% of company moved', 'spct', help='Of the share capital, as filed'),
+        kit.Col('after', 'Stake after', 'pct'),
+        kit.Col('shares_moved', 'Shares', 'shares', phone=False),
+        kit.Col('mode', 'Mode', phone=False),
+        kit.Col('made_public', 'Made public', 'date', sub='what')]),
+    'Preferential': (_k_pref, [
+        kit.Col('made_public', 'Posted', 'date', sub='status'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('to', 'Shares go to', sub='instruments', wrap=True),
+        kit.Col('amount', 'Amount', 'amt', flag='amount_why', sub='amount_sub',
+                help='What was raised once allotted, else the approved size'),
+        kit.Col('offer_price', 'Offer price', 'price', phone=False),
+        kit.Col('icdr_min_price', 'ICDR minimum', 'price', phone=False, help='The minimum issue price under SEBI ICDR, as the company filed it'),
+        kit.Col('vs_icdr_min', 'Offer vs minimum', 'npct', phone=False),
+        kit.Col('vs_market', 'Offer vs now', 'npct', phone=False, help='Negative: the shares were offered below today\'s price'),
+        kit.Col('lock_end', 'Lock-in ends', 'text', sub='lock_sub', wrap=True)]),
+    'Rights': (_k_rights, [
+        kit.Col('made_public', 'Posted', 'date', sub='status'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('ratio', 'Ratio'),
+        kit.Col('offer_price', 'Rights price', 'price'),
+        kit.Col('vs_market', 'Rights vs now', 'npct', phone=False),
+        kit.Col('record_date', 'Record date', 'date', phone=False),
+        kit.Col('issue_close_date', 'Closes', 'date', phone=False),
+        kit.Col('amount', 'Amount', 'amt', flag='amount_why', sub='amount_sub')]),
+    'QIPs': (_k_qip, [
+        kit.Col('made_public', 'Posted', 'date', sub='status'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('allottees', 'Allottees', 'num', phone=False),
+        kit.Col('amount', 'Amount', 'amt', flag='amount_why', sub='amount_sub'),
+        kit.Col('issue_price', 'Issue price', 'price'),
+        kit.Col('floor_price', 'Floor price', 'price', phone=False),
+        kit.Col('discount_per_share', 'Discount per share', 'price', phone=False),
+        kit.Col('vs_market', 'Issue vs now', 'npct', phone=False)]),
+    'Buybacks': (_k_buyback, [
+        kit.Col('made_public', 'Starts', 'date', sub='day_note'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('route', 'Route', sub='route_note', wrap=True),
+        kit.Col('offer_price', 'Offer price', 'price'),
+        kit.Col('vs_market', 'Offer vs now', 'npct', phone=False, help='Positive: the company offers more than today\'s price'),
+        kit.Col('vs_announce', 'Offer vs before the board meeting', 'npct', phone=False),
+        kit.Col('value', 'Size', 'money', phone=False),
+        kit.Col('times_tendered', 'Tendered ×', 'num', phone=False),
+        kit.Col('offer_close', 'Closes', 'date', phone=False)]),
+    'Pledges': (_k_insider, [
+        kit.Col('made_public', 'Made public', 'date', sub='lag_txt'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('who', 'Promoter or insider', 'client', sub='who_sub'),
+        kit.Col('what', 'Event', sub='what_sub', wrap=True),
+        kit.Col('qty', 'Shares', 'shares'),
+        kit.Col('value', 'Value', 'money', phone=False),
+        kit.Col('pct_of_mcap', '% of mcap', 'bar', phone=False),
+        kit.Col('hold_after', 'Holding after', 'shares', phone=False),
+        kit.Col('mode', 'Mode as filed', phone=False)]),
+    'Upcoming': (lambda top, sources, ctx, tables: top, [
+        kit.Col('made_public', 'Date', 'date'),
+        kit.Col('company', 'Company', 'co2'),
+        kit.Col('what', 'What', wrap=True),
+        kit.Col('what_sub', 'Detail', wrap=True, phone=False),
+        kit.Col('value', 'Size', 'money', phone=False)]),
+}
+GENERIC_COLS = [
+    kit.Col('company', 'Company', 'co2'),
+    kit.Col('who', 'Who', 'client', sub='who_sub'),
+    kit.Col('what', 'What', sub='what_sub'),
+    kit.Col('side', 'Side', 'side'),
+    kit.Col('value', 'Value', 'money', help='Insider and deal value as filed; for an issue the amount raised once '
+                                            'allotted, else the approved size; for a buyback its size'),
+    kit.Col('pct_of_mcap', '% of mcap', 'bar', phone=False),
+    kit.Col('made_public', 'Made public', 'date', sub='day_note'),
+]
+
+
 # ---- the page -------------------------------------------------------------------------------------
 
 def render():
@@ -519,7 +842,7 @@ def render():
     if not need_data(ctx):
         kit.head('Filings', 'Every filing and deal in one place.')
         return
-    kit.head('Filings', f'Every insider filing, deal, stake change, issue and corporate action, newest first · '
+    kit.head('Filings', f'Every filing and deal, one kind at a time, each with its own columns · '
                         f'insider filings to {kit.day(ctx.ref)}')
     kind_slot = st.container()
     # One bar (22 Oct, as the owner's screener): search and period in sight, the rest in "Filters & sort",
@@ -555,6 +878,8 @@ def render():
         kind = st.pills('Kind', KINDS, default='All', key='fa_kind', label_visibility='collapsed',
                         format_func=lambda k: f'{k} · {kit.indian(counts.get(k, 0))}') or 'All'
     shown = rows[in_kind(rows, kind)] if not rows.empty else rows
+    if kind == 'Upcoming' and not shown.empty:   # what is next first
+        shown = shown.sort_values('made_public', kind='stable')
     if shown.empty:
         kit.empty('No filings for these filters.')
         return
@@ -569,10 +894,13 @@ def render():
     if held.any():
         top.loc[held, 'what_sub'] = ['; '.join(flag_words(sources[s].loc[i].get('flags'))).capitalize()
                                      for s, i in zip(top.loc[held, '_src'], top.loc[held, '_i'])]
-    top = with_flags(top)
-    shown = pd.concat([top, shown.iloc[LIMIT:]], ignore_index=True) if len(shown) > LIMIT else top
+    top = with_flags(_market(top, ctx))
     tables = {'lockins': store.table('preferential_lockins'), 'pref_allottees': store.table('preferential_allottees'),
               'qip_allottees': store.table('qip_allottees')}
+    spec = KIND_SPECS.get(kind)
+    if spec:
+        top = spec[0](top, sources, ctx, tables)
+    shown = pd.concat([top, shown.iloc[LIMIT:]], ignore_index=True) if len(shown) > LIMIT else top
 
     def detail(r: dict) -> str:
         src, i = r.get('_src'), r.get('_i')
@@ -582,13 +910,5 @@ def render():
         own = extra.get(i, {}) if src == 'insider' else {}
         return FACTS[src](frame.loc[i].to_dict(), {**own, **tables})
 
-    kit.table(shown, [
-        kit.Col('company', 'Company', 'co'),
-        kit.Col('who', 'Who', 'client', sub='who_sub'),
-        kit.Col('what', 'What', sub='what_sub'),
-        kit.Col('side', 'Side', 'side'),
-        kit.Col('value', 'Value', 'money', help='Insider and deal value as filed; for an issue the amount raised once '
-                                                'allotted, else the approved size; for a buyback its size'),
-        kit.Col('pct_of_mcap', '% of mcap', 'bar', phone=False),
-        kit.Col('made_public', 'Made public', 'date', sub='day_note'),
-    ], limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}')
+    kit.table(shown, spec[1] if spec else GENERIC_COLS, limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}',
+              keep_empty=bool(spec))

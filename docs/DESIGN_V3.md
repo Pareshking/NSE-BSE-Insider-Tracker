@@ -12,6 +12,19 @@ row is a real NSE filing or deal from `tests/fixtures/`. Cells with a dotted und
 session that made them. The live Site preview run fills them from the price layer. Rebuild with
 `docs/design_v3/mock/` (`build_mocks.py`, then `shoot.py`).
 
+## Build status
+
+| Step | State |
+|---|---|
+| Filings kinds: pills and a table of its own columns for Insider trades, Deals, Stake changes, Preferential, Rights, QIPs, Buybacks, Pledges and Upcoming; company cell with size, market cap, price and 52-week bar; "?" for a held-back amount; lock-in end dates; Upcoming (fund-raising and buyback meetings, tender closes, lock-in ends, next 60 days) | **Built 23 Oct** (`screens/filings_all.py`, `ui/table.py`; tests in `tests/test_filings_page.py`) |
+| Today as the money board, with the ₹25 Cr rule in `insiders_clean/ideas.py` | Next |
+| Investors page and investor profile (needs the GQG-style alias lines) | After Today |
+| Companies list and the dossier's ratios strip, decisions timeline | After Investors |
+| Company snapshot table (promoter %, pledge %, funds' change) in the nightly precompute | Before Companies and Investors |
+
+Not in the first Filings step: the "Real money only" switch (it needs the ideas rules per row and goes with Today),
+the headline sentence, and the Investors link in the top bar.
+
 ## The investor's question
 
 Who put real money in or took it out, how big is that for the company, at what price compared with
