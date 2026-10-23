@@ -130,6 +130,8 @@ def _row(ctx, r, holding, px) -> str:
             facts.append(('Paid · now', f'{kit.price(paid)} · {kit.price(now)} ({(now / paid - 1) * 100:+.1f}%)'))
     if pd.notna(r.get('decision_makers')) and r.get('decision_makers'):
         facts.append(('Decision-makers', str(int(r['decision_makers']))))
+    if s is not None and pd.notna(s.get('promoter_holding_pct')) and r.get('kv3_label') == 'Own stake':
+        facts.append(('Promoters hold', kit.pct(s['promoter_holding_pct'], 1)))   # the number the third slot gave way to
     if s is not None and pd.notna(s.get('promoter_pledge_pct')):
         facts.append(('Pledged', f'{kit.pct(s["promoter_pledge_pct"], 1)} of promoter shares'))
     if pr is not None and pd.notna(pr.get('pct_off_high')):
@@ -214,6 +216,18 @@ def _coming(ctx) -> pd.DataFrame:
     return filings_all._market(up, ctx)
 
 
+def _breadth_tile(ctx, days: int) -> Tile:
+    """The whole market's insider buying against selling, with the period before it (not the page's size or sector filters)."""
+    b = ideas.insider_breadth(ctx.eligible, ctx.ref, max(days, 7))
+    if not b or b['buy_share'] is None:
+        return Tile('Insider buying share', '—', 'no decision-makers traded in this period')
+    before = b['before']
+    prev = f' · {before["buy_share"]:.0f}% the period before' if before and before['buy_share'] is not None else ''
+    return Tile('Insider buying share', f'{b["buy_share"]:.0f}%',
+                f'of rupees traded by decision-makers · {b["buy_companies"]} companies buying, {b["sell_companies"]} selling{prev}',
+                'up' if b['buy_share'] >= 50 else 'down')
+
+
 def render():
     ctx = load()
     if not need_data(ctx):
@@ -287,6 +301,7 @@ def render():
             Tile('Capital raised', str(n(cl, 'Raises')), f'{kit.rupees(raised)} in QIPs, issues and rights' if raised else 'companies'),
             Tile('Big investors in', str(n(cl, 'Big investors and funds in')), f'{n(cw, "Big investors and funds out")} out, with funds', 'up'),
             Tile('Pledges up', str(n(cw, 'Pledges')), f'{n(cl, "Pledges released")} released', 'down' if n(cw, 'Pledges') else ''),
+            _breadth_tile(ctx, ideas.PERIODS[period]),
         ])
 
     groups = [g for _, _, _, gs in PANELS for _, g in gs]

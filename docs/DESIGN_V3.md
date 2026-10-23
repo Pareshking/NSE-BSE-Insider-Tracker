@@ -203,6 +203,14 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 2. ~~Funds' and FPIs' quarterly change on Today~~ **Decided 23 Oct (owner): yes.** `ideas.holder_events` (from the company snapshot): mutual funds or foreign investors moved 1 point or more of the company in the latest quarter filed, worth ₹10 Cr or more at today's market cap (owner lowered it from ₹100 Cr the same day); chips *Mutual funds adding / trimming* and *Foreign investors adding / trimming* in the Big investors groups; shown in the 30 and 90 day views only (the snapshot has the quarter, not the day it was filed); the sentence gives the share before and after.
 3. Build order: Filings kinds first (largest gap), then Today, Companies, the dossier.
 
+## Added after the owner's investor review, 23 Oct
+
+- **Own stake on insider rows**: an insider row's third number is the change in the insider's own stake (shares traded in the period over
+  the shares held before the first filing in it, summed over the decision-maker's entities; only where a holding was filed), "+8.2%"
+  beside the share of the company and the rupees. The promoters' holding moves to the opened row. `ideas.decisions` computes it.
+- **Insider buying share** tile on Today: the whole market's decision-makers' open-market buying as a share of their buying and selling
+  rupees in the period, the companies buying and selling, and the period before (`ideas.insider_breadth`). Token buys and employees never count.
+
 ## Out of scope for this document
 
 Colour and type values stay as in `docs/DESIGN.md`. Wording, data collection and the track record
