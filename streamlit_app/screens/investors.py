@@ -29,7 +29,7 @@ def _label(df: pd.DataFrame) -> pd.DataFrame:
 
 
 INVESTOR_COLS = [
-    Col('investor', 'Investor', 'text', sub='type_sub', wrap=True),
+    Col('investor', 'Investor', 'client', sub='type_sub', wrap=True),   # opens the investor's page
     Col('net', 'Net', 'smoney', help='Bought minus sold in bulk and block deals over the period'),
     Col('buy', 'Bought', 'money', phone=False),
     Col('sell', 'Sold', 'money', phone=False),
@@ -50,6 +50,7 @@ def _panel(df: pd.DataFrame, key: str, empty: str) -> None:
         return
     d = _label(df)
     d['nse_symbol'] = d['largest_symbol']
+    d['client_id'] = d['investor_id']
     kit.table(d, INVESTOR_COLS, limit=LIMIT, key=key, keep_empty=True)
 
 
