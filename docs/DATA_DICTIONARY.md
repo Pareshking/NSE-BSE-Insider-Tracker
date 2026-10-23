@@ -549,6 +549,29 @@ Prices adjusted for splits and bonuses only.
 | `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses seen in the price table |
 | `market_cap`, `mcap_rank`, `mcap_bucket` | NSE market cap on the last stored day; bucket by rank (1-100 Large, 101-250 Mid, 251-500 Small, rest Micro), computed by us, not AMFI's list. BSE-only names have none |
 
+## Company snapshot (derived, `artifacts/company_snapshot.parquet`)
+
+One row per company of the study universe (Rs 100 Cr and up), rewritten after each nightly run by `scripts/precompute_slim.py`
+(`insiders_clean/snapshot.py`), so a page joins one small table instead of the price summary, the shareholding table and the
+insider table on every rerun. Read by `store.snapshot()`. A figure the data lacks is blank, never filled.
+
+| Column | Meaning |
+|---|---|
+| `isin`, `symbol`, `company` | Identity; `company` is the security master's display name, else the price file's name |
+| `price_date`, `latest_close`, `high_52w`, `low_52w`, `pct_off_high`, `ret_90d` | From the price summary (adjusted for splits and bonuses) |
+| `range_pos` | Where the close sits in the 52-week range: 0 at the low, 100 at the high; blank for a flat range |
+| `market_cap`, `mcap_bucket` | NSE's market cap on the last stored day and the size bucket by rank (as the price summary) |
+| `promoter`, `pledge`, `mf`, `fpi`, `insurance`, `aif`, `retail` | The latest filed value of each, in % (promoter holding, pledge as % of promoter shares, and the share of the company held by mutual funds, foreign portfolio investors, insurers, AIFs, retail), from NSE's shareholding table plus BSE-only companies |
+| `*_quarter` | The quarter end each value is from (a newer filing without that figure leaves the older one, and says so here) |
+| `*_change_pts` | The change in points from the quarter before; blank when the two quarters are more than 120 days apart |
+| `insider_buy_90d`, `insider_sell_90d`, `insider_net_90d` | Open-market buying and selling by decision-makers (promoter, promoter group, director, KMP; never designated persons) made public in the last 90 days to the data's as-of day, in rupees; token buys are not buying; zero when none |
+| `promoter_buy_90d`, `promoter_sell_90d` | The promoter group's part of those |
+| `last_insider_buy`, `last_insider_sell` | The latest day such a buy or sale was made public (any time, not only the last 90 days) |
+
 ## Adjustment factors (computed, not stored yet)
 
 `insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `split_bonus` (the only kind applied), `other_large`, `minor`, `none` or `unknown`; `kind_basis` says how a large reset was classified: `action` (a filed bonus or split in `actions` / `bse_actions`, factor within 1.5% of the filed ratio), `action_mismatch` (filed, but the factor differs: not applied), `action_not_split_bonus` (only a dividend, rights or buyback filed that day: not applied), `ratio` (nothing filed; the clean-ratio guess). Adjusted price at T uses only factors dated up to T.
+
+### Investors page (read from `deals`; `insiders_clean/investors.py`, `fund_managers.py`)
+
+Real deals only: primary legs (NSE and BSE legs are separate executions, both counted), market makers out. An investor is one `investor_group` (same investor, different spellings), never a fund family. Net = bought minus sold in rupees over 7, 30 or 90 days, with gross beside it; listed at Rs 25 Cr net or 0.25% of one company. Type comes from the name only; low-confidence types are left out of the default view and counted. `fund_managers.csv` (`pattern`, `manager`, `sub_advised`, `reason`; first match wins) maps a fund name to the manager the name itself names; a name with no line has no manager, and a sponsor's fund that names the manager inside is marked likely sub-advised.

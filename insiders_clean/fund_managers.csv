@@ -1,0 +1,5 @@
+pattern,manager,sub_advised,reason
+^(GOLDMAN SACHS TRUST II|JNL|WITAN INVESTMENT TRUST)\b.*GQG,GQG Partners,yes,"Another sponsor's name leads the fund's name and GQG is named inside it (Goldman Sachs Trust II - Goldman Sachs GQG Partners ...; JNL/GQG ...; Witan Investment Trust PLC RE GQG Partners LLC): likely sub-advised, from the name only"
+GQG PARTNERS|GQG GLOBAL,GQG Partners,no,The manager is named in the fund's own name (GQG Partners ... Fund; ... A Sub Fund of GQG Global UCITS ICAV; BBH GQG Partners ... Master Fund LP)
+FIDELITY,Fidelity,no,The manager is named in the fund's own name (Fidelity Funds Asian Smaller Companies Pool; Fidelity Asian Values PLC)
+GOLDMAN SACHS,Goldman Sachs,no,The manager is named in the fund's own name (GSF II Goldman Sachs Global Multi Manager Alternatives Portfolio)

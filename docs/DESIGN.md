@@ -9,6 +9,9 @@ and `ui/table.css`; pages never set their own colours, sizes or fonts.
   on desktop (on a phone Streamlit's slide-out menu carries the same four links).
 - The page uses the screen's width with 24 px gutters (12 px on a phone), as the owner's screener; cards are flat (1 px border, 8 px corners, no shadow).
 - Filters: search and the main choice in sight, everything else in one "Filters & sort" popover. No CSV export.
+- Filings: one pill per kind (docs/DESIGN_V3.md), each with its own columns; a kind table keeps an empty column and shows a dash.
+- The company cell is two lines: name, then symbol · size · market cap · price · a small 52-week bar. An exchange mark only where BSE is involved.
+- A figure that fails its unit check shows a dash and a "?" with the reason; never a number a power of ten off.
 - On a phone a table is a list of cards (each cell under its column's label); a tap anywhere on a row opens its facts.
 - Links between pages stay in the session and change the address (ui/nav.py), so every company has its own URL.
 - Two columns only where two things are compared or read together (the price chart and the money flow).

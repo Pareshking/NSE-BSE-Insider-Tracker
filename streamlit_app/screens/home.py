@@ -1,9 +1,11 @@
-"""Today (home), the dashboard (owner, 21 Oct 2026): across every listed company, for one of four periods
-(today, 7, 30 or 90 days), "Worth a look" (people with skin in the game put money in at a size that
-matters) and "Watch out" (they took it out, pledged, or took cheap shares), in groups, from
-insiders_clean/ideas.py. Tiles and a trend panel count companies per group in each period; filters by
-size, sector and name. One row per company: one sentence, three numbers, the reasons as chips with their
-measured read; it opens to the facts and links. Everything else is in Filings."""
+"""Today (home), the money board (owner, 21 and 23 Oct 2026): across every listed company, for one of four
+periods (today, 7, 30 or 90 days), where real money moved: "Money in" (insiders and big investors buying,
+promoters paying up, buybacks, capital raised), "Money out" (insiders and big investors selling) and
+"Risk changes" (pledges, cheap shares to promoters), in groups, from insiders_clean/ideas.py. Tiles and a
+trend panel count companies per group in each period; filters by size, sector and name. One row per
+company: its size and price, one sentence, three numbers, the reasons as chips with their measured read;
+it opens to the facts and links. "Coming up" lists the money events of the next ten days. Everything else
+is in Filings (docs/DESIGN_V3.md)."""
 from __future__ import annotations
 
 import pandas as pd
@@ -13,11 +15,21 @@ from ui import kit, lwchart
 from ui.kit import Tile, esc
 
 from insiders_clean import ideas
-from screens import buybacks
-from screens.ctx import issue_rows, load, need_data, split_since
+from screens import buybacks, filings_all
+from screens.ctx import issue_rows, load, need_data, qip_rows, rights_rows, split_since
+from ui import table as tbl
 
 READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
 WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
+RAISE_KINDS = {k for n, ks in ideas.GROUPS['look'] if n == 'Raises' for k in ks}   # shares issued: dilution, a neutral chip
+# The panels (docs/DESIGN_V3.md): (title, key, side, [(list, group)]). Pledges released is de-risking, so it sits with the pledges.
+PANELS = [
+    ('Money in', 'td_in', 'left', [('look', g) for g in ('Insiders buying', 'Promoters pay up', 'Big investors and funds in',
+                                                         'Buybacks at a premium', 'Raises')]),
+    ('Money out', 'td_out', 'right', [('warn', 'Insiders selling'), ('warn', 'Big investors and funds out')]),
+    ('Risk changes', 'td_risk', 'right', [('warn', 'Pledges'), ('look', 'Pledges released'), ('warn', 'Cheap shares to promoters')]),
+]
+COMING_DAYS = 10
 DEFAULT_PERIOD = 'Last 30 days'
 SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
 # Sort inside each group: (column, the list's subtitle)
@@ -26,7 +38,7 @@ SORTS = {'Share of the company': ('pct_of_company', 'largest share of the compan
 DEFAULT_SORT = 'Share of the company'
 # Short names where space is tight (the group pills, the trend panel); the list headings keep the full ones.
 SHORT = {'Insiders buying': 'Insiders buying', 'Promoters pay up': 'Promoters pay up', 'Pledges released': 'Pledges released',
-         'Big investors and funds in': 'Investors in', 'Buybacks at a premium': 'Buybacks', 'Promoters selling': 'Promoters selling',
+         'Big investors and funds in': 'Investors in', 'Buybacks at a premium': 'Buybacks', 'Insiders selling': 'Insiders selling', 'Raises': 'Raises',
          'Pledges': 'Pledges up', 'Cheap shares to promoters': 'Cheap to promoters', 'Big investors and funds out': 'Investors out'}
 
 
@@ -37,19 +49,33 @@ def _inputs(_ctx, ref_key: str) -> tuple:
     ctx = _ctx
     summary = store.artifact('artifacts/track_summary.parquet')
     issues = issue_rows(ctx.preferential, ctx.prices) if ctx.preferential is not None and not ctx.preferential.empty else None
-    return summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings), ideas.marked(ctx.eligible, ctx.ref)
+    qip, rights = qip_rows(store.table('qip'), ctx.prices), rights_rows(ctx.rights, ctx.prices)
+    return (summary, issues, buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings), ideas.marked(ctx.eligible, ctx.ref),
+            qip, rights, _funds_named())
+
+
+def _funds_named() -> dict:
+    """app_id -> True where the filing names a mutual fund among the allottees (preferential: by name; QIP: by category)."""
+    out = {}
+    pa, qa = store.table('preferential_allottees'), store.table('qip_allottees')
+    if pa is not None and not pa.empty and {'app_id', 'allottee'} <= set(pa.columns):
+        out |= {str(a): True for a in pa.loc[pa['allottee'].astype(str).str.contains(r'mutual fund|\bMF\b', case=False, regex=True), 'app_id']}
+    if qa is not None and not qa.empty and {'app_id', 'category'} <= set(qa.columns):
+        out |= {str(a): True for a in qa.loc[qa['category'].astype(str).str.contains('mutual', case=False), 'app_id']}
+    return out
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def _lists(_ctx, ref_key: str, days: int) -> tuple:
     """(look, warn) for one period; `ref_key` (the data's as-of day) keys the cache."""
     ctx, ref, sh = _ctx, _ctx.ref, _ctx.shareholding
-    summary, issues, bb, marks = _inputs(ctx, ref_key)
+    summary, issues, bb, marks, qip, rights, named = _inputs(ctx, ref_key)
     return ideas.today([
         ideas.insider_events(ctx.eligible, ref, sh, summary, days=days, marks=marks), ideas.pledge_events(ctx.trades, ref, sh, days=days, enc=ctx.encumbrances),
         ideas.stake_events(ctx.sast, ref, days=days), ideas.fund_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
         ideas.promoter_deal_events(ctx.deals, ctx.trades, ref, days=days, sh=sh),
-        ideas.issue_events(issues, ref, sh, days=days, allottees=store.table('preferential_allottees')), ideas.buyback_events(bb, ref, sh, days=days)], summary)
+        ideas.issue_events(issues, ref, sh, days=days, allottees=store.table('preferential_allottees')), ideas.buyback_events(bb, ref, sh, days=days),
+        ideas.raise_events(issues, qip, rights, ref, sh, days=days, named=named)], summary)
 
 
 def _num(label: str, value: str, tip: str = '') -> str:
@@ -57,12 +83,15 @@ def _num(label: str, value: str, tip: str = '') -> str:
     return f'<div class="kv"{t}><span>{esc(label)}</span><b>{esc(value)}</b></div>'
 
 
-def _chips(kinds, reads) -> str:
+def _chips(kinds, reads, big: bool = False) -> str:
     out = []
     for k in kinds:
-        tone = 'sell' if k in WARN_KINDS else 'mute' if k == 'Steady accumulation' else 'acc'
-        read = READ.get((reads or {}).get(k, ''), '')
+        tone = 'sell' if k in WARN_KINDS else 'mute' if k == 'Steady accumulation' or k in RAISE_KINDS else 'acc'
+        read = '' if k in RAISE_KINDS else READ.get((reads or {}).get(k, ''), '')
         out.append(f'<span class="chip {tone}">{esc(k)}' + (f'<i>{esc(read)}</i>' if read else '') + '</span>')
+    if big:   # one decision-maker, Rs 25 Cr and up, whatever its share of the company (owner, 23 Oct)
+        crore = f'₹{ideas.BIG_VALUE / 1e7:.0f} Cr'
+        out.insert(0, f'<span class="chip mute" title="One decision-maker, {crore} or more in the period, whatever its share of the company">{crore}+</span>')
     return ''.join(out)
 
 
@@ -81,8 +110,12 @@ def _row(ctx, r, holding, px) -> str:
         worth, tip = '≈ ' + kit.rupees(pct / 100 * mcap), "The shares at today's market cap"
     else:
         worth, tip = '—', ''
-    nums = [_num('Of company', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip),
-            _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—')]
+    third = (_num(r['kv3_label'], r['kv3']) if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str)
+             else _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—'))
+    nums = [_num('Of company' if r.get('kind') not in RAISE_KINDS else 'New shares', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip), third]
+    mk = tbl.market_line({'mk_bucket': pr.get('mcap_bucket') if pr is not None else None, 'mk_cap': mcap, 'mk_px': now,
+                          'mk_lo': pr.get('low_52w') if pr is not None else None, 'mk_hi': pr.get('high_52w') if pr is not None else None})
+    sym_line = (f'<div class="sub"><span class="sym">{esc(str(r.get("nse_symbol") or ""))}</span>{mk}</div>')
     facts = [('Made public', kit.day(r['last']) if pd.notna(r.get('last')) else '')]
     # A filing made public weeks after the trade (239 open-market rows over 30 sessions late, audit 23 Oct): the
     # period counts it on the day it was made public, so the card says how old the trade already was.
@@ -106,7 +139,7 @@ def _row(ctx, r, holding, px) -> str:
     also = ''.join(f'<li>{esc(x)}</li>' for x in (r.get('others') or []))
     return (f'<details class="idea"><summary>'
             f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>'
-            f'<p>{esc(r["sentence"])}</p><div class="idea-chips">{_chips(r["kinds"], r.get("reads"))}</div></div>'
+            f'{sym_line}<p>{esc(r["sentence"])}</p><div class="idea-chips">{_chips(r["kinds"], r.get("reads"), bool(r.get("big")) and r.get("kind") not in RAISE_KINDS)}</div></div>'
             f'{"".join(nums)}</summary>'
             f'<div class="idea-more">' + (f'<ul class="idea-also">{also}</ul>' if also else '')
             + f'<div class="idea-grid">{grid}</div><a href="{esc(href, quote=True)}" target="_self">Company page →</a></div></details>')
@@ -150,11 +183,13 @@ def _value(df: pd.DataFrame, group: str) -> float:
     return float(pd.to_numeric(x['value'], errors='coerce').sum()) if len(x) else 0.0
 
 
-def _list(ctx, df: pd.DataFrame, lst: str, pick: str, holding, px) -> None:
+def _list(ctx, frames: dict, groups: list, pick: str, holding, px) -> None:
+    """The groups of one panel, each its company rows (up to PER_GROUP); `frames` is {'look': ..., 'warn': ...}."""
     shown = 0
-    for name, _ in ideas.GROUPS[lst]:
+    for lst, name in groups:
         if pick not in ('All', name):
             continue
+        df = frames[lst]
         g = df[df['group'] == name] if not df.empty else df
         if g.empty:
             continue
@@ -166,6 +201,16 @@ def _list(ctx, df: pd.DataFrame, lst: str, pick: str, holding, px) -> None:
                               if more > 0 else ''))
     if not shown:
         kit.empty('Nothing passed the bar in this period.' if pick == 'All' else f'No {pick.lower()} in this period.')
+
+
+def _coming(ctx) -> pd.DataFrame:
+    """The money events of the next COMING_DAYS days: meetings on fund raising or a buyback, tender closes, lock-ins ending."""
+    _, up = filings_all._upcoming(ctx, ctx.ref, filings_all._names(ctx))
+    if up.empty:
+        return up
+    day = pd.Timestamp(ctx.ref).normalize()
+    up = up[(pd.to_datetime(up['made_public']) <= day + pd.Timedelta(days=COMING_DAYS))].sort_values('made_public', kind='stable')
+    return filings_all._market(up, ctx)
 
 
 def render():
@@ -182,7 +227,7 @@ def render():
 
     # The lookups below hold only the columns a row reads: a dict of every column of every price and
     # shareholding row took most of each rerun (22 Oct).
-    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket') if c in ctx.prices]
+    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket', 'low_52w', 'high_52w') if c in ctx.prices]
     px = ({i: r for i, r in zip(ctx.prices['isin'], ctx.prices[pcols].to_dict('records'))} if not ctx.prices.empty else {})
     sec = ctx.securities
     sectors = (dict(zip(sec['isin'], sec['sector'])) if sec is not None and not sec.empty and {'isin', 'sector'} <= set(sec.columns)
@@ -225,33 +270,51 @@ def render():
     look, warn = (_sorted(x, order, px) for x in view[period])
     span = 'today' if ideas.PERIODS[period] == 1 else period.lower()
     cl, cw = _counts(look), _counts(warn)
-    bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Promoters selling')
+    bought, sold, raised = _value(look, 'Insiders buying'), _value(warn, 'Insiders selling'), _value(look, 'Raises')
+    have = {**cl, **cw}
+    count = {title: sum(have.get(g, 0) for _, g in groups) for title, _, _, groups in PANELS}
     with top:
-        st.html(f'<div class="head"><h1 class="headline"><b class="up">{len(look)}</b> {"company" if len(look) == 1 else "companies"} '
-                f'worth a look, <b class="down">{len(warn)}</b> to watch out <span>{esc(kit.sentence(span))} to {kit.day(ctx.ref)}</span></h1></div>')
+        st.html(f'<div class="head"><h1 class="headline"><b class="up">{count["Money in"]}</b> '
+                f'{"company" if count["Money in"] == 1 else "companies"} with money in, <b class="down">{count["Money out"]}</b> with '
+                f'money out, <b>{count["Risk changes"]}</b> risk {"change" if count["Risk changes"] == 1 else "changes"} '
+                f'<span>{esc(kit.sentence(span))} to {kit.day(ctx.ref)}</span></h1></div>')
     n = lambda d, k: d.get(k, 0)   # noqa: E731
     with head:
         kit.tiles([
             Tile('Insiders buying', str(n(cl, 'Insiders buying')), f'{kit.rupees(bought)} bought' if bought else 'companies', 'up'),
-            Tile('Promoters selling', str(n(cw, 'Promoters selling')), f'{kit.rupees(sold)} sold' if sold else 'companies', 'down'),
-            Tile('Pledges up', str(n(cw, 'Pledges')), f'{n(cl, "Pledges released")} released', 'down' if n(cw, 'Pledges') else ''),
+            Tile('Insiders selling', str(n(cw, 'Insiders selling')), f'{kit.rupees(sold)} sold' if sold else 'companies', 'down'),
+            Tile('Capital raised', str(n(cl, 'Raises')), f'{kit.rupees(raised)} in QIPs, issues and rights' if raised else 'companies'),
             Tile('Big investors in', str(n(cl, 'Big investors and funds in')), f'{n(cw, "Big investors and funds out")} out, with funds', 'up'),
-            Tile('Promoters pay up', str(n(cl, 'Promoters pay up')), f'{n(cw, "Cheap shares to promoters")} took cheap shares'),
+            Tile('Pledges up', str(n(cw, 'Pledges')), f'{n(cl, "Pledges released")} released', 'down' if n(cw, 'Pledges') else ''),
         ])
 
-    groups = [n for lst in ('look', 'warn') for n, _ in ideas.GROUPS[lst]]
-    have = {**cl, **cw}
+    groups = [g for _, _, _, gs in PANELS for _, g in gs]
     with pills:
         pick = st.pills('Group', ['All'] + [g for g in groups if have.get(g)], default='All', key='td_group',
                         format_func=lambda g: g if g == 'All' else f'{SHORT.get(g, g)} · {have.get(g, 0)}',
                         label_visibility='collapsed') or 'All'
 
-    # Worth a look and Watch out side by side on a wide screen (one under the other on a phone).
-    sides = [lst for lst in ('look', 'warn') if pick == 'All' or pick in dict(ideas.GROUPS[lst])]
+    # Money in on the left, Money out above Risk changes on the right on a wide screen (one under the other on a phone).
+    frames = {'look': look, 'warn': warn}
+    shown_panels = [p for p in PANELS if pick == 'All' or any(pick == g for _, g in p[3])]
+    sides = [side for side in ('left', 'right') if any(p[2] == side for p in shown_panels)]
     holders = st.columns(len(sides), gap='medium') if len(sides) > 1 else [st.container()]
-    for col, lst in zip(holders, sides):
-        with col, kit.card('Worth a look' if lst == 'look' else 'Watch out', f'td_{lst}', SORTS[order][1]):
-            _list(ctx, look if lst == 'look' else warn, lst, pick, holding, px)
+    for col, side in zip(holders, sides):
+        with col:
+            for title, key, _, groups in (p for p in shown_panels if p[2] == side):
+                with kit.card(title, key, SORTS[order][1]):
+                    _list(ctx, frames, groups, pick, holding, px)
+
+    # What is next: meetings on fund raising or a buyback, tender closes, lock-ins ending (a meeting is not a raise
+    # until its outcome is filed).
+    coming = _coming(ctx)
+    with kit.card('Coming up', 'td_up', f'money events in the next {COMING_DAYS} days · a meeting is not a raise until its outcome is filed'):
+        if coming.empty:
+            kit.empty(f'No money events in the next {COMING_DAYS} days.')
+        else:
+            kit.table(coming, [kit.Col('made_public', 'Date', 'date'), kit.Col('company', 'Company', 'co2'),
+                               kit.Col('what', 'What', wrap=True), kit.Col('what_sub', 'Detail', wrap=True, phone=False),
+                               kit.Col('value', 'Size', 'money', phone=False)], limit=12, height=420, keep_empty=True)
 
     # The trend at the foot of the page, its full width: companies made public each week over 90 days, Worth a
     # look above the line, Watch out below (TradingView Lightweight Charts, owner 22 Oct); the group pills apply.
@@ -266,7 +329,10 @@ def render():
     with st.expander('How a filing makes the list'):
         st.html('<ul class="bar-rules">'
                 f'<li>Insiders: per decision-maker in the period, ₹{ideas.MIN_VALUE / 1e5:.0f} L and {ideas.MIN_PCT:g}% '
-                f'of the company, or {ideas.ALONE_PCT:g}% alone, or buying on {ideas.STEADY_DAYS}+ days</li>'
+                f'of the company, or {ideas.ALONE_PCT:g}% alone, or buying on {ideas.STEADY_DAYS}+ days, or ₹{ideas.BIG_VALUE / 1e7:.0f} Cr '
+                'and up whatever the share (those rows go first). A director or KMP selling counts only at that size</li>'
+                f'<li>Raises: QIPs, preferential issues to others and rights issues, allotted; ₹{ideas.RAISE_MIN_AMOUNT / 1e7:.0f} Cr and up, '
+                f'or {ideas.RAISE_MIN_DILUTION:g}% of the shares outstanding. Shares issued are dilution: neutral, not a verdict</li>'
                 f'<li>Big investors: crossing {ideas.BIG_STAKE:g}% or moving {ideas.BIG_CHANGE:g}%+ (SAST); trustees for lenders left out</li>'
                 f'<li>Funds: net {ideas.FUND_NET_PCT:g}%+ of the company in bulk/block deals</li>'
                 f'<li>Pledges: net of releases; or {ideas.PLEDGE_RISE_PTS:g}+ points in a quarter</li>'

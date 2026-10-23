@@ -249,3 +249,161 @@ def test_an_issue_to_promoters_and_others_counts_only_the_promoter_groups_part()
     assert abs(r['pct_of_company'] - 2.0) < 1e-9                                       # a quarter of the 8% issue
     assert '(1 of 2 named allottees in the promoter group)' in r['sentence']
     assert len(ideas.issue_events(issues, REF, sh)) == 2                               # no allottee table: as before
+
+
+# ---- the money board of 23 Oct: the Rs 25 Cr path, the lift, raises (docs/DESIGN_V3.md; agreed with the consultant) ----
+
+BIG = 'INE777A01011'
+
+
+def _big_buy(person='Vama Sundari', role='promoter_group', n=7, qty=60_000, price=1_700.0, isin=BIG):
+    """Seven filings over seven days: Rs 71 Cr in a company worth Rs 4 lakh Cr (0.02%: under both share floors)."""
+    return [{**row(isin, 'BIGCAP', person, role, 'BUY', qty, price, d), 'market_cap': 4e12, 'pct_of_mcap': qty * price / 4e12 * 100}
+            for d in pd.bdate_range('2026-10-05', periods=n)]
+
+
+def test_rs_25_crore_by_one_decision_maker_qualifies_whatever_the_share_of_the_company():
+    t = pd.DataFrame(_big_buy(n=7))                           # 7 buying days: under STEADY_DAYS, value 71 Cr
+    out = ideas.worth_a_look(t, REF)
+    assert list(out['nse_symbol']) == ['BIGCAP'] and out.iloc[0]['pct_of_company'] < ideas.MIN_PCT
+    assert out.iloc[0]['value'] >= ideas.BIG_VALUE
+    small = pd.DataFrame(_big_buy(n=7, qty=10_000))           # Rs 11.9 Cr: still under, and a tiny share
+    assert ideas.worth_a_look(small, REF).empty
+
+
+def test_the_rupee_path_is_per_decision_maker_not_per_company():
+    two = pd.DataFrame(_big_buy('Ravi', 'director', n=2, qty=50_000) + _big_buy('Dee', 'director', n=2, qty=50_000))   # 17 Cr each
+    assert ideas.worth_a_look(two, REF).empty                 # 34 Cr in all, but no one decision-maker reaches 25 Cr
+
+
+def test_a_director_selling_counts_only_at_rs_25_crore_and_the_promoter_group_by_the_old_floors_too():
+    director_big = pd.DataFrame([{**row(BIG, 'BIGCAP', 'Dee Director', 'director', 'SELL', 160_000, 1_700.0, '2026-10-12'),
+                                  'market_cap': 4e12, 'pct_of_mcap': 0.007}])
+    director_small = pd.DataFrame([row('INE778A01011', 'DIRSMALL', 'Dee Director', 'director', 'SELL', 3_000_000, 50, '2026-10-12')])
+    promoter_small = pd.DataFrame([row('INE779A01011', 'PROMSMALL', 'Promo Seller', 'promoter', 'SELL', 3_000_000, 50, '2026-10-12')])
+    out = ideas.watch_out(pd.concat([director_big, director_small, promoter_small]), REF)
+    assert dict(zip(out['nse_symbol'], out['kind'])) == {'BIGCAP': 'Director or KMP selling', 'PROMSMALL': 'Promoter selling'}
+
+
+def test_designated_persons_and_employees_never_count():
+    t = pd.DataFrame(_big_buy('Raghavan Kidambi', 'designated_person', n=2, qty=160_000))     # Rs 54 Cr each, but not a decision-maker
+    assert ideas.worth_a_look(t, REF).empty and ideas.watch_out(t.assign(side='SELL'), REF).empty
+
+
+def test_the_token_rule_cannot_fire_on_a_rupee_big_buy():
+    t = pd.DataFrame(_big_buy(n=3, qty=60_000))
+    assert not ideas.decisions(t.assign(is_token=False), REF, 'BUY')['value'].lt(ideas.BIG_VALUE).any()
+    from insiders_clean import signals
+    assert signals.TOKEN_MAX_VALUE < ideas.BIG_VALUE
+
+
+def _two_groups_of_events(n_big=7, n_small=6):
+    rows = []
+    for i in range(n_big):    # rupee-big, tiny share
+        rows.append({'isin': f'INE9{i:02d}A01011', 'company': f'Big {i}', 'nse_symbol': f'BIG{i}', 'list': 'look', 'kind': 'Promoter buying',
+                     'pct_of_company': 0.01 + i / 1000, 'sentence': f'big {i}', 'value': (30 + i) * 1e7, 'last': REF - pd.Timedelta(days=i)})
+    for i in range(n_small):  # small in rupees, big share
+        rows.append({'isin': f'INE8{i:02d}A01011', 'company': f'Small {i}', 'nse_symbol': f'SM{i}', 'list': 'look', 'kind': 'Promoter buying',
+                     'pct_of_company': 5.0 - i / 10, 'sentence': f'small {i}', 'value': 4e7, 'last': REF - pd.Timedelta(days=i)})
+    return ideas._ev(rows)
+
+
+def test_rupee_big_rows_go_first_in_their_group_by_value_but_leave_places_for_share_ranked_rows():
+    look, _ = ideas.today([_two_groups_of_events()])
+    names = look['company'].tolist()
+    lifted = names[:ideas.MAX_LIFT]
+    assert lifted == ['Big 6', 'Big 5', 'Big 4', 'Big 3', 'Big 2']                      # largest rupees first, at most MAX_LIFT
+    assert names[ideas.MAX_LIFT:ideas.PER_GROUP] == ['Small 0', 'Small 1', 'Small 2']   # three places stay for the share ranking
+    assert look['big'].tolist()[:ideas.MAX_LIFT] == [True] * ideas.MAX_LIFT
+    assert ideas.PER_GROUP - ideas.MAX_LIFT >= 3
+    rest = names[ideas.PER_GROUP:]
+    assert set(rest) == {'Big 1', 'Big 0', 'Small 3', 'Small 4', 'Small 5'}             # the other big rows rank by share like any
+
+
+def test_a_preferential_issue_at_exactly_the_market_price_is_promoters_paying_up_and_nothing_else():
+    sh = pd.DataFrame({'isin': ['INE0EQ000011'], 'symbol': ['EQCO'], 'company': ['E'], 'quarter_end': pd.to_datetime(['2026-09-30']),
+                       'total_shares': [1e8]})
+    base = {'isin': 'INE0EQ000011', 'symbol': 'EQCO', 'company': 'E', 'app_id': 'L1', 'allottee_category': 'PROMOTER',
+            'shares_allotted': 1e6, 'instruments': 'Equity shares', 'posted_on': pd.Timestamp('2026-10-05'),
+            'status': 'Allotted or listed', 'amount': 1e8}
+    for vs, kind in ((0.0, 'Promoters pay up'), (0.01, 'Promoters pay up'), (-0.01, 'Cheap shares to promoters')):
+        out = ideas.issue_events(pd.DataFrame([{**base, 'vs_market': vs}]), REF, sh)
+        assert out['kind'].tolist() == [kind], (vs, out)                              # exactly one place, the same price reference
+        assert out['list'].tolist() == [('look' if kind == 'Promoters pay up' else 'warn')]
+        assert ideas.raise_events(pd.DataFrame([{**base, 'vs_market': vs}]), None, None, REF, sh).empty   # promoter issues are not 'Raises'
+
+
+def _qip(**kw):
+    r = {'isin': 'INE0QIP00011', 'symbol': 'QIPCO', 'company': 'Qip Co', 'app_id': 'Q1', 'status': 'Allotted or listed',
+         'allotment_date': pd.Timestamp('2026-10-05'), 'posted_on': pd.Timestamp('2026-10-06'), 'issue_price': 165.65,
+         'shares_allotted': 18_110_473, 'allottees': 20, 'amount': 3e9, 'vs_market': -8.0}
+    return {**r, **kw}
+
+
+def _total(n):
+    return pd.DataFrame({'isin': ['INE0QIP00011'], 'symbol': ['QIPCO'], 'company': ['Q'], 'quarter_end': pd.to_datetime(['2026-09-30']),
+                         'total_shares': [n]})
+
+
+def test_raises_are_shown_at_100_crore_or_2_percent_and_say_what_is_not_stated():
+    big = ideas.raise_events(None, pd.DataFrame([_qip()]), None, REF, _total(4e8))
+    r = big.iloc[0]
+    assert r['kind'] == 'QIP' and r['list'] == 'look' and abs(r['pct_of_company'] - 18_110_473 / 4e8 * 100) < 1e-9
+    assert '20 institutions took 18,110,473 shares at ₹165.65; ₹300 Cr raised, 4.53% of the company, 8% below the price now' in r['sentence']
+    assert r['kv3_label'] == 'Issue vs now' and r['kv3'] == '-8.0%'
+    no_price = ideas.raise_events(None, pd.DataFrame([_qip(vs_market=None)]), None, REF, _total(4e8)).iloc[0]
+    assert no_price['kv3_label'] == 'Issue vs now' and no_price['kv3'] == '—'          # not the promoters' holding in its place
+    # under Rs 100 Cr but over 2% of the shares: shown by dilution
+    small_amount = ideas.raise_events(None, pd.DataFrame([_qip(amount=4e8, shares_allotted=3e6)]), None, REF, _total(1e8))
+    assert len(small_amount) == 1 and '3.00% of the company' in small_amount.iloc[0]['sentence']
+    # under both: left out
+    assert ideas.raise_events(None, pd.DataFrame([_qip(amount=4e8, shares_allotted=1e6)]), None, REF, _total(1e8)).empty
+
+
+def test_dilution_uses_the_shareholding_total_only_and_only_when_it_passes_the_check():
+    # the filing's own count is half the company or more: not a dilution; the amount (Rs 300 Cr) still qualifies, dilution not stated
+    r = ideas.raise_events(None, pd.DataFrame([_qip(shares_allotted=6e7)]), None, REF, _total(1e8)).iloc[0]
+    assert r['pct_of_company'] == 0 and 'dilution not stated' in r['sentence'] and '₹300 Cr raised' in r['sentence']
+    # no shareholding total at all: same
+    assert 'dilution not stated' in ideas.raise_events(None, pd.DataFrame([_qip()]), None, REF, None).iloc[0]['sentence']
+    # a blanked (unreliable) amount with a usable dilution qualifies by dilution and says the amount is not usable
+    blank = ideas.raise_events(None, pd.DataFrame([_qip(amount=None, shares_allotted=3e6)]), None, REF, _total(1e8)).iloc[0]
+    assert 'amount not usable' in blank['sentence'] and '3.00% of the company' in blank['sentence']
+    # neither usable: left out
+    assert ideas.raise_events(None, pd.DataFrame([_qip(amount=None, shares_allotted=6e7)]), None, REF, _total(1e8)).empty
+
+
+def test_an_approval_is_not_a_raise_and_the_event_date_is_the_allotment():
+    approved = _qip(status='Approved in principle')
+    assert ideas.raise_events(None, pd.DataFrame([approved]), None, REF, _total(4e8)).empty
+    old = _qip(allotment_date=pd.Timestamp('2026-06-01'), posted_on=pd.Timestamp('2026-10-06'))
+    assert ideas.raise_events(None, pd.DataFrame([old]), None, REF, _total(4e8), days=30).empty      # allotted outside the window
+    assert len(ideas.raise_events(None, pd.DataFrame([old]), None, REF, _total(4e8), days=180)) == 1
+    only_posted = _qip(allotment_date=pd.NaT)
+    assert ideas.raise_events(None, pd.DataFrame([only_posted]), None, REF, _total(4e8)).iloc[0]['last'] == pd.Timestamp('2026-10-06')
+
+
+def test_preferential_to_others_and_rights_are_raises_funds_named_only_when_the_filing_names_them():
+    pref = pd.DataFrame([{'isin': 'INE0QIP00011', 'symbol': 'QIPCO', 'company': 'Qip Co', 'app_id': 'P1', 'status': 'Allotted or listed',
+                          'allottee_category': 'NON_PROMOTER', 'posted_on': pd.Timestamp('2026-10-05'), 'offer_price': 2002.0,
+                          'shares_allotted': 2.5e6, 'amount': 5e9, 'vs_market': 2.4},
+                         {'isin': 'INE0QIP00011', 'symbol': 'QIPCO', 'company': 'Qip Co', 'app_id': 'P2', 'status': 'Allotted or listed',
+                          'allottee_category': 'PROMOTER', 'posted_on': pd.Timestamp('2026-10-05'), 'offer_price': 10.0,
+                          'shares_allotted': 2.5e6, 'amount': 5e9, 'vs_market': 2.4}])
+    rights = pd.DataFrame([{'isin': 'INE0QIP00011', 'symbol': 'QIPCO', 'company': 'Qip Co', 'app_id': 'R1', 'status': 'Allotted or listed',
+                            'posted_on': pd.Timestamp('2026-10-04'), 'offer_price': 40.0, 'shares_allotted': 1e7, 'amount': 4e8, 'vs_market': -12.0}])   # 2.5% of the shares
+    out = ideas.raise_events(pref, None, rights, REF, _total(4e8), named={'P1': True})
+    kinds = dict(zip(out['kind'], out['sentence']))
+    assert set(kinds) == {'Preferential to others', 'Rights issue'}                    # the promoter issue is not here
+    assert 'funds named among the allottees' in kinds['Preferential to others'] and 'funds named' not in kinds['Rights issue']
+    assert out.set_index('kind').loc['Rights issue', 'kv3_label'] == 'Rights vs now'
+
+
+def test_raises_are_a_neutral_group_under_money_in_and_a_company_sits_in_one_group():
+    assert ('Raises', ['QIP', 'Preferential to others', 'Rights issue']) in ideas.GROUPS['look']
+    ev = [ideas.raise_events(None, pd.DataFrame([_qip()]), None, REF, _total(4e8)),
+          ideas._ev([{'isin': 'INE0QIP00011', 'company': 'Qip Co', 'nse_symbol': 'QIPCO', 'list': 'look', 'kind': 'Promoter buying',
+                      'pct_of_company': 0.5, 'sentence': 'bought', 'value': 1e7, 'last': REF}])]
+    look, _ = ideas.today(ev)
+    assert len(look) == 1 and look.iloc[0]['group'] == 'Insiders buying'               # one row per company: the first group it belongs to
+    assert set(look.iloc[0]['kinds']) == {'QIP', 'Promoter buying'}

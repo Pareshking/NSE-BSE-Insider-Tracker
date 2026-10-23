@@ -8,7 +8,8 @@
   ledger/forward/<run time>.parquet      forward record: events that fired since the last run, write-once, never edited
   artifacts/forward_outcomes.parquet     every forward-record row with its returns so far (derived, rewritten each run)
   artifacts/basket_positions.parquet     model basket positions from the forward record (insiders_clean/basket.py)
-  artifacts/basket_nav.parquet           model basket and Nifty 500, daily, 100 at the first entry"""
+  artifacts/basket_nav.parquet           model basket and Nifty 500, daily, 100 at the first entry
+  artifacts/company_snapshot.parquet     one row per company: market line, ownership and its change, insider flows (snapshot.py)"""
 from __future__ import annotations
 
 import io
@@ -21,7 +22,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import adjust, basket, evidence, slim, track  # noqa: E402
+from insiders_clean import adjust, basket, bse_events, evidence, slim, snapshot, track  # noqa: E402
 from price_coverage import load_prefix  # noqa: E402
 
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
@@ -29,6 +30,7 @@ HISTORY_KEY, STRIP_KEY = 'artifacts/price_history.parquet', 'artifacts/market_st
 EVENTS_KEY, TRACK_KEY = 'artifacts/track_events.parquet', 'artifacts/track_summary.parquet'
 FORWARD_KEY = 'artifacts/forward_outcomes.parquet'
 BASKET_POS_KEY, BASKET_NAV_KEY = 'artifacts/basket_positions.parquet', 'artifacts/basket_nav.parquet'
+SNAPSHOT_KEY = 'artifacts/company_snapshot.parquet'
 
 
 def put(client, bucket, key, df):
@@ -59,6 +61,21 @@ def filed_actions(client, bucket) -> pd.DataFrame | None:
             print(f'adjust: {table} not read ({e})')
     frames = [f for f in frames if len(f)]
     return pd.concat(frames, ignore_index=True) if frames else None
+
+
+def company_snapshot(client, bucket, summary, clean, uni) -> None:
+    """artifacts/company_snapshot.parquet (insiders_clean/snapshot.py): one row per company of the study universe, what
+    every list needs at a glance, so a page joins one small table. NSE's shareholding plus the BSE-only companies."""
+    sh = clean.get('shareholding')
+    if sh is not None and 'bse_shareholding' in clean:
+        sh = bse_events.with_bse(sh, clean['bse_shareholding'])
+    sec = clean.get('securities')
+    names = (dict(zip(sec['isin'], sec['display_name'])) if sec is not None and {'isin', 'display_name'} <= set(sec.columns)
+             else None)
+    snap = snapshot.build(summary, sh, clean.get('insider_trades'), universe=uni, names=names)
+    put(client, bucket, SNAPSHOT_KEY, snap)
+    print(f'snapshot: {len(snap)} companies, with promoter holding {int(snap["promoter"].notna().sum())}, with a fund share '
+          f'{int(snap["mf"].notna().sum())}, with insider flows {int(snap["insider_buy_90d"].notna().sum())}')
 
 
 def forward(client, bucket, ev, close, nifty, sized, size_of, summ):
@@ -109,7 +126,7 @@ def main() -> int:
     put(client, bucket, SUMMARY_KEY, summary)
     print(f'slim: isins {len(summary)}, with bucket {int(summary["mcap_bucket"].notna().sum())}, last session {close.index.max():%Y-%m-%d}')
     clean = {}
-    for table in ('insider_trades', 'deals', 'universe'):
+    for table in ('insider_trades', 'deals', 'universe', 'shareholding', 'bse_shareholding', 'securities'):
         try:
             clean[table] = pd.read_parquet(io.BytesIO(
                 client.get_object(Bucket=bucket, Key=f'clean/current/{table}.parquet')['Body'].read()))
@@ -122,6 +139,12 @@ def main() -> int:
     isins = set().union(*(set(clean[t]['isin'].dropna()) for t in ('insider_trades', 'deals') if t in clean))
     if uni is not None:
         isins &= uni
+    snapshot_failed = False
+    try:
+        company_snapshot(client, bucket, summary, clean, uni)
+    except Exception as e:  # noqa: BLE001 -- the track record below must still run; the run turns red at the end
+        print(f'snapshot: FAILED ({type(e).__name__}: {e})')
+        snapshot_failed = True
     hist = slim.price_history(close, isins)
     put(client, bucket, HISTORY_KEY, hist)
     print(f'history: isins {hist["isin"].nunique()} of {len(isins)} in filings, rows {len(hist)}')
@@ -151,7 +174,7 @@ def main() -> int:
             forward(client, bucket, ev, close, nifty, sized, size_of, summ)
             print(f'track: events {len(fr)}; ' + '; '.join(
                 f"{r.signal} {r.horizon} n={r.cases} med={r.median_excess:+.2f}" for r in summ.itertuples() if r.horizon == '1M'))
-    return 0
+    return 1 if snapshot_failed else 0
 
 
 if __name__ == '__main__':

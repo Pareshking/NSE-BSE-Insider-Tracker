@@ -217,6 +217,12 @@ def artifact(key: str) -> pd.DataFrame:
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
 
 
+def snapshot() -> pd.DataFrame:
+    """One row per company of the study universe (insiders_clean/snapshot.py, written by the nightly precompute):
+    market line, ownership and its change since last quarter, insider flows. Empty until the first run writes it."""
+    return artifact('artifacts/company_snapshot.parquet')
+
+
 @st.cache_data(ttl=600, show_spinner=False, max_entries=500)
 def said(isin: str) -> dict:
     """What management said on the company's latest earnings calls (archive/management_said/{ISIN}.json, written by the reader from

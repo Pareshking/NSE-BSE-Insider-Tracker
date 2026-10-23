@@ -32,6 +32,13 @@ MIN_VALUE = 25e5        # Rs 25 lakh
 MIN_PCT = 0.05          # % of the company
 ALONE_PCT = 0.25        # qualifies on its own, for a company too small for Rs 25 lakh to mean much
 STEADY_DAYS = 10        # separate buying days in the window
+BIG_VALUE = 25e7        # Rs 25 crore, one decision-maker, one side, in the period, whatever the share of the company (owner,
+                        # 23 Oct: Rs 82 Cr of HCL Technologies bought by its promoter group is real money, 0.02% of the company)
+MAX_LIFT = 5            # rows at or over BIG_VALUE go first in their group, at most this many of PER_GROUP, so the rows
+                        # ranked by share of the company keep at least three places
+RAISE_MIN_AMOUNT = 100e7   # a raise (QIP, preferential issue to others, rights issue) of Rs 100 crore ...
+RAISE_MIN_DILUTION = 2.0   # ... or new shares of 2% of the shares outstanding
+DILUTION_MAX_SHARE = 0.5   # more than half the shares outstanding is a filing or share-count error, not a dilution
 MAX_IDEAS, MAX_WARNINGS = 10, 5
 PER_GROUP = 8           # rows shown per group on Today; the rest counted, all in Filings
 PLEDGE_RISE_PTS = 5.0   # pledge up this many points of promoter shares in the latest quarter
@@ -95,7 +102,7 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
 
 def _qualifies(d: pd.DataFrame) -> pd.Series:
     return (((d['value'] >= MIN_VALUE) & (d['pct_of_company'] >= MIN_PCT)) | (d['pct_of_company'] >= ALONE_PCT)
-            | (d['days'] >= STEADY_DAYS))
+            | (d['days'] >= STEADY_DAYS) | (d['value'] >= BIG_VALUE))
 
 
 def _who(r) -> str:
@@ -174,7 +181,10 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
     rows = []
     d = decisions(t, ref, 'SELL', sh, days)
     if not d.empty:
-        d = d[d['promoter_group'] & _qualifies(d)]
+        pg = d['promoter_group'].astype(bool)
+        # The promoter group by the same floors as buying; a director or KMP selling only at Rs 25 Cr and up (their
+        # routine sales after an option exercise are not the signal; a large one is money out).
+        d = d[(pg & _qualifies(d)) | (~pg & (d['value'] >= BIG_VALUE))]
         by: dict[str, list] = {}
         for r in d.sort_values('pct_of_company', ascending=False, kind='stable').to_dict('records'):
             by.setdefault(r['isin'], []).append(r)
@@ -182,7 +192,8 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
             top = g[0]
             pct = sum(x['pct_of_company'] for x in g)
             value, shares = sum(x['value'] for x in g), sum(x['shares'] for x in g)
-            rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'], 'kind': 'Promoter selling',
+            kind = 'Promoter selling' if any(x['promoter_group'] for x in g) else 'Director or KMP selling'
+            rows.append({'isin': isin, 'company': top['company'], 'nse_symbol': top['nse_symbol'], 'kind': kind,
                          'sentence': f'{_who(top)} sold {pct:.2f}% of the company on the market{", " + _when(top) if _when(top) else ""}',
                          'size': pct, 'value': value, 'last': max(x['last'] for x in g),
                          'avg_price': value / shares if shares else None,
@@ -198,7 +209,7 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
 # with the insider buys and sales into the two lists, one row per company, one size measure (% of the
 # company), the company led by its largest event and every kind shown as a chip.
 EVENT_COLS = ['isin', 'company', 'nse_symbol', 'list', 'kind', 'pct_of_company', 'sentence', 'value', 'last',
-              'avg_price', 'trade_to', 'decision_makers']
+              'avg_price', 'trade_to', 'decision_makers', 'kv3_label', 'kv3']   # kv3: an optional third number the row shows
 BIG_STAKE = 5.0          # SAST Reg 29(1): crossing 5%
 BIG_CHANGE = 2.0         # SAST Reg 29(2): a change of 2% or more
 FUND_NET_PCT = 0.25      # funds' net bulk/block buying or selling over the period, % of the company
@@ -247,7 +258,7 @@ def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW, marks: tup
                          'decision_makers': r['decision_makers']})
     warn = watch_out(t, ref, sh, limit=10_000, days=days)
     for r in warn.to_dict('records') if not warn.empty else []:
-        if r['kind'] == 'Promoter selling':
+        if r['kind'] in ('Promoter selling', 'Director or KMP selling'):
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'warn',
                          'kind': r['kind'], 'pct_of_company': r['size'], 'sentence': r['sentence'], 'value': r['value'],
                          'last': r['last'], 'avg_price': r['avg_price'], 'trade_to': r['trade_to'],
@@ -612,6 +623,72 @@ def buyback_events(bb: pd.DataFrame | None, ref: pd.Timestamp, sh=None, days: in
     return _ev(rows)
 
 
+def _dilution(shares, total) -> float | None:
+    """New shares as % of the shares outstanding (the shareholding table's total), only when the count passes the
+    check: the QIP filing's own listed-shares field sometimes holds the company's total, so it is never the base."""
+    if shares is None or total is None or not (shares > 0) or not (total > 0) or shares >= total * DILUTION_MAX_SHARE:
+        return None
+    return float(shares / total * 100)
+
+
+def _rs_cr(v) -> str:
+    return f'₹{v / 1e7:,.0f} Cr' if v >= 1e7 else f'₹{v / 1e5:,.1f} L'
+
+
+def raise_events(pref: pd.DataFrame | None, qip: pd.DataFrame | None, rights: pd.DataFrame | None, ref: pd.Timestamp,
+                 sh=None, days: int = WINDOW, named: dict | None = None) -> pd.DataFrame:
+    """Capital raised in the period (owner, 23 Oct): QIPs, preferential issues to non-promoters or to promoters and
+    others, and rights issues, allotted or listed (an approval is not a raise). A neutral group: shares issued are
+    dilution, not a verdict. Shown at Rs 100 Cr and up, or 2% and up of the shares outstanding (the shareholding
+    table's total, only when new shares are under half of it); a raise with neither a usable amount nor a usable
+    dilution is left out. `named` maps app_id -> True where the filing names a mutual fund or foreign portfolio
+    investor among the allottees. Promoter issues are issue_events."""
+    total = _shares_out(sh)
+    named = named or {}
+    rows = []
+    for kind, df in (('Preferential to others', pref), ('QIP', qip), ('Rights issue', rights)):
+        if df is None or df.empty or 'status' not in df:
+            continue
+        x = df[df['status'].eq('Allotted or listed')]
+        if kind == 'Preferential to others' and 'allottee_category' in x:
+            x = x[x['allottee_category'].isin(['NON_PROMOTER', 'MIXED'])]
+        for r in x.to_dict('records'):
+            when = pd.to_datetime(r.get('allotment_date'), errors='coerce')
+            if pd.isna(when):
+                when = pd.to_datetime(r.get('posted_on'), errors='coerce')
+            isin = r.get('isin')
+            if pd.isna(when) or not isinstance(isin, str) or not _in_window(pd.Series([when]), ref, days).iloc[0]:
+                continue
+            amount = pd.to_numeric(r.get('amount'), errors='coerce')
+            amount = float(amount) if pd.notna(amount) and amount > 0 else None
+            n = pd.to_numeric(r.get('shares_allotted'), errors='coerce')
+            dil = _dilution(float(n) if pd.notna(n) else None, total.get(isin))
+            if not ((amount is not None and amount >= RAISE_MIN_AMOUNT) or (dil is not None and dil >= RAISE_MIN_DILUTION)):
+                continue
+            price = pd.to_numeric(r.get('issue_price' if kind == 'QIP' else 'offer_price'), errors='coerce')
+            vs = pd.to_numeric(r.get('vs_market'), errors='coerce')
+            what = {'QIP': 'QIP', 'Preferential to others': 'Preferential issue to others', 'Rights issue': 'Rights issue'}[kind]
+            count = pd.to_numeric(r.get('allottees'), errors='coerce')
+            shares_txt = f'{int(n):,} shares' if pd.notna(n) else 'shares'
+            if kind == 'QIP' and pd.notna(count):
+                sent = f'QIP: {int(count)} institutions took {shares_txt}'
+            else:
+                sent = what + (f' of {shares_txt}' if pd.notna(n) else '')
+            if pd.notna(price) and price > 0:
+                sent += f' at ₹{price:,.2f}'
+            sent += f'; {_rs_cr(amount)} raised' if amount is not None else '; amount not usable'
+            sent += f', {dil:.2f}% of the company' if dil is not None else ', dilution not stated'
+            if pd.notna(vs):
+                sent += f', {abs(vs):.0f}% {"above" if vs >= 0 else "below"} the price now'
+            if named.get(r.get('app_id')):
+                sent += '; funds named among the allottees'
+            rows.append({'isin': isin, 'company': r.get('company') or r.get('symbol'), 'nse_symbol': r.get('symbol'), 'list': 'look',
+                         'kind': kind, 'pct_of_company': dil if dil is not None else 0.0, 'sentence': sent,
+                         'value': amount, 'last': when, 'kv3_label': 'Issue vs now' if kind != 'Rights issue' else 'Rights vs now',
+                         'kv3': f'{vs:+.1f}%' if pd.notna(vs) else '—'})   # a raise keeps its own third number, a dash when no price
+    return _ev(rows)
+
+
 # The groups each list is shown in, in this order. A company sits in the first group any of its kinds
 # belongs to, led by its largest event there; its other kinds are chips and their sentences are listed.
 GROUPS = {
@@ -619,8 +696,9 @@ GROUPS = {
              ('Promoters pay up', ['Promoters pay up']),
              ('Pledges released', ['Pledge released']),
              ('Big investors and funds in', ['Big investor in', 'Fund buying']),
-             ('Buybacks at a premium', ['Buyback at a premium'])],
-    'warn': [('Promoters selling', ['Promoter selling']),
+             ('Buybacks at a premium', ['Buyback at a premium']),
+             ('Raises', ['QIP', 'Preferential to others', 'Rights issue'])],
+    'warn': [('Insiders selling', ['Promoter selling', 'Director or KMP selling']),
              ('Pledges', ['Pledge invoked', 'Pledge created', 'Pledge rising']),
              ('Cheap shares to promoters', ['Cheap shares to promoters']),
              ('Big investors and funds out', ['Big investor out', 'Funds selling'])],
@@ -671,8 +749,18 @@ def today(events: list, summary: pd.DataFrame | None = None) -> tuple:
                         others=[t for t in dict.fromkeys(r['sentence'] for r in g) if t != lead['sentence']])
             rows.append(lead)
         r = pd.DataFrame(rows)
-        out.append(r.sort_values(['group_order', 'pct_of_company', 'last'], ascending=[True, False, False]).reset_index(drop=True)
-                   if not r.empty else r)
+        if r.empty:
+            out.append(r)
+            continue
+        # Rupee-big rows (BIG_VALUE and up) go first in their group by value, at most MAX_LIFT of them; the rest by share
+        # of the company, then the latest (owner, 23 Oct: real money is rupees as well as shares).
+        value = pd.to_numeric(r['value'], errors='coerce')
+        r['big'] = value.ge(BIG_VALUE).fillna(False)
+        rank = value.where(r['big']).groupby(r['group']).rank(ascending=False, method='first')
+        r['_lift'] = r['big'] & rank.le(MAX_LIFT)
+        r['_key'] = np.where(r['_lift'], value, pd.to_numeric(r['pct_of_company'], errors='coerce'))
+        out.append(r.sort_values(['group_order', '_lift', '_key', 'last'], ascending=[True, False, False, False])
+                   .drop(columns=['_lift', '_key']).reset_index(drop=True))
     return out[0], out[1]
 
 
