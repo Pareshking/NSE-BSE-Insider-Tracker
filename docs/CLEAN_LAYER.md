@@ -187,6 +187,13 @@ when old rows lack it, so read it with `insiders_clean.missing.as_flag`, never
 nightly-collected window are lost; the backfilled window was recovered with
 `--redo` (+6,460 bulk rows).
 
+The writer flags a round trip only inside one exchange and one feed (bulk or block) of one run. The clean layer
+(`insiders_clean/deals.py`) therefore judges each client's whole day in a security again: bought and sold quantities within 1%
+across both exchanges and both feeds exclude every leg of that client-security-day, counted as
+`intraday_round_trip_across_exchanges`, and the legs are not named as anyone's counterparty. Added 23 Oct 2026 after a
+Rs 3.96 Cr same-day buy and sell by one client (23 Jun 2026) showed on a company page. It runs after market-maker
+labelling, so labelling is unchanged. An NSE leg and a BSE leg in the same direction are still two executions (audit W8).
+
 ## Rules
 
 Insider trades (`insiders_clean/insider.py`):
