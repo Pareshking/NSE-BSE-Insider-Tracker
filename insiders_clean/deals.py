@@ -48,6 +48,7 @@ MAX_COUNTERPARTIES = 5
 # year and sells the next is not mistaken for one.
 MM_MIN_LEGS_PER_QUARTER = 40
 MM_MIN_BALANCE = 0.8
+ROUND_TRIP_QTY_TOLERANCE = 0.01   # as scripts/r2_writer.py: bought and sold within 1% is a round trip
 
 
 def _id(parts) -> str:
@@ -195,6 +196,21 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
     legs['client_is_market_maker'] = [bool(is_mm.get((c, q), False)) for c, q in zip(legs['client_id'], quarter)]
     t['market_maker_clients'] = sorted(mm_clients)[:50]
     t['market_maker_legs'] = int(legs['client_is_market_maker'].sum())
+
+    # Intraday round trips across exchanges and feeds. The writer flags a same-day, same-client, equal-size buy and
+    # sell within one exchange and one feed of one run; a buy on one exchange and the sell of the same size on the
+    # other, or legs in different runs, slipped through (Silverleaf Capital, 23 Jun 2026: Rs 3.96 Cr bought and sold).
+    # No ownership changes hands, so every leg of such a client-security-day is excluded here, counted with its reason;
+    # the archive keeps them. Judged on the day's total quantity, as the writer does (ROUND_TRIP_QTY_TOLERANCE).
+    day_client = ['security_key', 'client_id', 'date']
+    qty = legs['quantity'].where(legs['quantity'] > 0)
+    bought = qty.where(legs['side'].eq('BUY')).groupby([legs[k] for k in day_client], dropna=True).transform('sum')
+    sold = qty.where(legs['side'].eq('SELL')).groupby([legs[k] for k in day_client], dropna=True).transform('sum')
+    trip = (bought > 0) & (sold > 0) & ((bought - sold).abs() / np.maximum(bought, sold) <= ROUND_TRIP_QTY_TOLERANCE)
+    trip = trip.fillna(False) & legs[day_client].notna().all(axis=1)
+    if trip.any():
+        report.removed('deals', 'intraday_round_trip_across_exchanges', legs.loc[trip, 'deal_id'])
+        legs = legs.loc[~trip].reset_index(drop=True)
 
     # 4. other side of the tape in that security that day
     day_key = ['exchange', 'security_key', 'date']

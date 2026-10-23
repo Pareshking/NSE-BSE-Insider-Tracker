@@ -310,3 +310,39 @@ def test_same_client_same_size_on_both_exchanges_counts_twice(master, report):
     assert len(out) == 2 and out['is_primary'].all() and out['same_size_on_other_exchange'].all()
     assert out['signed_value'].sum() == pytest.approx(100000 * 100.0 + 100000 * 100.4)
     assert report.data['tables']['deals']['same_size_on_both_exchanges'] == {'legs': 2, 'legs_at_the_same_price': 0}
+
+
+def _nse_cleanmax(client, side, qty, price='100.0', day='06-Oct-2026'):
+    return {'BD_DT_DATE': day, 'BD_SYMBOL': 'CLEANMAX', 'BD_SCRIP_NAME': 'Clean Max', 'BD_CLIENT_NAME': client,
+            'BD_BUY_SELL': side, 'BD_QTY_TRD': str(qty), 'BD_TP_WATP': price}
+
+
+def _bse_cleanmax(client, side, qty, price='100.4', day='06/10/2026'):
+    return {'event_date': day, 'security_code': '544717', 'security_name': 'CLEANMAX', 'company': 'CLEANMAX',
+            'person': client, 'side': side, 'quantity': str(qty), 'price': price, 'raw': []}
+
+
+def test_a_buy_on_one_exchange_and_an_equal_sell_on_the_other_is_an_intraday_round_trip(master, report):
+    """Silverleaf Capital, 23 Jun 2026: Rs 3.96 Cr bought and sold, both shown. The writer flags a round trip only within
+    one exchange and feed of one run; the clean layer judges the client's whole day."""
+    raw = pd.concat([
+        canonical('nse', 'bulk_deals', [_nse_cleanmax('FLIPPER CAPITAL LLP', 'BUY', 100000),
+                                        _nse_cleanmax('REAL FUND', 'BUY', 500000)]),
+        canonical('bse', 'bulk_deals', [_bse_cleanmax('FLIPPER CAPITAL LLP', 'SELL', 100000)]),
+        canonical('bse', 'block_deals', [_bse_cleanmax('SOME SELLER', 'SELL', 500000)])], ignore_index=True)
+    out = clean_deals(raw, master, report, RUN_DATE)
+    assert sorted(out['client_name'].str.upper()) == ['REAL FUND', 'SOME SELLER']
+    assert report.data['tables']['deals']['removed']['intraday_round_trip_across_exchanges']['count'] == 2
+    assert not out['counterparties'].fillna('').str.contains('FLIPPER', case=False).any()   # not named as the other side
+
+
+def test_a_client_who_bought_and_sold_unequal_amounts_or_on_different_days_is_kept(master, report):
+    raw = pd.concat([
+        canonical('nse', 'bulk_deals', [_nse_cleanmax('SWING FUND', 'BUY', 100000),
+                                        _nse_cleanmax('DAY FUND', 'BUY', 100000)]),
+        canonical('bse', 'bulk_deals', [_bse_cleanmax('SWING FUND', 'SELL', 60000),                  # not equal
+                                        _bse_cleanmax('DAY FUND', 'SELL', 100000, day='07/10/2026')])],   # another day
+        ignore_index=True)
+    out = clean_deals(raw, master, report, RUN_DATE)
+    assert len(out) == 4
+    assert 'intraday_round_trip_across_exchanges' not in report.data['tables']['deals']['removed']
