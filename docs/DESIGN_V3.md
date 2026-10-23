@@ -6,8 +6,8 @@ big holders in and out), not splits, bonuses or dividends; neat and clean, yet a
 think as a small individual investor. Inputs: `docs/DATA_INVENTORY.md` (what we collect) and the
 old-vs-new comparison of 23 Oct.
 
-Images in `docs/design_v3/` are layout mocks built with the site's own CSS and cell helpers. Every
-row is a real NSE filing from `tests/fixtures/`. Cells with a dotted underline (market cap, price,
+Images in `docs/design_v3/` (eight of them) are layout mocks built with the site's own CSS and cell helpers. Every
+row is a real NSE filing or deal from `tests/fixtures/`. Cells with a dotted underline (market cap, price,
 52-week range, price now vs trade) are **placeholders**: market data is not reachable from the
 session that made them. The live Site preview run fills them from the price layer. Rebuild with
 `docs/design_v3/mock/` (`build_mocks.py`, then `shoot.py`).
@@ -43,10 +43,12 @@ today, and what is the catch? Every row answers those four, in that order.
 - Announcement cards: off the site (owner, 21 Oct).
 - Held-back rows and copies stay in Filings under "All", for audit.
 
-## The four pages
+## The five pages
 
-Top bar: Today, Companies, Filings, Evidence, and a company search. People & funds open from links;
-Data quality in the footer.
+Top bar: Today, Companies, Investors, Filings, Evidence, and a company search. A single investor's page opens
+from links; Data quality in the footer. (Investors added 23 Oct after the owner asked where funds, PMS and
+large investors can be seen; before that no page answered it: the old Bulk & block deals page was folded
+into Filings and People & funds is link-only.)
 
 ### Today: the money board
 
@@ -95,6 +97,29 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 - The dossier: a ratios strip, **Money in and out** by who, **Decisions on a timeline** (the price
   line draws under the dots), then everything filed, a row opens to its facts.
 
+### Investors: what funds and large investors are buying and selling
+
+![Investors](design_v3/07_investors.png)
+![An investor](design_v3/08_investor_profile.png)
+
+- Period chips and a Who filter: Funds and institutions (default), Mutual funds, Foreign investors,
+  Insurers, AIF and PMS, Companies and trusts. Market makers and trading firms are left out.
+- Tiles: net money by investor type.
+- **Biggest net buyers** and **net sellers**: investor with its type and confidence, net ₹, companies,
+  largest position. One manager that files under many fund names is shown once (needs an alias line:
+  the list has none for GQG yet; the mock groups ten names of GQG Partners as proposed).
+- **Who sold, who absorbed it**: a seller's block and the funds that took it, matched. Real example in
+  the mock: Pastel Ltd's ₹5,849 Cr block of Bharti Airtel on 7 Mar 2024, taken 100% by GQG Partners
+  (₹5,187 Cr, nine fund names) and others.
+- **Funds in each company**: share held by mutual funds and foreign portfolio investors from the
+  shareholding filing, with the change since the previous quarter (needs two quarters; the fixtures hold
+  one, so the live site fills it).
+- **Who bought the raises**: named allottees of QIPs and preferential issues with their category.
+- The investor page: net, fund names filed, each deal line as filed, and the other side of the same trade.
+- Limits to show on the page: type comes from the name only (NSE and BSE publish nothing else), so
+  AIF and PMS cannot be told apart and a name can be wrong (confidence is shown); bulk and block deals
+  are a 0.5%-and-up, large-trade view, not every holding; the quarterly change lags by weeks.
+
 ### Evidence: unchanged.
 
 ## Shared pieces
@@ -139,9 +164,10 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 
 ## Open decisions (owner)
 
-1. Real money for a large company: add "or ₹25 Cr and up by one decision-maker" so a ₹82 Cr promoter
-   group purchase in a ₹4 lakh Cr company shows? Recommendation: yes, for promoter-group buys only.
-2. Funds' and FPIs' quarterly change: on Today, or only on Companies and the dossier?
+1. ~~Real money for a large company~~ **Decided 23 Oct (owner): yes, "or ₹25 Cr and up by one decision-maker" is an
+   additional path** (a ₹82 Cr promoter-group purchase in a ₹4 lakh Cr company then shows). Applies to the
+   ideas rules in `insiders_clean/ideas.py`; tests to follow with the change.
+2. Funds' and FPIs' quarterly change: now on Investors and the dossier; on Today too?
 3. Build order: Filings kinds first (largest gap), then Today, Companies, the dossier.
 
 ## Out of scope for this document

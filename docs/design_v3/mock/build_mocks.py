@@ -43,7 +43,7 @@ html, body { margin: 0; background: #fff; color: var(--ink); font-family: var(--
 .tog i::after { content: ''; position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
 .filt { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; color: var(--ink-2); }
 .mcard { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px 6px; margin-top: 14px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; } .mcard { min-width: 0; }
 .ph { border-bottom: 1px dotted #8A93A3; }
 .mk { font-size: 11.5px; color: var(--ink-3); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
 .rgm { display: inline-block; position: relative; width: 44px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, #F2D4D0, #E6E9EE 50%, #CBEAD9); vertical-align: middle; }
@@ -54,7 +54,7 @@ html, body { margin: 0; background: #fff; color: var(--ink); font-family: var(--
 .idea .co2 { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
 .idea-chips .chip.ev { background: #fff; border: 1px solid var(--line); color: var(--ink-3); }
 .note { font-size: 12.5px; color: var(--ink-3); margin: 8px 2px 12px; }
-.tbl td.wrapc { white-space: normal; max-width: 250px; line-height: 1.35; } .tbl td { height: 58px; } .tbl td.co { max-width: 340px; min-width: 300px; }
+.tbl td.wrapc { white-space: normal; max-width: 250px; line-height: 1.35; } .tbl td.wide { white-space: normal; min-width: 340px; max-width: 420px; line-height: 1.35; } .tbl td { height: 58px; } .tbl td.co { max-width: 340px; min-width: 300px; }
 .tbl .sub.mk { margin-top: 2px; }
 .tg-b { font-weight: 700; }
 .leg { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); margin: 10px 2px 0; }
@@ -90,7 +90,7 @@ PH = {'HCLTECH': ('Large', 410000, 1510, 58), 'ZEEL': ('Mid', 11800, 118, 44), '
       'MARINE': ('Micro', 480, 118, 22), 'FERMENTA': ('Micro', 620, 255, 18), 'KAPSTON': ('Small', 1650, 142, 64),
       'AXISCADES': ('Small', 3100, 690, 77), 'TREJHARA': ('Micro', 520, 224, 52), 'KRSNAA': ('Small', 2150, 604, 49),
       'UNIHEALTH': ('Small', 1350, 541, 61), 'KMEW': ('Small', 2450, 1760, 27), 'AGARALTUF': ('Micro', 410, 118, 55),
-      'VISASTEEL': ('Small', 980, 36, 20), 'AMBEY': ('Micro', 150, 52, 40), 'ICEMAKE': ('Micro', 380, 0, 50),
+      'VISASTEEL': ('Small', 980, 36, 20), 'AMBEY': ('Micro', 150, 52, 40), 'ICEMAKE': ('Micro', 380, 0, 50), 'BHARTIARTL': ('Large', 920000, 1560, 70),
       'SBIN': ('Large', 760000, 880, 80), 'ICICIBANK': ('Large', 980000, 1380, 66), 'LT': ('Large', 520000, 3720, 70),
       'HDFCBANK': ('Large', 1450000, 1880, 60), 'ITC': ('Large', 540000, 430, 33), 'MOTILALOFS': ('Mid', 52000, 870, 74),
       'TDPOWERSYS': ('Small', 21000, 690, 83), 'INOXGREEN': ('Small', 6200, 142, 29), 'LLOYDSME': ('Mid', 80000, 1480, 55)}
@@ -136,7 +136,7 @@ def vs_now(paid, sym, side='BUY'):
 
 
 def page(active, body, title, width=None, phone=False, banner=True):
-    nav = ''.join(f'<a class="{"on" if n == active else ""}" href="#">{n}</a>' for n in ('Today', 'Companies', 'Filings', 'Evidence'))
+    nav = ''.join(f'<a class="{"on" if n == active else ""}" href="#">{n}</a>' for n in ('Today', 'Companies', 'Investors', 'Filings', 'Evidence'))
     top = f'<div class="mtop"><span class="brand">Insiders</span><nav>{nav}</nav><span class="search">Search a company</span></div>'
     return (f'<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">'
@@ -199,8 +199,16 @@ def sast_sentence(s, verb):
 # =====================================================================================================
 # 1. TODAY: the money board
 # =====================================================================================================
+ACRONYMS = {'GQG', 'SBI', 'ODI', 'VCC', 'ICAV', 'UCITS', 'LP', 'LLP', 'PTE', 'II', 'JNL/GQG', 'ESCL', 'ITI', 'HDFC', 'BBH', 'GSF', 'PLC', 'LLC', 'RE', 'OF', 'A'}
+
+
 def titled(n):
-    return n.title() if n.isupper() or n.startswith('MR. ') else n
+    if not (n.isupper() or n.startswith('MR. ')):
+        return n
+    out = []
+    for w in n.split():
+        out.append(w if w in ACRONYMS and w not in ('OF', 'A', 'RE') else w.title())
+    return ' '.join(out).replace(' Ltd', ' Ltd').replace(' Limited', ' Ltd')
 
 
 def today(phone=False):
@@ -484,8 +492,126 @@ def company():
     return page('Companies', body, 'Company: HCL Technologies')
 
 
+# =====================================================================================================
+# 7. INVESTORS: what funds and big investors are buying and selling
+# =====================================================================================================
+TYPE_LABEL = md.participants.TYPES
+NOT_REAL = ('broker', 'prop_hft')     # market makers and trading firms: measured out of deal signals
+
+
+INSTITUTIONS = {'mutual_fund', 'fpi', 'insurer', 'pension', 'bank', 'pms_aif', 'fund_other'}
+ALIAS = {'GQG': 'GQG Partners'}   # a proposed alias line: ten fund names of one manager (investor_aliases.csv has none for it yet)
+
+
+def inv_agg():
+    agg = {}
+    for r in md.deals:
+        if r['type'] in NOT_REAL:
+            continue
+        key = next((v for k, v in ALIAS.items() if k in r['client']), r['client'])
+        a = agg.setdefault(key, dict(client=key, type=r['type'], conf=r['conf'], buy=0.0, sell=0.0, syms={}, names=set()))
+        a['names'].add(r['client'])
+        a['buy' if r['side'] == 'BUY' else 'sell'] += r['value']
+        a['syms'][r['co']] = a['syms'].get(r['co'], 0) + (r['value'] if r['side'] == 'BUY' else -r['value'])
+    return list(agg.values())
+
+
+def type_tag(t, conf):
+    tone = {'mutual_fund': 'buy', 'fpi': 'info', 'insurer': 'info', 'pms_aif': 'info'}.get(t, 'mute')
+    return kit.tag(TYPE_LABEL.get(t, t), tone) + (f'<span class="sub" style="display:inline">&nbsp;{conf}</span>' if conf != 'high' else '')
+
+
+def investors():
+    A = inv_agg()
+    by_type = {}
+    for a in A:
+        by_type[a['type']] = by_type.get(a['type'], 0) + a['buy'] - a['sell']
+    show = [('mutual_fund', 'Mutual funds'), ('fpi', 'Foreign investors'), ('insurer', 'Insurers'), ('pms_aif', 'AIF and PMS')]
+    tl = tiles([(lbl, ('+' if by_type.get(k, 0) >= 0 else '−') + cr(abs(by_type.get(k, 0))) if k in by_type else '—',
+                 f'net, {sum(1 for a in A if a["type"] == k)} investor' + ('' if sum(1 for a in A if a["type"] == k) == 1 else 's') if k in by_type else 'none in this sample window',
+                 'up' if by_type.get(k, 0) > 0 else 'down' if by_type.get(k, 0) < 0 else '') for k, lbl in show])
+    bar = ('<div class="bar">' + pills('Period', ['7 days', '30 days', '90 days', '6 months'], '30 days') +
+           pills('Who', ['Funds and institutions', 'Mutual funds', 'Foreign investors', 'Insurers', 'AIF and PMS', 'Companies and trusts'], 'Funds and institutions') +
+           '<span class="filt">Filters &amp; sort ▾</span>' + TOG_ON + '</div>')
+
+    def investor_row(a):
+        net = a['buy'] - a['sell']
+        top = max(a['syms'].items(), key=lambda kv: abs(kv[1]))
+        return (((f'<a href="#">{esc(titled(a["client"]))}</a><div class="sub">{type_tag(a["type"], a["conf"])}' + (f'<span class="sub" style="display:inline">&nbsp;· {len(a["names"])} fund names</span>' if len(a['names']) > 1 else '') + '</div>'), 'who'),
+                (f'<span class="{"up" if net > 0 else "down"} num">{"+" if net > 0 else "−"}{cr(abs(net))}</span>', 'r'),
+                (str(len(a['syms'])), 'r num'),
+                (f'{esc(titled(top[0]))}<div class="sub">{"bought" if top[1] > 0 else "sold"} {cr(abs(top[1]))}</div>', ''))
+    th = [('Investor', False), ('Net', True), ('Companies', True), ('Largest', False)]
+    real = [a for a in A if a['type'] in INSTITUTIONS]
+    buyers = sorted([a for a in real if a['buy'] - a['sell'] > 0], key=lambda a: a['sell'] - a['buy'])[:7]
+    sellers = sorted([a for a in real if a['buy'] - a['sell'] < 0], key=lambda a: a['buy'] - a['sell'])[:5]
+    bt = card('Biggest net buyers', 'type read from the name, with confidence · one manager may file under many names', table(th, [investor_row(a) for a in buyers]))
+    st_ = card('Biggest net sellers', 'net selling in the window', table(th, [investor_row(a) for a in sellers]))
+    # the handshake: Bharti Airtel block of 7 Mar 2024
+    bh = [r for r in md.deals if r['sym'] == 'BHARTIARTL' and r['day'].isoformat() == '2024-03-07' and r['kind'] == 'block']
+    sold = [r for r in bh if r['side'] == 'SELL']
+    bought = sorted([r for r in bh if r['side'] == 'BUY'], key=lambda r: -r['value'])
+    gqg = [r for r in bought if 'GQG' in r['client']]
+    gqg_val = sum(r['value'] for r in gqg)
+    rest = [r for r in bought if 'GQG' not in r['client']]
+    hs_rows = [(('7 Mar 2024', 'd'), (co('Bharti Airtel', 'BHARTIARTL'), 'co'),
+                (f'<b>{esc(titled(sold[0]["client"]))}</b><div class="sub">sold {kit.shares(sold[0]["qty"])} shares at ₹{sold[0]["px"]:,.1f} (block deal)</div>', 'wrapc'),
+                (cr(sold[0]['value']), 'r num'),
+                (f'<b>GQG Partners</b> ({len({r["client"] for r in gqg})} fund names): {cr(gqg_val)}<div class="sub">'
+                 + '; '.join(f'{esc(titled(r["client"]))[:26]} {cr(r["value"])}' for r in rest[:3]) + f'; +{len(rest) - 3} more</div>', 'wide'),
+                (f'{(gqg_val + sum(r["value"] for r in rest)) / sold[0]["value"] * 100:.0f}%', 'r num'))]
+    hs = card('Who sold, who absorbed it', 'a seller\'s block and the funds that took it', table(
+        [('Day', False), ('Company', False), ('Seller', False), ('Value', True), ('Absorbed by', False), ('Matched', True)], hs_rows))
+    # funds' stake by company (real, latest quarter each) + QIP buyers
+    names = {'TDPOWERSYS': 'TD Power Systems', 'SBIN': 'State Bank of India', 'HDFCBANK': 'HDFC Bank', 'ICICIBANK': 'ICICI Bank', 'LT': 'Larsen & Toubro', 'MOTILALOFS': 'Motilal Oswal Financial Services'}
+    own = []
+    for sym in ('TDPOWERSYS', 'HDFCBANK', 'ICICIBANK', 'LT', 'SBIN', 'MOTILALOFS'):
+        h = md.holders[sym]
+        own.append(((f'<a href="#">{esc(names[sym])}</a><div class="sub"><span class="sym">{sym}</span></div>', 'co'), (f'{h["mf_pct"]:.1f}%', 'r num'), ('<span class="na">—</span>', 'r'), (f'{h["fpi_pct"]:.1f}%', 'r num'),
+                    ('<span class="na">—</span>', 'r')))
+    oc = card('Funds in each company', 'share of the company by investor type, from its shareholding filing', table(
+        [('Company', False), ('Mutual funds', True), ('Δ quarter', True), ('Foreign', True), ('Δ quarter', True)], own))
+    qa = sorted(md.qip_allottees, key=lambda r: -r[1])[:7]
+    q_rows = [((titled(n), 'who'), (kit.tag(c.replace('Foreign Portfolio Investor', 'Foreign portfolio').replace('Systemically important NBFC', 'NBFC'), 'info' if 'Foreign' in c else 'mute'), ''),
+               (kit.shares(sh), 'r num'), (f'{p * 100:.1f}%', 'r num')) for n, sh, p, c in qa]
+    qc = card('Who bought the raises', 'named allottees of Inox Green Energy\'s QIP, from its listing filing', table(
+        [('Allottee', False), ('Category', False), ('Shares', True), ('Of the issue', True)], q_rows))
+    body = (head('Investors', 'What mutual funds, foreign funds, insurers and large investors are buying and selling.') +
+            '<div class="strip"><span><b>Sample window</b></span><span>Bulk and block deals of March 2024 (the fixtures)</span><span>holdings and QIP of 2026</span></div>' +
+            bar + tl + '<div class="grid2">' + bt + st_ + '</div>' + hs + '<div class="grid2">' + oc + qc + '</div>' +
+            '<p class="note">A fund\'s large buy is a fact, not a buy list: prices often run up before such deals are reported. Market makers and trading firms are left out. '
+            'Type is read from the name only (NSE and BSE publish nothing else), with its confidence.</p>')
+    return page('Investors', body, 'Investors: funds and large holders')
+
+
+def investor_profile():
+    gq = sorted([r for r in md.deals if 'GQG' in r['client'] and r['side'] == 'BUY'], key=lambda r: -r['value'])
+    net = sum(r['value'] for r in gq)
+    names = sorted({r['client'] for r in gq})
+    rows = [((r['day'].strftime('%-d %b %Y'), 'd'), (co('Bharti Airtel', 'BHARTIARTL'), 'co'),
+             (f'{esc(titled(r["client"]))}', 'wrapc'), (kit.side_tag('BUY'), ''), (kit.shares(r['qty']), 'r num'), (f'₹{r["px"]:,.1f}', 'r num'),
+             (cr(r['value']), 'r num'), (vs_now(r['px'], 'BHARTIARTL'), 'r')) for r in gq]
+    tl = tiles([('Net bought', '+' + cr(net), f'{len(gq)} deal lines, one company, one day', 'up'), ('Fund names filed', str(len(names)), 'one fund family, grouped by an alias line', ''),
+                ('Largest line', cr(gq[0]['value']), esc_title(gq[0]['client']), ''), ('Price paid', f'₹{gq[0]["px"]:,.1f}', 'one block price for every line', '')])
+    pos = card('Positions', 'deal lines as filed, newest first · a row opens to the exchange file and the same-day seller', table(
+        [('Day', False), ('Company', False), ('Fund name as filed', False), ('Side', False), ('Shares', True), ('Price', True), ('Value', True), ('Now vs price', True)], rows))
+    nm = card('Same investor, other names', 'one alias line would merge these; the alias list has none for GQG yet',
+              '<ul class="idea-also" style="margin:6px 0 12px">' + ''.join(f'<li>{esc(titled(n))}</li>' for n in names) + '</ul>')
+    seller = card('The other side of the same trade', '7 Mar 2024 block deal', table(
+        [('Seller', False), ('Value', True), ('Taken by', False)],
+        [((f'<b>Pastel Limited</b><div class="sub">{kit.tag("Corporate", "mute")}</div>', 'who'), (cr(next(r for r in md.deals if r['client'] == 'PASTEL LIMITED')['value']), 'r num'),
+          (f'GQG Partners {cr(net)} · {cr(sum(r["value"] for r in md.deals if r["sym"] == "BHARTIARTL" and r["side"] == "BUY" and "GQG" not in r["client"] and r["kind"] == "block"))} by others', 'wrapc'))]))
+    hd = ('<div class="head"><h1>GQG Partners <span class="sym" style="font-size:14px;font-weight:500">investor</span> '
+          f'{kit.tag("Foreign investor", "info")}</h1><p>What one investor did across all its fund names. A fund\'s buy is a fact, not a buy list.</p></div>')
+    return page('Investors', hd + tl + '<div class="grid2">' + nm + seller + '</div>' + pos, 'Investor profile: GQG Partners')
+
+
+def esc_title(n):
+    return esc(titled(n))[:34]
+
+
 pages = {'01_today_money_board': today(), '02_filings_preferential': filings_pref(), '03_filings_insider_trades': filings_insider(),
-         '04_companies_list': companies(), '05_company_page': company(), '06_today_phone': today(phone=True)}
+         '04_companies_list': companies(), '05_company_page': company(), '06_today_phone': today(phone=True), '07_investors': investors(), '08_investor_profile': investor_profile()}
 for k, v in pages.items():
     (OUT / f'{k}.html').write_text(v)
 print('built', list(pages))

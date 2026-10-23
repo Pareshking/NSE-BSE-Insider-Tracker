@@ -96,6 +96,24 @@ for f in sorted(glob.glob(FX + '/nse_events/shp_categories/*.xml')):
     name, q = f.split('/')[-1][:-4].rsplit('_', 1)
     holders[name] = dict(q=q, **parsers.parse_shp_categories(open(f, encoding='utf-8', errors='ignore').read()))
 
+# ---- bulk and block deals (real NSE files of March 2024 in the fixtures) and participant types ----
+import csv  # noqa: E402
+from insiders_clean import participants  # noqa: E402
+
+deals = []
+for kind, f in (('block', 'history/nse_block_2024.csv'), ('bulk', 'history/nse_bulk_2024.csv')):
+    for r in list(csv.reader(open(FX + '/' + f, encoding='utf-8-sig')))[1:]:
+        q, px = num(r[5]), num(r[6])
+        t, conf, _ = participants.classify(r[3].strip())
+        deals.append(dict(kind=kind, day=d(r[0], '%d-%b-%Y'), sym=r[1].strip(), co=r[2].strip(), client=r[3].strip(),
+                          side=r[4].strip(), qty=q, px=px, value=q * px, type=t, conf=conf))
+
+# QIP allottees of Inox Green Energy (listing XBRL): name, shares, % of issue, category
+_x = issues.parse_xbrl(open(FX + '/capital/qip_ls_72568.xml', 'rb').read())
+qip_allottees = [(g['NameOfAllottees'], num(g['NumberOfSharesAllotted']), num(g['PercentageOfTotalIssueSize']), g['CategoryOfAllotees'])
+                 for k, g in _x['groups'].items() if k.startswith('Allottees')]
+
+
 if __name__ == '__main__':
     buys = [t for t in trades if t['sym'] == 'HCLTECH' and t['side'] == 'BUY']
     sells = [t for t in trades if t['sym'] == 'HCLTECH' and t['side'] == 'SELL']
