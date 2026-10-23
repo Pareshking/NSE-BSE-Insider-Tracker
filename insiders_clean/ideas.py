@@ -89,6 +89,17 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
                 value=('_v', 'sum'), shares=('_q', 'sum'), pct_mcap=('_p', 'sum'), days=('_day', 'nunique'),
                 first=('seen', 'min'), last=('seen', 'max'), trade_from=('_from', 'min'), trade_to=('_to', 'max'),
                 filings=('seen', 'size')).reset_index()
+    # The insider's own stake: shares traded in the window over the shares held before the first filing in it (those
+    # persons who filed a holding before), summed over the decision-maker's entities. The size of the bet against the
+    # insider's own position, whatever the company's size (owner, 23 Oct).
+    hb = pd.to_numeric(w['holding_before'], errors='coerce') if 'holding_before' in w else pd.Series(float('nan'), index=w.index)
+    earliest = w.assign(_hb=hb).sort_values(['_from', 'seen'], kind='stable').drop_duplicates(['isin', 'person_id'])
+    person = (earliest[['isin', 'person_id', 'dm', '_hb']].rename(columns={'_hb': 'before'})
+              .join(w.groupby(['isin', 'person_id'])['_q'].sum().rename('bought'), on=['isin', 'person_id']))
+    known = person[person['before'].gt(0)]
+    own = known.groupby(['isin', 'dm']).agg(own_before=('before', 'sum'), own_shares=('bought', 'sum'))
+    out = out.join(own, on=['isin', 'dm'])
+    out['own_change'] = (out['own_shares'] / out['own_before'] * 100).where(out['own_before'].gt(0))
     out['roles'] = g['person_role'].agg(lambda s: sorted(set(s))).to_numpy()
     out['people'] = g['person_name'].agg(lambda s: list(dict.fromkeys(s))).to_numpy()
     total = out['isin'].map(_shares_out(sh))
@@ -135,6 +146,13 @@ def marked(t: pd.DataFrame, ref: pd.Timestamp) -> tuple[set, set]:
     return set(signals.clusters(t, ref)['isin']), set(signals.spotlight(t, ref)['isin'])
 
 
+def _own_change(g: list) -> float | None:
+    """The decision-makers' traded shares over their shares held before, in %, only where each filed a holding."""
+    before = sum(x['own_before'] for x in g if pd.notna(x.get('own_before')))
+    shares = sum(x['own_shares'] for x in g if pd.notna(x.get('own_before')))
+    return shares / before * 100 if before > 0 else None
+
+
 def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None,
                  summary: pd.DataFrame | None = None, limit: int = MAX_IDEAS, days: int = WINDOW,
                  marks: tuple[set, set] | None = None) -> pd.DataFrame:
@@ -167,7 +185,8 @@ def worth_a_look(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = N
                      'pct_of_company': pct, 'pct_basis': top['pct_basis'], 'value': value,
                      'avg_price': value / shares if shares else None,
                      'trade_to': max(x['trade_to'] for x in g), 'last': max(x['last'] for x in g), 'kinds': kinds,
-                     'decision_makers': len(g), 'reads': {k: verdicts.get(k) for k in kinds if k in MEASURED_BY}})
+                     'decision_makers': len(g), 'reads': {k: verdicts.get(k) for k in kinds if k in MEASURED_BY},
+                     'own_change': _own_change(g)})
     out = pd.DataFrame(rows)
     if out.empty:
         return out
@@ -197,7 +216,7 @@ def watch_out(t: pd.DataFrame, ref: pd.Timestamp, sh: pd.DataFrame | None = None
                          'sentence': f'{_who(top)} sold {pct:.2f}% of the company on the market{", " + _when(top) if _when(top) else ""}',
                          'size': pct, 'value': value, 'last': max(x['last'] for x in g),
                          'avg_price': value / shares if shares else None,
-                         'trade_to': max(x['trade_to'] for x in g), 'decision_makers': len(g)})
+                         'trade_to': max(x['trade_to'] for x in g), 'decision_makers': len(g), 'own_change': _own_change(g)})
     out = pd.DataFrame(rows)
     if out.empty:
         return out
@@ -220,6 +239,28 @@ HOLDER_MIN_PTS = 1.0        # a mutual-fund or foreign-investor holding that mov
 HOLDER_MIN_VALUE = 10e7     # ... worth Rs 10 crore or more at today's market cap (owner, 23 Oct: down from Rs 100 crore)
 HOLDER_MAX_AGE = 120        # days from the quarter's end: an older quarter is not "the latest" any more
 HOLDER_MIN_DAYS = 30        # shown for a 30 or 90 day period; the snapshot has the quarter, not the day it was filed
+
+
+def insider_breadth(t: pd.DataFrame | None, ref: pd.Timestamp, days: int) -> dict | None:
+    """Whole-market insider buying against selling (owner, 23 Oct): over the period and the period before it, the rupees of
+    decision-makers' open-market buys (token buys out) and sales, and the companies behind each. `t` is the eligible insider
+    table. buy_share is buying's share of the rupees traded; None for the earlier period when the data does not reach back."""
+    if t is None or t.empty or 'seen' not in t:
+        return None
+    x = t[t['person_role'].isin(signals.DECISION_ROLES) & t['isin'].notna() & t['seen'].notna() & (t['seen'] <= ref + pd.Timedelta(days=1))]
+    buy = x[x['side'].eq('BUY') & ~x['is_token'].astype('boolean').fillna(False)] if 'is_token' in x else x[x['side'].eq('BUY')]
+    sell = x[x['side'].eq('SELL')]
+
+    def one(lo, hi):
+        b, s = buy[(buy['seen'] > lo) & (buy['seen'] <= hi)], sell[(sell['seen'] > lo) & (sell['seen'] <= hi)]
+        bv, sv = float(pd.to_numeric(b['value'], errors='coerce').sum()), float(pd.to_numeric(s['value'], errors='coerce').sum())
+        return {'buy_value': bv, 'sell_value': sv, 'buy_companies': int(b['isin'].nunique()), 'sell_companies': int(s['isin'].nunique()),
+                'buy_share': bv / (bv + sv) * 100 if bv + sv > 0 else None}
+    d = pd.Timedelta(days=days)
+    now = one(ref - d, ref + pd.Timedelta(days=1))
+    first = x['seen'].min() if len(x) else None
+    before = one(ref - 2 * d, ref - d) if first is not None and first <= ref - 2 * d + pd.Timedelta(days=1) else None
+    return {**now, 'before': before}
 
 
 def _ev(rows) -> pd.DataFrame:
@@ -250,6 +291,13 @@ def _in_window(when: pd.Series, ref: pd.Timestamp, days: int) -> pd.Series:
     return (when <= ref + pd.Timedelta(days=1)) & (when > ref - pd.Timedelta(days=days))
 
 
+def _own_kv3(change, sign: str) -> dict:
+    """The row's third number for an insider trade: the change in the insider's own stake (a dash is no number)."""
+    if change is None or pd.isna(change) or change <= 0:
+        return {}
+    return {'kv3_label': 'Own stake', 'kv3': f'{sign}{change:,.1f}%' if change < 1000 else f'{sign}1,000%+'}
+
+
 def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW, marks: tuple[set, set] | None = None) -> pd.DataFrame:
     """Insider buys (Worth a look) and promoter sales (Watch out), from the two lists above."""
     rows = []
@@ -259,14 +307,14 @@ def insider_events(t, ref, sh=None, summary=None, days: int = WINDOW, marks: tup
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'look',
                          'kind': k, 'pct_of_company': r['pct_of_company'], 'sentence': r['sentence'], 'value': r['value'],
                          'last': r['last'], 'avg_price': r['avg_price'], 'trade_to': r['trade_to'],
-                         'decision_makers': r['decision_makers']})
+                         'decision_makers': r['decision_makers'], **_own_kv3(r.get('own_change'), '+')})
     warn = watch_out(t, ref, sh, limit=10_000, days=days)
     for r in warn.to_dict('records') if not warn.empty else []:
         if r['kind'] in ('Promoter selling', 'Director or KMP selling'):
             rows.append({'isin': r['isin'], 'company': r['company'], 'nse_symbol': r['nse_symbol'], 'list': 'warn',
                          'kind': r['kind'], 'pct_of_company': r['size'], 'sentence': r['sentence'], 'value': r['value'],
                          'last': r['last'], 'avg_price': r['avg_price'], 'trade_to': r['trade_to'],
-                         'decision_makers': r['decision_makers']})
+                         'decision_makers': r['decision_makers'], **_own_kv3(r.get('own_change'), '−')})
     return _ev(rows)
 
 

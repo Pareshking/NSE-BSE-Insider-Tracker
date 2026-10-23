@@ -438,3 +438,40 @@ def test_foreign_investors_trimming_is_a_watch_out_and_both_kinds_share_the_grou
     look, warn = ideas.today([got])
     assert look['group'].tolist() == ['Big investors and funds in'] and warn['group'].tolist() == ['Big investors and funds out']
     assert 'cut their share' in warn.iloc[0]['sentence'] and ideas.holder_events(None, ref).empty
+
+
+# ---- the insider's own stake, and the market's insider breadth (owner, 23 Oct) ----------------------------------------
+
+def _t(person, role, side, q, before, day, isin='INE1', tok=False, mkt=1e10):
+    v = q * 100
+    return {'isin': isin, 'company': 'Alpha', 'nse_symbol': 'ALPHA', 'person_id': person, 'person_name': person, 'person_role': role,
+            'side': side, 'quantity': q, 'price': 100, 'value': v, 'signed_value': v if side == 'BUY' else -v, 'pct_of_mcap': v / mkt * 100,
+            'market_cap': mkt, 'seen': pd.Timestamp(day), 'trade_date_to': pd.Timestamp(day), 'trade_date_from': pd.Timestamp(day),
+            'is_token': tok, 'is_market': True, 'holding_before': before}
+
+
+def test_own_stake_change_is_shares_bought_over_the_holding_before_the_first_filing():
+    t = pd.DataFrame([_t('p1', 'promoter', 'BUY', 100000, 1000000, '2026-10-10'), _t('p1', 'promoter', 'BUY', 50000, 1100000, '2026-10-12'),
+                      _t('p2', 'promoter_group', 'BUY', 20000, None, '2026-10-11')])
+    d = ideas.decisions(t, REF, 'BUY', None, 30)
+    assert len(d) == 1 and abs(d.iloc[0]['own_change'] - 15.0) < 1e-9      # 1,50,000 of 10,00,000: the second filing's holding is after the first buy
+    ev = ideas.insider_events(t, REF, days=30)
+    assert ev.iloc[0]['kv3_label'] == 'Own stake' and ev.iloc[0]['kv3'] == '+15.0%'
+    none = pd.DataFrame([_t('p1', 'promoter', 'BUY', 100000, None, '2026-10-10')])
+    assert pd.isna(ideas.decisions(none, REF, 'BUY', None, 30).iloc[0]['own_change'])       # no holding filed: no number, never a guess
+    assert pd.isna(ideas.insider_events(none, REF, days=30).iloc[0]['kv3_label'])
+
+
+def test_insider_breadth_is_buying_share_of_decision_maker_rupees_with_the_period_before():
+    rows = [_t('a', 'promoter', 'BUY', 3000, 1, '2026-10-10', isin='INE1'), _t('b', 'director', 'SELL', 1000, 1, '2026-10-11', isin='INE2'),
+            _t('c', 'kmp', 'SELL', 1000, 1, '2026-10-12', isin='INE3'), _t('tok', 'promoter', 'BUY', 5, 1, '2026-10-12', isin='INE4', tok=True),
+            _t('emp', 'designated_person', 'SELL', 9000, 1, '2026-10-12', isin='INE5'),
+            _t('a', 'promoter', 'BUY', 1000, 1, '2026-09-05', isin='INE1'), _t('d', 'promoter', 'SELL', 3000, 1, '2026-09-06', isin='INE6'),
+            _t('old', 'promoter', 'BUY', 100, 1, '2026-06-01', isin='INE7')]
+    b = ideas.insider_breadth(pd.DataFrame(rows), REF, 30)
+    assert b['buy_value'] == 300000 and b['sell_value'] == 200000 and abs(b['buy_share'] - 60.0) < 1e-9      # tokens and employees never count
+    assert b['buy_companies'] == 1 and b['sell_companies'] == 2
+    assert abs(b['before']['buy_share'] - 25.0) < 1e-9
+    short = ideas.insider_breadth(pd.DataFrame(rows[:5]), REF, 30)
+    assert short['before'] is None                                         # the data does not reach back two periods
+    assert ideas.insider_breadth(None, REF, 30) is None
