@@ -3,3 +3,32 @@ pattern,manager,sub_advised,reason
 GQG PARTNERS|GQG GLOBAL,GQG Partners,no,The manager is named in the fund's own name (GQG Partners ... Fund; ... A Sub Fund of GQG Global UCITS ICAV; BBH GQG Partners ... Master Fund LP)
 FIDELITY,Fidelity,no,The manager is named in the fund's own name (Fidelity Funds Asian Smaller Companies Pool; Fidelity Asian Values PLC)
 GOLDMAN SACHS,Goldman Sachs,no,The manager is named in the fund's own name (GSF II Goldman Sachs Global Multi Manager Alternatives Portfolio)
+^THE ADVISORS INNER CIRCLE FUND.*SANDS CAPITAL,Sands Capital,yes,"A fund sponsor's name leads and Sands Capital is named inside it (The Advisors Inner Circle Fund Sands Capital Global Growth Fund): likely sub-advised, from the name only"
+SANDS CAPITAL,Sands Capital,no,The manager is named in the fund's own name (Sands Capital Funds PLC ...)
+^NIPPON INDIA,Nippon India,no,Named in the fund's own name (Nippon India Small Cap Fund; Nippon India Equity Opportunities AIF ...); Reliance Nippon Life Insurance is a different business and does not match
+NOMURA,Nomura,no,Named in the fund's own name (Nomura India Investment Fund Mother Fund; Nomura Funds Ireland ...)
+360 ONE,360 One,no,Named in the fund's own name (360 One Large Value Fund; 360 One Pipe Fund; 360 One Mutual Fund)
+SCHRODER,Schroders,no,Named in the fund's own name (Schroder International Selection Fund ...; Schroder Asiapacific Fund PLC)
+^MANULIFE,Manulife,no,Named in the fund's own name (Manulife Global Fund India Equity Fund ...); Mahindra Manulife Mutual Fund is a different manager and does not match
+WASATCH,Wasatch,no,Named in the fund's own name (Wasatch Advisors Inc A/C Wasatch ...; ... Obo Wasatch Emerging Markets Select Cit)
+WHITE ?OAK,White Oak,no,Named in the fund's own name (Whiteoak Capital Mutual Fund; Ashoka Whiteoak Icav - ...)
+FRANKLIN|TEMPLETON,Franklin Templeton,no,Named in the fund's own name (Franklin Templeton Investment Funds - Franklin India Fund; Templeton Emerging Markets Investment Trust PLC)
+MATTHEWS,Matthews,no,Named in the fund's own name (Matthews Emerging Markets Small Companies Fund; Matthews Asia Innovators Fund)
+BLACKROCK|ISHARES,BlackRock,no,Named in the fund's own name (Blackrock Global Funds ...; Ishares Core Msci Emerging Markets ETF; iShares is BlackRock's fund brand)
+VANGUARD,Vanguard,no,Named in the fund's own name (Vanguard Total International Stock Index Fund; Vanguard Emerging Markets Stock Index Fund ...)
+NUVAMA,Nuvama,no,Named in the fund's own name (Nuvama Crossover Opportunities Fund - Series Iii)
+MOTILAL OSWAL,Motilal Oswal,no,Named in the fund's own name (Motilal Oswal Equity Opportunities Fund Series II; Motilal Oswal Large And Midcap Fund)
+^KOTAK (FUNDS\b|MAHINDRA (MATUAL|MUTUAL)),Kotak Mahindra,no,Named in the fund's own name (Kotak Funds - India Midcap Fund; Kotak Mahindra Mutual Fund as filed); Kotak Mahindra Life Insurance and Kotak Mahindra Bank do not match
+NORDEA,Nordea,no,Named in the fund's own name (Nordea 1 Sicav; Nordea 1 Sicav - Indian Equity Fund)
+ALLIANZ GLOBAL INVESTORS,Allianz Global Investors,no,Named in the fund's own name (Allianz Global Investors GMBH Acting ON Behalf OF Allianz ...); Bajaj Allianz Life Insurance does not match
+AMUNDI,Amundi,no,Named in the fund's own name (Amundi Funds Equity India; Amundi Funds Asia Equity Concentrated)
+ABERDEEN,abrdn (Aberdeen),no,Named in the fund's own name (Aberdeen Asian Smaller Companies Investment Trust PLC; Aberdeen Standard Sicav I ...)
+T ROWE PRICE,T. Rowe Price,no,Named in the fund's own name (T Rowe Price International Discovery Fund; T Rowe Price New Asia Fund)
+INVESCO,Invesco,no,Named in the fund's own name (Invesco Developing Markets Fund; Invesco Mutual Fund A/C ...)
+JUPITER,Jupiter,no,Named in the fund's own name (Jupiter India Fund; The Jupiter Global Fund -jupiter India Select)
+AMERICAN F(UNDS|DS)|CAPITAL GROUP,Capital Group,no,Named in the fund's own name (Capital Group Europacific Growth Trust (US)); American Funds is Capital Group's fund family
+^HSBC (INDIA|MUTUAL),HSBC,no,Named in the fund's own name (HSBC India Infrastructure Equity Mother Fund; HSBC Mutual Fund Midcap Fund)
+ABAKKUS,Abakkus,no,Named in the fund's own name (Abakkus Diversified Alpha Fund; Abakkus Mutual Fund)
+^TATA MUTUAL FUND,Tata,no,Named in the fund's own name (Tata Mutual Fund); Tata Aia Life Insurance does not match
+BIRLA (SUN ?LIFE )?MUTUAL,Aditya Birla Sun Life,no,Named in the fund's own name (Birla Mutual Fund; Aditya Birla Sunlife Mutual Fund); Aditya Birla Sun Life Insurance does not match
+^3P INDIA,3P Investment Managers,no,Named in the fund's own name (3P India Equity Fund 1; 3P India Equity Fund 1M)

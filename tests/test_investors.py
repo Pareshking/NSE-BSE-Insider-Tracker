@@ -158,3 +158,23 @@ def test_by_company_nets_one_investors_deals_per_company():
     assert out.loc['INE001A01011', ['buy', 'sell', 'net']].tolist() == [300e7, 100e7, 200e7]
     assert abs(out.loc['INE001A01011', 'pct'] - 0.6) < 1e-9 and out['net'].abs().is_monotonic_decreasing
     assert investors.by_company(None, REF, 30).empty
+
+
+def test_manager_lines_match_the_real_fund_names_and_not_their_look_alikes():
+    """Names as the exchanges file them (the largest institutional names of the real deals, 23 Oct 2026)."""
+    named = {'Nippon India Small Cap Fund': 'Nippon India', 'TNTBC AS The Trustee OF Nomura India Stock Mother Fund': 'Nomura',
+             '360 One Mutul Fund': '360 One', 'Whiteoak Capital Mutual Fund': 'White Oak',
+             'Ashoka Whiteoak Icav-ashoka Whiteoak Emerging Markets Equity Fund': 'White Oak',
+             'Kotak Mahindra Matual Fund': 'Kotak Mahindra', 'Kotak Funds - India Midcap Fund': 'Kotak Mahindra',
+             'Aditya Birla Sunlife Mutual Fund': 'Aditya Birla Sun Life', 'Ishares Core Msci Emerging Markets ETF': 'BlackRock',
+             'American Funds Global Balanced Fund': 'Capital Group', 'Franklin India Flexi Cap Fund': 'Franklin Templeton',
+             'Sands Capital Funds PLC Sands Capital Global Growth Fund': 'Sands Capital'}
+    for name, manager in named.items():
+        assert fund_managers.manager_of(name)[0] == manager, name
+    for other in ('Mahindra Manulife Mutual Fund', 'Bajaj Allianz Life Insurance Company Limited',
+                  'Reliance Nippon Life Insurance Company Limited', 'Aditya Birla Sun Life Insurance Company Limited',
+                  'Kotak Mahindra Life Insurance Company Limited', 'Kotak Mahindra Bank Limited', 'Tata Aia Life Insurance Company Limited',
+                  'SBI Mutual Fund', 'India Acorn Icav', 'Ashoka India Equity Investment Trust PLC'):
+        assert fund_managers.manager_of(other)[0] is None, other      # a name that does not name the manager stays blank
+    manager, sub, _ = fund_managers.manager_of('The Advisors Inner Circle Fund Sands Capital Global Growth Fund')
+    assert manager == 'Sands Capital' and sub is True
