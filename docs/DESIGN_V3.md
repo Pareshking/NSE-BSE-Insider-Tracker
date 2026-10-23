@@ -17,13 +17,33 @@ session that made them. The live Site preview run fills them from the price laye
 | Step | State |
 |---|---|
 | Filings kinds: pills and a table of its own columns for Insider trades, Deals, Stake changes, Preferential, Rights, QIPs, Buybacks, Pledges and Upcoming; company cell with size, market cap, price and 52-week bar; "?" for a held-back amount; lock-in end dates; Upcoming (fund-raising and buyback meetings, tender closes, lock-in ends, next 60 days) | **Built 23 Oct** (`screens/filings_all.py`, `ui/table.py`; tests in `tests/test_filings_page.py`) |
-| Today as the money board, with the ₹25 Cr rule in `insiders_clean/ideas.py` | Next |
+| Today as the money board: Money in / Money out / Risk changes panels, the ₹25 Cr rule, Raises, Coming up, market line on rows (`insiders_clean/ideas.py`, `screens/home.py`) | **Built 23 Oct** (rules below) |
 | Investors page and investor profile (needs the GQG-style alias lines) | After Today |
 | Companies list and the dossier's ratios strip, decisions timeline | After Investors |
 | Company snapshot table (promoter %, pledge %, funds' change) in the nightly precompute | Before Companies and Investors |
 
-Not in the first Filings step: the "Real money only" switch (it needs the ideas rules per row and goes with Today),
-the headline sentence, and the Investors link in the top bar.
+Not built yet: a "Real money only" switch on Filings, the Investors link in the top bar, and the headline sentence per Filings row.
+
+## Rules for Today, agreed 23 Oct (owner, with the consultant's review)
+
+- **₹25 Cr path**: one decision-maker (a promoter group counts once) buying or selling ₹25 Cr or more on one side in the period qualifies
+  whatever its share of the company. Decision-makers are promoters, promoter group, directors and KMP; designated persons and
+  employees never count. Sales are open-market only (ESOP, gifts, pledge invocation and OFS are excluded upstream). A promoter group
+  selling uses the same floors as buying; a director or KMP selling counts only at ₹25 Cr and up. Gross per side, not netted: a
+  decision-maker who both bought and sold in the period shows in both lists, each row's facts name the other side.
+- **Order inside a group**: rows at ₹25 Cr or more go first by value, at most five of the eight shown, so at least three places stay
+  for the rows ranked by share of the company. A "₹25 Cr+" chip marks them.
+- **Raises** (own neutral group under Money in; never a verdict): QIPs, preferential issues to non-promoters or mixed, rights issues,
+  allotted or listed only (an approval is not a raise), dated by allotment. Shown at ₹100 Cr and up, or 2% and up of the shares
+  outstanding. The base is the shareholding table's total, and only when the new shares are under half of it; otherwise the row says
+  "dilution not stated". A raise with neither a usable amount nor a usable dilution is not listed. Promoter issues stay with
+  "Promoters pay up" (price at or above the market price; exactly equal counts as paying up) and "Cheap shares to promoters"
+  (below), so each lands in exactly one place.
+- **Panels**: Money in (insiders buying, promoters pay up, big investors and funds in, buybacks at a premium, raises), Money out
+  (insiders selling, big investors and funds out), Risk changes (pledges up, pledges released, cheap shares to promoters). Internal
+  list codes `look` and `warn` are unchanged, so the track record and the company page are untouched.
+- **Coming up**: board meetings that consider fund raising or a buyback, tender closes, lock-ins ending, next ten days. A meeting is
+  not a raise until its outcome is filed.
 
 ## The investor's question
 

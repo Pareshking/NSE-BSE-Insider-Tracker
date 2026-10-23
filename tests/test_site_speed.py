@@ -96,8 +96,20 @@ def old_today(events, summary=None):
                         others=[t for t in g['sentence'].drop_duplicates() if t != lead['sentence']])
             rows.append(lead)
         r = pd.DataFrame(rows)
-        out.append(r.sort_values(['group_order', 'pct_of_company', 'last'], ascending=[True, False, False]).reset_index(drop=True)
-                   if not r.empty else r)
+        if r.empty:
+            out.append(r)
+            continue
+        # Rows at or over BIG_VALUE first in their group (at most MAX_LIFT of them) by value, the rest by share of the company.
+        value = pd.to_numeric(r['value'], errors='coerce')
+        r['big'] = value.ge(ideas.BIG_VALUE).fillna(False)
+        pieces = []
+        for order in sorted(r['group_order'].unique()):
+            grp = r[r['group_order'] == order]
+            lifted = grp[grp['big']].assign(_v=pd.to_numeric(grp[grp['big']]['value'], errors='coerce')) \
+                .sort_values(['_v', 'last'], ascending=False).head(ideas.MAX_LIFT)
+            rest = grp.drop(index=lifted.index).sort_values(['pct_of_company', 'last'], ascending=[False, False])
+            pieces += [lifted.drop(columns='_v'), rest]
+        out.append(pd.concat(pieces).reset_index(drop=True))
     return out[0], out[1]
 
 
@@ -231,6 +243,19 @@ def test_today_lists_are_the_same(seed):
     for got, want in zip(ideas.today(ev), old_today(ev)):
         pd.testing.assert_frame_equal(got, want, check_exact=True)
     assert all(a.empty and b.empty for a, b in zip(ideas.today([]), old_today([])))
+
+
+@pytest.mark.parametrize('seed', range(4))
+def test_today_lists_are_the_same_with_rupee_big_rows(seed):
+    rng = np.random.default_rng(seed)
+    ev = events(rng)
+    for e in ev:
+        if len(e) and 'value' in e:
+            e['value'] = [None if v is None else float(v) * rng.choice([1, 1, 40]) for v in e['value']]   # a third reach Rs 25 Cr
+    got = ideas.today(ev)
+    for g, w in zip(got, old_today(ev)):
+        pd.testing.assert_frame_equal(g, w, check_exact=True)
+    assert any(g['big'].any() for g in got)
 
 
 def test_today_lists_from_the_real_builders_are_the_same():

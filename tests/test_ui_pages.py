@@ -268,8 +268,8 @@ def test_old_addresses_redirect():
         assert re.search(rf"'{old}': 'Filings'", app), old
 
 
-def test_today_page_renders_its_two_lists(data_dir, monkeypatch):
-    """Today (21 Oct redesign): Worth a look and Watch out, from insiders_clean/ideas.py."""
+def test_today_page_renders_the_money_board(data_dir, monkeypatch):
+    """Today (21 and 23 Oct): Money in, Money out and Risk changes from insiders_clean/ideas.py, and the money events ahead."""
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     at = AppTest.from_string(APP_PATHS + """
 from ui import theme
@@ -280,7 +280,9 @@ home.render()
     at.run()
     assert not at.exception, at.exception[0].value if at.exception else ''
     html = ' '.join(e.proto.body for e in at.get('html'))
-    assert 'Worth a look' in html and 'Watch out' in html
+    for panel in ('Money in', 'Money out', 'Risk changes', 'Coming up'):
+        assert panel in html, panel
+    assert 'companies with money in' in html and 'Raises: QIPs' in html and '₹25 Cr and up' in html
 
 
 def test_in_app_links_map_to_pages_with_their_query():
@@ -293,3 +295,29 @@ def test_in_app_links_map_to_pages_with_their_query():
     assert nav.target('/filings-all', pages) == ('FILINGS', {})
     assert nav.target('/', pages) == ('TODAY', {})
     assert nav.target('/elsewhere?x=1', pages) is None and nav.target(None, pages) is None
+
+
+def test_a_today_row_shows_its_market_line_the_rupee_chip_and_its_own_third_number():
+    """screens/home.py _row: size, market cap, price and the 52-week bar under the name; a Rs 25 Cr chip; a raise's new shares
+    and issue-vs-now in place of the promoters' holding."""
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import home
+    r = {'isin': 'INE0QIP00011', 'company': 'Qip Co', 'nse_symbol': 'QIPCO', 'kinds': ['QIP'], 'reads': {}, 'kind': 'QIP', 'big': True,
+         'sentence': 'QIP: 20 institutions took 18,110,473 shares at ₹165.65; ₹300 Cr raised', 'value': 3e9, 'pct_of_company': 4.53,
+         'last': pd.Timestamp('2026-10-05'), 'trade_to': pd.NaT, 'avg_price': None, 'kv3_label': 'Issue vs now', 'kv3': '-8.0%', 'others': []}
+    px = {'INE0QIP00011': {'latest_close': 180.0, 'market_cap': 7.2e10, 'mcap_bucket': 'Small', 'low_52w': 120.0, 'high_52w': 200.0,
+                           'pct_off_high': -0.1}}
+    html = home._row(SimpleNamespace(prices=pd.DataFrame()), r, {}, px)
+    assert 'Small' in html and '₹7,200 Cr' in html and 'rgm' in html and 'QIPCO' in html          # the market line
+    assert '₹25 Cr+' not in html                                                                 # a raise has its own gate: no rupee chip
+    insider = home._row(SimpleNamespace(prices=pd.DataFrame()), {**r, 'kind': 'Promoter buying', 'kinds': ['Promoter buying'], 'reads': {}}, {}, px)
+    assert '₹25 Cr+' in insider and insider.index('₹25 Cr+') < insider.index('Promoter buying')    # the chip, before the kinds
+    assert 'New shares' in html and 'Issue vs now' in html and '-8.0%' in html and 'Promoters' not in html
+    assert '<i>' not in html.split('idea-chips')[1].split('</div>')[0]                          # a raise carries no measured read
+    plain = home._row(SimpleNamespace(prices=pd.DataFrame()), {**r, 'big': False, 'kind': 'Promoter buying', 'kinds': ['Promoter buying'],
+                                                               'reads': {'Promoter buying': 'leaning_positive'}, 'kv3_label': None,
+                                                               'kv3': None}, {}, px)
+    assert '₹25 Cr+' not in plain and 'Of company' in plain and '>Ahead<' in plain.replace('<i>', '>').replace('</i>', '<')

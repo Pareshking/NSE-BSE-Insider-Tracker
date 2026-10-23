@@ -278,8 +278,8 @@ def today(phone=False):
              [chip('Big holder out', 'sell'), chip('Not a promoter', 'mute')],
              [('Of company', f'−{axis["pct"]:.2f}%', 'down'), ('Stake after', f'{axis["after"]:.2f}%', ''), ('Value', '≈ ' + ph('₹340 Cr'), '')]),
     ]
-    out_note = ('<p class="note">Left out with "Real money only" on: 21 HCL Technologies employees selling ₹16.7 Cr in all, because '
-                'no one of them reaches 0.05% of the company. They stay in Filings.</p>')
+    out_note = ('<p class="note">Not listed: 21 HCL Technologies designated persons (employees) who sold ₹16.7 Cr in all. Today follows '
+                'promoters, directors and key managerial personnel; their filings stay under Filings.</p>')
     coming = card('Coming up: money events', 'fund raising, buybacks, tenders, lock-ins · next 10 days', table(
         [('Date', False), ('Company', False), ('What', False), ('Detail', False)],
         [(('9 Oct 2026', 'd'), (co('CP Capital', 'CPCAP'), 'co'), ('Board meets: fund raising', ''), ('As intimated to NSE', 'd')),
@@ -392,8 +392,8 @@ def filings_insider():
             '</div><div class="bar"><span class="filt" style="width:240px;color:#8a93a3">Company, symbol or name</span>' +
             pills('', ['7 days', '30 days', '90 days', '1 year'], '1 year') + pills('Side', ['Buy and sell', 'Buy', 'Sell'], 'Buy and sell') +
             '<span class="filt">Filters &amp; sort ▾</span>' + TOG_OFF + '</div>' + table(th, rows) +
-            f'<div class="leg"><span>Real money only is off here. With it on, HCL Technologies drops out: even ₹81.9 Cr by its promoter group is about '
-            f'0.02% of the company (at the placeholder market cap), under the 0.05% floor.</span>'
+            f'<div class="leg"><span>Real money only is off here. With it on and no rupee path, HCL Technologies drops out: even ₹81.9 Cr by its promoter group is about '
+            f'0.02% of the company (at the placeholder market cap), under the 0.05% floor; the ₹25 Cr path (owner, 23 Oct) brings it back. Its designated persons never count: they are not promoters, directors or key managerial personnel.</span>'
             f'<span>Open-market trades only; at HCL in this sample {ex_h.get("ESOS", 0)} ESOS exercises, {ex_h.get("Gift", 0)} gifts and '
             f'{ex_h.get("ESOP", 0) + ex_h.get("Preferential Offer", 0) + ex_h.get("Off Market", 0)} other non-market filings stay under "All".</span>'
             f'<span>Colour on "price now vs trade" only for buys: after a sale a rise is neither good nor bad news.</span></div>')
