@@ -20,7 +20,7 @@ session that made them. The live Site preview run fills them from the price laye
 | Today as the money board: Money in / Money out / Risk changes panels, the ₹25 Cr rule, Raises, Coming up, market line on rows (`insiders_clean/ideas.py`, `screens/home.py`) | **Built 23 Oct** (rules below) |
 | Investors page and investor profile (needs the GQG-style alias lines) | After Today |
 | Companies list and the dossier's ratios strip, decisions timeline | After Investors |
-| Company snapshot table (promoter %, pledge %, funds' change) in the nightly precompute | Before Companies and Investors |
+| Company snapshot table (market line, promoter %, pledge %, funds' and FPIs' change, insider flows) in the nightly precompute | **Coded 23 Oct** (`insiders_clean/snapshot.py`); first nightly writes it; no page reads it yet |
 
 Not built yet: a "Real money only" switch on Filings, the Investors link in the top bar, and the headline sentence per Filings row.
 

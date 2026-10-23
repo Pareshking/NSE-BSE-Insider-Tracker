@@ -54,7 +54,7 @@ same day something is promised, started or finished. Pages follow the data:
 |---|---|---|
 | X | **Filings kinds** (built 23 Oct): a table of its own columns per kind, company cell with market line, "?" on held-back amounts, Upcoming kind | CI and Site preview green; the owner has seen it on live data |
 | X2 | ~~Today as the money board~~ **Built 23 Oct**: ₹25 Cr additional rule (owner), Raises, panels Money in / Money out / Risk changes, Coming up, market line (`ideas.py`, `home.py`; rules in `docs/DESIGN_V3.md`) | CI and Site preview green; owner has seen it on live data |
-| X3 | **Company snapshot** in the nightly precompute (market cap, price, 52-week range, promoter %, pledge %, last insider buy, funds' and FPIs' change) | Every page joins only it |
+| X3 | ~~Company snapshot~~ **Coded 23 Oct** (`insiders_clean/snapshot.py`, written by `scripts/precompute_slim.py`, read by `store.snapshot()`; columns in `docs/DATA_DICTIONARY.md`). Check the first nightly log line `snapshot: N companies, ...` | Companies and Investors join only it |
 | X4 | **Investors page and investor profile** (funds, FPIs, insurers, AIF/PMS; handshakes; named raise allottees); alias lines for fund families | Page live; alias list has GQG-style lines |
 | X5 | **Companies list and dossier** (ratios strip, money in and out, decisions timeline) | Pages live |
 
