@@ -194,6 +194,15 @@ across both exchanges and both feeds exclude every leg of that client-security-d
 Rs 3.96 Cr same-day buy and sell by one client (23 Jun 2026) showed on a company page. It runs after market-maker
 labelling, so labelling is unchanged. An NSE leg and a BSE leg in the same direction are still two executions (audit W8).
 
+## Market cap of a company NSE does not list (23 Oct 2026)
+
+NSE's daily market-cap file covers NSE-listed names only, so a BSE-only company's % of market cap used today's market cap.
+`market_cap.from_shares` now gives a trade's BSE-only company a dated figure: shares in issue (`total_shares` of the latest
+shareholding XBRL with a quarter end on or before the trade day, from `bse_shareholding` and `shareholding` of the last run)
+times the BSE close of the trade day (or of the last session before it within 10 days; `prices/daily/bse/`). `market_cap_basis`
+is then `shares_x_close`; with no close or no filed shares the row keeps `latest`. Only rows with no NSE symbol take this
+route. Counts are in `tables.*.market_cap_basis`; the layer's read is `bse_market_cap_layer` in the cleaning report.
+
 ## Rules
 
 Insider trades (`insiders_clean/insider.py`):
@@ -230,7 +239,7 @@ Insider trades (`insiders_clean/insider.py`):
   `clean_writer.py`), matched on the NSE symbol (the filed NSE symbol where
   today's has no figure, e.g. after a rename), as of the session itself or
   the last one before it within 10 calendar days. No dated figure (BSE-only
-  names; trades after the layer's last day, as the layer is extended by the
+  names without a close or filed shares; trades after the layer's last day, as the layer is extended by the
   Price backfill workflow): the latest market cap, `market_cap_basis` =
   `latest`. `market_cap` stays the latest (the size of the company today:
   study universe, token rule). Counts in `tables.*.market_cap_basis` and

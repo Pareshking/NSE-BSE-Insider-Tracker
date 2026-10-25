@@ -63,7 +63,7 @@ EQUITY_SERIES = ('EQ', 'BE', 'BZ', 'SM', 'ST', 'SZ')
 # days (a weekend, a holiday, a long Diwali break). Further back than that, or after the last day the layer holds
 # (it is extended by the Price backfill workflow), there is no dated figure and the latest market cap is used.
 MAX_STALE_DAYS = 10
-BASES = ('trade_date', 'previous_session', 'latest', 'none')
+BASES = ('trade_date', 'previous_session', 'shares_x_close', 'latest', 'none')
 
 
 def daily_frame(df: pd.DataFrame | None) -> pd.DataFrame:
@@ -144,4 +144,77 @@ def at_trade_date(symbols: pd.Series, days: pd.Series, daily: pd.DataFrame | Non
     out.loc[use_latest, 'market_cap_at_trade'] = lat[use_latest]
     out['market_cap_basis'] = np.select([dated & same_day, dated, use_latest],
                                         ['trade_date', 'previous_session', 'latest'], 'none')
+    return out
+
+
+# --- Market cap at the trade date for a company NSE does not list (BSE-only), from shares and the BSE close ----------
+
+BSE_PRICE_KEY = 'prices/daily/bse/{month}.parquet'
+
+
+def shares_frame(*tables) -> pd.DataFrame:
+    """Shares in issue by ISIN and quarter end, from shareholding tables (`total_shares` of each filing's XBRL)."""
+    parts = [t[['isin', 'quarter_end', 'total_shares']] for t in tables
+             if t is not None and not t.empty and {'isin', 'quarter_end', 'total_shares'} <= set(t.columns)]
+    if not parts:
+        return pd.DataFrame(columns=['isin', 'quarter_end', 'total_shares'])
+    d = pd.concat(parts, ignore_index=True)
+    d = d.assign(quarter_end=pd.to_datetime(d['quarter_end'], errors='coerce').dt.normalize(),
+                 total_shares=pd.to_numeric(d['total_shares'], errors='coerce'))
+    d = d[d['isin'].notna() & d['quarter_end'].notna() & (d['total_shares'] > 0)]
+    return d.sort_values('quarter_end').drop_duplicates(['isin', 'quarter_end'], keep='last').reset_index(drop=True)
+
+
+def load_bse_closes(get, months) -> tuple[pd.DataFrame | None, dict]:
+    """BSE's printed close per ISIN and session from the price layer (`prices/daily/bse/YYYY-MM.parquet`), read only. A
+    missing or unreadable month is listed; those days have no close."""
+    frames, found, missing, unreadable = [], 0, [], {}
+    for m in months:
+        key = BSE_PRICE_KEY.format(month=m)
+        try:
+            body = get(key)
+            if body is None:
+                missing.append(key)
+                continue
+            f = pd.read_parquet(io.BytesIO(body), columns=['date', 'isin', 'close'])
+            frames.append(f)
+            found += 1
+        except Exception as e:  # noqa: BLE001 -- one bad month must not stop the clean step
+            unreadable[key] = f'{type(e).__name__}: {e}'
+    info = {'months_read': found, 'months_missing': missing, 'months_unreadable': unreadable}
+    if not frames:
+        return None, info
+    d = pd.concat(frames, ignore_index=True)
+    d = d.assign(date=pd.to_datetime(d['date'], errors='coerce').dt.normalize(), close=pd.to_numeric(d['close'], errors='coerce'))
+    d = d[d['isin'].notna() & d['date'].notna() & (d['close'] > 0)]
+    d = d.sort_values('date').drop_duplicates(['isin', 'date'], keep='last').reset_index(drop=True)
+    info.update(rows=int(len(d)), last=str(d['date'].max().date()) if len(d) else None)
+    return d, info
+
+
+def from_shares(at: pd.DataFrame, isins: pd.Series, days: pd.Series, shares: pd.DataFrame | None,
+                closes: pd.DataFrame | None, only: pd.Series) -> pd.DataFrame:
+    """Fill `at` (from at_trade_date) for the rows in `only` that have no dated NSE figure: shares in issue at the latest
+    quarter end on or before the trade day x the BSE close of that day (or of the last session before it within
+    MAX_STALE_DAYS). `market_cap_date` is the session of the close and the basis 'shares_x_close'. The shares are the
+    quarter's, not the day's: an issue since then is not in them. A row without both inputs keeps what it had."""
+    if shares is None or shares.empty or closes is None or closes.empty:
+        return at
+    out = at.copy()
+    day = pd.to_datetime(days, errors='coerce').dt.normalize()
+    todo = (out['market_cap_basis'].isin(['latest', 'none']).to_numpy() & only.to_numpy() & isins.notna().to_numpy() & day.notna().to_numpy())
+    if not todo.any():
+        return out
+    left = pd.DataFrame({'isin': isins.to_numpy(), '_day': day.to_numpy(), '_i': np.arange(len(out))})[todo]
+    left = left.sort_values('_day')
+    sh = pd.merge_asof(left, shares.rename(columns={'quarter_end': '_q'})[['isin', '_q', 'total_shares']].sort_values('_q'),
+                       left_on='_day', right_on='_q', by='isin', direction='backward')
+    px = pd.merge_asof(sh.sort_values('_day'), closes.rename(columns={'date': '_cdate'}).sort_values('_cdate'),
+                       left_on='_day', right_on='_cdate', by='isin', direction='backward',
+                       tolerance=pd.Timedelta(days=MAX_STALE_DAYS))
+    px = px.dropna(subset=['total_shares', 'close'])
+    rows = out.index[px['_i'].to_numpy()]
+    out.loc[rows, 'market_cap_at_trade'] = (px['total_shares'] * px['close']).to_numpy()
+    out.loc[rows, 'market_cap_date'] = px['_cdate'].to_numpy()
+    out.loc[rows, 'market_cap_basis'] = 'shares_x_close'
     return out

@@ -89,7 +89,7 @@ def _drop_json_copies(raw: pd.DataFrame, report) -> pd.DataFrame:
 
 
 def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
-                market_cap_daily: pd.DataFrame | None = None) -> pd.DataFrame:
+                market_cap_daily: pd.DataFrame | None = None, bse_caps: tuple | None = None) -> pd.DataFrame:
     """canonical bulk + block rows (both exchanges; `exchange` and
     `category` columns) -> clean deals. `market_cap_daily`
     (insiders_clean.market_cap.load_daily) dates the market cap behind
@@ -166,6 +166,8 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
     # % of market cap on the deal's day (NSE's daily mcap file); `market_cap` stays the latest (audit W1).
     at = market_cap.at_trade_date(legs['nse_symbol'], legs['date'], market_cap_daily, legs['market_cap'],
                                   fallback_symbols=legs['symbol'].where(legs['exchange'].eq('nse')))
+    if bse_caps is not None:   # a company NSE does not list: shares in issue x the BSE close of the day (market_cap.from_shares)
+        at = market_cap.from_shares(at, legs['isin'], legs['date'], bse_caps[0], bse_caps[1], legs['nse_symbol'].isna())
     for c in at.columns:
         legs[c] = at[c].to_numpy()
     t['market_cap_basis'] = {str(k): int(v) for k, v in legs['market_cap_basis'].value_counts().items()}

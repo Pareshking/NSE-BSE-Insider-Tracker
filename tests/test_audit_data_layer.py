@@ -346,3 +346,77 @@ def test_a_client_who_bought_and_sold_unequal_amounts_or_on_different_days_is_ke
     out = clean_deals(raw, master, report, RUN_DATE)
     assert len(out) == 4
     assert 'intraday_round_trip_across_exchanges' not in report.data['tables']['deals']['removed']
+
+
+# ---- a market cap on the trade's day for a company NSE does not list (BSE-only) ----------------------------------------
+
+def _bse_only_master():
+    from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
+    rows = [{'symbol': '511111', 'isin': 'INE111A01011', 'company_name': 'Bse Only Ltd', 'market_cap': 9e9,
+             'source': 'bse_list_securities', 'group': 'B'}]
+    return SecurityMaster(vr_master=None, nse_list=nse_list_frame(), bse_list=bse_list_frame(rows), market_cap_rows=rows)
+
+
+def _caps(closes=((' 2026-10-06', 100.0),), shares=((' 2026-09-30', 1e7),)):
+    s = pd.DataFrame({'isin': 'INE111A01011', 'quarter_end': pd.to_datetime([d.strip() for d, _ in shares]),
+                      'total_shares': [v for _, v in shares]})
+    c = pd.DataFrame({'isin': 'INE111A01011', 'date': pd.to_datetime([d.strip() for d, _ in closes]), 'close': [v for _, v in closes]})
+    return s, c
+
+
+def _bse_deal_row(day='06/10/2026'):
+    return {'event_date': day, 'security_code': '511111', 'security_name': 'BSEONLY', 'company': 'BSEONLY', 'person': 'SOME FUND LLP',
+            'side': 'BUY', 'quantity': '100000', 'price': '100.0', 'raw': []}
+
+
+def test_a_bse_only_deal_takes_shares_times_the_bse_close_of_its_day(report):
+    raw = canonical('bse', 'bulk_deals', [_bse_deal_row()])
+    before = clean_deals(raw, _bse_only_master(), report, RUN_DATE).iloc[0]
+    assert before['market_cap_basis'] == 'latest' and before['pct_of_mcap'] == pytest.approx(1e7 / 9e9 * 100)
+    after = clean_deals(raw, _bse_only_master(), type(report)(RUN_DATE), RUN_DATE, bse_caps=_caps()).iloc[0]
+    assert after['market_cap_basis'] == 'shares_x_close' and after['market_cap_at_trade'] == pytest.approx(1e9)   # 1 Cr shares x Rs 100
+    assert after['pct_of_mcap'] == pytest.approx(1.0) and after['market_cap_date'] == pd.Timestamp('2026-10-06')
+    assert after['market_cap'] == pytest.approx(9e9)                                                            # the latest stays as it was
+
+
+def test_a_bse_only_trade_with_no_close_or_no_shares_keeps_the_latest(report):
+    raw = canonical('bse', 'bulk_deals', [_bse_deal_row()])
+    for caps in (_caps(closes=((' 2026-08-01', 100.0),)),                  # the last close is over ten days before
+                 _caps(shares=((' 2026-12-31', 1e7),))):                   # the only quarter is after the trade
+        out = clean_deals(raw, _bse_only_master(), type(report)(RUN_DATE), RUN_DATE, bse_caps=caps).iloc[0]
+        assert out['market_cap_basis'] == 'latest' and out['market_cap_at_trade'] == pytest.approx(9e9)
+    near = clean_deals(raw, _bse_only_master(), type(report)(RUN_DATE), RUN_DATE,
+                       bse_caps=_caps(closes=((' 2026-10-02', 90.0),))).iloc[0]                                 # the session before
+    assert near['market_cap_basis'] == 'shares_x_close' and near['market_cap_at_trade'] == pytest.approx(9e8)
+    assert near['market_cap_date'] == pd.Timestamp('2026-10-02')
+
+
+def test_an_nse_listed_company_never_takes_the_shares_route(master, report):
+    """CLEANMAX is on both exchanges: its dated figure is NSE's or the latest, whatever the BSE layer holds."""
+    from insiders_clean import market_cap
+    at = pd.DataFrame({'market_cap_at_trade': [9e10], 'market_cap_date': [pd.NaT], 'market_cap_basis': ['latest']})
+    s = pd.DataFrame({'isin': ['INE647U01026'], 'quarter_end': [pd.Timestamp('2026-09-30')], 'total_shares': [1e7]})
+    c = pd.DataFrame({'isin': ['INE647U01026'], 'date': [pd.Timestamp('2026-10-06')], 'close': [100.0]})
+    out = market_cap.from_shares(at, pd.Series(['INE647U01026']), pd.Series([pd.Timestamp('2026-10-06')]), s, c, pd.Series([False]))
+    assert out['market_cap_basis'].tolist() == ['latest'] and out['market_cap_at_trade'].tolist() == [9e10]
+
+
+def test_shares_frame_keeps_one_row_per_isin_and_quarter_and_drops_blanks():
+    from insiders_clean import market_cap
+    a = pd.DataFrame({'isin': ['X', 'X', 'Y'], 'quarter_end': ['2026-06-30', '2026-06-30', '2026-06-30'], 'total_shares': [1e6, 2e6, None]})
+    got = market_cap.shares_frame(a, None)
+    assert got['isin'].tolist() == ['X'] and got['total_shares'].tolist() == [2e6]
+    assert market_cap.shares_frame(None).empty
+
+
+def test_load_bse_closes_reads_the_months_it_finds_and_lists_the_rest():
+    import io
+
+    from insiders_clean import market_cap
+    body = io.BytesIO()
+    pd.DataFrame({'date': ['2026-10-06', '2026-10-06'], 'isin': ['A', 'A'], 'close': [100.0, 101.0]}).to_parquet(body)
+    got, info = market_cap.load_bse_closes(lambda k: body.getvalue() if k.endswith('2026-10.parquet') else None, ['2026-09', '2026-10'])
+    assert len(got) == 1 and got.iloc[0]['close'] == 101.0               # one row per ISIN and session, the last print
+    assert info['months_read'] == 1 and info['months_missing'] == ['prices/daily/bse/2026-09.parquet']
+    none, info = market_cap.load_bse_closes(lambda k: None, ['2026-10'])
+    assert none is None and info['months_read'] == 0

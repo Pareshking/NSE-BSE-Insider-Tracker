@@ -150,8 +150,7 @@ Each item: before and after on the test fixture (`tests/test_audit_data_layer.py
   trade after the layer's last day keeps the latest, labelled `latest`.
 - Tests: `test_pct_of_mcap_uses_the_trade_dates_market_cap`, `test_deal_pct_of_mcap_on_the_deal_day`,
   `test_clean_step_reads_the_daily_market_cap_layer`.
-- Still open: BSE-only names have no dated cap (shares from the shareholding XBRL x BSE close would give one);
-  D2 above (creeping room) still sums rupees, not shares.
+- BSE-only names: fixed 23 Oct (`shares_x_close`, see `docs/CLEAN_LAYER.md`); D2 above (creeping room) still sums rupees, not shares.
 
 ### DL-W3 NSE/BSE copy link demoted a distinct trade (wrong number, fixed, batch 2)
 - Before: NSE buy 50,000 and NSE sale 50,000 on 02 Sep, each also on BSE: the NSE sale became a copy; Rs 7.55 Cr
