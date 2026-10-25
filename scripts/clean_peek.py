@@ -29,6 +29,21 @@ def show(title: str, df: pd.DataFrame, cols: list[str]) -> None:
         print(df[[c for c in cols if c in df]].to_string(index=False))
 
 
+def mcap_basis(r2) -> int:
+    """market_cap_basis counts of the clean insider and deal tables, with a few BSE-only rows on `shares_x_close`. Read only."""
+    for name, date_col in (('insider_trades', 'trade_date_to'), ('deals', 'date')):
+        t = read_parquet(r2, f'clean/current/{name}.parquet')
+        print(f'--- {name}: {len(t)} rows; market_cap_basis:', t['market_cap_basis'].value_counts(dropna=False).to_dict())
+        x = t[t['market_cap_basis'].eq('shares_x_close')]
+        print(f'    BSE-only rows on shares_x_close: {len(x)}; with no NSE symbol: {int(x["nse_symbol"].isna().sum())}')
+        left = t[t['nse_symbol'].isna()]
+        print(f'    rows with no NSE symbol: {len(left)}; of them by basis:', left['market_cap_basis'].value_counts(dropna=False).to_dict())
+        cols = [c for c in ('company', date_col, 'value', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'pct_of_mcap') if c in x]
+        if len(x):
+            print(x.sort_values('value', ascending=False)[cols].head(8).to_string(index=False))
+    return 0
+
+
 def fund_names(r2) -> int:
     """Institutional client names of the primary, non-market-maker deals, largest total value first, with the manager
     line (if any) each already has: where the next `fund_managers.csv` lines are worth writing. Names only; no write."""
@@ -48,6 +63,8 @@ def fund_names(r2) -> int:
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
+    if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
+        return mcap_basis(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
         return fund_names(r2)
     sec = read_parquet(r2, 'clean/current/securities.parquet')
