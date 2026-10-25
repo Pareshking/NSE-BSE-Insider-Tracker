@@ -292,6 +292,23 @@ def load_market_cap_daily(client, run_day: date, notes: list):
     return daily, info
 
 
+def load_bse_caps(client, run_day: date, notes: list):
+    """(shares in issue by quarter, BSE closes) for the market cap of a company NSE does not list on a trade's day, read
+    only: the shareholding tables of the last run and the BSE price layer. Returns (tuple or None, info for the report)."""
+    try:
+        shares = market_cap.shares_frame(read_parquet(client, 'clean/current/bse_shareholding.parquet'),
+                                         read_parquet(client, 'clean/current/shareholding.parquet'))
+        closes, info = market_cap.load_bse_closes(lambda k: get(client, k), day_range.months_between(PRODUCT_START, run_day))
+    except Exception as e:  # noqa: BLE001 -- a dated cap refines a figure, never a reason to fail
+        notes.append(f'BSE-only market caps not dated ({type(e).__name__}: {e}); they keep the latest')
+        return None, {'error': f'{type(e).__name__}: {e}'}
+    info['isins_with_shares'] = int(shares['isin'].nunique()) if len(shares) else 0
+    if closes is None or shares.empty:
+        notes.append('no BSE closes or no shares in issue: a BSE-only company keeps the latest market cap')
+        return None, info
+    return (shares, closes), info
+
+
 def main():
     client = r2_client()
     run_day = date.fromisoformat(TARGET_DATE)
@@ -319,6 +336,7 @@ def main():
 
     ranges, price_info = load_price_ranges(client, run_day, notes)
     mcap_daily, mcap_info = load_market_cap_daily(client, run_day, notes)
+    bse_caps, bse_caps_info = load_bse_caps(client, run_day, notes)
     group = read_parquet(client, 'clean/current/promoter_group.parquet')  # NSE events collector; None until its first run
     bse_group = read_parquet(client, 'clean/current/bse_promoter_group.parquet')  # BSE-only companies (collectors/bse/events.py)
     if bse_group is not None and not bse_group.empty:
@@ -328,8 +346,9 @@ def main():
         notes.append('no promoter-group lists yet (clean/current/promoter_group.parquet): no filing linked')
     tables, report = run(canonical, TARGET_DATE, calendar_state, vr_master=vr_master,
                          nse_lists=nse_lists(client, TARGET_DATE, notes), market_cap_rows=market_cap_rows,
-                         price_ranges=ranges, promoter_group=group, market_cap_daily=mcap_daily)
+                         price_ranges=ranges, promoter_group=group, market_cap_daily=mcap_daily, bse_caps=bse_caps)
     report['price_layer'] = price_info
+    report['bse_market_cap_layer'] = bse_caps_info
     report['market_cap_layer'] = mcap_info
     try:  # a failure here must never stop the insider and deal tables
         issue_out, report['issues'] = issue_tables(client)

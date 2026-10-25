@@ -518,7 +518,7 @@ def _superseded_by_marker(d: pd.DataFrame) -> tuple[pd.Index, dict]:
 
 def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date,
                   price_ranges: pd.DataFrame | None = None,
-                  market_cap_daily: pd.DataFrame | None = None) -> pd.DataFrame:
+                  market_cap_daily: pd.DataFrame | None = None, bse_caps: tuple | None = None) -> pd.DataFrame:
     """canonical insider rows (both exchanges, native columns included,
     an `exchange` column) -> clean insider_trades. `price_ranges`
     (insiders_clean.day_range.load) feeds the price check; without it the
@@ -610,6 +610,8 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     # issue size x close); `market_cap` stays the latest (audit W1).
     at = market_cap.at_trade_date(df['nse_symbol'], df['trade_date_to'], market_cap_daily, df['market_cap'],
                                   fallback_symbols=df['symbol'].where(df['exchange'].eq('nse')))
+    if bse_caps is not None:   # a company NSE does not list: shares in issue x the BSE close of the day (market_cap.from_shares)
+        at = market_cap.from_shares(at, df['isin'], df['trade_date_to'], bse_caps[0], bse_caps[1], df['nse_symbol'].isna())
     for c in at.columns:
         df[c] = at[c].to_numpy()
     t['market_cap_basis'] = _counts(df['market_cap_basis'])

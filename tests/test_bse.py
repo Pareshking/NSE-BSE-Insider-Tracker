@@ -443,3 +443,20 @@ def test_tilings():
         (date(2025, 11, 1), date(2025, 11, 3)), (date(2025, 11, 4), date(2025, 11, 10))]
     assert events.months(date(2025, 10, 8), date(2025, 12, 5))[0] == (date(2025, 10, 8), date(2025, 10, 31))
 
+
+
+def test_a_bse_only_insider_trade_takes_shares_times_the_bse_close_of_its_trade_day(calendar, report):
+    from insiders_clean.insider import clean_insider
+    from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
+    rows = [x for x in parsers.insider_rows(csv_body()) if x['person'] == 'ALLAN NOTT']
+    listed = [{'symbol': '540376', 'isin': 'INE540L01014', 'company_name': 'Bse Only Ltd', 'market_cap': 9e9,
+               'source': 'bse_list_securities', 'group': 'B'}]
+    master = SecurityMaster(vr_master=None, nse_list=nse_list_frame(), bse_list=bse_list_frame(listed), market_cap_rows=listed)
+    raw = canonical('bse', 'insider_trading', [dict(x, source=parsers.INSIDER_SOURCE) for x in rows])
+    shares = pd.DataFrame({'isin': ['INE540L01014'], 'quarter_end': [pd.Timestamp('2026-09-30')], 'total_shares': [1e7]})
+    closes = pd.DataFrame({'isin': ['INE540L01014'], 'date': [pd.Timestamp('2026-10-07')], 'close': [335.0]})
+    plain = clean_insider(raw, master, calendar, report, '2026-10-09').iloc[0]
+    assert plain['market_cap_basis'] == 'latest'
+    got = clean_insider(raw, master, calendar, type(report)('2026-10-09'), '2026-10-09', bse_caps=(shares, closes)).iloc[0]
+    assert got['market_cap_basis'] == 'shares_x_close' and got['market_cap_at_trade'] == pytest.approx(1e7 * 335.0)
+    assert got['pct_of_mcap'] == pytest.approx(got['value'] / (1e7 * 335.0) * 100)
