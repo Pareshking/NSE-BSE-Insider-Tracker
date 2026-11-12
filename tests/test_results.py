@@ -156,3 +156,31 @@ def test_a_window_is_listed_instead_of_the_last_days():
             return f'list?page={page}'
     run_daily.results_filings(Windows([{'data': [ROW], 'totalCount': 1}]), None, date(2025, 1, 1), date(2025, 1, 20), {'notes': []})
     assert set(seen) == {(date(2025, 1, 1), date(2025, 1, 20))}
+
+
+def test_an_empty_page_before_the_count_is_retried_then_reported_short():
+    """12 Nov 2026: NSE answered a page with no rows mid-list on the runner; the window listed 1,400 of 4,287 and
+    the backfill moved on. Now an empty page is asked again, and a window still short is reported as a failed listing
+    (which the backfill chain reruns)."""
+    from datetime import date
+
+    class Gappy(FakeNSE):
+        def __init__(self, pages, empty_at):
+            super().__init__(pages)
+            self.empty_at = set(empty_at)
+
+        def get(self, url, as_json=True, **_):
+            self.urls.append(url)
+            page = int(url.rsplit('=', 1)[1])
+            if (page, self.urls.count(url)) in self.empty_at:
+                return json.dumps({'data': [], 'totalCount': 3})
+            return json.dumps(self.pages[page - 1] if page <= len(self.pages) else {'data': [], 'totalCount': 3})
+
+    pages = [{'data': [ROW], 'totalCount': 3}, {'data': [{**ROW, 'seq_Id': '201511'}], 'totalCount': 3},
+             {'data': [{**ROW, 'seq_Id': '201509'}], 'totalCount': 3}]
+    nse, report = Gappy(pages, [(2, 1)]), {'notes': []}        # page 2 empty once, fine on the second ask
+    rows = run_daily.results_filings(nse, None, date(2026, 10, 12), date(2026, 10, 15), report)
+    assert len(rows) == 3 and not report['notes']
+    nse, report = Gappy(pages, [(2, 1), (2, 2)]), {'notes': []}  # empty twice: the window is short, and said so
+    rows = run_daily.results_filings(nse, None, date(2026, 10, 12), date(2026, 10, 15), report)
+    assert len(rows) == 1 and report['notes'] and report['notes'][0].startswith('results: fetch failed (listing short: 1 of 3')

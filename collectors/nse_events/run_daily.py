@@ -599,8 +599,9 @@ def results_filings(nse: NSEClient, raw: RawStore | None, start: date, today: da
     lo = start
     while lo <= today:
         hi = min(lo + timedelta(days=30), today)
-        total = None
-        for page in range(1, 101):
+        total, got, retried = None, 0, False
+        page = 1
+        while page <= 100:
             url = nse.integrated_results_url(lo, hi, page, RESULTS_PAGE)
             text = nse.get(url, as_json=False)
             store_raw(raw, 'results_list', text, url, report, 'application/json',
@@ -610,11 +611,23 @@ def results_filings(nse: NSEClient, raw: RawStore | None, start: date, today: da
             df = results.filing_rows(j.get('data', []) if isinstance(j, dict) else j)
             df = df[~df['seq_id'].isin(seen)]
             if df.empty:
+                # A page with nothing new before NSE's own count is reached is not the end of the list: on the runner
+                # NSE has answered a page with no rows mid-list (12 Nov 2026: 19 Oct 2025 - 16 Jan 2026 listed 1,400 of
+                # 4,287). Ask once more; then say the window is short, so the backfill reruns it instead of moving on.
+                if total is not None and got < int(total) and not retried:
+                    retried = True
+                    continue
                 break
+            retried = False
             seen.update(df['seq_id'])
+            got += len(df)
             frames.append(df)
-            if total is not None and len(seen) >= total_all + int(total):
+            if total is not None and got >= int(total):
                 break
+            page += 1
+        if total is not None and got < int(total):
+            report['notes'].append(f'results: fetch failed (listing short: {got} of {int(total)} for '
+                                   f'{lo.isoformat()}..{hi.isoformat()})')
         total_all += int(total or 0)
         lo = hi + timedelta(days=1)
     report['results_listed'], report['results_total'] = len(seen), total_all
