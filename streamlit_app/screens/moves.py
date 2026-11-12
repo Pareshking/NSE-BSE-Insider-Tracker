@@ -16,6 +16,7 @@ from ui.kit import esc
 from insiders_clean import evidence, ideas, signals
 from screens.ctx import split_since, with_flags
 
+PLEDGE_KINDS = {'Pledge created', 'Pledge rising', 'Pledge invoked', 'Pledge released'}
 INSIDER_SCOPE = 'On the exchange, own money: ESOPs, gifts, transfers inside the group and pledges are not counted'
 LATE_DAYS = 14            # made public this many days or more after the last trade: said in amber (as on Today since 23 Oct)
 DEAL_MIN_PCT = ideas.FUND_NET_PCT   # a deal shown at 0.25% of the company and up ...
@@ -353,7 +354,9 @@ def event_stories(ctx, ev: pd.DataFrame, kinds: set, summary=None) -> list[Story
         third = (f'{r["kv3_label"]}: {r["kv3"]}' if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str)
                  and r['kv3'].strip() not in ('', '—', '-') else '')   # a number not known is left out, not shown as a dash
         rec, verdict = record(r['kind'], summary)
-        w_txt, w_warn = watch(isin, p, h, flags.get(isin))
+        # On a pledge story the quarterly pledge figure is older than the pledge itself (real data, 12 Nov: "pledged a net
+        # 14% of the company" above "0.0% of promoter shares pledged"): leave it out there, keep the flags.
+        w_txt, w_warn = watch(isin, p, None if r['kind'] in PLEDGE_KINDS else h, flags.get(isin))
         facts = [x for x in (third, (f'{pct:.2f}% of the company' if pct else ''),
                              (kit.day(r['last'], with_year=False) if pd.notna(r.get('last')) else '')) if x]
         out.append(Story(

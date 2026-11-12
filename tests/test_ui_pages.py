@@ -396,12 +396,13 @@ def test_screener_presets_and_risks_red_flags_and_lenders(data_dir, monkeypatch)
     import pandas as pd
     snap = pd.DataFrame({'promoter_buy_90d': [1e7, 0, 1e7], 'mf_change_pts': [0.5, 2, -1], 'fpi_change_pts': [0, 0, 0],
                          'pledge': [0, 0, 20], 'insider_buy_90d': [1e7, 0, 1e7], 'range_pos': [10, 50, 90],
-                         'promoter_change_pts': [0.2, 0, 0], 'promoter_sell_90d': [0, 0, 5e7], 'pledge_change_pts': [0, 0, 1]})
+                         'promoter_change_pts': [0.6, 0.01, 0], 'promoter_sell_90d': [0, 0, 5e7], 'pledge_change_pts': [0, 0, 1]})
     pick = lambda k: more_pages.PRESETS[k][1](snap).fillna(False).tolist()  # noqa: E731
     assert pick('Promoters buying, funds adding') == [True, False, False]
     assert pick('Insiders buying near the low') == [True, False, False]
     assert pick('Funds piling in') == [False, True, False]
     assert pick('Trap: selling and pledging') == [False, False, True]
+    assert pick('Promoters raising their stake') == [True, False, False]   # 0.01 point is noise
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     at = AppTest.from_string(APP_PATHS + """
 from ui import theme

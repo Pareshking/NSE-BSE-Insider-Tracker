@@ -21,6 +21,7 @@ from screens.ctx import load, need_data, with_flags
 
 LATE_FLAG = 3          # late insider filings in 12 months that make a red flag
 WATCH_MAX = 30
+STAKE_MIN_PTS = 0.5   # 'Promoters raising their stake': 181 companies at > 0 on real data, many by 0.01 point (12 Nov)
 
 
 def _ctx():
@@ -127,8 +128,8 @@ PRESETS = {
         lambda d: (_num(d, 'insider_buy_90d') > 0) & (_num(d, 'range_pos') <= 25)),
     'Funds piling in': ('Mutual funds or foreign investors added 1 point or more of the company last quarter',
                         lambda d: (_num(d, 'mf_change_pts') >= 1) | (_num(d, 'fpi_change_pts') >= 1)),
-    'Promoters raising their stake': ('The promoter holding rose last quarter (points), with no pledge',
-                                      lambda d: (_num(d, 'promoter_change_pts') > 0) & (_num(d, 'pledge').fillna(0) == 0)),
+    'Promoters raising their stake': (f'The promoter holding rose {STAKE_MIN_PTS:g} point or more last quarter, with no pledge',
+                                      lambda d: (_num(d, 'promoter_change_pts') >= STAKE_MIN_PTS) & (_num(d, 'pledge').fillna(0) == 0)),
     'Trap: selling and pledging': ('Promoters sold on the market in 90 days and promoter shares are pledged, or the pledge rose',
                                    lambda d: (_num(d, 'promoter_sell_90d') > 0) & ((_num(d, 'pledge') > 0) | (_num(d, 'pledge_change_pts') > 0))),
     'All companies': ('Every company of the study universe (₹100 Cr and up)', lambda d: pd.Series(True, index=d.index)),
