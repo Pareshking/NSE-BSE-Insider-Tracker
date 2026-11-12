@@ -26,7 +26,15 @@ def _reload_changed_pipeline_modules():
     import importlib
     import os
     seen = sys.__dict__.setdefault('_insiders_clean_mtimes', {})
-    for name in sorted(n for n in list(sys.modules) if n == 'insiders_clean' or n.startswith('insiders_clean.')):
+    # 12 Nov 2026: the site's own modules too. PR 230 changed only screens/ and ui/ files, and the live site kept the old
+    # ones (and the old stylesheet) an hour after the merge. The pipeline first, then ui/ (the tools), then screens/
+    # (ctx first: the pages import it). ui.nav is left alone: it registers a component once per process.
+    def order(n):
+        top = n.split('.')[0]
+        return ({'insiders_clean': 0, 'data': 1, 'ui': 2, 'screens': 3}[top], 0 if n in ('ui.theme', 'ui.kit', 'screens.ctx') else 1, n)
+    names = [n for n in list(sys.modules) if n.split('.')[0] in ('insiders_clean', 'data', 'ui', 'screens') and n != 'ui.nav'
+             and (getattr(sys.modules.get(n), '__file__', '') or '').startswith(str(HERE.parent))]
+    for name in sorted(names, key=order):
         path = getattr(sys.modules.get(name), '__file__', None)
         if not path or not os.path.exists(path) or seen.get(name) == os.path.getmtime(path):
             continue

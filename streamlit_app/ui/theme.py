@@ -72,11 +72,19 @@ def css_vars() -> str:
     return ':root{' + ''.join(f'--{k}:{v};' for k, v in tokens.items()) + '}'
 
 
-@lru_cache(maxsize=1)
 def _css() -> str:
+    # Keyed on the stylesheets' modification times: a changed .css reaches the running site without a restart (12 Nov).
+    return _css_for(tuple((HERE / f).stat().st_mtime for f in CSS_FILES))
+
+
+CSS_FILES = ('insiders.css', 'table.css', 'ds.css')
+
+
+@lru_cache(maxsize=2)
+def _css_for(_mtimes: tuple) -> str:
     """The stylesheets without comments or blank lines. st.markdown passes a <style> block through untouched only while
     it has no blank line: at the first one Markdown ends the HTML block and prints the rest as text."""
-    text = css_vars() + '\n' + '\n'.join((HERE / f).read_text(encoding='utf-8') for f in ('insiders.css', 'table.css', 'ds.css'))
+    text = css_vars() + '\n' + '\n'.join((HERE / f).read_text(encoding='utf-8') for f in CSS_FILES)
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
     return '\n'.join(line.strip() for line in text.splitlines() if line.strip())
 
