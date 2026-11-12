@@ -130,12 +130,20 @@ jobs:
           [ -f nse_events_report.json ] || { echo "no report written; stopping"; exit 0; }
           if [ "$DATASET" = "results" ]; then
             # results backfill: another round while filings are pending, this round fetched some and NSE refused none
-            read -r PENDING FETCHED BLOCKED < <(python - <<'PY'
+            read -r PENDING FETCHED BLOCKED LISTFAIL < <(python - <<'PY'
           import json
           r = json.load(open('nse_events_report.json'))
-          print(r.get('pending_results', 0), r.get('results_xbrl_fetched', 0), int(bool(r.get('results_xbrl_blocked'))))
+          listfail = any(str(n).startswith('results: fetch failed') for n in r.get('notes', []))
+          print(r.get('pending_results', 0), r.get('results_xbrl_fetched', 0), int(bool(r.get('results_xbrl_blocked'))), int(listfail))
           PY
           )
+            # A window whose listing failed (NSE timed out) is not done: never move to the older window, stop with the
+            # resume line instead (12 Nov 2026: rounds 5-6 timed out, read as "nothing pending", and skipped Jul 2025 -
+            # Jan 2026, so the Sep 2025 quarter stayed at 155 rows).
+            if [ "$LISTFAIL" -eq 1 ]; then
+              echo "round $ROUND: listing $RFROM..$RTO failed; the catch-up stops. Resume with: gh workflow run nse-events.yml -f days=10 -f dataset=results -f chain=1 -f round=$((ROUND + 1)) -f max_results_xbrl=$MAXRES -f results_workers=$WORKERS -f results_from=$RFROM -f results_to=$RTO"
+              exit 0
+            fi
             # later rounds list only the last 10 days: filings still pending are retried from the archive whatever the window
             LIMIT=120
             # Same window again while filings are pending; when none are, the next older window of 90 days,
