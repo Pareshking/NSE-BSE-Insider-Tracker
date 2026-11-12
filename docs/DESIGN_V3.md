@@ -256,3 +256,20 @@ whole market; this page's unit is a filing.
   "Promoter buying", so it no longer carries the read measured on insider filings (Bombay Burmah led the list with "Ahead").
   A pledge change names the earlier quarter it is compared with, and says when the quarters between are not in the data.
 - Still open: one block deal shown on both sides (seller under Money out, buyer under Money in) should be one row.
+
+## Company page, 12 Nov 2026 (same three principles)
+
+- **Masthead**: codes, sector and the NSE link on one line; the name; then the news in sentences: the latest open-market
+  decision by a promoter, director or KMP (who, rupees, when made public, the price since) and the promoters' 12-month net.
+- **One strip of key numbers**: price and the day's move, distance from the 52-week high, market cap, promoters, pledge,
+  mutual funds and foreign investors with their quarter-on-quarter change. Replaces the ratios line and the three tiles,
+  which repeated it.
+- **Signals for and against** carry the measured record as a sentence (median against Nifty 500, share of cases that beat
+  it, cases), not only a tag; tags in Today's quiet style.
+- **Checks before acting** replaces "Risks": the latest insider trade, pledge, promoter sales over 12 months, cheap shares
+  to promoters, late filings, today's tradability, the 52-week position and the room to 75%, each a line, amber where a
+  standing rule says it needs a look.
+- **Fewer clicks**: the promoter group (largest 15) in sight, not behind a fold; the filings list opens on every kind except
+  staff trades, ESOPs, gifts and transfers, in a tall table rather than a short scrolling box.
+- **Staff trades apart**: open-market trades by designated persons, employees and relatives are "Staff trade", one tap away.
+  They never counted as decisions (rules above); on HCLTECH's test data 37 small staff sales had buried the promoter's buys.

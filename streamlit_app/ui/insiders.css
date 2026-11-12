@@ -461,11 +461,12 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
    quiet dense tables on hairlines, no boxes; questions as section titles). Only Today's classes; other pages unchanged. ---- */
 .mast { margin: 10px 0 6px; max-width: 62rem; }
 .mast .kicker { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
-.mast h1.news { margin: 8px 0 10px; font-size: clamp(26px, 3.4vw, 38px); line-height: 1.14; font-weight: 600;
+.mast h1.news, .head.mast h1.news { margin: 8px 0 10px; font-size: clamp(26px, 3.4vw, 38px) !important; line-height: 1.14; font-weight: 600 !important;
   letter-spacing: -0.028em; color: var(--ink); text-wrap: balance; }
 .mast h1.news b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .mast h1.news b.up { color: var(--buy); } .mast h1.news b.down { color: var(--sell); }
-.mast .dek { margin: 0 0 4px; font-size: 15.5px; line-height: 1.5; color: var(--ink-2); max-width: 70ch; }
+.head.mast { margin: 10px 0 6px !important; }
+.mast .dek, .head.mast p.dek { margin: 0 0 4px; font-size: 15.5px !important; color: var(--ink-2) !important; font-size: 15.5px; line-height: 1.5; color: var(--ink-2); max-width: 70ch; }
 .st-key-td_period { display: flex; justify-content: flex-end; margin-top: 14px; }
 [data-testid="stColumn"]:has(.st-key-td_period) [data-testid="stPopover"] { display: flex; justify-content: flex-end; }
 
@@ -482,14 +483,14 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
   .reads > div:nth-child(4) { padding-left: 0; border-left: 0; } .reads > div:nth-child(n+4) { border-top: 1px solid var(--line); } }
 
 /* sections: no box, a dark rule on top and a question as the title */
-[class*="st-key-card_td_"] { border: 0 !important; border-top: 1px solid var(--ink) !important; border-radius: 0 !important;
+[class*="st-key-card_td_"], [class*="st-key-card_co_"] { border: 0 !important; border-top: 1px solid var(--ink) !important; border-radius: 0 !important;
   padding: 14px 0 18px !important; background: transparent !important; margin-top: 18px; }
-[class*="st-key-card_td_"] .card-h { margin-bottom: 8px; }
-[class*="st-key-card_td_"] .card-h h2 { font-size: 21px !important; font-weight: 600 !important; letter-spacing: -0.02em;
+[class*="st-key-card_td_"] .card-h, [class*="st-key-card_co_"] .card-h { margin-bottom: 8px; }
+[class*="st-key-card_td_"] .card-h h2, [class*="st-key-card_co_"] .card-h h2 { font-size: 21px !important; font-weight: 600 !important; letter-spacing: -0.02em;
   text-transform: none; }
-[class*="st-key-card_td_"] .empty { border: 0; border-radius: 0; text-align: left; padding: 4px 0 2px; font-size: 13.5px; }
-[class*="st-key-card_td_"] .grp { border-bottom: 0; margin: 14px 0 0; padding-bottom: 4px; }
-[class*="st-key-card_td_"] .grp:first-child { margin-top: 2px; }
+[class*="st-key-card_td_"] .empty, [class*="st-key-card_co_"] .empty { border: 0; border-radius: 0; text-align: left; padding: 4px 0 2px; font-size: 13.5px; }
+[class*="st-key-card_td_"] .grp, [class*="st-key-card_co_"] .grp { border-bottom: 0; margin: 14px 0 0; padding-bottom: 4px; }
+[class*="st-key-card_td_"] .grp:first-child, [class*="st-key-card_co_"] .grp:first-child { margin-top: 2px; }
 
 /* a group as a table: heads once, one line per company */
 .mv-t { display: grid; }
@@ -527,7 +528,7 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
   .idea.mv .kv { text-align: left; }
   .idea.mv .kv.k1 span, .idea.mv .kv.k2 span { display: block; }
   .idea.mv .kv.k3 span, .mv-t.k3s .idea.mv .kv.k3 span { display: block; order: 0; font-size: var(--fs-label); }
-  .mast h1.news { font-size: 25px; }
+  .head.mast h1.news { font-size: 25px !important; }
 }
 
 /* Coming up as a calendar: a column a day */
@@ -565,3 +566,21 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
 .mv-q { margin: 18px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--warn-ink); }
 @media (max-width: 720px) { .pks { grid-template-columns: 1fr; } .pk header { flex-direction: column; } .pk-n { text-align: left; }
   .pk-c li { grid-template-columns: 1fr; gap: 0; } }
+
+/* Company page, redesign of 12 Nov: the masthead and the key numbers in one strip; the record as text under a signal */
+.head.mast.co h1.news { font-size: clamp(26px, 3vw, 34px) !important; margin-top: 6px; }
+.mast.co .kicker { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; }
+.mast.co .kicker .mono { font-family: var(--mono); }
+.mast.co .kicker a { color: var(--accent-ink); }
+.reads.co { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.reads.co b { font-size: 22px; }
+@media (max-width: 1100px) { .reads.co { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .reads.co > div:nth-child(5) { padding-left: 0; border-left: 0; } .reads.co > div:nth-child(n+5) { border-top: 1px solid var(--line); } }
+.co-sig li > b.num em { display: block; font-style: normal; font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.co-ev { margin: 4px 0 0 !important; font-size: 12px !important; color: var(--ink-3) !important; }
+[class*="st-key-card_co_"] .pk-c li { grid-template-columns: 150px minmax(0, 1fr); }
+@media (max-width: 720px) { .reads.co { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reads.co > div { border-top: 1px solid var(--line); padding-left: 0 !important; border-left: 0 !important; }
+  .reads.co > div:nth-child(even) { padding-left: 10px !important; border-left: 1px solid var(--line) !important; }
+  .reads.co > div:nth-child(-n+2) { border-top: 0; }
+  [class*="st-key-card_co_"] .pk-c li { grid-template-columns: 1fr; gap: 0; } }

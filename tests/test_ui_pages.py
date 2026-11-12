@@ -223,10 +223,15 @@ company.render()
         html[sym] = ' '.join(e.proto.body for e in at.get('html'))
         kinds[sym] = {o.split(' · ')[0] for w in at.get('button_group') for o in w.options}
     assert 'Rights issue' in kinds['HCLTECH'] and 'Rights issue' not in kinds['ZEEL']
-    assert {'Insider buy', 'Insider sell'} <= kinds['HCLTECH']
+    assert {'Insider buy', 'Staff trade'} <= kinds['HCLTECH']   # designated persons apart from decision-makers (12 Nov)
     assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
-    for part in ('>For<', '>Against<', '>Risks<', '>Ownership<', '>Timeline<'):
+    for part in ('>Signals for<', '>Signals against<', '>Checks before acting<', '>Ownership<', '>Every filing<'):
         assert part in html['HCLTECH']
+    # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the key-number strip, the checks in sight
+    h = html['HCLTECH']
+    assert '<div class="head mast co">' in h and '<div class="reads co">' in h and 'Over 12 months promoters' in h
+    for check in ('Latest insider trade', 'Pledged', 'Promoter sales, 12 months', 'Late insider filings, 12 months', 'Tradability today'):
+        assert f'<b>{check}</b>' in h, check
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):
