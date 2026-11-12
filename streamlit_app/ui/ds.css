@@ -1,0 +1,144 @@
+/* Minimal theme (owner, 12 Nov 2026), drawn by ui/ds.py. Soft white cards on a grey page, no borders, no shadows;
+   big numbers, one-line rows, pills for controls. Tokens only (ui/theme.py): no colour here. */
+
+/* ---- Shell ---- */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--bg) !important; }
+body, .stApp, .stApp p, .stApp input, .stApp button { font-family: var(--ui) !important; }
+.stApp { color: var(--ink); }
+[data-testid="stMainBlockContainer"] { max-width: var(--page-max) !important; margin: 0 auto;
+  padding-left: var(--gutter) !important; padding-right: var(--gutter) !important; }
+@media (max-width: 720px) { [data-testid="stMainBlockContainer"] { padding-left: var(--gutter-phone) !important; padding-right: var(--gutter-phone) !important; } }
+header[data-testid="stHeader"] { background: var(--bg) !important; border-bottom: 0 !important; }
+[data-testid="stTopNavLink"] { border-bottom: 0 !important; border-radius: var(--radius-pill) !important; padding: 7px 16px !important;
+  margin: 0 2px !important; height: auto !important; background: transparent !important; }
+[data-testid="stTopNavLink"][aria-current="page"] { background: var(--surface) !important; }
+[data-testid="stTopNavLink"] p, [data-testid="stTopNavSection"] p, [data-testid="stTopNavSection"] { font-size: 14px !important; color: var(--ink-2) !important; }
+[data-testid="stTopNavLink"][aria-current="page"] p { color: var(--ink) !important; font-weight: var(--fw-strong) !important; }
+a { color: var(--accent-ink); }
+.up { color: var(--buy); } .down { color: var(--sell); } .muted { color: var(--ink-3); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* the data line and the search: quiet */
+.strip { background: transparent !important; border: 0 !important; margin: 0 !important; }
+.strip > span { border-right: 0 !important; padding: 4px 14px 4px 0 !important; color: var(--ink-3); }
+
+/* ---- Head ---- */
+.ds-head { margin: var(--gap-4) 0 var(--gap-5); }
+.ds-kicker { font-size: 14px; color: var(--ink-3); }
+.ds-kicker .mono { font-family: var(--mono); }
+.ds-head h1 { margin: 6px 0 0 !important; padding: 0 !important; font-size: var(--fs-headline) !important; line-height: 1.18 !important;
+  font-weight: var(--fw-strong) !important; letter-spacing: -0.02em; color: var(--ink) !important; text-wrap: balance; }
+.ds-head h1 b { font-weight: var(--fw-strong); }
+.ds-dek { margin: 8px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); max-width: 70ch; }
+@media (max-width: 720px) { .ds-head h1 { font-size: var(--fs-headline-phone) !important; } }
+
+/* ---- KPI cards ---- */
+.ds-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap-4); margin: 0 0 var(--gap-4); }
+.ds-kpis.n1 { grid-template-columns: minmax(0, 320px); } .ds-kpis.n2 { grid-template-columns: repeat(2, minmax(0, 320px)); }
+.ds-kpis.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.kpi { display: block; background: var(--surface); border-radius: var(--radius); padding: var(--card-pad); text-decoration: none !important; color: inherit; min-width: 0; }
+a.kpi:hover { background: var(--hover); }
+.kpi .l { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); min-height: 32px; }
+.kpi .ic { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700;
+  background: var(--subtle); color: var(--ink-2); flex: none; }
+.kpi .ic.up { background: var(--buy-tint); color: var(--buy); } .kpi .ic.down { background: var(--sell-tint); color: var(--sell); }
+.kpi .ic.warn { background: var(--warn-tint); color: var(--warn); }
+.kpi b { display: block; margin: 14px 0 2px; font-size: var(--fs-stat); font-weight: var(--fw-stat); letter-spacing: -0.02em; color: var(--ink);
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .s { font-size: 13px; color: var(--ink-3); }
+@media (max-width: 900px) { .ds-kpis, .ds-kpis.n3 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .kpi { padding: var(--card-pad-phone); }
+  .kpi b { font-size: var(--fs-stat-phone); margin-top: 10px; } }
+
+/* ---- Cards (ds.section opens one: st.container key "dscard_...") ---- */
+[class*="st-key-dscard_"] { background: var(--surface); border-radius: var(--radius); padding: var(--card-pad) !important; gap: 0 !important; }
+@media (max-width: 720px) { [class*="st-key-dscard_"] { padding: var(--card-pad-phone) !important; } }
+.ds-ch { display: flex; justify-content: space-between; align-items: center; gap: var(--gap-3); margin-bottom: 6px; }
+.ds-ch h2 { margin: 0 !important; padding: 0 !important; font-size: var(--fs-title) !important; font-weight: var(--fw-strong) !important; color: var(--ink) !important; }
+.ds-ch .all { font-size: 13px; font-weight: var(--fw-medium); color: var(--accent); text-decoration: none; white-space: nowrap; }
+.ds-sub { margin: var(--gap-4) 0 2px; font-size: 13px; font-weight: var(--fw-strong); color: var(--ink-2); display: flex; justify-content: space-between; gap: var(--gap-3); }
+.ds-sub span { color: var(--ink-3); font-weight: var(--fw-regular); }
+
+/* ---- Rows: initials badge · name and one grey line · value and one chip ---- */
+.ds-rows { display: grid; }
+.ds-row, .ds-ev { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
+.ds-rows > :first-child { border-top: 0; }
+.ds-row .av { width: 38px; height: 38px; border-radius: 12px; background: var(--subtle); display: grid; place-items: center;
+  font-weight: var(--fw-strong); font-size: 12.5px; color: var(--ink-2); flex: none; }
+.ds-row .who, .ds-ev .who { flex: 1; min-width: 0; }
+.ds-row .nm { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+.ds-row .nm .ds-tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ds-row .nm a { flex: 0 0 auto; max-width: 100%; font-size: 14.5px; font-weight: var(--fw-strong); color: var(--ink); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-row .nm a:hover { color: var(--accent); }
+.ds-row .ln { display: block; font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.ds-facts { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-facts .sep { padding: 0 6px; color: var(--ink-4); }
+.ds-note { margin: 2px 0 0; font-size: 12.5px; color: var(--warn-ink); }
+.ds-row .val { text-align: right; flex: none; }
+.ds-row .val b { display: block; font-size: 14.5px; font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip { display: inline-block; margin-top: 3px; padding: 2px 8px; border-radius: var(--radius-pill); font-size: 11.5px; font-weight: var(--fw-strong);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip.up { background: var(--buy-tint); color: var(--buy); } .chip.dn { background: var(--sell-tint); color: var(--sell); }
+.chip.mut { background: var(--subtle); color: var(--ink-2); } .chip.wn { background: var(--warn-tint); color: var(--warn); }
+.ds-ev .day { width: 44px; text-align: center; border-radius: 12px; background: var(--subtle); padding: 5px 0; flex: none; }
+.ds-ev .day b { display: block; font-size: 16px; line-height: 1.2; } .ds-ev .day span { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; }
+.ds-ev .who a, .ds-ev .who b { display: block; font-size: 14.5px; font-weight: var(--fw-strong); color: var(--ink); text-decoration: none; }
+.ds-ev .who span { display: block; font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Tags: small and quiet ---- */
+.ds-tag { display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill); background: var(--subtle); font-size: 11px;
+  font-weight: var(--fw-medium); color: var(--ink-2); white-space: nowrap; line-height: 17px; }
+.ds-tag.ok { background: var(--accent-tint); color: var(--accent-ink); font-weight: var(--fw-strong); }
+.ds-tag.warn { background: var(--warn-tint); color: var(--warn-ink); }
+.ds-tag.new { background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 10px; letter-spacing: .04em; }
+
+/* ---- Footnotes, empty, left-out ---- */
+.ds-foot { margin: 12px 0 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+.ds-foot b { color: var(--ink-2); font-weight: var(--fw-medium); }
+.ds-empty { margin: 10px 0 4px; font-size: 14px; color: var(--ink-3); }
+.ds-club { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ds-club p { margin: 2px 0; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ds-club b { color: var(--ink-2); font-weight: var(--fw-strong); }
+
+/* ---- Quiet table inside a card ---- */
+.ds-wrap { overflow-x: auto; }
+.ds-list { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.ds-list th { text-align: left; font-size: 12px; font-weight: var(--fw-medium); color: var(--ink-3); padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ds-list td { padding: 11px 12px 11px 0; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink); }
+.ds-list tr:last-child td { border-bottom: 0; }
+.ds-list th.r, .ds-list td.r { text-align: right; } .ds-list td.r { white-space: nowrap; }
+.ds-list td .s { display: block; font-size: 12px; color: var(--ink-3); }
+.ds-list td a { color: var(--ink); font-weight: var(--fw-strong); text-decoration: none; } .ds-list td a:hover { color: var(--accent); }
+@media (max-width: 720px) { .ds-list .opt { display: none; } }
+.sec-bar { display: block; height: 4px; margin-top: 5px; background: var(--subtle); border-radius: 2px; position: relative; min-width: 80px; }
+.sec-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 2px; } .sec-bar i.pos { background: var(--buy); } .sec-bar i.neg { background: var(--sell); }
+.ds-w { padding: 0 !important; margin: 0 !important; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 0; font-size: 14px; }
+.ds-w dt, .ds-w dd { margin: 0 !important; padding: 11px 0 !important; border-top: 1px solid var(--line); }
+.ds-w dt:first-of-type, .ds-w dt:first-of-type + dd { border-top: 0; }
+.ds-w dt { color: var(--ink-3); } .ds-w dd { color: var(--ink); font-variant-numeric: tabular-nums; } .ds-w dd.warn { color: var(--warn-ink); }
+@media (max-width: 720px) { .ds-w { grid-template-columns: 110px minmax(0, 1fr); } }
+.fl-l em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink-3); }
+
+/* ---- Two cards side by side (st.columns on a page) keep their own height ---- */
+[data-testid="stHorizontalBlock"]:has([class*="st-key-dscard_"]) { align-items: flex-start; gap: var(--gap-4) !important; }
+[data-testid="stVerticalBlock"]:has(> [class*="st-key-dscard_"]) { gap: var(--gap-4) !important; }
+
+/* ---- Streamlit controls as pills ---- */
+[data-testid="stButtonGroup"]:has(> * > [data-variant="segmented_control"]), [data-testid="stButtonGroup"]:has([data-variant="segmented_control"]) {
+  background: var(--line-strong); border-radius: var(--radius-pill); padding: 3px; width: fit-content; }
+[data-variant="segmented_control"] { border: 0 !important; border-radius: var(--radius-pill) !important; background: transparent !important;
+  font-size: 13px !important; color: var(--ink-2) !important; box-shadow: none !important; }
+[data-variant="segmented_control"] p { font-size: 13px !important; }
+[data-variant="segmented_control"][aria-checked="true"] { background: var(--surface) !important; color: var(--ink) !important; }
+[data-variant="segmented_control"][aria-checked="true"] p { font-weight: var(--fw-strong) !important; color: var(--ink) !important; }
+[data-testid="stBaseButton-pills"], [data-testid="stBaseButton-pillsActive"] { border-radius: var(--radius-pill) !important; font-size: 12.5px !important; }
+[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] > div > div { border-radius: var(--radius-pill) !important; border-color: transparent !important; background: var(--surface) !important; }
+[data-testid="stPopover"] button { border-radius: var(--radius-pill) !important; font-size: 13px !important; }
+.st-key-ds_ctl { justify-content: flex-end; }
+
+/* ---- Older building blocks (kit.card, kit.tiles, kit.table) in the same look ---- */
+[class*="st-key-card_"] { background: var(--surface) !important; border: 0 !important; border-radius: var(--radius) !important; padding: var(--card-pad) !important; }
+.tiles { background: transparent !important; border: 0 !important; gap: var(--gap-4); }
+.tile { background: var(--surface); border: 0 !important; border-radius: var(--radius); padding: var(--card-pad) !important; }
+.tbl-wrap { background: var(--surface) !important; border: 0 !important; border-radius: var(--radius) !important; }
+.tbl thead th { background: var(--surface) !important; }
+.empty { border: 0 !important; border-radius: 0 !important; text-align: left !important; padding: 8px 0 !important; color: var(--ink-3) !important; }

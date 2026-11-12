@@ -215,3 +215,70 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 
 Colour and type values stay as in `docs/DESIGN.md`. Wording, data collection and the track record
 are unchanged.
+
+## Redesign of Today, 12 Nov 2026 (owner: "lots of data, not presented the right way"; benchmark tipsheet.markets)
+
+Two independent reviews (a design critique and an investor-priority read of `docs/SIGNALS.md`) of the live page found:
+the headline counted companies across every kind of filing (372 "with money in", mostly quarterly fund holding moves),
+the page ran about 8,000 px of identical cards in two columns that ended 1,500 px apart, red pills carried "Not measured",
+the trend chart was one quarter-end spike, and the first screen held two search boxes and eleven pills before a company.
+Principles taken from the benchmark, not its look: the news as the first line, strong type contrast, quiet tables on
+hairlines, questions as section titles, a calendar for what is next. What it does that would be wrong here: opening on the
+whole market; this page's unit is a filing.
+
+- **First line**: rupees insiders bought and sold, in how many companies, then the buying share against the period before
+  (`ideas.insider_breadth`) and the first row of the list. Counts of companies are no longer the headline.
+- **One reading strip** of six small numbers replaces the tiles; the group pills and the page's own search move into
+  "Filters & sort" (the top bar keeps the company search).
+- **One column, in the order the record supports**: insiders buying (and promoters paying cash for new shares), insiders
+  selling ("the catch", no edge measured), what could go wrong (pledges, cheap shares to promoters, pledges released),
+  raises and buybacks, funds and big investors (in and out side by side).
+- **Quarterly holding changes** (mutual funds and foreign investors, owner 23 Oct) stay on Today but folded apart under the
+  funds section, labelled as dated by the quarter, so a 30 Sep shareholding filing does not read as this week's news.
+- **Each group is a table**: heads once, five rows, "Show more" up to eight, the rest in Filings. A late filing says so on
+  the row ("traded 40 days earlier"), and the price move since the trade is on the row, not only when opened.
+- **Tags are quiet**: kinds as outlined grey tags; the measured read as text, "Ahead" the only marked one, "Not measured"
+  the faintest. Red and green only for the rupees bought and sold.
+- **Coming up** is a calendar, a column a day. The weekly trend chart is off Today (one quarter-end spike flattened every
+  other week).
+- Rules (`insiders_clean/ideas.py`), periods, the ₹25 Cr path and the default period are unchanged.
+
+### Second pass, 12 Nov (owner: "less clicks to get all information"; "data cleaning and presentation the correct way"; "no actionable insights")
+
+- **Worth a look now**, first after the reading strip: insider buys of a kind measured ahead of Nifty 500 on our own history
+  (`evidence.verdict` 'leaning_positive'), at most six, in the group's order. A kind not measured, behind or flat is never
+  on it. Each company has its checks in sight: the record's own numbers (median, share of cases that beat the index, cases),
+  what the insider paid against today, how many days after the trade it was made public (amber past 14), pledge (amber over
+  `signals.HIGH_PLEDGE_PCT`), the 52-week position and today's NSE tradability flags. No new thresholds; the checks are facts.
+- **No clicks to read a list**: "Show more" is gone (all rows up to eight in sight); the quarterly holding changes are in sight
+  under a heading that says they are quarterly; pledge and 52-week position are on every row.
+- **Data**: a promoter's bulk/block deal with no insider filing behind it is its own kind ("Promoter deal, no filing"), not
+  "Promoter buying", so it no longer carries the read measured on insider filings (Bombay Burmah led the list with "Ahead").
+  A pledge change names the earlier quarter it is compared with, and says when the quarters between are not in the data.
+- Still open: one block deal shown on both sides (seller under Money out, buyer under Money in) should be one row.
+
+## Company page, 12 Nov 2026 (same three principles)
+
+- **Masthead**: codes, sector and the NSE link on one line; the name; then the news in sentences: the latest open-market
+  decision by a promoter, director or KMP (who, rupees, when made public, the price since) and the promoters' 12-month net.
+- **One strip of key numbers**: price and the day's move, distance from the 52-week high, market cap, promoters, pledge,
+  mutual funds and foreign investors with their quarter-on-quarter change. Replaces the ratios line and the three tiles,
+  which repeated it.
+- **Signals for and against** carry the measured record as a sentence (median against Nifty 500, share of cases that beat
+  it, cases), not only a tag; tags in Today's quiet style.
+- **Checks before acting** replaces "Risks": the latest insider trade, pledge, promoter sales over 12 months, cheap shares
+  to promoters, late filings, today's tradability, the 52-week position and the room to 75%, each a line, amber where a
+  standing rule says it needs a look.
+- **Fewer clicks**: the promoter group (largest 15) in sight, not behind a fold; the filings list opens on every kind except
+  staff trades, ESOPs, gifts and transfers, in a tall table rather than a short scrolling box.
+- **Staff trades apart**: open-market trades by designated persons, employees and relatives are "Staff trade", one tap away.
+  They never counted as decisions (rules above); on HCLTECH's test data 37 small staff sales had buried the promoter's buys.
+
+### Forward record beside the shortlist, and "New" (owner, 12 Nov: updates stay on the site, no email or messages)
+
+- Above the shortlist, after the measured record: how signals of the same kinds did in the forward record (stamped the
+  night each fired, never edited; `artifacts/forward_outcomes.parquet`), median against Nifty 500 per horizon with its
+  cases; a horizon with no complete window has no number. The shortlist is new, so it has no record of its own yet; the
+  line says what it measures.
+- A "New" tag on every row and card made public in the latest session the data holds. A per-reader "since your last
+  visit" would need browser storage and is not built.

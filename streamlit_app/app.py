@@ -49,8 +49,9 @@ from screens import (
     data_status,
     entity,
     filings_all,
-    home,
     investors,
+    more_pages,
+    pages,
     track_record,
 )
 from screens.ctx import load
@@ -63,15 +64,36 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 # Redesign of 21 Oct 2026 (docs/REVAMP_PLAN.md): one page per question, each piece shown once. Market replaces
 # Actions, Morning brief, Latest session, Screener and Shareholding & pledges; the filing pages follow into one
 # Filings page next.
+# Redesign of 12 Nov 2026 (owner: "redesign it from blank", "free to increase number of pages"): one page per question,
+# each the same shape (screens/pages.py); Today shows the top of every one. Companies, Investors, Evidence and Filings follow.
+# Redesign of 12 Nov 2026 (owner: "redesign it from blank", "free to increase number of pages", then "whatever possible
+# without requiring AI API, do it"): one page per question. The top bar keeps the daily pages in sight and groups the rest.
 SECTIONS = {
     '': [
-        st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(pages.today, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(more_pages.watchlist, title='Watchlist', icon=M('star'), url_path='watchlist'),
+        st.Page(more_pages.screener, title='Screener', icon=M('filter_list'), url_path='screener'),
+    ],
+    'Money': [
+        st.Page(pages.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
+        st.Page(pages.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
+        st.Page(pages.raises, title='Raises', icon=M('payments'), url_path='raises'),
+        st.Page(pages.ownership, title='Holders', icon=M('pie_chart'), url_path='ownership'),
+        st.Page(more_pages.sectors, title='Sectors', icon=M('category'), url_path='sectors'),
+        st.Page(more_pages.results, title='Results', icon=M('receipt_long'), url_path='results'),
+    ],
+    'Watch out': [
+        st.Page(pages.risks, title='Risks', icon=M('warning'), url_path='risks'),
+        st.Page(pages.calendar, title='Calendar', icon=M('calendar_month'), url_path='calendar'),
+    ],
+    'Research': [
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
-        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
         st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors'),
-        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),   # last in the menu (owner, 22 Oct)
+        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
+        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
     ],
 }
+ALL_PAGES = [p for ps in SECTIONS.values() for p in ps]
 def _search_picked():
     """The top search: remember the company, clear the box (so the next page does not jump again)."""
     pick = st.session_state.get('top_search')
@@ -80,17 +102,17 @@ def _search_picked():
     st.session_state['top_search'] = None
 
 
-COMPANY_PAGE = next(p for p in SECTIONS[''] if p.url_path == 'company')
+COMPANY_PAGE = next(p for p in ALL_PAGES if p.url_path == 'company')
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
 HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden'), st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden')]
-ALL = [p for ps in SECTIONS.values() for p in ps] + HIDDEN
+ALL = ALL_PAGES + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'transactions': 'Filings', 'promoter_activity': 'Filings',
          'bulk_block_concentration': 'Filings', 'data_quality': 'Data quality', 'sast': 'Filings', 'transfers': 'Filings',
          'filings': 'Today',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
-         'market': 'Today', 'actions': 'Today', 'brief': 'Today', 'screener': 'Today', 'shareholding': 'Today',
-         'insider-trades': 'Filings', 'deals': 'Filings', 'other-filings': 'Filings', 'capital-raises': 'Filings'}
+         'market': 'Today', 'actions': 'Today', 'brief': 'Today', 'shareholding': 'Today',
+         'insider-trades': 'Insiders', 'other-filings': 'Filings', 'capital-raises': 'Raises'}
 
 
 def _redirect(path: str, target: str):
@@ -101,7 +123,7 @@ def _redirect(path: str, target: str):
 
 
 st.logo(str(HERE / 'ui' / 'logo.svg'), size='large', link=None)
-nav = st.navigation(SECTIONS[''] + HIDDEN + [_redirect(p, t) for p, t in MOVED.items()], position='top')   # top bar, no side menu (owner, 21 Oct)
+nav = st.navigation({**SECTIONS, '': SECTIONS[''] + HIDDEN + [_redirect(p, t) for p, t in MOVED.items()]}, position='top')   # top bar, no side menu (owner, 21 Oct)
 
 ctx = load()
 

@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'streamlit_app'))
 sys.path.insert(0, str(ROOT))
 
-PAGES = [('home', {}, 'today'), ('company', {'symbol': 'HCLTECH'}, 'company-hcltech'), ('track_record', {}, 'evidence'),
+PAGES = [('pages:today', {}, 'today'), ('pages:insiders', {}, 'insiders'), ('more_pages:screener', {}, 'screener'), ('pages:risks', {}, 'risks'), ('company', {'symbol': 'HCLTECH'}, 'company-hcltech'), ('track_record', {}, 'evidence'),
          ('filings_all', {}, 'filings'), ('entity', {}, 'people'), ('data_status', {}, 'data')]
 MB = 1024 ** 2
 
@@ -72,7 +72,8 @@ for k, v in {params!r}.items():
 from ui import theme
 theme.inject()
 import importlib
-importlib.import_module('screens.{screen}').render()
+mod, _, fn = '{screen}'.partition(':')
+getattr(importlib.import_module('screens.' + mod), fn or 'render')()
 """
 
 

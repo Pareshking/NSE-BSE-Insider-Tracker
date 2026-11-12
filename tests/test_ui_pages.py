@@ -95,12 +95,14 @@ def data_dir(tmp_path_factory, real_nse_rows):
     return root
 
 
-PAGES = [('home', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
+PAGES = [('pages:today', {}), ('pages:insiders', {}), ('pages:deals', {}), ('pages:raises', {}), ('pages:risks', {}),
+         ('pages:ownership', {}), ('pages:calendar', {}), ('more_pages:watchlist', {}), ('more_pages:watchlist', {'watch': 'HCLTECH,ZEEL,NOPE'}),
+         ('more_pages:screener', {}), ('more_pages:sectors', {}), ('more_pages:results', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
          ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
 
 
-@pytest.mark.parametrize(('screen', 'params'), PAGES, ids=[f'{s}-{bool(p)}' for s, p in PAGES])
+@pytest.mark.parametrize(('screen', 'params'), PAGES, ids=[f'{s.replace(":", "-")}-{bool(p)}' for s, p in PAGES])
 def test_page_renders(data_dir, monkeypatch, screen, params):
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     code = APP_PATHS + f"""
@@ -110,7 +112,8 @@ for k, v in {params!r}.items():
 from ui import theme
 theme.inject()
 import importlib
-importlib.import_module('screens.{screen}').render()
+mod, _, fn = '{screen}'.partition(':')
+getattr(importlib.import_module('screens.' + mod), fn or 'render')()
 """
     at = AppTest.from_string(code, default_timeout=60)
     at.run()
@@ -168,7 +171,8 @@ for k, v in {params!r}.items():
 from ui import theme
 theme.inject()
 import importlib
-importlib.import_module('screens.{screen}').render()
+mod, _, fn = '{screen}'.partition(':')
+getattr(importlib.import_module('screens.' + mod), fn or 'render')()
 """
         at = AppTest.from_string(code, default_timeout=60)
         at.run()
@@ -223,10 +227,18 @@ company.render()
         html[sym] = ' '.join(e.proto.body for e in at.get('html'))
         kinds[sym] = {o.split(' · ')[0] for w in at.get('button_group') for o in w.options}
     assert 'Rights issue' in kinds['HCLTECH'] and 'Rights issue' not in kinds['ZEEL']
-    assert {'Insider buy', 'Insider sell'} <= kinds['HCLTECH']
+    assert {'Insider buy', 'Staff trade'} <= kinds['HCLTECH']   # designated persons apart from decision-makers (12 Nov)
     assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
-    for part in ('>For<', '>Against<', '>Risks<', '>Ownership<', '>Timeline<'):
-        assert part in html['HCLTECH']
+    h = html['HCLTECH']
+    # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the stat strip, the checks, the stories, the noise counted
+    assert '<div class="head ds-head">' in h and 'class="ds-kpis' in h
+    for part in ('>Checks before acting<', '>What did insiders do?<', '>Who owns it?<', '>Every filing<', '>Price and every decision<'):
+        assert part in h, part
+    for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
+        assert f'<dt>{check}</dt>' in h, check
+    assert 'class="ds-row"' in h and 'class="ln"' in h and 'class="chip' in h and 'class="ds-facts"' in h   # a row, its line, its chip
+    assert 'class="nm"' not in h.split('>What did insiders do?<')[1].split('ds-club')[0]   # no name repeated on its own page
+    assert 'class="ds-club"' in h and 'designated persons' in h                          # 37 staff trades counted, not listed
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):
@@ -281,27 +293,11 @@ def test_old_addresses_redirect():
     filings, Capital raises; 21-22 Oct) are gone; their addresses lead to Today or Filings."""
     import re
     app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
-    for old in ('market', 'actions', 'brief', 'screener', 'shareholding'):
+    for old in ('market', 'actions', 'brief', 'shareholding'):   # 'screener' is a page again (12 Nov)
         assert re.search(rf"'{old}': 'Today'", app), old
-    for old in ('insider-trades', 'deals', 'other-filings', 'capital-raises'):
-        assert re.search(rf"'{old}': 'Filings'", app), old
-
-
-def test_today_page_renders_the_money_board(data_dir, monkeypatch):
-    """Today (21 and 23 Oct): Money in, Money out and Risk changes from insiders_clean/ideas.py, and the money events ahead."""
-    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
-    at = AppTest.from_string(APP_PATHS + """
-from ui import theme
-theme.inject()
-from screens import home
-home.render()
-""", default_timeout=60)
-    at.run()
-    assert not at.exception, at.exception[0].value if at.exception else ''
-    html = ' '.join(e.proto.body for e in at.get('html'))
-    for panel in ('Money in', 'Money out', 'Risk changes', 'Coming up'):
-        assert panel in html, panel
-    assert 'companies with money in' in html and 'Raises: QIPs' in html and '₹25 Cr and up' in html
+    # 12 Nov: insider trades, deals and capital raises have their own pages again; other filings stay in Filings
+    assert re.search(r"'insider-trades': 'Insiders'", app) and re.search(r"'capital-raises': 'Raises'", app)
+    assert re.search(r"'other-filings': 'Filings'", app) and "url_path='deals'" in app
 
 
 def test_in_app_links_map_to_pages_with_their_query():
@@ -316,27 +312,143 @@ def test_in_app_links_map_to_pages_with_their_query():
     assert nav.target('/elsewhere?x=1', pages) is None and nav.target(None, pages) is None
 
 
-def test_a_today_row_shows_its_market_line_the_rupee_chip_and_its_own_third_number():
-    """screens/home.py _row: size, market cap, price and the 52-week bar under the name; a Rs 25 Cr chip; a raise's new shares
-    and issue-vs-now in place of the promoters' holding."""
+def test_a_promoter_deal_with_no_filing_does_not_take_the_measured_promoter_read():
+    from insiders_clean import ideas
+    assert ideas.PROMOTER_DEAL_BUY not in ideas.MEASURED_BY and ideas.PROMOTER_DEAL_SELL not in ideas.MEASURED_BY
+    assert ideas.PROMOTER_DEAL_BUY in dict(ideas.GROUPS['look'])['Insiders buying']
+    assert ideas.PROMOTER_DEAL_SELL in dict(ideas.GROUPS['warn'])['Insiders selling']
+
+
+def _page_html(data_dir, monkeypatch, fn: str, period: str = '90 days') -> str:
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + f"""
+from ui import theme
+theme.inject()
+from screens import pages
+pages.{fn}()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ''
+    for w in at.get('button_group'):
+        if period in getattr(w, 'options', []):
+            w.set_value(period)
+            at.run()
+            break
+    return ' '.join(e.proto.body for e in at.get('html'))
+
+
+def test_insiders_page_is_5w2h_with_the_noise_clubbed(data_dir, monkeypatch):
+    """Redesign 12 Nov: each decision a story with its 5W-2H; staff trades and ESOPs counted at the foot, not listed."""
+    h = _page_html(data_dir, monkeypatch, 'insiders')
+    assert '<div class="head ds-head">' in h and 'Insider trades' in h and 'class="ds-kpis' in h
+    assert '>Who is buying?<' in h and '>Who is selling?<' in h
+    assert 'class="ds-club"' in h
+    assert 'designated persons, employees and relatives' in h or 'ESOP' in h
+
+
+def test_deals_page_shows_both_sides_as_one_deal(data_dir, monkeypatch):
+    """The fixture's CLEANMAX deal: BIG BUYER FUND bought and PROMOTER HOLDCO sold the same shares the same day; one story."""
+    h = _page_html(data_dir, monkeypatch, 'deals', '90 days')
+    assert '>Who sold, who took it?<' in h
+    if 'class="ds-story"' in h:
+        story = h.split('class="ds-story"')[1]
+        assert 'Sold:' in story and 'Bought:' in story
+
+
+def test_today_shows_the_top_of_every_topic(data_dir, monkeypatch):
+    """Minimal theme (12 Nov): four numbers, then cards: the shortlist, coming up, selling, deals, raises, risks, holders."""
+    h = _page_html(data_dir, monkeypatch, 'today')
+    assert h.count('class="kpi"') == 4
+    order = ['Worth a look', 'Coming up', 'Selling', 'Big deals', 'Raises', 'Risks', 'Big holders']
+    at = [h.index(f'>{x}</h2>') for x in order]
+    assert at == sorted(at)
+    for href in ('/insiders', '/deals', '/raises', '/risks', '/ownership', '/calendar'):
+        assert f'href="{href}"' in h, href
+
+
+def _more_html(data_dir, monkeypatch, fn: str, params: dict | None = None) -> str:
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + f"""
+import streamlit as st
+for k, v in {(params or {})!r}.items():
+    st.query_params[k] = v
+from ui import theme
+theme.inject()
+from screens import more_pages
+more_pages.{fn}()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ''
+    return ' '.join(e.proto.body for e in at.get('html'))
+
+
+def test_watchlist_reads_the_address_and_names_what_it_does_not_know(data_dir, monkeypatch):
+    """12 Nov: the list lives in the page address (?watch=), never stored by the site; an unknown symbol is said."""
+    h = _more_html(data_dir, monkeypatch, 'watchlist', {'watch': 'HCLTECH,NOPE'})
+    assert '2 companies on your list' in h
+    assert 'NOPE: not a symbol in our data' in h
+    empty = _more_html(data_dir, monkeypatch, 'watchlist')
+    assert 'Type the NSE symbols' in empty
+
+
+def test_screener_presets_and_risks_red_flags_and_lenders(data_dir, monkeypatch):
+    from screens import more_pages
+    assert list(more_pages.PRESETS)[0] == 'Promoters buying, funds adding' and 'Trap: selling and pledging' in more_pages.PRESETS
+    import pandas as pd
+    snap = pd.DataFrame({'promoter_buy_90d': [1e7, 0, 1e7], 'mf_change_pts': [0.5, 2, -1], 'fpi_change_pts': [0, 0, 0],
+                         'pledge': [0, 0, 20], 'insider_buy_90d': [1e7, 0, 1e7], 'range_pos': [10, 50, 90],
+                         'promoter_change_pts': [0.6, 0.01, 0], 'promoter_sell_90d': [0, 0, 5e7], 'pledge_change_pts': [0, 0, 1]})
+    pick = lambda k: more_pages.PRESETS[k][1](snap).fillna(False).tolist()  # noqa: E731
+    assert pick('Promoters buying, funds adding') == [True, False, False]
+    assert pick('Insiders buying near the low') == [True, False, False]
+    assert pick('Funds piling in') == [False, True, False]
+    assert pick('Trap: selling and pledging') == [False, False, True]
+    assert pick('Promoters raising their stake') == [True, False, False]   # 0.01 point is noise
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+from ui import theme
+theme.inject()
+from screens import pages
+pages.risks()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception
+    h = ' '.join(e.proto.body for e in at.get('html'))
+    assert '>Red flags<' in h and '>Who lends against promoter shares?<' in h
+
+
+def test_results_and_sectors_pages_say_their_limits(data_dir, monkeypatch):
+    h = _more_html(data_dir, monkeypatch, 'results')
+    assert 'no year-on-year growth yet' in h and '>Who bought right after their own results?<' in h and 'Exploratory' in h
+    s = _more_html(data_dir, monkeypatch, 'sectors')
+    assert 'Sectors' in s
+
+
+def test_lenders_without_an_isin_column():
+    """Site preview 12 Nov: the real encumbrances table carried no `isin`; the lenders table keys on the symbol then."""
     import sys
     from types import SimpleNamespace
     sys.path.insert(0, str(ROOT / 'streamlit_app'))
     import pandas as pd
-    from screens import home
-    r = {'isin': 'INE0QIP00011', 'company': 'Qip Co', 'nse_symbol': 'QIPCO', 'kinds': ['QIP'], 'reads': {}, 'kind': 'QIP', 'big': True,
-         'sentence': 'QIP: 20 institutions took 18,110,473 shares at ₹165.65; ₹300 Cr raised', 'value': 3e9, 'pct_of_company': 4.53,
-         'last': pd.Timestamp('2026-10-05'), 'trade_to': pd.NaT, 'avg_price': None, 'kv3_label': 'Issue vs now', 'kv3': '-8.0%', 'others': []}
-    px = {'INE0QIP00011': {'latest_close': 180.0, 'market_cap': 7.2e10, 'mcap_bucket': 'Small', 'low_52w': 120.0, 'high_52w': 200.0,
-                           'pct_off_high': -0.1}}
-    html = home._row(SimpleNamespace(prices=pd.DataFrame()), r, {}, px)
-    assert 'Small' in html and '₹7,200 Cr' in html and 'rgm' in html and 'QIPCO' in html          # the market line
-    assert '₹25 Cr+' not in html                                                                 # a raise has its own gate: no rupee chip
-    insider = home._row(SimpleNamespace(prices=pd.DataFrame()), {**r, 'kind': 'Promoter buying', 'kinds': ['Promoter buying'], 'reads': {}}, {}, px)
-    assert '₹25 Cr+' in insider and insider.index('₹25 Cr+') < insider.index('Promoter buying')    # the chip, before the kinds
-    assert 'New shares' in html and 'Issue vs now' in html and '-8.0%' in html and 'Promoters' not in html
-    assert '<i>' not in html.split('idea-chips')[1].split('</div>')[0]                          # a raise carries no measured read
-    plain = home._row(SimpleNamespace(prices=pd.DataFrame()), {**r, 'big': False, 'kind': 'Promoter buying', 'kinds': ['Promoter buying'],
-                                                               'reads': {'Promoter buying': 'leaning_positive'}, 'kv3_label': None,
-                                                               'kv3': None}, {}, px)
-    assert '₹25 Cr+' not in plain and 'Of company' in plain and '>Ahead<' in plain.replace('<i>', '>').replace('</i>', '<')
+    from screens import more_pages
+    enc = pd.DataFrame({'lender': ['ABC Finance', 'ABC Finance', None], 'symbol': ['AAA', 'BBB', 'AAA'],
+                        'event_type': ['Creation', 'Invocation', 'Release'], 'broadcast_date': pd.to_datetime(['2026-11-10'] * 3)})
+    out = more_pages.lenders(SimpleNamespace(encumbrances=enc, ref=pd.Timestamp('2026-11-11')), 30)
+    abc = out[out['lender'] == 'ABC Finance'].iloc[0]
+    assert abc['companies'] == 2 and abc['created'] == 1 and abc['invoked'] == 1 and 'not named' in set(out['lender'])
+
+
+def test_profile_and_screenshot_scripts_name_pages_that_exist():
+    import importlib
+    import re
+    import sys
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    sys.path.insert(0, str(ROOT))
+    prof = (ROOT / 'scripts' / 'site_profile.py').read_text(encoding='utf-8')
+    for screen in re.findall(r"\('([a-z_:]+)', \{", prof.split('PAGES = ')[1].split(']')[0]):
+        mod, _, fn = screen.partition(':')
+        assert hasattr(importlib.import_module('screens.' + mod), fn or 'render'), screen
+    app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
+    shots = (ROOT / 'scripts' / 'site_screenshots.py').read_text(encoding='utf-8')
+    for path in re.findall(r"\('([a-z-]+)(?:\?[^']*)?', '", shots.split('PAGES = ')[1].split(']')[0]):
+        assert f"url_path='{path}'" in app or f"'{path}':" in app, path
