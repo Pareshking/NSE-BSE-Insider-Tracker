@@ -10,9 +10,10 @@ import json
 
 import pandas as pd
 
+from ui.theme import C
 
 LIB = 'https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js'
-BUY, SELL, PRICE = '#067647', '#B42318', '#4F46E5'
+BUY, SELL, PRICE = C['buy'], C['sell'], C['accent']   # ui/theme.py
 
 JS = """
 (function start(id, spec, tries) {
@@ -26,12 +27,12 @@ JS = """
     const box = el.querySelector('.lw-plot'), tip = el.querySelector('.lw-tip');
     const chart = LW.createChart(box, {
       autoSize: true, height: spec.height,
-      layout: { background: { color: 'transparent' }, textColor: '#5E6878', fontFamily: 'Geist, sans-serif', fontSize: 11,
+      layout: { background: { color: 'transparent' }, textColor: '__INK3__', fontFamily: 'Geist, sans-serif', fontSize: 11,
                 attributionLogo: false },
-      grid: { vertLines: { visible: false }, horzLines: { color: '#F0F2F5' } },
+      grid: { vertLines: { visible: false }, horzLines: { color: '__LINE__' } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.06 } },
       timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true },
-      crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '#C9CED8', width: 1, style: 2 } },
+      crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '__LINE2__', width: 1, style: 2 } },
       handleScroll: false, handleScale: false,
     });
     const s = chart.addAreaSeries({ lineColor: spec.color, topColor: spec.color + '2E', bottomColor: spec.color + '05',
@@ -71,6 +72,7 @@ JS = """
   tag.addEventListener('load', go);
 })
 """
+JS = JS.replace('__INK3__', C['ink-3']).replace('__LINE2__', C['line-strong']).replace('__LINE__', C['line'])   # ui/theme.py
 
 
 def price_chart(dates, closes, trades: pd.DataFrame | None, height: int = 320, key: str = '') -> str | None:
@@ -125,12 +127,12 @@ BARS_JS = """
     const box = el.querySelector('.lw-plot'), tip = el.querySelector('.lw-tip');
     const chart = LW.createChart(box, {
       autoSize: true, height: spec.height,
-      layout: { background: { color: 'transparent' }, textColor: '#5E6878', fontFamily: 'Geist, sans-serif', fontSize: 11,
+      layout: { background: { color: 'transparent' }, textColor: '__INK3__', fontFamily: 'Geist, sans-serif', fontSize: 11,
                 attributionLogo: false },
-      grid: { vertLines: { visible: false }, horzLines: { color: '#F0F2F5' } },
+      grid: { vertLines: { visible: false }, horzLines: { color: '__LINE__' } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
       timeScale: { borderVisible: false, fixLeftEdge: true, fixRightEdge: true, barSpacing: 26 },
-      crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '#C9CED8', width: 1, style: 2 } },
+      crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '__LINE2__', width: 1, style: 2 } },
       handleScroll: false, handleScale: false,
     });
     const fmt = { type: 'custom', formatter: v => String(Math.abs(Math.round(v))) };
@@ -158,6 +160,7 @@ BARS_JS = """
   tag.addEventListener('load', go);
 })
 """
+BARS_JS = BARS_JS.replace('__INK3__', C['ink-3']).replace('__LINE2__', C['line-strong']).replace('__LINE__', C['line'])   # ui/theme.py
 
 
 def weekly_bars(look: pd.DataFrame, warn: pd.DataFrame, height: int = 220, key: str = '') -> str | None:

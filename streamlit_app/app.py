@@ -49,8 +49,8 @@ from screens import (
     data_status,
     entity,
     filings_all,
-    home,
     investors,
+    pages,
     track_record,
 )
 from screens.ctx import load
@@ -63,13 +63,21 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 # Redesign of 21 Oct 2026 (docs/REVAMP_PLAN.md): one page per question, each piece shown once. Market replaces
 # Actions, Morning brief, Latest session, Screener and Shareholding & pledges; the filing pages follow into one
 # Filings page next.
+# Redesign of 12 Nov 2026 (owner: "redesign it from blank", "free to increase number of pages"): one page per question,
+# each the same shape (screens/pages.py); Today shows the top of every one. Companies, Investors, Evidence and Filings follow.
 SECTIONS = {
     '': [
-        st.Page(home.render, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(pages.today, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(pages.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
+        st.Page(pages.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
+        st.Page(pages.raises, title='Raises', icon=M('payments'), url_path='raises'),
+        st.Page(pages.risks, title='Risks', icon=M('warning'), url_path='risks'),
+        st.Page(pages.ownership, title='Holders', icon=M('pie_chart'), url_path='ownership'),
+        st.Page(pages.calendar, title='Calendar', icon=M('calendar_month'), url_path='calendar'),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
-        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
         st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors'),
-        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),   # last in the menu (owner, 22 Oct)
+        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
+        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
     ],
 }
 def _search_picked():
@@ -90,7 +98,7 @@ MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'tr
          'bulk_block_concentration': 'Filings', 'data_quality': 'Data quality', 'sast': 'Filings', 'transfers': 'Filings',
          'filings': 'Today',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
          'market': 'Today', 'actions': 'Today', 'brief': 'Today', 'screener': 'Today', 'shareholding': 'Today',
-         'insider-trades': 'Filings', 'deals': 'Filings', 'other-filings': 'Filings', 'capital-raises': 'Filings'}
+         'insider-trades': 'Insiders', 'other-filings': 'Filings', 'capital-raises': 'Raises'}
 
 
 def _redirect(path: str, target: str):

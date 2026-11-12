@@ -1,23 +1,21 @@
 [theme]
-# Insiders' palette. Same family as paresh.streamlit.app (light canvas, white
-# cards, indigo for interaction), drawn up for this site. The tokens are
-# repeated as CSS variables in ui/insiders.css for the custom HTML.
+# Written by scripts/sync_theme.py from streamlit_app/ui/theme.py: change the tokens there, not here.
 base = "light"
-primaryColor = "#4F46E5"
-backgroundColor = "#F6F7F9"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#0E1726"
-linkColor = "#4338CA"
+primaryColor = "#3E5C7E"
+backgroundColor = "#FAFAF8"
+secondaryBackgroundColor = "#F3F3F0"
+textColor = "#1E2125"
+linkColor = "#2F4A68"
 linkUnderline = false
-borderColor = "#DCE0E6"
+borderColor = "#D6D6CF"
 showWidgetBorder = true
-baseRadius = "10px"
-greenColor = "#0F7B4F"
-redColor = "#B42318"
-orangeColor = "#A15C07"
-dataframeHeaderBackgroundColor = "#F3F4F7"
-font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap, sans-serif"
-codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..700&display=swap, monospace"
+baseRadius = "6px"
+greenColor = "#2F7A57"
+redColor = "#AE4B3E"
+orangeColor = "#9A6B16"
+dataframeHeaderBackgroundColor = "#F3F3F0"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap, sans-serif"
+codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&display=swap, monospace"
 
 [server]
 headless = true

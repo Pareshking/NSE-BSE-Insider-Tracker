@@ -1,22 +1,21 @@
 [theme]
-# Light, high-density palette aligned with the owner's reference app (Pareshking/Paresh "Clear Ledger" tokens).
-# The same colors are mirrored in streamlit_app/lib/style.py (COLORS) for the custom HTML.
+# Written by scripts/sync_theme.py from streamlit_app/ui/theme.py: change the tokens there, not here.
 base = "light"
-primaryColor = "#4F46E5"
-backgroundColor = "#F6F7F9"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#0E1726"
-linkColor = "#4338CA"
+primaryColor = "#3E5C7E"
+backgroundColor = "#FAFAF8"
+secondaryBackgroundColor = "#F3F3F0"
+textColor = "#1E2125"
+linkColor = "#2F4A68"
 linkUnderline = false
-borderColor = "#D0D5DD"
+borderColor = "#D6D6CF"
 showWidgetBorder = true
-baseRadius = "10px"
-greenColor = "#067647"
-redColor = "#B42318"
-orangeColor = "#B54708"
-dataframeHeaderBackgroundColor = "#F4F5F8"
-font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap, sans-serif"
-codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..700&display=swap, monospace"
+baseRadius = "6px"
+greenColor = "#2F7A57"
+redColor = "#AE4B3E"
+orangeColor = "#9A6B16"
+dataframeHeaderBackgroundColor = "#F3F3F0"
+font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap, sans-serif"
+codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&display=swap, monospace"
 
 [client]
 # Default is "full": an uncaught exception renders its type, message and

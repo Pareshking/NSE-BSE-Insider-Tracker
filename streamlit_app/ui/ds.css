@@ -1,0 +1,117 @@
+/* Design system, redesign of 12 Nov 2026 (ui/ds.py draws these). Flat: no boxes, no shadows; hairlines and one
+   dark rule above each section; type contrast carries the hierarchy. Tokens only (ui/theme.py): no colour here. */
+
+/* ---- Shell ---- */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--bg) !important; }
+body, .stApp { color: var(--ink); font-family: var(--ui); }
+[data-testid="stMainBlockContainer"] { max-width: var(--page-max) !important; margin: 0 auto;
+  padding-left: var(--gutter) !important; padding-right: var(--gutter) !important; }
+@media (max-width: 720px) { [data-testid="stMainBlockContainer"] { padding-left: var(--gutter-phone) !important; padding-right: var(--gutter-phone) !important; } }
+header[data-testid="stHeader"] { background: var(--bg) !important; border-bottom: 1px solid var(--line); }
+[data-testid="stTopNavLink"] p, [data-testid="stNavSectionHeader"] { font-size: 13.5px !important; color: var(--ink-2) !important; }
+[data-testid="stTopNavLink"][aria-current="page"] p, [data-testid="stTopNavLink"][aria-selected="true"] p { color: var(--ink) !important; font-weight: var(--fw-strong) !important; }
+a { color: var(--accent-ink); }
+.up { color: var(--buy); } .down { color: var(--sell); } .warn-t { color: var(--warn-ink); } .muted { color: var(--ink-3); }
+.num, .ds-num { font-variant-numeric: tabular-nums; }
+
+/* ---- Masthead: kicker, headline (the news), dek ---- */
+.ds-head { margin: var(--gap-3) 0 var(--gap-4); max-width: 70rem; }
+.ds-kicker { font-size: var(--fs-label); font-weight: var(--fw-strong); text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); }
+.ds-kicker .mono { font-family: var(--mono); text-transform: none; letter-spacing: 0; }
+.ds-head h1 { margin: var(--gap-2) 0 var(--gap-2) !important; padding: 0 !important; font-size: var(--fs-headline) !important;
+  line-height: 1.15 !important; font-weight: var(--fw-strong) !important; letter-spacing: -0.025em; color: var(--ink) !important; text-wrap: balance; }
+.ds-head h1 b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ds-dek { margin: 0 0 var(--gap-1); font-size: 15.5px; line-height: 1.5; color: var(--ink-2); max-width: 75ch; }
+@media (max-width: 720px) { .ds-head h1 { font-size: var(--fs-headline-phone) !important; } .ds-dek { font-size: var(--fs-body); } }
+
+/* ---- Stat strip: label, number, note; hairlines between ---- */
+.ds-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--line); margin: var(--gap-2) 0 var(--gap-5); }
+.ds-stats > div { padding: var(--gap-3) var(--gap-3) var(--gap-3) 0; display: grid; gap: 2px; min-width: 0; align-content: start; }
+.ds-stats > div + div { padding-left: var(--gap-3); border-left: 1px solid var(--line); }
+.ds-stats .k { font-size: var(--fs-label); font-weight: var(--fw-strong); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+.ds-stats b { font-size: var(--fs-stat); font-weight: var(--fw-stat); letter-spacing: -0.02em; line-height: 1.2; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ds-stats .s { font-size: 12px; color: var(--ink-3); line-height: 1.4; }
+.ds-stats a { text-decoration: none; color: inherit; display: contents; }
+@media (max-width: 720px) { .ds-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ds-stats > div { padding-left: 0 !important; border-left: 0 !important; border-top: 1px solid var(--line); }
+  .ds-stats > div:nth-child(even) { padding-left: var(--gap-3) !important; border-left: 1px solid var(--line) !important; }
+  .ds-stats > div:nth-child(-n+2) { border-top: 0; } .ds-stats b { font-size: var(--fs-stat-phone); } }
+
+/* ---- Section: dark rule, a question as the title, one line under it, an "all" link on the right ---- */
+.ds-sec { border-top: 1px solid var(--rule); margin: var(--gap-6) 0 var(--gap-2); padding-top: var(--gap-3);
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--gap-3); flex-wrap: wrap; }
+.ds-sec h2 { margin: 0 !important; padding: 0 !important; font-size: var(--fs-title) !important; font-weight: var(--fw-strong) !important;
+  letter-spacing: -0.015em; color: var(--ink) !important; }
+.ds-sec p { margin: 2px 0 0; font-size: var(--fs-small); color: var(--ink-3); flex-basis: 100%; }
+.ds-sec .all { font-size: var(--fs-small); font-weight: var(--fw-strong); color: var(--accent-ink); text-decoration: none; white-space: nowrap; }
+.ds-sub { margin: var(--gap-4) 0 var(--gap-1); font-size: var(--fs-label); font-weight: var(--fw-strong); text-transform: uppercase;
+  letter-spacing: .07em; color: var(--ink-2); display: flex; justify-content: space-between; gap: var(--gap-3); }
+.ds-sub span { color: var(--ink-3); text-transform: none; letter-spacing: 0; font-weight: var(--fw-medium); }
+
+/* ---- Story: one decision, its 5W-2H in sight (who, what, when, where, how, how much, price, why, watch) ---- */
+.ds-stories { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 0 var(--gap-5); }
+.ds-story { padding: var(--gap-3) 0 var(--gap-4); border-bottom: 1px solid var(--line); min-width: 0; }
+.ds-story-h { display: flex; justify-content: space-between; align-items: baseline; gap: var(--gap-3); }
+.ds-story-h a.co { font-size: 16px; font-weight: var(--fw-strong); color: var(--ink); text-decoration: none; }
+.ds-story-h a.co:hover { color: var(--accent-ink); text-decoration: underline; }
+.ds-story-h .mk { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-story-h .mk .mono { font-family: var(--mono); }
+.ds-big { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ds-big b { display: block; font-size: 18px; font-weight: var(--fw-strong); line-height: 1.2; }
+.ds-big span { font-size: 12px; color: var(--ink-3); }
+.ds-lede { margin: var(--gap-1) 0 var(--gap-2); font-size: var(--fs-body); line-height: 1.45; color: var(--ink); }
+.ds-w { padding: 0 !important; margin-left: 0 !important; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 3px var(--gap-3); margin: 0; font-size: var(--fs-small); line-height: 1.45; }
+.ds-w dt, .ds-w dd { margin: 0 !important; padding: 0 !important; }
+.ds-w dt { color: var(--ink-3); font-weight: var(--fw-medium); }
+.ds-w dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 0; }
+.ds-w dd.warn { color: var(--warn-ink); } .ds-w dd.na { color: var(--ink-3); }
+.ds-w dd .sep { color: var(--ink-4); padding: 0 4px; }
+@media (max-width: 720px) { .ds-stories { grid-template-columns: 1fr; } .ds-w { grid-template-columns: 78px minmax(0, 1fr); } }
+
+/* ---- Tags: quiet, outlined; "measured ahead" the only filled one; "new" a small accent mark ---- */
+.ds-tag { display: inline-block; margin: 0 4px 0 0; padding: 0 7px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  font-size: 11px; font-weight: var(--fw-medium); color: var(--ink-2); line-height: 18px; white-space: nowrap; vertical-align: 1px; }
+.ds-tag.ok { border-color: transparent; background: var(--accent-tint); color: var(--accent-ink); font-weight: var(--fw-strong); }
+.ds-tag.warn { border-color: transparent; background: var(--warn-tint); color: var(--warn-ink); }
+.ds-tag.new { border-color: transparent; background: var(--accent); color: var(--on-accent); font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; font-size: 9.5px; }
+
+/* ---- Dense list: one line per item, heads once, numbers right; no inner scroll ---- */
+.ds-list { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ds-list th { text-align: left; font-size: var(--fs-label); font-weight: var(--fw-strong); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-3); padding: 6px 10px 6px 0; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+.ds-list td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink); }
+.ds-list th.r, .ds-list td.r { text-align: right; } .ds-list td.r { white-space: nowrap; }
+.ds-list tr:hover td { background: var(--hover); }
+.ds-list td .s { display: block; font-size: 11.5px; color: var(--ink-3); }
+.ds-list td a { color: var(--ink); font-weight: var(--fw-strong); text-decoration: none; } .ds-list td a:hover { color: var(--accent-ink); text-decoration: underline; }
+.ds-wrap { overflow-x: auto; }
+@media (max-width: 720px) { .ds-list .opt { display: none; } }
+
+/* ---- Clubbed: what was left out as noise, counted and summed in one place ---- */
+.ds-club { margin: var(--gap-4) 0 0; padding: var(--gap-3) var(--gap-4); background: var(--subtle); border-radius: var(--radius); }
+.ds-club h4 { margin: 0 0 var(--gap-1) !important; padding: 0 !important; font-size: var(--fs-label) !important; font-weight: var(--fw-strong) !important;
+  text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3) !important; }
+.ds-club ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: var(--fs-small); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.ds-club b { color: var(--ink); font-weight: var(--fw-strong); }
+
+/* ---- Record line (the measured result once, above the stories), empty line, calendar ---- */
+.ds-rec { margin: 0 0 var(--gap-2); padding: var(--gap-2) var(--gap-3); border-left: 2px solid var(--accent); background: var(--accent-tint);
+  font-size: var(--fs-small); color: var(--ink-2); line-height: 1.5; }
+.ds-rec b { color: var(--ink); }
+.ds-empty { margin: var(--gap-2) 0; font-size: var(--fs-body); color: var(--ink-3); }
+.ds-cal { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 var(--gap-5); }
+.ds-cal h4 { margin: 0 !important; padding: 6px 0 !important; border-bottom: 1px solid var(--line-strong); font-size: 12px !important;
+  font-weight: var(--fw-strong) !important; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2) !important; }
+.ds-cal ul { list-style: none; margin: 0 0 var(--gap-4); padding: 0; }
+.ds-cal li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; display: grid; gap: 1px; }
+.ds-cal li a { color: var(--ink); font-weight: var(--fw-strong); text-decoration: none; }
+.ds-cal li span { font-size: 12px; color: var(--ink-3); }
+
+/* ---- Controls (Streamlit widgets) in the same quiet style ---- */
+[data-testid="stSegmentedControl"] button, [data-testid="stBaseButton-segmented_control"], [data-testid="stBaseButton-segmented_controlActive"] {
+  border-radius: var(--radius-sm) !important; font-size: 12.5px !important; }
+[data-testid="stBaseButton-segmented_controlActive"] { background: var(--ink) !important; color: var(--bg) !important; border-color: var(--ink) !important; }
+[data-testid="stPopover"] button { border-radius: var(--radius-sm) !important; font-size: 12.5px !important; }
+.st-key-ds_ctl { justify-content: flex-end; }

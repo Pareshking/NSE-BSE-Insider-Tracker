@@ -46,6 +46,11 @@ reader can't get by scrolling the exchange pages:
 
 ## Decisions (with dates)
 
+- **Redesign from blank** (owner, 12 Nov 2026): more pages, each one question (Insiders, Deals, Raises, Risks, Holders,
+  Calendar beside Companies, Investors, Evidence, Filings); every item a 5W-2H story with the arithmetic done; noise
+  (staff trades, ESOPs, gifts, transfers, small deals) clubbed and counted, not listed; fewer clicks; flat, minimal,
+  subtle colours from one theme file (`docs/DESIGN.md`). Updates stay on the site (no email or messages, as on 12 Oct).
+
 - **AI filing cards off; XBRL first** (owner, 21 Oct 2026): the AI announcement reader is
   stopped (workflows `announcement-reader`, `announcement-three-filing-sample`, `ai-health-check`
   disabled) and its cards are off the site (Filings read page, Morning brief section); the code,
