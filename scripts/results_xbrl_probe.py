@@ -96,8 +96,45 @@ def describe_xbrl(nse: NSEClient, url: str):
     out.append('')
 
 
+def old_sources(nse: NSEClient) -> None:
+    """MODE=OLD (TODO D1, 12 Nov 2026): is there results XBRL for quarters before Feb 2026? The integrated-filing feed
+    starts with broadcasts of 6 Feb 2026 in our archive. Asks it again for Nov 2025 (when the Sep 2025 quarter was filed),
+    then two candidate endpoints of NSE's older financial-results listing. Candidates, not known contracts: each is
+    reported with its HTTP answer and shape; nothing is built on them until the owner has seen this."""
+    out.extend(['## Results before Feb 2026: candidate sources (read-only)', ''])
+    integrated = (f'{BASE}/api/integrated-filing-results?index=equities&from_date=01-11-2025&to_date=15-11-2025'
+                  '&type=Integrated%20Filing-%20Financials')
+    candidates = [
+        integrated,
+        f'{BASE}/api/corporates-financial-results?index=equities&period=Quarterly',
+        f'{BASE}/api/corporates-financial-results?index=equities&period=Quarterly&from_date=01-11-2025&to_date=15-11-2025',
+        f'{BASE}/api/corporates-financial-results?index=equities&symbol=HAVELLS&period=Quarterly',
+    ]
+    links = []
+    for url in candidates:
+        rows = probe(nse, url)
+        if rows:
+            dates = Counter(str(r.get('toDate') or r.get('qe_Date') or r.get('period') or '')[:11] for r in rows)
+            out.append(f'Periods in the answer: {dict(dates.most_common(8))}')
+            out.append('')
+        for link in xbrl_links(rows):
+            if link not in links:
+                links.append(link)
+    out.append(f'XBRL links found: {len(links)}')
+    for link in links[:2]:
+        describe_xbrl(nse, link)
+
+
 def main() -> int:
     nse = NSEClient()
+    if os.environ.get('MODE', '').upper() == 'OLD':
+        old_sources(nse)
+        text = '\n'.join(out) + '\n'
+        print(text)
+        if os.environ.get('GITHUB_STEP_SUMMARY'):
+            with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+                f.write(text)
+        return 0
     today = date.today()
     d = lambda x: x.strftime('%d-%m-%Y')  # noqa: E731
     a, b = d(today - timedelta(days=3)), d(today)

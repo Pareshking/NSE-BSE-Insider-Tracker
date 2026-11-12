@@ -4,6 +4,11 @@ name: Results XBRL probe (read-only)
 # (scripts/results_xbrl_probe.py). A handful of NSE requests; no R2, no model.
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "empty = the current integrated-filing feed; OLD = candidate sources for results before Feb 2026 (TODO D1)"
+        required: false
+        default: ''
   push:
     branches: [ccr-0caa4ce9-bh3n2s]
     paths:
@@ -25,3 +30,5 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -u scripts/results_xbrl_probe.py
+        env:
+          MODE: ${{ inputs.mode || '' }}
