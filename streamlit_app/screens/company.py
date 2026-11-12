@@ -288,6 +288,10 @@ def render():
     ev = moves.events(ctx, key, 365)
     ev = ev[ev['isin'] == isin] if isin and not ev.empty else ev.iloc[0:0]
     other = moves.event_stories(ctx, ev, pages.RAISE_KINDS | pages.RISK_KINDS | pages.RELEASE_KINDS | pages.STAKE_KINDS | pages.HOLDER_KINDS, summary)
+    import copy
+    buys, sells, dls, other = ([copy.copy(x) for x in lst] for lst in (buys, sells, dls, other))   # the cached stories stay whole
+    for x in buys + sells + dls + other:   # on its own page the company's name and market line would repeat on every story
+        x.company, x.market = '', ''
 
     # ---- Masthead: codes, the name, the news ----
     q = sym.replace('&', '%26')

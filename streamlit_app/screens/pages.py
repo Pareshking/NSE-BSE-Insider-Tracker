@@ -18,7 +18,7 @@ from screens import moves
 from screens.ctx import load, need_data
 
 PERIODS = {'Today': 1, '7 days': 7, '30 days': 30, '90 days': 90}
-DEFAULT = '30 days'
+DEFAULT = '7 days'   # owner, 12 Nov
 PREVIEW = 3       # stories per topic on the front page
 SHORTLIST = 6     # Worth a look now
 
@@ -45,12 +45,23 @@ def _ctx():
 
 
 def _record_line(kinds: list[str], summary) -> str:
+    """The measured record of each kind, once above its stories, in one short line each."""
     out = []
     for k in kinds:
-        txt, kind = moves.record(k, summary)
-        if txt:
-            out.append(f'<b>{esc(k)}:</b> {esc(txt)}')
-    return '<br>'.join(out)
+        code = ideas.MEASURED_BY.get(k)
+        r3 = evidence._row(summary, code, '3M') if code and summary is not None and not summary.empty else None
+        if r3 is None:
+            continue
+        word = 'beaten' if r3['median'] > 0 else 'trailed'
+        out.append(f'{esc(k)} has {word} Nifty 500 by a median {abs(r3["median"]):.1f}% over 3 months '
+                   f'({r3["beat"]:.0f}% of {r3["n"]:,} cases beat it).')
+    return ' '.join(out) + (' Under a year of history, after costs, from the time the filing was made public.' if out else '')
+
+
+def _why_line(stories: list) -> str:
+    """What each kind on the list means, once (a cited study or the rule), for kinds with no measured record."""
+    kinds = list(dict.fromkeys(getattr(x, 'kind', '') for x in stories))
+    return ' '.join(f'<b>{esc(k)}:</b> {esc(moves.WHY[k])}.' for k in kinds if k in moves.WHY)
 
 
 # ---- Today: the front page, the top of every topic ---------------------------------------------------------------
@@ -96,8 +107,7 @@ def today():
 
     ds.section('Worth a look now', 'Insider buys of a kind that has beaten Nifty 500 on our own history, largest first. ' + moves.INSIDER_SCOPE, '/insiders', 'Every insider trade')
     kinds = ['Promoter buying', 'Director or KMP buying']
-    ds.record(_record_line([k for k in kinds if any(getattr(s, 'verdict', '') == 'leaning_positive' for s in firm)], summary)
-              + ('<br>' if firm else '') + 'Costs deducted; the clock starts when the exchange made the filing public.' if firm else '')
+    ds.record(_record_line(kinds, summary) if firm else '')
     ds.stories(firm[:SHORTLIST], 'No insider buy of a kind with a measured edge in this period. The lists below are facts to read, not picks.')
 
     for title, sub_, items, href in (
@@ -184,10 +194,12 @@ def _events_page(key: str, title: str, question: str, kinds: set, note: str, ext
         ds.head(f'{title} · {esc(_span(p, ctx.ref))}', f'{kit.plural(len(items), "filing")} past the bar', [note])
     ds.stats([(k, counts.get(k, 0), '') for k in sorted(kinds) if counts.get(k)] or [('Filings', 0, 'in this period')])
     ds.section(question, 'Largest share of the company first')
+    ds.record(_why_line(items))
     ds.stories(items, 'Nothing past the bar in this period.')
     for t, q, ks in extra or []:
         more = moves.event_stories(ctx, ev, ks, summary)
         ds.section(q, t)
+        ds.record(_why_line(more))
         ds.stories(more, 'Nothing in this period.')
 
 

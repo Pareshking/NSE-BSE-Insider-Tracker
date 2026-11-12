@@ -235,7 +235,8 @@ company.render()
         assert part in h, part
     for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
         assert f'<dt>{check}</dt>' in h, check
-    assert 'class="ds-story"' in h and '<dt>How much</dt>' in h and '<dt>When</dt>' in h      # 5W-2H on each decision
+    assert 'class="ds-story"' in h and 'class="ds-lede"' in h and 'class="ds-facts"' in h     # a news line and its numbers
+    assert 'class="co"' not in h.split('>What did insiders do?<')[1].split('Left out as noise')[0]   # no name repeated on its own page
     assert 'Left out as noise' in h and 'designated persons' in h                            # 37 staff trades counted, not listed
 
 

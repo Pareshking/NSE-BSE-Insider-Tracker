@@ -158,29 +158,26 @@ def insiders(_ctx, ref_key: str, side: str, days: int, isin: str | None = None) 
             ('Promoter selling' if r['promoter_group'] else 'Director or KMP selling')
         why, verdict = record(kind, summary)
         who = ideas._who(r)
-        people = r['people'] if isinstance(r['people'], list) else []
         lag = (pd.Timestamp(r['last']).normalize() - pd.Timestamp(r['trade_to']).normalize()).days if pd.notna(r['trade_to']) else None
-        price, move = _paid_now(ctx, isin, r['avg_price'], r['trade_to'], (p or {}).get('latest_close'))
+        _, move = _paid_now(ctx, isin, r['avg_price'], r['trade_to'], (p or {}).get('latest_close'))
         own = r.get('own_change')
-        much = [kit.rupees(r['value']), f'{r["pct_of_company"]:.2f}% of the company' + (' (by value)' if r.get('pct_basis') == 'value' else '')]
-        if own is not None and pd.notna(own):
-            much.append(f'{own:+.1f}% to their own holding' if side == 'BUY' else f'{own:.1f}% of their own holding')
+        when = _span(r['trade_from'], r['trade_to'])
+        late = lag is not None and lag >= LATE_DAYS
+        # One sentence carries who, what, how much and when; one line of numbers; an amber line only when something needs
+        # a look (owner, 12 Nov: 5W-2H is a checklist of what to cover, not labels to print; "still busy").
+        facts = [f'{own:+.1f}% to their own holding' if side == 'BUY' else f'{own:.1f}% of their own holding'] if own is not None and pd.notna(own) else []
+        if move is not None:
+            facts.append(f'paid {kit.price(r["avg_price"])} · {move:+.1f}% since')
+        if r['days'] > 1:
+            facts.append(f'on {r["days"]} trading days')
         w_txt, w_warn = watch(isin, p, h, flags.get(isin))
+        note = '; '.join(x for x in ((f'made public {lag} days after the trade' if late else ''), (w_txt if w_warn else '')) if x)
         st_ = Story(
             company=names.get(isin) or r['company'], href=kit.company_href(r['nse_symbol']), market=market_line(r['nse_symbol'], p),
-            lede=f'{who} {verb} {kit.shares(r["shares"])} shares on the market' + (f', {_span(r["trade_from"], r["trade_to"])}' if pd.notna(r['trade_to']) else ''),
-            big=kit.rupees(r['value']), big_sub=f'{r["pct_of_company"]:.2f}% of the company',
-            w={'who': who if len(people) <= 1 else f'{who}: ' + ', '.join(people[:4]) + (f' and {len(people) - 4} more' if len(people) > 4 else ''),
-               'what': f'{verb.capitalize()} {kit.shares(r["shares"])} shares in {kit.plural(int(r["filings"]), "filing")}'
-                       + (f' on {r["days"]} trading days' if r['days'] > 1 else ''),
-               'when': f'Traded {_span(r["trade_from"], r["trade_to"])} · made public {kit.day(r["last"])}'
-                       + (f' · {kit.plural(lag, "day")} later' if lag and lag > 0 else ' · the same day' if lag == 0 else ''),
-               # Where and how are the same for every insider story (the exchange, own money on the open market): said once in
-               # the section's subtitle (INSIDER_SCOPE), not on each story (real data, 12 Nov: two identical lines per card).
-               'much': ' · '.join(much), 'price': price, 'why': why, 'watch': w_txt},
-            warn=({'when'} if lag and lag >= LATE_DAYS else set()) | ({'watch'} if w_warn else set()),
-            tags=([('New', 'new')] if is_new(r['last'], ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else [])
-                 + ([(f'₹{ideas.BIG_VALUE / 1e7:.0f} Cr+', '')] if r['value'] >= ideas.BIG_VALUE else []))
+            lede=f'{who} {verb} {r["pct_of_company"]:.2f}% of the company on the market' + (f', {when}' if when else '')
+                 + (f' (made public {kit.day(r["last"], with_year=False)})' if not late and pd.notna(r['last']) else ''),
+            big=kit.rupees(r['value']), facts=facts, note=note,
+            tags=([('New', 'new')] if is_new(r['last'], ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else []))
         st_.move = move
         st_.verdict = verdict
         st_.isin = isin
@@ -296,14 +293,11 @@ def deals(_ctx, ref_key: str, days: int, isin: str | None = None) -> tuple:
         w_txt, w_warn = watch(isin, p, h, flags.get(isin))
         feeds = ', '.join(sorted({str(x).lower() for x in g['feeds'].dropna()})) or 'bulk'
         exch = ', '.join(sorted({str(x).upper() for x in g['exchange'].dropna()}))
+        facts = [x for x in (price.replace('Deal price ', 'at ').replace(' · now ', ', now ') if price else '',
+                             f'{feeds} deal on {exch}' if exch else f'{feeds} deal', kit.day(day, with_year=False)) if x]
         stories.append(Story(
             company=names.get(isin) or str(g['company'].iloc[-1]), href=kit.company_href(sym) if sym else '', market=market_line(sym, p),
-            lede=lede, big=kit.rupees(value), big_sub=f'{pct:.2f}% of the company' if pct is not None and pd.notna(pct) else '',
-            w={'who': ('Sold: ' + names_of(sellers) if sellers else '') + (' · ' if sellers and buyers else '') + ('Bought: ' + names_of(buyers) if buyers else ''),
-               'what': f'{feeds.capitalize()} deal', 'when': kit.day(day), 'where': exch or 'Exchange',
-               'how': f'{kit.plural(len(buyers), "buyer")}, {kit.plural(len(sellers), "seller")} named; market makers left out',
-               'much': f'{kit.rupees(bv)} bought · {kit.rupees(sv)} sold', 'price': price, 'why': ' · '.join(why), 'watch': w_txt},
-            warn={'watch'} if w_warn else set(),
+            lede=lede, big=kit.rupees(value), facts=facts, note=w_txt if w_warn else '',
             tags=([('New', 'new')] if is_new(day, ref) else []) + ([('Promoter sold', 'warn')] if prom_sold else [])))
     club = []
     if small:
@@ -356,16 +350,17 @@ def event_stories(ctx, ev: pd.DataFrame, kinds: set, summary=None) -> list[Story
             much, big = '', ''
         if pct:
             much += (' · ' if much else '') + f'{pct:.2f}% of the company'
-        third = f'{r["kv3_label"]}: {r["kv3"]}' if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str) else ''
+        third = (f'{r["kv3_label"]}: {r["kv3"]}' if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str)
+                 and r['kv3'].strip() not in ('', '—', '-') else '')   # a number not known is left out, not shown as a dash
         rec, verdict = record(r['kind'], summary)
         w_txt, w_warn = watch(isin, p, h, flags.get(isin))
+        facts = [x for x in (third, (f'{pct:.2f}% of the company' if pct else ''),
+                             (kit.day(r['last'], with_year=False) if pd.notna(r.get('last')) else '')) if x]
         out.append(Story(
             company=names.get(isin) or str(r['company']), href=kit.company_href(r['nse_symbol']) if isinstance(r.get('nse_symbol'), str) else '',
-            market=market_line(r.get('nse_symbol'), p), lede=str(r['sentence']), big=big, big_sub=f'{pct:.2f}% of the company' if pct else '',
-            w={'what': r['kind'], 'when': f'Made public {kit.day(r["last"])}' if pd.notna(r.get('last')) else '', 'much': much,
-               'price': third, 'why': rec or WHY.get(r['kind'], ''), 'watch': w_txt},
-            warn={'watch'} if w_warn else set(),
+            market=market_line(r.get('nse_symbol'), p), lede=str(r['sentence']), big=big, facts=facts, note=w_txt if w_warn else '',
             tags=([('New', 'new')] if is_new(r.get('last'), ctx.ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else [])))
+        out[-1].kind = r['kind']
     return out
 
 

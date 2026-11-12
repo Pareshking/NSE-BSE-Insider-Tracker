@@ -14,20 +14,17 @@ import streamlit as st
 
 from ui.kit import esc
 
-W_LABELS = {'who': 'Who', 'what': 'What', 'when': 'When', 'where': 'Where', 'how': 'How', 'much': 'How much',
-            'price': 'Price', 'why': 'Why it matters', 'watch': 'Watch'}
-
-
 @dataclass
 class Story:
+    """One decision as a news line: the sentence carries who, what, how much and when; `facts` is one line of the numbers
+    worked out for the reader; `note` is said in amber, only when something needs a look."""
     company: str
     href: str = ''
     market: str = ''                 # trusted HTML: symbol · size · market cap · price
-    lede: str = ''                   # one sentence, the news
-    big: str = ''                    # the headline number (₹ value), right
-    big_sub: str = ''                # under it (% of the company)
-    w: dict = field(default_factory=dict)        # key in W_LABELS -> text
-    warn: set = field(default_factory=set)       # keys drawn amber
+    lede: str = ''
+    big: str = ''                    # the headline number (rupees), right
+    facts: list = field(default_factory=list)
+    note: str = ''
     tags: list = field(default_factory=list)     # (text, tone) tone in '', 'ok', 'warn', 'new'
 
 
@@ -65,12 +62,14 @@ def tag(text: str, tone: str = '') -> str:
 
 def story_html(s: Story) -> str:
     tags = ''.join(tag(t, tone) for t, tone in s.tags)
-    rows = ''.join(f'<dt>{esc(W_LABELS[k])}</dt><dd class="{"warn" if k in s.warn else ""}">{esc(v)}</dd>'
-                   for k, v in ((k, s.w.get(k)) for k in W_LABELS) if v)
-    name = (f'<a class="co" href="{esc(s.href, quote=True)}" target="_self">{esc(s.company)}</a>' if s.href else f'<b>{esc(s.company)}</b>')
-    big = (f'<div class="ds-big"><b>{esc(s.big)}</b><span>{esc(s.big_sub)}</span></div>' if s.big or s.big_sub else '')
-    return (f'<article class="ds-story"><div class="ds-story-h"><div>{name} {tags}<div class="mk">{s.market}</div></div>{big}</div>'
-            + (f'<p class="ds-lede">{esc(s.lede)}</p>' if s.lede else '') + f'<dl class="ds-w">{rows}</dl></article>')
+    name = ('' if not s.company else f'<a class="co" href="{esc(s.href, quote=True)}" target="_self">{esc(s.company)}</a>' if s.href
+            else f'<b class="co">{esc(s.company)}</b>')
+    facts = '<span class="sep">·</span>'.join(esc(x) for x in s.facts if x)
+    return (f'<article class="ds-story"><div class="ds-story-m">{name}{tags}<span class="mk">{s.market}</span>'
+            + (f'<p class="ds-lede">{esc(s.lede)}</p>' if s.lede else '')
+            + (f'<p class="ds-facts">{facts}</p>' if facts else '')
+            + (f'<p class="ds-note">{esc(s.note)}</p>' if s.note else '')
+            + f'</div><div class="ds-big">{esc(s.big)}</div></article>')
 
 
 def stories(items: list[Story], empty: str = '') -> None:
