@@ -584,3 +584,7 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
   .reads.co > div:nth-child(even) { padding-left: 10px !important; border-left: 1px solid var(--line) !important; }
   .reads.co > div:nth-child(-n+2) { border-top: 0; }
   [class*="st-key-card_co_"] .pk-c li { grid-template-columns: 1fr; gap: 0; } }
+
+.pk-rec { list-style: none; margin: 0 0 6px; padding: 8px 12px; background: var(--subtle); border-radius: 6px; display: grid; gap: 3px;
+  font-size: 12.5px; color: var(--ink-2); }
+.pk-rec b { color: var(--ink); font-weight: 650; margin-right: 4px; } .pk-rec .cav { color: var(--ink-3); }

@@ -281,10 +281,9 @@ def _pick(ctx, r: dict, summary, holding, px) -> str:
     now, mcap = pr.get('latest_close'), pr.get('market_cap')
     href = kit.company_href(r['nse_symbol'])
     mk = tbl.market_line({'mk_bucket': pr.get('mcap_bucket'), 'mk_cap': mcap, 'mk_px': now, 'mk_lo': pr.get('low_52w'), 'mk_hi': pr.get('high_52w')})
-    checks = []
-    for k in r['_ahead'][:2]:
-        v = evidence.verdict(summary, ideas.MEASURED_BY[k])
-        checks.append(_check(f'Record: {k.lower()}', v['text'].replace(evidence.CAVEAT, '').rstrip('.') + '. Under a year of history: a hint, not proof', 'ok'))
+    # The record itself is stated once above the cards (it repeated twelve times on one screen of real data, 12 Nov);
+    # each card names which measured kinds it is.
+    checks = [_check('Measured ahead', ', '.join(k.lower() for k in r['_ahead']), 'ok')]
     if pd.notna(r.get('avg_price')) and r.get('avg_price') and pd.notna(now) and now:
         f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
         if f == f:
@@ -357,7 +356,9 @@ def _headline(look: pd.DataFrame, warn: pd.DataFrame, breadth: dict | None, span
         before = breadth.get('before') or {}
         prev = f', against {before["buy_share"]:.0f}% the period before' if before.get('buy_share') is not None else ''
         sub.append(f'Buying was {breadth["buy_share"]:.0f}% of the rupees decision-makers traded on the market{prev}.')
-    top = _group(look, 'Insiders buying')
+    # The first row backed by an insider's own filing: a promoter's bulk/block deal with none behind it led the list on
+    # real data (Bombay Burmah, 12 Nov) and is not what the measured record is about.
+    top = _group(look, 'Insiders buying', drop={ideas.PROMOTER_DEAL_BUY})
     if not top.empty:
         lead_row = top.iloc[0]
         if isinstance(lead_row['sentence'], str) and lead_row['sentence']:
@@ -445,7 +446,12 @@ def render():
         if picks.empty:
             kit.empty('No insider buy of a kind with a measured edge in this period. The lists below are facts to read, not picks.')
         else:
-            st.html('<div class="pks">' + ''.join(_pick(ctx, r, summary, holding, px) for r in picks.to_dict('records')) + '</div>')
+            kinds = list(dict.fromkeys(k for ks in picks['_ahead'] for k in ks))
+            st.html('<ul class="pk-rec">' + ''.join(
+                f'<li><b>{esc(k)}</b> {esc(evidence.verdict(summary, ideas.MEASURED_BY[k])["text"].replace(evidence.CAVEAT, "").rstrip("."))}</li>'
+                for k in kinds) + '<li class="cav">Under a year of history: a hint, not proof. Costs are deducted; the clock starts at the '
+                'exchange broadcast.</li></ul>'
+                + '<div class="pks">' + ''.join(_pick(ctx, r, summary, holding, px) for r in picks.to_dict('records')) + '</div>')
     # One column, in the order the evidence supports (docs/SIGNALS.md: insider buying is the only measured edge; sales
     # are the catch, not a short signal; pledges and cheap issues are avoid flags; funds' deals lagged the index).
     with kit.card('Who among insiders is putting money in?', 'td_in', SORTS[order][1] + ' · open-market only, ESOPs and gifts left out'):

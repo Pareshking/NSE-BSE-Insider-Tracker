@@ -400,7 +400,7 @@ def test_worth_a_look_now_only_measured_ahead_kinds_with_their_checks(monkeypatc
     assert picks['company'].tolist() == ['Ahead Co']                                  # an unmeasured kind is never a pick
     html = home._pick(SimpleNamespace(prices=pd.DataFrame()), picks.iloc[0].to_dict(), summary,
                       {'A': {'promoter_pledge_pct': 22.0}}, {'A': {'pct_off_high': -0.18, 'latest_close': 100.0}})
-    assert 'Median +3.2% against Nifty 500 over 3 months (59% of 434 cases beat it)' in html
+    assert 'Measured ahead</b><span>promoter buying' in html                      # the record itself is stated once, above the cards
     assert '70 days after the last trade' in html and 'class="warn"' in html          # late, over the high pledge bar, flagged
     assert '22.0% of promoter shares' in html and 'ASM stage 1' in html and '−18.0% from it' in html and '+8.2%' in html
 
