@@ -288,7 +288,8 @@ def test_old_addresses_redirect():
 
 
 def test_today_page_renders_the_money_board(data_dir, monkeypatch):
-    """Today (21 and 23 Oct): Money in, Money out and Risk changes from insiders_clean/ideas.py, and the money events ahead."""
+    """Today (redesign 12 Nov): the news line in rupees, the reading strip, the questions in evidence order from
+    insiders_clean/ideas.py, and the money events ahead as a calendar."""
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     at = AppTest.from_string(APP_PATHS + """
 from ui import theme
@@ -299,9 +300,13 @@ home.render()
     at.run()
     assert not at.exception, at.exception[0].value if at.exception else ''
     html = ' '.join(e.proto.body for e in at.get('html'))
-    for panel in ('Money in', 'Money out', 'Risk changes', 'Coming up'):
+    for panel in ('Who among insiders is putting money in?', 'Who is taking money out?', 'What could go wrong?',
+                  'What are funds and big investors doing?', 'What is coming up?'):
         assert panel in html, panel
-    assert 'companies with money in' in html and 'Raises: QIPs' in html and '₹25 Cr and up' in html
+    assert 'class="news"' in html and ('Insiders bought' in html or 'No insider bought' in html or 'No insider bought or sold' in html)
+    assert 'companies with money in' not in html                                  # counts of companies are no longer the headline
+    assert html.index('putting money in') < html.index('taking money out') < html.index('could go wrong') < html.index('funds and big')
+    assert 'Raises: QIPs' in html and '₹25 Cr and up' in html
 
 
 def test_in_app_links_map_to_pages_with_their_query():
@@ -340,3 +345,29 @@ def test_a_today_row_shows_its_market_line_the_rupee_chip_and_its_own_third_numb
                                                                'reads': {'Promoter buying': 'leaning_positive'}, 'kv3_label': None,
                                                                'kv3': None}, {}, px)
     assert '₹25 Cr+' not in plain and 'Of company' in plain and '>Ahead<' in plain.replace('<i>', '>').replace('</i>', '<')
+
+
+def test_today_headline_calendar_and_quiet_reads():
+    """Today, redesign 12 Nov: the first line is rupees bought and sold (not counts of companies); "Not measured" is the
+    faintest tag, "Ahead" the only marked one; Coming up is one column per day; quarterly holding moves are folded apart."""
+    import sys
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import home
+    look = pd.DataFrame([{'group': 'Insiders buying', 'kind': 'Promoter buying', 'value': 4.2e9, 'company': 'Bombay Co',
+                          'sentence': 'A promoter bought 5.05% of the company on the market'},
+                         {'group': 'Big investors and funds in', 'kind': 'Mutual funds adding', 'value': None, 'company': 'Fund Co',
+                          'sentence': 'Mutual funds raised their share'}])
+    warn = pd.DataFrame([{'group': 'Insiders selling', 'kind': 'Promoter selling', 'value': 2.0e9, 'company': 'Seller Co', 'sentence': 'x'}])
+    h = home._headline(look, warn, {'buy_share': 28.0, 'before': {'buy_share': 17.0}}, 'last 30 days', pd.Timestamp('2026-11-11'))
+    assert 'Insiders bought <b class="up">₹420' in h and 'sold <b class="down">₹200' in h and 'in 1 company' in h
+    assert '28% of the rupees' in h and 'against 17% the period before' in h and 'First on the list, Bombay Co: A promoter bought' in h
+    assert len(home._group(look, 'Big investors and funds in', drop=home.HOLDER_KINDS)) == 0
+    assert len(home._group(look, 'Big investors and funds in', kinds=home.HOLDER_KINDS)) == 1
+    chips = home._chips(['Promoter buying', 'Pledge rising'], {'Promoter buying': 'leaning_positive', 'Pledge rising': 'not_measured'})
+    assert 'rd-ahead">Ahead' in chips and 'rd-none">Not measured' in chips
+    up = pd.DataFrame({'made_public': pd.to_datetime(['2026-11-12', '2026-11-12', '2026-11-13']), 'company': ['A', 'B', 'C'],
+                       'nse_symbol': ['A', None, 'C'], 'what': ['Lock-in ends', 'Board meets: fund raising', 'Buyback tender closes'],
+                       'value': [5.4e8, None, None]})
+    cal = home._calendar(up)
+    assert cal.count('class="cal-d"') == 2 and 'Thu 12 Nov' in cal and 'Lock-in ends · ₹54' in cal and '<b>B</b>' in cal

@@ -215,3 +215,30 @@ A row opens in place to allottees, terms, lock-in lines and the filing link. No 
 
 Colour and type values stay as in `docs/DESIGN.md`. Wording, data collection and the track record
 are unchanged.
+
+## Redesign of Today, 12 Nov 2026 (owner: "lots of data, not presented the right way"; benchmark tipsheet.markets)
+
+Two independent reviews (a design critique and an investor-priority read of `docs/SIGNALS.md`) of the live page found:
+the headline counted companies across every kind of filing (372 "with money in", mostly quarterly fund holding moves),
+the page ran about 8,000 px of identical cards in two columns that ended 1,500 px apart, red pills carried "Not measured",
+the trend chart was one quarter-end spike, and the first screen held two search boxes and eleven pills before a company.
+Principles taken from the benchmark, not its look: the news as the first line, strong type contrast, quiet tables on
+hairlines, questions as section titles, a calendar for what is next. What it does that would be wrong here: opening on the
+whole market; this page's unit is a filing.
+
+- **First line**: rupees insiders bought and sold, in how many companies, then the buying share against the period before
+  (`ideas.insider_breadth`) and the first row of the list. Counts of companies are no longer the headline.
+- **One reading strip** of six small numbers replaces the tiles; the group pills and the page's own search move into
+  "Filters & sort" (the top bar keeps the company search).
+- **One column, in the order the record supports**: insiders buying (and promoters paying cash for new shares), insiders
+  selling ("the catch", no edge measured), what could go wrong (pledges, cheap shares to promoters, pledges released),
+  raises and buybacks, funds and big investors (in and out side by side).
+- **Quarterly holding changes** (mutual funds and foreign investors, owner 23 Oct) stay on Today but folded apart under the
+  funds section, labelled as dated by the quarter, so a 30 Sep shareholding filing does not read as this week's news.
+- **Each group is a table**: heads once, five rows, "Show more" up to eight, the rest in Filings. A late filing says so on
+  the row ("traded 40 days earlier"), and the price move since the trade is on the row, not only when opened.
+- **Tags are quiet**: kinds as outlined grey tags; the measured read as text, "Ahead" the only marked one, "Not measured"
+  the faintest. Red and green only for the rupees bought and sold.
+- **Coming up** is a calendar, a column a day. The weekly trend chart is off Today (one quarter-end spike flattened every
+  other week).
+- Rules (`insiders_clean/ideas.py`), periods, the ₹25 Cr path and the default period are unchanged.

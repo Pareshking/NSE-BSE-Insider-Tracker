@@ -1,18 +1,19 @@
-"""Today (home), the money board (owner, 21 and 23 Oct 2026): across every listed company, for one of four
-periods (today, 7, 30 or 90 days), where real money moved: "Money in" (insiders and big investors buying,
-promoters paying up, buybacks, capital raised), "Money out" (insiders and big investors selling) and
-"Risk changes" (pledges, cheap shares to promoters), in groups, from insiders_clean/ideas.py. Tiles and a
-trend panel count companies per group in each period; filters by size, sector and name. One row per
-company: its size and price, one sentence, three numbers, the reasons as chips with their measured read;
-it opens to the facts and links. "Coming up" lists the money events of the next ten days. Everything else
-is in Filings (docs/DESIGN_V3.md)."""
+"""Today (home): where real money moved across every listed company, for one of four periods (today, 7, 30 or 90 days),
+from insiders_clean/ideas.py (rules in docs/DESIGN_V3.md).
+
+Redesign of 12 Nov 2026 (owner: "lots of data, not presented the right way"; benchmark tipsheet.markets): the first line
+is the news in rupees (what insiders bought and sold), a one-line reading strip, then one column of questions in the order
+the measured record supports: insiders buying, insiders selling, what could go wrong, raises and buybacks, funds and big
+investors (in and out side by side; the quarterly holding changes folded apart, as they are dated by the quarter), and a
+calendar of what is coming up. Each group is a table: five rows, "Show more" up to eight, the rest in Filings. Evidence
+reads are quiet text tags; red and green are for selling and buying only."""
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit, lwchart
-from ui.kit import Tile, esc
+from ui import kit
+from ui.kit import esc
 
 from insiders_clean import ideas
 from screens import buybacks, filings_all
@@ -22,24 +23,17 @@ from ui import table as tbl
 READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
 WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
 RAISE_KINDS = {k for n, ks in ideas.GROUPS['look'] if n == 'Raises' for k in ks}   # shares issued: dilution, a neutral chip
-# The panels (docs/DESIGN_V3.md): (title, key, side, [(list, group)]). Pledges released is de-risking, so it sits with the pledges.
-PANELS = [
-    ('Money in', 'td_in', 'left', [('look', g) for g in ('Insiders buying', 'Promoters pay up', 'Big investors and funds in',
-                                                         'Buybacks at a premium', 'Raises')]),
-    ('Money out', 'td_out', 'right', [('warn', 'Insiders selling'), ('warn', 'Big investors and funds out')]),
-    ('Risk changes', 'td_risk', 'right', [('warn', 'Pledges'), ('look', 'Pledges released'), ('warn', 'Cheap shares to promoters')]),
-]
 COMING_DAYS = 10
+CAL_DAYS, CAL_PER_DAY = 6, 6   # Coming up: day columns, events per day
+SHOW = 5   # rows per group before "Show more" (the rest up to ideas.PER_GROUP)
+# Quarterly shareholding moves (ideas.holder_events): dated by the quarter, so folded apart on Today.
+HOLDER_KINDS = {'Mutual funds adding', 'Foreign investors adding', 'Mutual funds trimming', 'Foreign investors trimming'}
 DEFAULT_PERIOD = 'Last 30 days'
 SIZES = ['All sizes', 'Large', 'Mid', 'Small', 'Micro']
 # Sort inside each group: (column, the list's subtitle)
 SORTS = {'Share of the company': ('pct_of_company', 'largest share of the company first'),
          'Value': ('_val', 'largest value first'), 'Latest': ('last', 'newest first')}
 DEFAULT_SORT = 'Share of the company'
-# Short names where space is tight (the group pills, the trend panel); the list headings keep the full ones.
-SHORT = {'Insiders buying': 'Insiders buying', 'Promoters pay up': 'Promoters pay up', 'Pledges released': 'Pledges released',
-         'Big investors and funds in': 'Investors in', 'Buybacks at a premium': 'Buybacks', 'Insiders selling': 'Insiders selling', 'Raises': 'Raises',
-         'Pledges': 'Pledges up', 'Cheap shares to promoters': 'Cheap to promoters', 'Big investors and funds out': 'Investors out'}
 
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=2)
@@ -79,17 +73,21 @@ def _lists(_ctx, ref_key: str, days: int) -> tuple:
         ideas.holder_events(store.snapshot(), ref, days=days)], summary)
 
 
-def _num(label: str, value: str, tip: str = '') -> str:
+def _num(label: str, value: str, tip: str = '', cls: str = '') -> str:
     t = f' title="{esc(tip, quote=True)}"' if tip else ''
-    return f'<div class="kv"{t}><span>{esc(label)}</span><b>{esc(value)}</b></div>'
+    c = f' {cls}' if cls else ''
+    return f'<div class="kv{c}"{t}><span>{esc(label)}</span><b>{esc(value)}</b></div>'
 
 
 def _chips(kinds, reads, big: bool = False) -> str:
+    """The row's kinds as quiet tags, and the measured read once, as text (Redesign 12 Nov: red and green are for
+    buying and selling only; "Not measured" is not a verdict, so it is the faintest tag, not a red pill)."""
     out = []
     for k in kinds:
         tone = 'sell' if k in WARN_KINDS else 'mute' if k == 'Steady accumulation' or k in RAISE_KINDS else 'acc'
         read = '' if k in RAISE_KINDS else READ.get((reads or {}).get(k, ''), '')
-        out.append(f'<span class="chip {tone}">{esc(k)}' + (f'<i>{esc(read)}</i>' if read else '') + '</span>')
+        rcls = {'Ahead': 'ahead', 'Not measured': 'none'}.get(read, 'flat')
+        out.append(f'<span class="chip {tone}">{esc(k)}' + (f'<i class="rd-{rcls}">{esc(read)}</i>' if read else '') + '</span>')
     if big:   # one decision-maker, Rs 25 Cr and up, whatever its share of the company (owner, 23 Oct)
         crore = f'₹{ideas.BIG_VALUE / 1e7:.0f} Cr'
         out.insert(0, f'<span class="chip mute" title="One decision-maker, {crore} or more in the period, whatever its share of the company">{crore}+</span>')
@@ -97,6 +95,8 @@ def _chips(kinds, reads, big: bool = False) -> str:
 
 
 def _row(ctx, r, holding, px) -> str:
+    """One company as one table line: company and its market line, what happened (one sentence and its tags), value,
+    share of the company, and a third number with its own label; a tap opens the facts."""
     isin = r['isin']
     pr = px.get(isin)
     now = pr['latest_close'] if pr is not None and pd.notna(pr.get('latest_close')) else None
@@ -108,26 +108,31 @@ def _row(ctx, r, holding, px) -> str:
     if pd.notna(r.get('value')) and r.get('value'):
         worth, tip = kit.rupees(r['value']), 'As filed'
     elif pct and mcap:
-        worth, tip = '≈ ' + kit.rupees(pct / 100 * mcap), "The shares at today's market cap"
+        worth, tip = '≈ ' + kit.rupees(pct / 100 * mcap), "Not filed: the shares at today's market cap"
     else:
         worth, tip = '—', ''
-    third = (_num(r['kv3_label'], r['kv3']) if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str)
-             else _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—'))
-    nums = [_num('Of company' if r.get('kind') not in RAISE_KINDS else 'New shares', f'{pct:.2f}%' if pct else '—'), _num('Value', worth, tip), third]
+    third = (_num(r['kv3_label'], r['kv3'], cls='k3') if isinstance(r.get('kv3_label'), str) and isinstance(r.get('kv3'), str)
+             else _num('Promoters', kit.pct(s['promoter_holding_pct'], 1) if s is not None and pd.notna(s.get('promoter_holding_pct')) else '—',
+                       'Promoter holding, latest quarter filed', cls='k3'))
+    nums = [_num('Value', worth, tip, cls='k1'),
+            _num('Of company' if r.get('kind') not in RAISE_KINDS else 'New shares', f'{pct:.2f}%' if pct else '—', cls='k2'), third]
     mk = tbl.market_line({'mk_bucket': pr.get('mcap_bucket') if pr is not None else None, 'mk_cap': mcap, 'mk_px': now,
                           'mk_lo': pr.get('low_52w') if pr is not None else None, 'mk_hi': pr.get('high_52w') if pr is not None else None})
     sym_line = (f'<div class="sub"><span class="sym">{esc(str(r.get("nse_symbol") or ""))}</span>{mk}</div>')
     facts = [('Made public', kit.day(r['last']) if pd.notna(r.get('last')) else '')]
     # A filing made public weeks after the trade (239 open-market rows over 30 sessions late, audit 23 Oct): the
-    # period counts it on the day it was made public, so the card says how old the trade already was.
+    # period counts it on the day it was made public, so the row says how old the trade already was (on the row, not
+    # only when opened: an investor reading "bought" must see that it is old news).
     late = (pd.Timestamp(r['last']) - pd.Timestamp(r['trade_to'])).days if pd.notna(r.get('last')) and pd.notna(r.get('trade_to')) else 0
     if late > 14:
         facts.append(('Filed late', f'last traded {kit.day(r["trade_to"])}, made public {late} days later'))
+    move = ''
     if pd.notna(r.get('avg_price')) and r.get('avg_price'):
         f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
         if f == f and now:
             paid = r['avg_price'] * f
             facts.append(('Paid · now', f'{kit.price(paid)} · {kit.price(now)} ({(now / paid - 1) * 100:+.1f}%)'))
+            move = f'{(now / paid - 1) * 100:+.1f}% since'
     if pd.notna(r.get('decision_makers')) and r.get('decision_makers'):
         facts.append(('Decision-makers', str(int(r['decision_makers']))))
     if s is not None and pd.notna(s.get('promoter_holding_pct')) and r.get('kv3_label') == 'Own stake':
@@ -140,9 +145,13 @@ def _row(ctx, r, holding, px) -> str:
         facts.append(('Market cap', kit.rupees(mcap)))
     grid = ''.join(f'<div><b>{esc(k)}</b><span>{esc(v)}</span></div>' for k, v in facts if v)
     also = ''.join(f'<li>{esc(x)}</li>' for x in (r.get('others') or []))
-    return (f'<details class="idea"><summary>'
-            f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>'
-            f'{sym_line}<p>{esc(r["sentence"])}</p><div class="idea-chips">{_chips(r["kinds"], r.get("reads"), bool(r.get("big")) and r.get("kind") not in RAISE_KINDS)}</div></div>'
+    when = kit.day(r['last'], with_year=False) if pd.notna(r.get('last')) else ''
+    meta = ' · '.join(x for x in (when and f'public {when}', f'traded {late} days earlier' if late > 14 else '', move) if x)
+    return (f'<details class="idea mv"><summary>'
+            f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>{sym_line}</div>'
+            f'<div class="mv-what"><p>{esc(r["sentence"])}</p>'
+            + (f'<div class="mv-meta{" late" if late > 14 else ""}">{esc(meta)}</div>' if meta else '')
+            + f'<div class="idea-chips">{_chips(r["kinds"], r.get("reads"), bool(r.get("big")) and r.get("kind") not in RAISE_KINDS)}</div></div>'
             f'{"".join(nums)}</summary>'
             f'<div class="idea-more">' + (f'<ul class="idea-also">{also}</ul>' if also else '')
             + f'<div class="idea-grid">{grid}</div><a href="{esc(href, quote=True)}" target="_self">Company page →</a></div></details>')
@@ -186,24 +195,52 @@ def _value(df: pd.DataFrame, group: str) -> float:
     return float(pd.to_numeric(x['value'], errors='coerce').sum()) if len(x) else 0.0
 
 
-def _list(ctx, frames: dict, groups: list, pick: str, holding, px) -> None:
-    """The groups of one panel, each its company rows (up to PER_GROUP); `frames` is {'look': ..., 'warn': ...}."""
+def _section_rows(ctx, g: pd.DataFrame, holding, px, more_href: str = '/filings-all') -> str:
+    """A group as a table: the column heads once, SHOW rows, the rest up to PER_GROUP behind "Show more", then a link."""
+    if g.empty:
+        return ''
+    recs = g.head(ideas.PER_GROUP).to_dict('records')
+    first, rest = recs[:SHOW], recs[SHOW:]
+    raise_kind = recs[0].get('kind') in RAISE_KINDS
+    # The third column's head: the rows' own label when they share one (Own stake, Issue vs now), else "Context",
+    # each cell then keeping its own small label (the label drifted row to row under one head, critique 12 Nov).
+    labels = {r.get('kv3_label') if isinstance(r.get('kv3_label'), str) else 'Promoters' for r in recs}
+    third = labels.pop() if len(labels) == 1 else 'Context'
+    head = ('<div class="mv-h" aria-hidden="true"><span>Company</span><span>What happened</span><span>Value</span>'
+            f'<span>{"New shares" if raise_kind else "Of company"}</span><span>{esc(third)}</span></div>')
+    body = ''.join(_row(ctx, r, holding, px) for r in first)
+    if rest:
+        body += (f'<details class="mv-more"><summary>Show {len(rest)} more</summary>'
+                 + ''.join(_row(ctx, r, holding, px) for r in rest) + '</details>')
+    left = len(g) - len(recs)
+    tail = (f'<p class="grp-more"><a href="{more_href}" target="_self">{left} more in Filings →</a></p>' if left > 0 else '')
+    return f'<div class="ideas mv-t{" k3s" if third != "Context" else ""}">{head}{body}</div>{tail}'
+
+
+def _group(df: pd.DataFrame, name: str, kinds: set | None = None, drop: set | None = None) -> pd.DataFrame:
+    g = df[df['group'] == name] if not df.empty else df
+    if g.empty:
+        return g
+    if kinds is not None:
+        g = g[g['kind'].isin(kinds)]
+    if drop is not None:
+        g = g[~g['kind'].isin(drop)]
+    return g
+
+
+def _block(ctx, frames: dict, parts: list, holding, px, empty: str) -> int:
+    """Groups under one question, each with its own small heading and count; returns how many groups had rows."""
     shown = 0
-    for lst, name in groups:
-        if pick not in ('All', name):
-            continue
-        df = frames[lst]
-        g = df[df['group'] == name] if not df.empty else df
+    for lst, name, label in parts:
+        g = _group(frames[lst], name, drop=HOLDER_KINDS)
         if g.empty:
             continue
         shown += 1
-        more = len(g) - ideas.PER_GROUP
-        st.html(f'<div class="grp"><h3>{esc(name)}</h3><span>{kit.plural(len(g), "company", "companies")}</span></div>'
-                '<div class="ideas">' + ''.join(_row(ctx, r, holding, px) for r in g.head(ideas.PER_GROUP).to_dict('records'))
-                + '</div>' + (f'<p class="grp-more"><a href="/filings-all" target="_self">{more} more in Filings →</a></p>'
-                              if more > 0 else ''))
-    if not shown:
-        kit.empty('Nothing passed the bar in this period.' if pick == 'All' else f'No {pick.lower()} in this period.')
+        st.html(f'<div class="grp"><h3>{esc(label)}</h3><span>{kit.plural(len(g), "company", "companies")}</span></div>'
+                + _section_rows(ctx, g, holding, px))
+    if not shown and empty:
+        kit.empty(empty)
+    return shown
 
 
 def _coming(ctx) -> pd.DataFrame:
@@ -216,16 +253,53 @@ def _coming(ctx) -> pd.DataFrame:
     return filings_all._market(up, ctx)
 
 
-def _breadth_tile(ctx, days: int) -> Tile:
-    """The whole market's insider buying against selling, with the period before it (not the page's size or sector filters)."""
-    b = ideas.insider_breadth(ctx.eligible, ctx.ref, max(days, 7))
-    if not b or b['buy_share'] is None:
-        return Tile('Insider buying share', '—', 'no decision-makers traded in this period')
-    before = b['before']
-    prev = f' · {before["buy_share"]:.0f}% the period before' if before and before['buy_share'] is not None else ''
-    return Tile('Insider buying share', f'{b["buy_share"]:.0f}%',
-                f'of rupees traded by decision-makers · {b["buy_companies"]} companies buying, {b["sell_companies"]} selling{prev}',
-                'up' if b['buy_share'] >= 50 else 'down')
+def _calendar(coming: pd.DataFrame) -> str:
+    """Coming up as a calendar: one column per day (at most CAL_DAYS), each event a line (company, what, size)."""
+    if coming.empty:
+        return ''
+    coming = coming.assign(_d=pd.to_datetime(coming['made_public'], errors='coerce').dt.normalize()).dropna(subset=['_d'])
+    cols = []
+    for d, g in list(coming.groupby('_d', sort=True))[:CAL_DAYS]:
+        items = []
+        for r in g.head(CAL_PER_DAY).to_dict('records'):
+            sym = r.get('nse_symbol')
+            name = esc(str(r.get('company') or sym or ''))
+            link = (f'<a href="{esc(kit.company_href(sym), quote=True)}" target="_self">{name}</a>' if isinstance(sym, str) and sym else f'<b>{name}</b>')
+            size = kit.rupees(r['value']) if pd.notna(r.get('value')) and r.get('value') else ''
+            items.append(f'<li>{link}<span>{esc(str(r.get("what") or ""))}' + (f' · {esc(size)}' if size else '') + '</span></li>')
+        more = len(g) - CAL_PER_DAY
+        if more > 0:
+            items.append(f'<li class="cal-more"><a href="/filings-all" target="_self">{more} more →</a></li>')
+        cols.append(f'<div class="cal-d"><h4>{esc(pd.Timestamp(d).strftime("%a %d %b"))}</h4><ul>{"".join(items)}</ul></div>')
+    return f'<div class="cal">{"".join(cols)}</div>'
+
+
+def _headline(look: pd.DataFrame, warn: pd.DataFrame, breadth: dict | None, span: str, ref) -> str:
+    """The page's first line is the news, in rupees (Redesign 12 Nov, after tipsheet.markets' "The Nifty 50 rose
+    0.8%"): what insiders bought and sold, in how many companies, then the buying share against the period before.
+    Counts of companies across every kind of filing (372 with money in) said nothing a reader could act on."""
+    nb, ns = len(_group(look, 'Insiders buying')), len(_group(warn, 'Insiders selling'))
+    bought, sold = _value(look, 'Insiders buying'), _value(warn, 'Insiders selling')
+    if not nb and not ns:
+        lead = 'No insider bought or sold past the bar'
+    else:
+        b = (f'Insiders bought <b class="up">{esc(kit.rupees(bought))}</b> in {kit.plural(nb, "company", "companies")}' if nb
+             else 'No insider bought past the bar')
+        x = (f'sold <b class="down">{esc(kit.rupees(sold))}</b> in {ns}' if ns else 'none sold past the bar')
+        lead = f'{b}; {x}'
+    sub = []
+    if breadth and breadth.get('buy_share') is not None:
+        before = breadth.get('before') or {}
+        prev = f', against {before["buy_share"]:.0f}% the period before' if before.get('buy_share') is not None else ''
+        sub.append(f'Buying was {breadth["buy_share"]:.0f}% of the rupees decision-makers traded on the market{prev}.')
+    top = _group(look, 'Insiders buying')
+    if not top.empty:
+        lead_row = top.iloc[0]
+        if isinstance(lead_row['sentence'], str) and lead_row['sentence']:
+            sub.append(f'First on the list, {lead_row["company"]}: {lead_row["sentence"].rstrip(".")}.')
+    return (f'<div class="mast"><div class="kicker">{esc(kit.sentence(span))} to {kit.day(ref)} · open-market trades by promoters, '
+            f'directors and key staff</div><h1 class="news">{lead}</h1>'
+            + ''.join(f'<p class="dek">{esc(x)}</p>' for x in sub if x) + '</div>')
 
 
 def render():
@@ -233,11 +307,6 @@ def render():
     if not need_data(ctx):
         return
     key = str(ctx.ref)
-    # The headline is the page's first line, the period beside it (no title repeating the menu).
-    top, right = st.columns([2.2, 1.8], vertical_alignment='center')
-    with right:
-        period = st.segmented_control('Period', list(ideas.PERIODS), default=DEFAULT_PERIOD, key='td_period',
-                                       label_visibility='collapsed', width='content') or DEFAULT_PERIOD
     every = {p: _lists(ctx, key, d) for p, d in ideas.PERIODS.items()}
 
     # The lookups below hold only the columns a row reads: a dict of every column of every price and
@@ -262,13 +331,14 @@ def render():
                 if isinstance(k, str) or (isinstance(k, tuple) and isinstance(k[1], str)):
                     holding[k] = r
 
-    head = st.container()
-    # One bar under the tiles (as the owner's screener): search, the groups, and the rest in "Filters & sort".
-    with st.container(key='td_bar', horizontal=True, vertical_alignment='center', gap='small'):
-        text = st.text_input('Company', key='td_text', placeholder='Search company or symbol', label_visibility='collapsed',
-                             width=280)
-        pills = st.container(width='stretch')
+    # The masthead: the news on the left; the period and one "Filters & sort" on the right (the company search is the
+    # top bar's; a second search box and eleven group pills sat above the first company, critique 12 Nov).
+    mast, ctl = st.columns([3, 1.3], vertical_alignment='top')
+    with ctl:
+        period = st.segmented_control('Period', list(ideas.PERIODS), default=DEFAULT_PERIOD, key='td_period',
+                                       label_visibility='collapsed', width='content') or DEFAULT_PERIOD
         with st.popover('Filters & sort', icon=':material/tune:', width='content'):
+            text = st.text_input('Company or symbol', key='td_text', placeholder='Search company or symbol')
             size = st.segmented_control('Size', SIZES, default=SIZES[0], key='td_size', required=True) or SIZES[0]
             names = sorted({v for v in sectors.values() if isinstance(v, str) and v})
             sector = st.selectbox('Sector', ['All sectors'] + names, key='td_sector')
@@ -283,65 +353,70 @@ def render():
              for p, lw in every.items()}
     view = {p: tuple(_filter(x, size, sector, text, px, sectors) for x in lw) for p, lw in named.items()}
     look, warn = (_sorted(x, order, px) for x in view[period])
-    span = 'today' if ideas.PERIODS[period] == 1 else period.lower()
+    days = ideas.PERIODS[period]
+    span = 'today' if days == 1 else period.lower()
+    breadth = ideas.insider_breadth(ctx.eligible, ctx.ref, max(days, 7))
+    with mast:
+        st.html(_headline(look, warn, breadth, span, ctx.ref))
+
+    # The reading line: one small number per question, in the order the page answers them (no six tall tiles).
     cl, cw = _counts(look), _counts(warn)
-    bought, sold, raised = _value(look, 'Insiders buying'), _value(warn, 'Insiders selling'), _value(look, 'Raises')
-    have = {**cl, **cw}
-    count = {title: sum(have.get(g, 0) for _, g in groups) for title, _, _, groups in PANELS}
-    with top:
-        st.html(f'<div class="head"><h1 class="headline"><b class="up">{count["Money in"]}</b> '
-                f'{"company" if count["Money in"] == 1 else "companies"} with money in, <b class="down">{count["Money out"]}</b> with '
-                f'money out, <b>{count["Risk changes"]}</b> risk {"change" if count["Risk changes"] == 1 else "changes"} '
-                f'<span>{esc(kit.sentence(span))} to {kit.day(ctx.ref)}</span></h1></div>')
     n = lambda d, k: d.get(k, 0)   # noqa: E731
-    with head:
-        kit.tiles([
-            Tile('Insiders buying', str(n(cl, 'Insiders buying')), f'{kit.rupees(bought)} bought' if bought else 'companies', 'up'),
-            Tile('Insiders selling', str(n(cw, 'Insiders selling')), f'{kit.rupees(sold)} sold' if sold else 'companies', 'down'),
-            Tile('Capital raised', str(n(cl, 'Raises')), f'{kit.rupees(raised)} in QIPs, issues and rights' if raised else 'companies'),
-            Tile('Big investors in', str(n(cl, 'Big investors and funds in')), f'{n(cw, "Big investors and funds out")} out, with funds', 'up'),
-            Tile('Pledges up', str(n(cw, 'Pledges')), f'{n(cl, "Pledges released")} released', 'down' if n(cw, 'Pledges') else ''),
-            _breadth_tile(ctx, ideas.PERIODS[period]),
-        ])
+    deals_in, deals_out = len(_group(look, 'Big investors and funds in', drop=HOLDER_KINDS)), len(_group(warn, 'Big investors and funds out', drop=HOLDER_KINDS))
+    cells = [('Insiders buying', n(cl, 'Insiders buying'), 'up', 'companies'), ('Insiders selling', n(cw, 'Insiders selling'), 'down', 'companies'),
+             ('Promoters pay up', n(cl, 'Promoters pay up'), '', f'{n(cw, "Cheap shares to promoters")} below market'),
+             ('Pledges up', n(cw, 'Pledges'), '', f'{n(cl, "Pledges released")} released'),
+             ('Raises · buybacks', n(cl, 'Raises') + n(cl, 'Buybacks at a premium'), '', 'allotted or open'),
+             ('Funds in · out', f'{deals_in} · {deals_out}', '', 'bulk/block deals, 5% holders')]
+    st.html('<div class="reads">' + ''.join(
+        f'<div><span class="k">{esc(k)}</span><b class="{t}">{esc(str(v))}</b><span class="s">{esc(sub)}</span></div>'
+        for k, v, t, sub in cells) + '</div>')
 
-    groups = [g for _, _, _, gs in PANELS for _, g in gs]
-    with pills:
-        pick = st.pills('Group', ['All'] + [g for g in groups if have.get(g)], default='All', key='td_group',
-                        format_func=lambda g: g if g == 'All' else f'{SHORT.get(g, g)} · {have.get(g, 0)}',
-                        label_visibility='collapsed') or 'All'
-
-    # Money in on the left, Money out above Risk changes on the right on a wide screen (one under the other on a phone).
     frames = {'look': look, 'warn': warn}
-    shown_panels = [p for p in PANELS if pick == 'All' or any(pick == g for _, g in p[3])]
-    sides = [side for side in ('left', 'right') if any(p[2] == side for p in shown_panels)]
-    holders = st.columns(len(sides), gap='medium') if len(sides) > 1 else [st.container()]
-    for col, side in zip(holders, sides):
-        with col:
-            for title, key, _, groups in (p for p in shown_panels if p[2] == side):
-                with kit.card(title, key, SORTS[order][1]):
-                    _list(ctx, frames, groups, pick, holding, px)
+    # One column, in the order the evidence supports (docs/SIGNALS.md: insider buying is the only measured edge; sales
+    # are the catch, not a short signal; pledges and cheap issues are avoid flags; funds' deals lagged the index).
+    with kit.card('Who among insiders is putting money in?', 'td_in', SORTS[order][1] + ' · open-market only, ESOPs and gifts left out'):
+        _block(ctx, frames, [('look', 'Insiders buying', 'Insiders buying'), ('look', 'Promoters pay up', 'Promoters paying cash for new shares')],
+               holding, px, 'No insider bought past the bar in this period.')
+    with kit.card('Who is taking money out?', 'td_out', 'sales are the catch to know, not a signal to sell (no edge measured)'):
+        _block(ctx, frames, [('warn', 'Insiders selling', 'Insiders selling')], holding, px, 'No insider sold past the bar in this period.')
+    with kit.card('What could go wrong?', 'td_risk', 'pledges and cheap shares to promoters are avoid flags in published studies'):
+        _block(ctx, frames, [('warn', 'Pledges', 'Pledges up or invoked'), ('warn', 'Cheap shares to promoters', 'Cheap shares to promoters'),
+                             ('look', 'Pledges released', 'Pledges released')], holding, px, 'No new pledges or cheap issues in this period.')
+    if n(cl, 'Raises') or n(cl, 'Buybacks at a premium'):
+        with kit.card('Who is raising or returning money?', 'td_raise', 'shares issued are dilution: neutral, not a verdict'):
+            _block(ctx, frames, [('look', 'Raises', 'Capital raised'), ('look', 'Buybacks at a premium', 'Buybacks at a premium')], holding, px, '')
+
+    # Funds and big holders: in and out side by side (two things compared). Their deals lagged the index in our data,
+    # so they come after the insiders. The quarterly holding changes are dated by the quarter, not the day: kept, but
+    # apart and folded, so a 30 Sep shareholding filing does not read as this week's news (346 "in" were mostly these).
+    with kit.card('What are funds and big investors doing?', 'td_funds', 'bulk and block deals (market makers left out) and 5% holders'):
+        cin, cout = st.columns(2, gap='medium')
+        with cin:
+            _block(ctx, frames, [('look', 'Big investors and funds in', 'Buying')], holding, px, 'No fund or big investor bought past the bar.')
+        with cout:
+            _block(ctx, frames, [('warn', 'Big investors and funds out', 'Selling')], holding, px, 'No fund or big investor sold past the bar.')
+        hin = _group(look, 'Big investors and funds in', kinds=HOLDER_KINDS)
+        hout = _group(warn, 'Big investors and funds out', kinds=HOLDER_KINDS)
+        if len(hin) or len(hout):
+            with st.expander(f'Quarterly holding changes by mutual funds and foreign investors · {len(hin)} up, {len(hout)} down '
+                             '(dated by the quarter, not the day)'):
+                a, b = st.columns(2, gap='medium')
+                with a:
+                    st.html('<div class="grp"><h3>Adding</h3></div>' + _section_rows(ctx, hin, holding, px, '/investors'))
+                with b:
+                    st.html('<div class="grp"><h3>Trimming</h3></div>' + _section_rows(ctx, hout, holding, px, '/investors'))
+        st.html('<p class="grp-more"><a href="/investors" target="_self">Every fund and big investor →</a></p>')
 
     # What is next: meetings on fund raising or a buyback, tender closes, lock-ins ending (a meeting is not a raise
-    # until its outcome is filed).
+    # until its outcome is filed), as a calendar, one column a day.
     coming = _coming(ctx)
-    with kit.card('Coming up', 'td_up', f'money events in the next {COMING_DAYS} days · a meeting is not a raise until its outcome is filed'):
+    with kit.card('What is coming up?', 'td_up', f'the next {COMING_DAYS} days · a meeting is not a raise until its outcome is filed'):
         if coming.empty:
             kit.empty(f'No money events in the next {COMING_DAYS} days.')
         else:
-            kit.table(coming, [kit.Col('made_public', 'Date', 'date'), kit.Col('company', 'Company', 'co2'),
-                               kit.Col('what', 'What', wrap=True), kit.Col('what_sub', 'Detail', wrap=True, phone=False),
-                               kit.Col('value', 'Size', 'money', phone=False)], limit=12, height=420, keep_empty=True)
+            st.html(_calendar(coming))
 
-    # The trend at the foot of the page, its full width: companies made public each week over 90 days, Worth a
-    # look above the line, Watch out below (TradingView Lightweight Charts, owner 22 Oct); the group pills apply.
-    wide = view['Last 90 days']
-    grp = (lambda x: x if pick == 'All' or x.empty else x[x['group'] == pick])
-    with kit.card('Trend', 'td_trend', 'companies each week, 90 days · ▲ worth a look ▼ watch out' + ('' if pick == 'All' else f' · {pick}')):
-        chart = lwchart.weekly_bars(grp(wide[0]), grp(wide[1]), key=f'td_{pick}')
-        if chart is None:
-            kit.empty('Nothing in the last 90 days.')
-        else:
-            st.html(chart, unsafe_allow_javascript=True)
     with st.expander('How a filing makes the list'):
         st.html('<ul class="bar-rules">'
                 f'<li>Insiders: per decision-maker in the period, ₹{ideas.MIN_VALUE / 1e5:.0f} L and {ideas.MIN_PCT:g}% '
@@ -354,5 +429,6 @@ def render():
                 f'<li>Holdings: mutual funds or foreign investors moving {ideas.HOLDER_MIN_PTS:g}+ point of the company in the latest '
                 f'quarter filed, worth ₹{ideas.HOLDER_MIN_VALUE / 1e7:.0f} Cr+ at today\'s market cap (30 and 90 day views)</li>'
                 f'<li>Pledges: net of releases; or {ideas.PLEDGE_RISE_PTS:g}+ points in a quarter</li>'
-                '<li>Evidence is a tag, never a filter</li>'
+                '<li>Each tag carries its measured read on our history (Evidence page): Ahead, Behind, No edge, Few cases or '
+                'Not measured. Evidence is a tag, never a filter</li>'
                 '</ul><a class="bar-all" href="/filings-all" target="_self">Every filing &rarr;</a>')
