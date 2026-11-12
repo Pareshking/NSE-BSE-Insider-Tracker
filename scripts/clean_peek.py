@@ -173,6 +173,77 @@ def data_pack(r2) -> int:
         print(sample[cols].head(6).astype(str).apply(lambda col: col.str.slice(0, 32)).to_string(index=False))
     return 0
 
+
+def _dirs(r2, prefix):
+    """Sub-folders of a prefix, without listing every object under it."""
+    from clean_writer import BUCKET
+    out, token = [], None
+    while True:
+        kw = {'Bucket': BUCKET, 'Prefix': prefix, 'Delimiter': '/'}
+        if token:
+            kw['ContinuationToken'] = token
+        r = r2.list_objects_v2(**kw)
+        out += [c['Prefix'] for c in r.get('CommonPrefixes', [])]
+        if not r.get('IsTruncated'):
+            return out
+        token = r['NextContinuationToken']
+
+
+def _body_excerpt(body: bytes, ext: str) -> str:
+    import json
+    text = body.decode('utf-8', errors='replace')
+    if ext == 'json':
+        try:
+            j = json.loads(text)
+        except ValueError:
+            return text[:2500]
+        rows = j if isinstance(j, list) else next((v for v in j.values() if isinstance(v, list)), None) if isinstance(j, dict) else None
+        if rows is not None:
+            head = {k: v for k, v in j.items() if not isinstance(v, list)} if isinstance(j, dict) else {}
+            return (f'top level: {list(j)[:15] if isinstance(j, dict) else "list"}; {len(rows)} rows; other fields {json.dumps(head)[:300]}\n'
+                    + '\n'.join(json.dumps(r, ensure_ascii=False)[:1200] for r in rows[:3]))
+        return json.dumps(j, ensure_ascii=False)[:2500]
+    if ext in ('csv', 'txt'):
+        return '\n'.join(text.splitlines()[:8])[:2500]
+    if ext in ('xml', 'html'):
+        return text[:3000]
+    return f'(binary {ext}, {len(body)} bytes)'
+
+
+def raw_pack(r2) -> int:
+    """What NSE and BSE send us, as kept in raw_v2/ (owner 12 Nov: the design brief is written from the raw exchange
+    data, not the cleaned tables): per dataset, how many days were fetched, the latest fetch records (URL, params) and
+    an excerpt of the bytes. Read-only."""
+    import json
+    from clean_writer import get
+    print('RAW PACK: raw_v2/')
+    for src in _dirs(r2, 'raw_v2/'):
+        for ds in _dirs(r2, src):
+            days = sorted(_dirs(r2, ds + 'fetches/'))
+            if not days:
+                print(f'\n===== {ds}: no fetches/ folder; sub-folders: {[d[len(ds):] for d in _dirs(r2, ds)][:12]}')
+                continue
+            print(f'\n===== {ds}: {len(days)} fetch days, {days[0][len(ds) + 8:-1]} .. {days[-1][len(ds) + 8:-1]}')
+            r = r2.list_objects_v2(Bucket=__import__('clean_writer').BUCKET, Prefix=days[-1], MaxKeys=1000)
+            recs = sorted(o['Key'] for o in r.get('Contents', []))
+            print(f'  fetches on the last day: {len(recs)}{"+" if r.get("IsTruncated") else ""}')
+            shown = set()
+            for key in recs[::-1]:
+                rec = json.loads(get(r2, key) or b'{}')
+                url = str(rec.get('url', ''))
+                base = url.split('?')[0]
+                if base in shown:
+                    continue
+                shown.add(base)
+                print(f'  -- fetch: {json.dumps({k: rec.get(k) for k in ("url", "params", "http_status", "content_type", "bytes", "covers", "fetched_at_utc")}, default=str)[:600]}')
+                bkey = rec.get('blob_key') or ''
+                ext = bkey.rsplit('.', 1)[-1] if '.' in bkey else 'bin'
+                blob = get(r2, bkey) if bkey else None
+                print('  ' + (_body_excerpt(blob, ext).replace('\n', '\n  ') if blob is not None else f'(blob not found; record keys {list(rec)})'))
+                if len(shown) >= 3:
+                    break
+    return 0
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -180,6 +251,8 @@ def main() -> int:
         return mcap_gap(r2)
     if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
         return mcap_basis(r2)
+    if syms == ['RAW_PACK']:      # what the exchanges send, from raw_v2/, for the design brief (12 Nov)
+        return raw_pack(r2)
     if syms == ['DATA_PACK']:     # every clean table profiled, for the design brief (12 Nov)
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
