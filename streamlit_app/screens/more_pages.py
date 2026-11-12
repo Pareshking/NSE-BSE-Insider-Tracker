@@ -217,8 +217,12 @@ def lenders(ctx, days: int) -> pd.DataFrame:
     if e.empty:
         return e
     e['lender'] = e['lender'].fillna('not named').astype(str).str.strip().replace('', 'not named')
-    e['_t'] = e['event_type'].astype(str).str.lower()
-    g = e.groupby('lender').agg(events=('lender', 'size'), companies=('isin', 'nunique'),
+    e['_t'] = (e['event_type'] if 'event_type' in e else pd.Series('', index=e.index)).astype(str).str.lower()
+    # The company key: the real table may carry the symbol only (site preview 12 Nov: no `isin` column).
+    e['_co'] = e['isin'] if 'isin' in e else e['symbol'] if 'symbol' in e else e.index.astype(str)
+    if 'symbol' not in e:
+        e['symbol'] = e['_co']
+    g = e.groupby('lender').agg(events=('lender', 'size'), companies=('_co', 'nunique'),
                                 created=('_t', lambda s: int(s.str.startswith('creat').sum())),
                                 released=('_t', lambda s: int(s.str.startswith('releas').sum())),
                                 invoked=('_t', lambda s: int(s.str.startswith('invo').sum())),

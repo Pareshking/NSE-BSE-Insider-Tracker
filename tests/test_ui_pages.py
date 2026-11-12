@@ -420,3 +420,33 @@ def test_results_and_sectors_pages_say_their_limits(data_dir, monkeypatch):
     assert 'no year-on-year growth yet' in h and '>Who bought right after their own results?<' in h and 'Exploratory' in h
     s = _more_html(data_dir, monkeypatch, 'sectors')
     assert 'Sectors' in s
+
+
+def test_lenders_without_an_isin_column():
+    """Site preview 12 Nov: the real encumbrances table carried no `isin`; the lenders table keys on the symbol then."""
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import more_pages
+    enc = pd.DataFrame({'lender': ['ABC Finance', 'ABC Finance', None], 'symbol': ['AAA', 'BBB', 'AAA'],
+                        'event_type': ['Creation', 'Invocation', 'Release'], 'broadcast_date': pd.to_datetime(['2026-11-10'] * 3)})
+    out = more_pages.lenders(SimpleNamespace(encumbrances=enc, ref=pd.Timestamp('2026-11-11')), 30)
+    abc = out[out['lender'] == 'ABC Finance'].iloc[0]
+    assert abc['companies'] == 2 and abc['created'] == 1 and abc['invoked'] == 1 and 'not named' in set(out['lender'])
+
+
+def test_profile_and_screenshot_scripts_name_pages_that_exist():
+    import importlib
+    import re
+    import sys
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    sys.path.insert(0, str(ROOT))
+    prof = (ROOT / 'scripts' / 'site_profile.py').read_text(encoding='utf-8')
+    for screen in re.findall(r"\('([a-z_:]+)', \{", prof.split('PAGES = ')[1].split(']')[0]):
+        mod, _, fn = screen.partition(':')
+        assert hasattr(importlib.import_module('screens.' + mod), fn or 'render'), screen
+    app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
+    shots = (ROOT / 'scripts' / 'site_screenshots.py').read_text(encoding='utf-8')
+    for path in re.findall(r"\('([a-z-]+)(?:\?[^']*)?', '", shots.split('PAGES = ')[1].split(']')[0]):
+        assert f"url_path='{path}'" in app or f"'{path}':" in app, path
