@@ -179,7 +179,7 @@ def deals():
     ds.club('Left out as noise', club)
 
 
-def _events_page(key: str, title: str, question: str, kinds: set, note: str, extra: list | None = None):
+def _events_page(key: str, title: str, question: str, kinds: set, note: str, extra: list | None = None, after=None):
     ctx = _ctx()
     if ctx is None:
         return
@@ -201,6 +201,8 @@ def _events_page(key: str, title: str, question: str, kinds: set, note: str, ext
         ds.section(q, t)
         ds.record(_why_line(more))
         ds.stories(more, 'Nothing in this period.')
+    if after is not None:
+        after(ctx, days)
 
 
 def raises():
@@ -212,7 +214,8 @@ def raises():
 def risks():
     _events_page('pg_risk', 'Risks', 'What could go wrong?', RISK_KINDS,
                  'Promoter pledges created, rising or invoked, and shares issued to promoters below the market price.',
-                 [('Pledges reduced in the period', 'What got safer?', RELEASE_KINDS)])
+                 [('Pledges reduced in the period', 'What got safer?', RELEASE_KINDS)],
+                 after=lambda ctx, days: __import__('screens.more_pages', fromlist=['x']).red_flags_section(ctx, days))
 
 
 def ownership():

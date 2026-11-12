@@ -96,7 +96,8 @@ def data_dir(tmp_path_factory, real_nse_rows):
 
 
 PAGES = [('pages:today', {}), ('pages:insiders', {}), ('pages:deals', {}), ('pages:raises', {}), ('pages:risks', {}),
-         ('pages:ownership', {}), ('pages:calendar', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
+         ('pages:ownership', {}), ('pages:calendar', {}), ('more_pages:watchlist', {}), ('more_pages:watchlist', {'watch': 'HCLTECH,ZEEL,NOPE'}),
+         ('more_pages:screener', {}), ('more_pages:sectors', {}), ('more_pages:results', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
          ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
 
@@ -292,7 +293,7 @@ def test_old_addresses_redirect():
     filings, Capital raises; 21-22 Oct) are gone; their addresses lead to Today or Filings."""
     import re
     app = (ROOT / 'streamlit_app' / 'app.py').read_text(encoding='utf-8')
-    for old in ('market', 'actions', 'brief', 'screener', 'shareholding'):
+    for old in ('market', 'actions', 'brief', 'shareholding'):   # 'screener' is a page again (12 Nov)
         assert re.search(rf"'{old}': 'Today'", app), old
     # 12 Nov: insider trades, deals and capital raises have their own pages again; other filings stay in Filings
     assert re.search(r"'insider-trades': 'Insiders'", app) and re.search(r"'capital-raises': 'Raises'", app)
@@ -362,3 +363,60 @@ def test_today_shows_the_top_of_every_topic(data_dir, monkeypatch):
     assert at == sorted(at)
     for href in ('/insiders', '/deals', '/raises', '/risks', '/ownership', '/calendar'):
         assert f'href="{href}"' in h, href
+
+
+def _more_html(data_dir, monkeypatch, fn: str, params: dict | None = None) -> str:
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + f"""
+import streamlit as st
+for k, v in {(params or {})!r}.items():
+    st.query_params[k] = v
+from ui import theme
+theme.inject()
+from screens import more_pages
+more_pages.{fn}()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ''
+    return ' '.join(e.proto.body for e in at.get('html'))
+
+
+def test_watchlist_reads_the_address_and_names_what_it_does_not_know(data_dir, monkeypatch):
+    """12 Nov: the list lives in the page address (?watch=), never stored by the site; an unknown symbol is said."""
+    h = _more_html(data_dir, monkeypatch, 'watchlist', {'watch': 'HCLTECH,NOPE'})
+    assert '2 companies on your list' in h
+    assert 'NOPE: not a symbol in our data' in h
+    empty = _more_html(data_dir, monkeypatch, 'watchlist')
+    assert 'Type the NSE symbols' in empty
+
+
+def test_screener_presets_and_risks_red_flags_and_lenders(data_dir, monkeypatch):
+    from screens import more_pages
+    assert list(more_pages.PRESETS)[0] == 'Promoters buying, funds adding' and 'Trap: selling and pledging' in more_pages.PRESETS
+    import pandas as pd
+    snap = pd.DataFrame({'promoter_buy_90d': [1e7, 0, 1e7], 'mf_change_pts': [0.5, 2, -1], 'fpi_change_pts': [0, 0, 0],
+                         'pledge': [0, 0, 20], 'insider_buy_90d': [1e7, 0, 1e7], 'range_pos': [10, 50, 90],
+                         'promoter_change_pts': [0.2, 0, 0], 'promoter_sell_90d': [0, 0, 5e7], 'pledge_change_pts': [0, 0, 1]})
+    pick = lambda k: more_pages.PRESETS[k][1](snap).fillna(False).tolist()  # noqa: E731
+    assert pick('Promoters buying, funds adding') == [True, False, False]
+    assert pick('Insiders buying near the low') == [True, False, False]
+    assert pick('Funds piling in') == [False, True, False]
+    assert pick('Trap: selling and pledging') == [False, False, True]
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+from ui import theme
+theme.inject()
+from screens import pages
+pages.risks()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception
+    h = ' '.join(e.proto.body for e in at.get('html'))
+    assert '>Red flags<' in h and '>Who lends against promoter shares?<' in h
+
+
+def test_results_and_sectors_pages_say_their_limits(data_dir, monkeypatch):
+    h = _more_html(data_dir, monkeypatch, 'results')
+    assert 'no year-on-year growth yet' in h and '>Who bought right after their own results?<' in h and 'Exploratory' in h
+    s = _more_html(data_dir, monkeypatch, 'sectors')
+    assert 'Sectors' in s

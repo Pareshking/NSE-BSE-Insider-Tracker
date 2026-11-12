@@ -27,9 +27,16 @@ before it merges.
 5. **Left out as noise**: what the page did not list, counted and summed (staff trades, ESOPs, gifts, transfers,
    small deals, market makers), so nothing is hidden and nothing trivial takes a row.
 
-## Pages
-Today (the top of every page below), Insiders, Deals, Raises, Risks, Holders, Calendar, Companies (list and one
-company), Investors, Evidence, Filings (every filing, for audit). Data quality from the footer.
+## Pages (menu: three in sight, the rest in three groups)
+- In sight: **Today** (the top of every page below), **Watchlist** (`?watch=A,B` or secrets; never stored), **Screener**
+  (ready-made filters over the nightly company snapshot).
+- Money: **Insiders**, **Deals**, **Raises**, **Holders**, **Sectors** (insider and fund money by sector), **Results**
+  (results XBRL from 15 Oct 2026, the quarter before where held, insiders in the 30 days after, buys after the window
+  reopened, exploratory).
+- Watch out: **Risks** (pledges, cheap issues, red flags with every flag counted, lenders against promoter shares),
+  **Calendar**.
+- Research: **Companies**, **Investors**, **Evidence**, **Filings**. Data quality from the footer.
+- None of them needs an AI model. The look (cards, colours) is parked for the owner's decision (12 Nov).
 
 ## Numbers and words
 - Money `kit.rupees` (₹ x.xx Cr, ₹ x.xx L); prices `kit.price`; shares in Indian grouping; dates `19 Oct 2026`.

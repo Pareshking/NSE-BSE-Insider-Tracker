@@ -113,3 +113,6 @@ a { color: var(--accent-ink); }
 [data-testid="stBaseButton-segmented_controlActive"] { background: var(--ink) !important; color: var(--bg) !important; border-color: var(--ink) !important; }
 [data-testid="stPopover"] button { border-radius: var(--radius-sm) !important; font-size: 12.5px !important; }
 .st-key-ds_ctl { justify-content: flex-end; }
+
+.sec-bar { display: block; height: 4px; margin-top: 4px; background: var(--subtle); border-radius: 2px; position: relative; min-width: 80px; }
+.sec-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 2px; } .sec-bar i.pos { background: var(--buy); } .sec-bar i.neg { background: var(--sell); }
