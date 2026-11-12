@@ -15,9 +15,9 @@ from data import store
 from ui import kit
 from ui.kit import esc
 
-from insiders_clean import ideas
+from insiders_clean import evidence, ideas, signals
 from screens import buybacks, filings_all
-from screens.ctx import issue_rows, load, need_data, qip_rows, rights_rows, split_since
+from screens.ctx import issue_rows, load, need_data, qip_rows, rights_rows, split_since, with_flags
 from ui import table as tbl
 
 READ = {'leaning_positive': 'Ahead', 'drag': 'Behind', 'no_edge': 'No edge', 'few': 'Few cases', 'not_measured': 'Not measured'}
@@ -25,7 +25,6 @@ WARN_KINDS = {k for _, ks in ideas.GROUPS['warn'] for k in ks}
 RAISE_KINDS = {k for n, ks in ideas.GROUPS['look'] if n == 'Raises' for k in ks}   # shares issued: dilution, a neutral chip
 COMING_DAYS = 10
 CAL_DAYS, CAL_PER_DAY = 6, 6   # Coming up: day columns, events per day
-SHOW = 5   # rows per group before "Show more" (the rest up to ideas.PER_GROUP)
 # Quarterly shareholding moves (ideas.holder_events): dated by the quarter, so folded apart on Today.
 HOLDER_KINDS = {'Mutual funds adding', 'Foreign investors adding', 'Mutual funds trimming', 'Foreign investors trimming'}
 DEFAULT_PERIOD = 'Last 30 days'
@@ -146,7 +145,11 @@ def _row(ctx, r, holding, px) -> str:
     grid = ''.join(f'<div><b>{esc(k)}</b><span>{esc(v)}</span></div>' for k, v in facts if v)
     also = ''.join(f'<li>{esc(x)}</li>' for x in (r.get('others') or []))
     when = kit.day(r['last'], with_year=False) if pd.notna(r.get('last')) else ''
-    meta = ' · '.join(x for x in (when and f'public {when}', f'traded {late} days earlier' if late > 14 else '', move) if x)
+    pledge = (f'{kit.pct(s["promoter_pledge_pct"], 1)} of promoter shares pledged'
+              if s is not None and pd.notna(s.get('promoter_pledge_pct')) and s['promoter_pledge_pct'] > 0 else '')
+    off = (f'{kit.pct(pr["pct_off_high"] * 100, 0, signed=True)} from 52W high'
+           if pr is not None and pd.notna(pr.get('pct_off_high')) else '')
+    meta = ' · '.join(x for x in (when and f'public {when}', f'traded {late} days earlier' if late > 14 else '', move, off, pledge) if x)
     return (f'<details class="idea mv"><summary>'
             f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>{sym_line}</div>'
             f'<div class="mv-what"><p>{esc(r["sentence"])}</p>'
@@ -199,8 +202,7 @@ def _section_rows(ctx, g: pd.DataFrame, holding, px, more_href: str = '/filings-
     """A group as a table: the column heads once, SHOW rows, the rest up to PER_GROUP behind "Show more", then a link."""
     if g.empty:
         return ''
-    recs = g.head(ideas.PER_GROUP).to_dict('records')
-    first, rest = recs[:SHOW], recs[SHOW:]
+    recs = g.head(ideas.PER_GROUP).to_dict('records')   # all in sight, no "Show more" (owner, 12 Nov: fewer clicks)
     raise_kind = recs[0].get('kind') in RAISE_KINDS
     # The third column's head: the rows' own label when they share one (Own stake, Issue vs now), else "Context",
     # each cell then keeping its own small label (the label drifted row to row under one head, critique 12 Nov).
@@ -208,10 +210,7 @@ def _section_rows(ctx, g: pd.DataFrame, holding, px, more_href: str = '/filings-
     third = labels.pop() if len(labels) == 1 else 'Context'
     head = ('<div class="mv-h" aria-hidden="true"><span>Company</span><span>What happened</span><span>Value</span>'
             f'<span>{"New shares" if raise_kind else "Of company"}</span><span>{esc(third)}</span></div>')
-    body = ''.join(_row(ctx, r, holding, px) for r in first)
-    if rest:
-        body += (f'<details class="mv-more"><summary>Show {len(rest)} more</summary>'
-                 + ''.join(_row(ctx, r, holding, px) for r in rest) + '</details>')
+    body = ''.join(_row(ctx, r, holding, px) for r in recs)
     left = len(g) - len(recs)
     tail = (f'<p class="grp-more"><a href="{more_href}" target="_self">{left} more in Filings →</a></p>' if left > 0 else '')
     return f'<div class="ideas mv-t{" k3s" if third != "Context" else ""}">{head}{body}</div>{tail}'
@@ -251,6 +250,72 @@ def _coming(ctx) -> pd.DataFrame:
     day = pd.Timestamp(ctx.ref).normalize()
     up = up[(pd.to_datetime(up['made_public']) <= day + pd.Timedelta(days=COMING_DAYS))].sort_values('made_public', kind='stable')
     return filings_all._market(up, ctx)
+
+
+PICKS = 6   # Worth a look now: at most this many companies
+
+
+def _picks(ctx, look: pd.DataFrame, summary, holding, px) -> pd.DataFrame:
+    """Worth a look now (owner, 12 Nov: "no actionable insights"): insider buys whose kind has a measured edge on our own
+    history (evidence.verdict 'leaning_positive': median ahead of Nifty 500 at 3 months, half or more of the cases beat
+    it, 30+ cases), in the group's order. Nothing else qualifies: a kind not measured, or measured behind or flat, is
+    never on this list, however large. No new thresholds: the checks beside each row are facts, not filters."""
+    g = _group(look, 'Insiders buying')
+    if g.empty:
+        return g
+    ahead = g['reads'].map(lambda rd: [k for k, v in (rd or {}).items() if v == 'leaning_positive'])
+    g = g.assign(_ahead=ahead)[ahead.map(bool)]
+    return with_flags(g.head(PICKS)) if not g.empty else g
+
+
+def _check(label: str, text: str, tone: str = '') -> str:
+    return f'<li class="{tone}"><b>{esc(label)}</b><span>{esc(text)}</span></li>'
+
+
+def _pick(ctx, r: dict, summary, holding, px) -> str:
+    """One shortlisted company with every check in sight, no click: what the measured record says for its kind, what
+    the insider paid against today, how late it was made public, pledge, 52-week position, today's tradability."""
+    isin = r['isin']
+    pr = px.get(isin) or {}
+    s = holding.get(isin) or holding.get(('sym', r.get('nse_symbol'))) or {}
+    now, mcap = pr.get('latest_close'), pr.get('market_cap')
+    href = kit.company_href(r['nse_symbol'])
+    mk = tbl.market_line({'mk_bucket': pr.get('mcap_bucket'), 'mk_cap': mcap, 'mk_px': now, 'mk_lo': pr.get('low_52w'), 'mk_hi': pr.get('high_52w')})
+    checks = []
+    for k in r['_ahead'][:2]:
+        v = evidence.verdict(summary, ideas.MEASURED_BY[k])
+        checks.append(_check(f'Record: {k.lower()}', v['text'].replace(evidence.CAVEAT, '').rstrip('.') + '. Under a year of history: a hint, not proof', 'ok'))
+    if pd.notna(r.get('avg_price')) and r.get('avg_price') and pd.notna(now) and now:
+        f = float(split_since(pd.DataFrame({'isin': [isin], 'trade_date_to': [r.get('trade_to')]}), ctx.prices).iloc[0])
+        if f == f:
+            paid = r['avg_price'] * f
+            checks.append(_check('Insider paid · now', f'{kit.price(paid)} · {kit.price(now)}, {(now / paid - 1) * 100:+.1f}% since'))
+    late = (pd.Timestamp(r['last']) - pd.Timestamp(r['trade_to'])).days if pd.notna(r.get('last')) and pd.notna(r.get('trade_to')) else None
+    if late is not None:
+        checks.append(_check('Made public', f'{kit.day(r["last"])}, {kit.plural(late, "day")} after the last trade' if late > 0 else f'{kit.day(r["last"])}, the day of the trade',
+                             'warn' if late > 14 else ''))
+    pl = s.get('promoter_pledge_pct')
+    if pd.notna(pl):
+        checks.append(_check('Pledged', f'{kit.pct(pl, 1)} of promoter shares', 'warn' if pl > signals.HIGH_PLEDGE_PCT else ''))
+    else:
+        checks.append(_check('Pledged', 'no shareholding filing in the data', 'na'))
+    if pd.notna(pr.get('pct_off_high')):
+        checks.append(_check('52-week high', f'{kit.pct(pr["pct_off_high"] * 100, 1, signed=True)} from it'))
+    fl = r.get('trade_flags')
+    if isinstance(fl, list):
+        checks.append(_check('Tradability today', ', '.join(fl) if fl else 'no surveillance or trade-for-trade flag on NSE', 'warn' if fl else ''))
+    else:
+        checks.append(_check('Tradability today', 'not known (not in NSE\'s list)', 'na'))
+    pct = r.get('pct_of_company')
+    third = r.get('kv3') if isinstance(r.get('kv3'), str) else None
+    nums = ''.join(f'<div><span>{esc(k)}</span><b>{esc(v)}</b></div>' for k, v in (
+        ('Value', kit.rupees(r['value']) if pd.notna(r.get('value')) and r.get('value') else '—'),
+        ('Of company', f'{pct:.2f}%' if pd.notna(pct) and pct else '—'),
+        *((('Own stake', third),) if third and r.get('kv3_label') == 'Own stake' else ())))
+    return (f'<article class="pk"><header><div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>'
+            f'<div class="sub"><span class="sym">{esc(str(r.get("nse_symbol") or ""))}</span>{mk}</div></div><div class="pk-n">{nums}</div></header>'
+            f'<p>{esc(r["sentence"])}</p><ul class="pk-c">{"".join(checks)}</ul>'
+            f'<a class="pk-go" href="{esc(href, quote=True)}" target="_self">Everything on {esc(str(r["company"]))} →</a></article>')
 
 
 def _calendar(coming: pd.DataFrame) -> str:
@@ -373,6 +438,14 @@ def render():
         for k, v, t, sub in cells) + '</div>')
 
     frames = {'look': look, 'warn': warn}
+    summary = _inputs(ctx, key)[0]
+    picks = _picks(ctx, look, summary, holding, px)
+    with kit.card('Worth a look now', 'td_picks', 'insider buys of a kind that has beaten Nifty 500 on our own history, '
+                  'each with the checks to make before acting'):
+        if picks.empty:
+            kit.empty('No insider buy of a kind with a measured edge in this period. The lists below are facts to read, not picks.')
+        else:
+            st.html('<div class="pks">' + ''.join(_pick(ctx, r, summary, holding, px) for r in picks.to_dict('records')) + '</div>')
     # One column, in the order the evidence supports (docs/SIGNALS.md: insider buying is the only measured edge; sales
     # are the catch, not a short signal; pledges and cheap issues are avoid flags; funds' deals lagged the index).
     with kit.card('Who among insiders is putting money in?', 'td_in', SORTS[order][1] + ' · open-market only, ESOPs and gifts left out'):
@@ -399,13 +472,16 @@ def render():
         hin = _group(look, 'Big investors and funds in', kinds=HOLDER_KINDS)
         hout = _group(warn, 'Big investors and funds out', kinds=HOLDER_KINDS)
         if len(hin) or len(hout):
-            with st.expander(f'Quarterly holding changes by mutual funds and foreign investors · {len(hin)} up, {len(hout)} down '
-                             '(dated by the quarter, not the day)'):
-                a, b = st.columns(2, gap='medium')
-                with a:
-                    st.html('<div class="grp"><h3>Adding</h3></div>' + _section_rows(ctx, hin, holding, px, '/investors'))
-                with b:
-                    st.html('<div class="grp"><h3>Trimming</h3></div>' + _section_rows(ctx, hout, holding, px, '/investors'))
+            # In sight (owner, 12 Nov: fewer clicks), under their own heading that says they are quarterly.
+            st.html('<div class="mv-q">Quarterly holding changes, mutual funds and foreign investors: dated by the quarter-end '
+                    'shareholding filing, not by a trade this period</div>')
+            a, b = st.columns(2, gap='medium')
+            with a:
+                st.html(f'<div class="grp"><h3>Adding</h3><span>{kit.plural(len(hin), "company", "companies")}</span></div>'
+                        + _section_rows(ctx, hin, holding, px, '/investors'))
+            with b:
+                st.html(f'<div class="grp"><h3>Trimming</h3><span>{kit.plural(len(hout), "company", "companies")}</span></div>'
+                        + _section_rows(ctx, hout, holding, px, '/investors'))
         st.html('<p class="grp-more"><a href="/investors" target="_self">Every fund and big investor →</a></p>')
 
     # What is next: meetings on fund raising or a buyback, tender closes, lock-ins ending (a meeting is not a raise

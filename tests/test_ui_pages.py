@@ -371,3 +371,36 @@ def test_today_headline_calendar_and_quiet_reads():
                        'value': [5.4e8, None, None]})
     cal = home._calendar(up)
     assert cal.count('class="cal-d"') == 2 and 'Thu 12 Nov' in cal and 'Lock-in ends · ₹54' in cal and '<b>B</b>' in cal
+
+
+def test_worth_a_look_now_only_measured_ahead_kinds_with_their_checks(monkeypatch):
+    """Today, 12 Nov: the shortlist holds only insider buys of a kind measured ahead of Nifty 500 (evidence.verdict),
+    each with the record's own numbers, paid vs now, how late, pledge, 52-week position and tradability in sight."""
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import home
+    monkeypatch.setattr(home, 'with_flags', lambda df: df.assign(trade_flags=[['ASM stage 1']] + [[]] * (len(df) - 1)))
+    summary = pd.DataFrame({'signal': ['promoter_buy', 'promoter_buy'], 'horizon': ['3M', '6M'], 'cases': [434, 200],
+                            'median_excess': [3.2, 4.0], 'beat_index': [59.0, 61.0]})
+    base = {'group': 'Insiders buying', 'value': 1e8, 'pct_of_company': 0.5, 'last': pd.Timestamp('2026-11-10'),
+            'trade_to': pd.Timestamp('2026-09-01'), 'avg_price': None, 'kv3_label': 'Own stake', 'kv3': '+8.2%'}
+    look = pd.DataFrame([{**base, 'isin': 'A', 'company': 'Ahead Co', 'nse_symbol': 'AHD', 'kind': 'Promoter buying',
+                          'sentence': 'A promoter bought', 'reads': {'Promoter buying': 'leaning_positive'}},
+                         {**base, 'isin': 'B', 'company': 'Deal Co', 'nse_symbol': 'DLC', 'kind': 'Promoter deal, no filing',
+                          'sentence': 'A promoter entity bought in a block deal', 'reads': {'Promoter deal, no filing': 'not_measured'}}])
+    picks = home._picks(None, look, summary, {}, {})
+    assert picks['company'].tolist() == ['Ahead Co']                                  # an unmeasured kind is never a pick
+    html = home._pick(SimpleNamespace(prices=pd.DataFrame()), picks.iloc[0].to_dict(), summary,
+                      {'A': {'promoter_pledge_pct': 22.0}}, {'A': {'pct_off_high': -0.18, 'latest_close': 100.0}})
+    assert 'Median +3.2% against Nifty 500 over 3 months (59% of 434 cases beat it)' in html
+    assert '70 days after the last trade' in html and 'class="warn"' in html          # late, over the high pledge bar, flagged
+    assert '22.0% of promoter shares' in html and 'ASM stage 1' in html and '−18.0% from it' in html and '+8.2%' in html
+
+
+def test_a_promoter_deal_with_no_filing_does_not_take_the_measured_promoter_read():
+    from insiders_clean import ideas
+    assert ideas.PROMOTER_DEAL_BUY not in ideas.MEASURED_BY and ideas.PROMOTER_DEAL_SELL not in ideas.MEASURED_BY
+    assert ideas.PROMOTER_DEAL_BUY in dict(ideas.GROUPS['look'])['Insiders buying']
+    assert ideas.PROMOTER_DEAL_SELL in dict(ideas.GROUPS['warn'])['Insiders selling']

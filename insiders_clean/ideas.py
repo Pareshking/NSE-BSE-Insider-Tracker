@@ -429,8 +429,11 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
             rows.append({'isin': isin, 'company': b.get('company') or b.get('symbol'), 'nse_symbol': b.get('symbol'),
                          'list': 'warn' if move > 0 else 'look', 'kind': 'Pledge rising' if move > 0 else 'Pledge released',
                          'pct_of_company': pct,
+                         # The earlier quarter by its date (12 Nov): the two latest filed quarters can be a year apart
+                         # when quarters are missing, and "0.0% a quarter earlier" then read as a fresh pledge.
                          'sentence': f'Promoters pledged {b["pl"]:.1f}% of their shares at {b["q"]:%b %Y}, '
-                                     f'{"up" if move > 0 else "down"} from {a["pl"]:.1f}% a quarter earlier',
+                                     f'{"up" if move > 0 else "down"} from {a["pl"]:.1f}% at {a["q"]:%b %Y}'
+                                     + ('' if (b['q'] - a['q']).days <= 100 else ' (the quarters between not in the data)'),
                          'value': None, 'last': when})
     return _ev(rows)
 
@@ -585,6 +588,9 @@ def holder_events(snap: pd.DataFrame | None, ref: pd.Timestamp, days: int = WIND
     return _ev(rows)
 
 
+PROMOTER_DEAL_BUY, PROMOTER_DEAL_SELL = 'Promoter deal, no filing', 'Promoter deal sale, no filing'
+
+
 def promoter_deal_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDOW,
                          sh: pd.DataFrame | None = None) -> pd.DataFrame:
     """Promoters selling (or buying) in bulk/block deals in a company with no promoter market trade filed under
@@ -615,7 +621,9 @@ def promoter_deal_events(deals: pd.DataFrame | None, trades: pd.DataFrame | None
         who = list(dict.fromkeys(g.loc[g['side'].eq('BUY' if net > 0 else 'SELL'), 'client_name'].astype(str)))
         lead = (who[0] + (f' and {len(who) - 1} more' if len(who) > 1 else '')) if who else 'Promoters'
         rows.append({'isin': isin, 'company': g['company'].iloc[-1], 'nse_symbol': g['nse_symbol'].iloc[-1],
-                     'list': 'look' if net > 0 else 'warn', 'kind': 'Promoter buying' if net > 0 else 'Promoter selling',
+                     # Its own kind (12 Nov): "Promoter buying" carries the read measured on insider (PIT) filings, and a
+                     # deal with no filing behind it can be a transfer inside the promoter group (PRODUCT.md excludes those).
+                     'list': 'look' if net > 0 else 'warn', 'kind': PROMOTER_DEAL_BUY if net > 0 else PROMOTER_DEAL_SELL,
                      'pct_of_company': pct,
                      'sentence': f'{lead} (promoter) {"bought" if net > 0 else "sold"} {pct:.2f}% of the company in '
                                  f'bulk/block deals; no insider filing of it in the data',
@@ -776,13 +784,14 @@ def raise_events(pref: pd.DataFrame | None, qip: pd.DataFrame | None, rights: pd
 # The groups each list is shown in, in this order. A company sits in the first group any of its kinds
 # belongs to, led by its largest event there; its other kinds are chips and their sentences are listed.
 GROUPS = {
-    'look': [('Insiders buying', ['Promoter buying', 'Director or KMP buying', 'Cluster', 'Spotlight', 'Steady accumulation']),
+    'look': [('Insiders buying', ['Promoter buying', 'Director or KMP buying', 'Cluster', 'Spotlight', 'Steady accumulation',
+                                  PROMOTER_DEAL_BUY]),
              ('Promoters pay up', ['Promoters pay up']),
              ('Pledges released', ['Pledge released']),
              ('Big investors and funds in', ['Big investor in', 'Fund buying', 'Mutual funds adding', 'Foreign investors adding']),
              ('Buybacks at a premium', ['Buyback at a premium']),
              ('Raises', ['QIP', 'Preferential to others', 'Rights issue'])],
-    'warn': [('Insiders selling', ['Promoter selling', 'Director or KMP selling']),
+    'warn': [('Insiders selling', ['Promoter selling', 'Director or KMP selling', PROMOTER_DEAL_SELL]),
              ('Pledges', ['Pledge invoked', 'Pledge created', 'Pledge rising']),
              ('Cheap shares to promoters', ['Cheap shares to promoters']),
              ('Big investors and funds out', ['Big investor out', 'Funds selling', 'Mutual funds trimming', 'Foreign investors trimming'])],

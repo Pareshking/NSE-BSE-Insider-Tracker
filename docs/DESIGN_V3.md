@@ -242,3 +242,17 @@ whole market; this page's unit is a filing.
 - **Coming up** is a calendar, a column a day. The weekly trend chart is off Today (one quarter-end spike flattened every
   other week).
 - Rules (`insiders_clean/ideas.py`), periods, the ₹25 Cr path and the default period are unchanged.
+
+### Second pass, 12 Nov (owner: "less clicks to get all information"; "data cleaning and presentation the correct way"; "no actionable insights")
+
+- **Worth a look now**, first after the reading strip: insider buys of a kind measured ahead of Nifty 500 on our own history
+  (`evidence.verdict` 'leaning_positive'), at most six, in the group's order. A kind not measured, behind or flat is never
+  on it. Each company has its checks in sight: the record's own numbers (median, share of cases that beat the index, cases),
+  what the insider paid against today, how many days after the trade it was made public (amber past 14), pledge (amber over
+  `signals.HIGH_PLEDGE_PCT`), the 52-week position and today's NSE tradability flags. No new thresholds; the checks are facts.
+- **No clicks to read a list**: "Show more" is gone (all rows up to eight in sight); the quarterly holding changes are in sight
+  under a heading that says they are quarterly; pledge and 52-week position are on every row.
+- **Data**: a promoter's bulk/block deal with no insider filing behind it is its own kind ("Promoter deal, no filing"), not
+  "Promoter buying", so it no longer carries the read measured on insider filings (Bombay Burmah led the list with "Ahead").
+  A pledge change names the earlier quarter it is compared with, and says when the quarters between are not in the data.
+- Still open: one block deal shown on both sides (seller under Money out, buyer under Money in) should be one row.

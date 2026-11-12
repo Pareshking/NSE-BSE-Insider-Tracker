@@ -544,3 +544,24 @@ h1.headline span { display: block; margin-top: 2px; font-size: 12.5px; font-weig
   .reads > div { padding: 8px 10px 10px 0 !important; border-left: 0 !important; border-top: 1px solid var(--line); }
   .reads > div:nth-child(even) { padding-left: 10px !important; border-left: 1px solid var(--line) !important; }
   .reads > div:nth-child(-n+2) { border-top: 0; } .reads b { font-size: 22px; } }
+
+/* Worth a look now (12 Nov): each shortlisted company with its checks in sight, no click */
+.pks { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 0 28px; }
+.pk { padding: 12px 0 16px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; align-content: start; }
+.pk header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.pk .idea-co a { font-size: 16px; }
+.pk-n { display: flex; gap: 16px; text-align: right; }
+.pk-n div { display: grid; gap: 1px; }
+.pk-n span { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); white-space: nowrap; }
+.pk-n b { font-size: 15px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk > p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.pk-c { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pk-c li { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 10px; font-size: 12.5px; line-height: 1.4; padding-left: 12px; position: relative; }
+.pk-c li::before { content: ""; position: absolute; left: 0; top: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.pk-c li.ok::before { background: var(--accent); } .pk-c li.warn::before { background: var(--warn); }
+.pk-c li.warn span { color: var(--warn-ink); } .pk-c li.na span { color: var(--ink-3); }
+.pk-c b { font-weight: 600; color: var(--ink-3); } .pk-c span { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pk-go { font-size: var(--fs-small); font-weight: 600; color: var(--accent-ink); text-decoration: none; }
+.mv-q { margin: 18px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--warn-ink); }
+@media (max-width: 720px) { .pks { grid-template-columns: 1fr; } .pk header { flex-direction: column; } .pk-n { text-align: left; }
+  .pk-c li { grid-template-columns: 1fr; gap: 0; } }

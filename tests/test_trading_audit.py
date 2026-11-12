@@ -233,7 +233,7 @@ def test_a_promoters_block_sale_is_the_promoter_not_funds_selling():
     assert marked['client_is_promoter'].tolist() == [True, False, False] and rep['by_list'] == 1
     assert ideas.fund_events(marked, None, REF, sh=SH)['kind'].tolist() == ['Fund buying']
     prom = ideas.promoter_deal_events(marked, None, REF, sh=SH)
-    assert prom['kind'].tolist() == ['Promoter selling'] and round(prom['pct_of_company'].iloc[0], 2) == 10.56
+    assert prom['kind'].tolist() == [ideas.PROMOTER_DEAL_SELL] and round(prom['pct_of_company'].iloc[0], 2) == 10.56
     # A PIT promoter market trade in the period already says it: no second line from the deal.
     pit = pd.DataFrame([{'isin': 'INE068V01023', 'person_role': 'promoter', 'is_market': True, 'broadcast_date': '2026-09-06'}])
     assert ideas.promoter_deal_events(marked, pit, REF, sh=SH).empty
