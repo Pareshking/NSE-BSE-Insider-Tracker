@@ -94,7 +94,7 @@ def today():
               ('Risks', len(risks), 'pledges and cheap issues', '', '/risks'),
               ('Big holders', len(owners), '5% holders and funds', '', '/ownership')])
 
-    ds.section('Worth a look now', 'Insider buys of a kind that has beaten Nifty 500 on our own history, largest first', '/insiders', 'Every insider trade')
+    ds.section('Worth a look now', 'Insider buys of a kind that has beaten Nifty 500 on our own history, largest first. ' + moves.INSIDER_SCOPE, '/insiders', 'Every insider trade')
     kinds = ['Promoter buying', 'Director or KMP buying']
     ds.record(_record_line([k for k in kinds if any(getattr(s, 'verdict', '') == 'leaning_positive' for s in firm)], summary)
               + ('<br>' if firm else '') + 'Costs deducted; the clock starts when the exchange made the filing public.' if firm else '')
@@ -139,11 +139,11 @@ def insiders():
     ds.stats([('Buyers', bs['companies'], 'companies', 'up'), ('Bought', kit.rupees(bs['value']), 'on the market', 'up'),
               ('Sellers', ss['companies'], 'companies', 'down'), ('Sold', kit.rupees(ss['value']), 'on the market', 'down'),
               ('Measured ahead', sum(1 for s in buys if getattr(s, 'verdict', '') == 'leaning_positive'), 'of the buys')])
-    ds.section('Who is buying?', 'Largest first')
+    ds.section('Who is buying?', 'Largest first. ' + moves.INSIDER_SCOPE)
     ds.record(_record_line(['Promoter buying', 'Director or KMP buying'], summary))
     ds.stories(buys, 'No insider bought past the bar in this period.')
     ds.club('Left out as noise', club_b)
-    ds.section('Who is selling?', 'Promoters past the same bar; directors and KMP at ₹25 Cr and up')
+    ds.section('Who is selling?', 'Promoters past the same bar; directors and KMP at ₹25 Cr and up. ' + moves.INSIDER_SCOPE)
     ds.record(_record_line(['Promoter selling'], summary))
     ds.stories(sells, 'No insider sold past the bar in this period.')
     ds.club('Left out as noise', club_s)

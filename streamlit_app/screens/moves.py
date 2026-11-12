@@ -16,6 +16,7 @@ from ui.kit import esc
 from insiders_clean import evidence, ideas, signals
 from screens.ctx import split_since, with_flags
 
+INSIDER_SCOPE = 'On the exchange, own money: ESOPs, gifts, transfers inside the group and pledges are not counted'
 LATE_DAYS = 14            # made public this many days or more after the last trade: said in amber (as on Today since 23 Oct)
 DEAL_MIN_PCT = ideas.FUND_NET_PCT   # a deal shown at 0.25% of the company and up ...
 DEAL_MIN_VALUE = ideas.BIG_VALUE    # ... or Rs 25 Cr and up; the rest clubbed
@@ -174,8 +175,8 @@ def insiders(_ctx, ref_key: str, side: str, days: int, isin: str | None = None) 
                        + (f' on {r["days"]} trading days' if r['days'] > 1 else ''),
                'when': f'Traded {_span(r["trade_from"], r["trade_to"])} · made public {kit.day(r["last"])}'
                        + (f' · {kit.plural(lag, "day")} later' if lag and lag > 0 else ' · the same day' if lag == 0 else ''),
-               'where': 'On the stock exchange (open market)',
-               'how': 'Own money: ESOPs, gifts, transfers inside the group and pledges are not counted here',
+               # Where and how are the same for every insider story (the exchange, own money on the open market): said once in
+               # the section's subtitle (INSIDER_SCOPE), not on each story (real data, 12 Nov: two identical lines per card).
                'much': ' · '.join(much), 'price': price, 'why': why, 'watch': w_txt},
             warn=({'when'} if lag and lag >= LATE_DAYS else set()) | ({'watch'} if w_warn else set()),
             tags=([('New', 'new')] if is_new(r['last'], ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else [])

@@ -360,7 +360,7 @@ def render():
                                                    for k, v in checks.items() if v) + '</dl>')
 
     # ---- Money decisions, 12 months ----
-    ds.section('What did insiders do?', 'Promoters, directors and KMP on the market, 12 months, each decision added up')
+    ds.section('What did insiders do?', 'Promoters, directors and KMP, 12 months, each decision added up. ' + moves.INSIDER_SCOPE)
     ds.stories(buys + sells, 'No promoter, director or KMP traded past the bar in 12 months.')
     ds.club('Left out as noise', club_b + club_s)
     if dls or club_d:
