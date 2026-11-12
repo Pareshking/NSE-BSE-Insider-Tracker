@@ -362,7 +362,7 @@ def _headline(look: pd.DataFrame, warn: pd.DataFrame, breadth: dict | None, span
         lead_row = top.iloc[0]
         if isinstance(lead_row['sentence'], str) and lead_row['sentence']:
             sub.append(f'First on the list, {lead_row["company"]}: {lead_row["sentence"].rstrip(".")}.')
-    return (f'<div class="mast"><div class="kicker">{esc(kit.sentence(span))} to {kit.day(ref)} · open-market trades by promoters, '
+    return (f'<div class="head mast"><div class="kicker">{esc(kit.sentence(span))} to {kit.day(ref)} · open-market trades by promoters, '
             f'directors and key staff</div><h1 class="news">{lead}</h1>'
             + ''.join(f'<p class="dek">{esc(x)}</p>' for x in sub if x) + '</div>')
 

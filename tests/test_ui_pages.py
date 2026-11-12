@@ -303,6 +303,7 @@ home.render()
     for panel in ('Who among insiders is putting money in?', 'Who is taking money out?', 'What could go wrong?',
                   'What are funds and big investors doing?', 'What is coming up?'):
         assert panel in html, panel
+    assert '<div class="head mast">' in html   # scripts/site_screenshots.py waits for '.head h1'
     assert 'class="news"' in html and ('Insiders bought' in html or 'No insider bought' in html or 'No insider bought or sold' in html)
     assert 'companies with money in' not in html                                  # counts of companies are no longer the headline
     assert html.index('putting money in') < html.index('taking money out') < html.index('could go wrong') < html.index('funds and big')
