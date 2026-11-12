@@ -4,6 +4,24 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Site redesign, 12 Nov 2026 (PR #229, live)
+
+Done (owner's brief: redesign from blank, more pages, no mental arithmetic, club the noise, fewer clicks, no AI,
+a minimal theme from one file; `docs/DESIGN.md`, `docs/PRODUCT.md` decision of 12 Nov):
+- One theme file (`streamlit_app/ui/theme.py`; `scripts/sync_theme.py` writes the Streamlit config; `tests/test_theme.py`).
+- Pages: Today, Watchlist (`?watch=`), Screener, Insiders, Deals (both sides as one deal), Raises, Holders, Sectors,
+  Results, Risks (red flags, lenders), Calendar, Companies; Investors, Evidence, Filings restyled. 7 days by default.
+- Data on the way: a promoter's deal with no insider filing is its own kind (no borrowed record); pledge sentences name
+  the filing compared (an off-quarter shareholding filing by its date); staff trades, ESOPs, gifts, transfers counted,
+  not listed; encumbrances keyed on the symbol (the feed has no ISIN; dictionary corrected).
+
+Open from it:
+| # | Item | Done when |
+|---|---|---|
+| D1 | Year-on-year on Results: results backfill (item T) | Results shows growth on the year-ago quarter for most companies |
+| D2 | `/today` typed by hand shows Streamlit's "Page not found" (the default page lives at `/`; Streamlit refuses a second page at `/today`) | a Streamlit option or an upstream fix; links all use `/` |
+| D3 | Forward record of the Worth-a-look shortlist itself (started 12 Nov) | three months of picks measured |
+
 ## Where things stand (09 Oct 2026)
 
 - Data in R2: one year of NSE insider filings and bulk/block deals (from
