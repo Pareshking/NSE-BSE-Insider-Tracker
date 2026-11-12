@@ -92,6 +92,25 @@ def fund_names(r2) -> int:
     return 0
 
 
+def results_quarters(r2) -> int:
+    """Rows of clean/current/results per quarter end, consolidated or standalone, with XBRL status ok; and the companies
+    whose Sep 2026 quarter has a Sep 2025 quarter in the table (what the Results page's year-ago column needs)."""
+    r = read_parquet(r2, 'clean/current/results.parquet')
+    if r is None or r.empty:
+        print('clean/current/results.parquet: empty or missing')
+        return 0
+    r = r.assign(_end=pd.to_datetime(r['period_end'], errors='coerce'),
+                 _basis=r['consolidated'].astype(str).str.strip().str.lower().str.startswith('consolidated').map({True: 'cons', False: 'stand'}),
+                 _ok=r['xbrl_status'].fillna('ok').eq('ok') if 'xbrl_status' in r else True)
+    print(f'results rows: {len(r)}; xbrl ok: {int(r["_ok"].sum())}; broadcast from {r["broadcast_at"].min()} to {r["broadcast_at"].max()}')
+    q = r[r['_ok']].groupby([r['_end'].dt.to_period('Q'), '_basis']).size().unstack(fill_value=0)
+    print(q.tail(12).to_string())
+    now = set(r.loc[r['_ok'] & (r['_end'] == '2026-09-30'), 'isin'].dropna())
+    ago = set(r.loc[r['_ok'] & (r['_end'] == '2025-09-30'), 'isin'].dropna())
+    print(f'companies with a Sep 2026 quarter: {len(now)}; of them with Sep 2025 too: {len(now & ago)}')
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -118,6 +137,8 @@ def main() -> int:
         return mcap_gap(r2)
     if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
         return mcap_basis(r2)
+    if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
+        return results_quarters(r2)
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
         return deal_days(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
