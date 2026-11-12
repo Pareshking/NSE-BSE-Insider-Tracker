@@ -348,6 +348,13 @@ def _reg31(enc: pd.DataFrame | None, symbol, kind: str, ref: pd.Timestamp, days:
     return out
 
 
+def _as_of(q: pd.Timestamp) -> str:
+    """'at Sep 2026' for a quarter's shareholding pattern; 'in the filing of 31 Oct 2026' for one filed off the quarter
+    (after a change in capital), whose date is the filing's own (real data, 12 Nov: Pakka read 'at Oct 2026')."""
+    quarter_end = q.month in (3, 6, 9, 12) and q.is_month_end
+    return f'at {q:%b %Y}' if quarter_end else f'in the filing of {q:%d %b %Y}'
+
+
 def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = WINDOW, enc=None) -> pd.DataFrame:
     """Promoters pledging (Watch out) or releasing a pledge (Worth a look). From the PIT filings of the
     period, net per company: shares released and pledged again (a renewal, a change of lender) are no new
@@ -431,8 +438,8 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
                          'pct_of_company': pct,
                          # The earlier quarter by its date (12 Nov): the two latest filed quarters can be a year apart
                          # when quarters are missing, and "0.0% a quarter earlier" then read as a fresh pledge.
-                         'sentence': f'Promoters pledged {b["pl"]:.1f}% of their shares at {b["q"]:%b %Y}, '
-                                     f'{"up" if move > 0 else "down"} from {a["pl"]:.1f}% at {a["q"]:%b %Y}'
+                         'sentence': f'Promoters pledged {b["pl"]:.1f}% of their shares {_as_of(b["q"])}, '
+                                     f'{"up" if move > 0 else "down"} from {a["pl"]:.1f}% {_as_of(a["q"])}'
                                      + ('' if (b['q'] - a['q']).days <= 100 else ' (the quarters between not in the data)'),
                          'value': None, 'last': when})
     return _ev(rows)

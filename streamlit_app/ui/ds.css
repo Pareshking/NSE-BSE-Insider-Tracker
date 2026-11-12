@@ -142,3 +142,27 @@ a.kpi:hover { background: var(--hover); }
 .tbl-wrap { background: var(--surface) !important; border: 0 !important; border-radius: var(--radius) !important; }
 .tbl thead th { background: var(--surface) !important; }
 .empty { border: 0 !important; border-radius: 0 !important; text-align: left !important; padding: 8px 0 !important; color: var(--ink-3) !important; }
+
+/* ---- The older pages (Investors, Evidence, Filings, Companies list, Data quality, People) in the same look: their
+   building blocks (kit.head, kit.tiles, kit.card, kit.table, kit.caption, kit.note) restyled here, 12 Nov ---- */
+.head:not(.ds-head) { margin: var(--gap-4) 0 var(--gap-5) !important; }
+.head:not(.ds-head) h1 { font-size: var(--fs-headline) !important; font-weight: var(--fw-strong) !important; letter-spacing: -0.02em; line-height: 1.18; }
+.head:not(.ds-head) p { font-size: 14.5px !important; color: var(--ink-3) !important; margin-top: 8px !important; }
+@media (max-width: 720px) { .head:not(.ds-head) h1 { font-size: var(--fs-headline-phone) !important; } }
+.tiles { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important; gap: var(--gap-4) !important; }
+.tile { border-right: 0 !important; border-bottom: 0 !important; gap: 2px !important; }
+.tile .k { font-size: 14px !important; text-transform: none !important; letter-spacing: 0 !important; font-weight: var(--fw-regular) !important; color: var(--ink-2) !important; }
+.tile .v { font-size: var(--fs-stat) !important; font-weight: var(--fw-stat) !important; letter-spacing: -0.02em !important; margin: 12px 0 2px; }
+.tile .s { font-size: 13px !important; }
+@media (max-width: 720px) { .tile .v { font-size: var(--fs-stat-phone) !important; } }
+.card-h { margin-bottom: 10px !important; }
+.card-h h2 { font-size: var(--fs-title) !important; font-weight: var(--fw-strong) !important; text-transform: none !important; letter-spacing: 0 !important; }
+.card-h span { font-size: 13px !important; }
+.tbl thead th { text-transform: none !important; letter-spacing: 0 !important; font-size: 12px !important; font-weight: var(--fw-medium) !important; color: var(--ink-3) !important;
+  border-bottom: 1px solid var(--line) !important; }
+.tbl td { border-bottom: 1px solid var(--line) !important; }
+.tbl tbody td:first-child { box-shadow: none !important; }
+.cap, .tbl-cap { font-size: 12.5px !important; color: var(--ink-3) !important; }
+.note { border-radius: var(--radius-sm) !important; }
+.ev-t thead th, .own thead th { text-transform: none !important; letter-spacing: 0 !important; font-size: 12px !important; font-weight: var(--fw-medium) !important; }
+.chip.acc, .chip.sell, .chip.buy { border-radius: var(--radius-pill); }

@@ -475,3 +475,13 @@ def test_insider_breadth_is_buying_share_of_decision_maker_rupees_with_the_perio
     short = ideas.insider_breadth(pd.DataFrame(rows[:5]), REF, 30)
     assert short['before'] is None                                         # the data does not reach back two periods
     assert ideas.insider_breadth(None, REF, 30) is None
+
+
+def test_a_pledge_sentence_names_an_off_quarter_filing_by_its_date():
+    """Real data, 12 Nov 2026: Pakka 'at Oct 2026' was a shareholding filing made off the quarter (after a change in
+    capital), dated by the filing itself; a quarter's pattern stays 'at Sep 2026'."""
+    import pandas as pd
+    from insiders_clean import ideas
+    assert ideas._as_of(pd.Timestamp('2026-09-30')) == 'at Sep 2026'
+    assert ideas._as_of(pd.Timestamp('2026-10-31')) == 'in the filing of 31 Oct 2026'
+    assert ideas._as_of(pd.Timestamp('2026-12-15')) == 'in the filing of 15 Dec 2026'

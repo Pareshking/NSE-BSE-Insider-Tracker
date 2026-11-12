@@ -419,7 +419,7 @@ pages.risks()
 
 def test_results_and_sectors_pages_say_their_limits(data_dir, monkeypatch):
     h = _more_html(data_dir, monkeypatch, 'results')
-    assert 'no year-on-year growth yet' in h and '>Who bought right after their own results?<' in h and 'Exploratory' in h
+    assert 'a dash where it does not' in h and '>Who bought right after their own results?<' in h and 'Exploratory' in h
     s = _more_html(data_dir, monkeypatch, 'sectors')
     assert 'Sectors' in s
 
@@ -452,3 +452,19 @@ def test_profile_and_screenshot_scripts_name_pages_that_exist():
     shots = (ROOT / 'scripts' / 'site_screenshots.py').read_text(encoding='utf-8')
     for path in re.findall(r"\('([a-z-]+)(?:\?[^']*)?', '", shots.split('PAGES = ')[1].split(']')[0]):
         assert f"url_path='{path}'" in app or f"'{path}':" in app, path
+
+
+
+def test_results_year_on_year_and_quarter_before_only_where_held():
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import more_pages
+    res = pd.DataFrame({'isin': ['A', 'A', 'A', 'B'], 'symbol': ['A', 'A', 'A', 'B'], 'company': ['A', 'A', 'A', 'B'],
+                        'period_end': ['2025-09-30', '2026-06-30', '2026-09-30', '2026-09-30'],
+                        'broadcast_at': ['2025-11-05T10:00:00+05:30', '2026-08-05T10:00:00+05:30', '2026-11-05T10:00:00+05:30', '2026-11-06T10:00:00+05:30'],
+                        'consolidated': ['Consolidated'] * 4, 'quarter_revenue': [100.0, 110.0, 120.0, 50.0], 'quarter_profit': [10.0, 11.0, 12.0, -1.0]})
+    out = more_pages._latest_results(SimpleNamespace(results=res, ref=pd.Timestamp('2026-11-11')), 30).set_index('isin')
+    assert round(out.loc['A', 'rev_yoy'], 1) == 20.0 and round(out.loc['A', 'rev_qoq'], 2) == 9.09
+    assert pd.isna(out.loc['B', 'rev_yoy']) and pd.isna(out.loc['B', 'rev_qoq'])     # no history: a dash, never a guess
