@@ -17,7 +17,8 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-PAGES = [('', 'today'), ('company?symbol=HCLTECH', 'company-hcltech'), ('track-record', 'evidence'), ('filings-all', 'filings'),
+PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('raises', 'raises'), ('risks', 'risks'),
+         ('ownership', 'holders'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('track-record', 'evidence'), ('filings-all', 'filings'),
          ('entity', 'people'), ('data', 'data'), ('market', 'old-market-address'), ('insider-trades', 'old-insider-trades-address')]
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
