@@ -349,12 +349,22 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
     r = r.sort_values(['_cons', '_at']).drop_duplicates(['isin', '_end'], keep='last')
     for c in ('quarter_revenue', 'quarter_profit'):
         r[c] = pd.to_numeric(r[c], errors='coerce')
-    r = r.sort_values(['isin', '_end'])
+    r = r.dropna(subset=['isin', '_end']).sort_values(['isin', '_end'])
     prev = r.groupby('isin')[['_end', 'quarter_revenue', 'quarter_profit']].shift(1)
     gap = (r['_end'] - prev['_end']).dt.days
     near = gap.between(80, 100)    # the quarter before, not an older one
     r['rev_qoq'] = ((r['quarter_revenue'] / prev['quarter_revenue'] - 1) * 100).where(near & prev['quarter_revenue'].gt(0))
     r['profit_prev'] = prev['quarter_profit'].where(near)
+    # Year on year: the same company's quarter about a year earlier, same basis, where our history holds it (the XBRL has
+    # no year-ago column; the backfill of 12 Nov from Jan 2025 brings it for most companies).
+    year = r[['isin', '_end', 'quarter_revenue', 'quarter_profit']].rename(columns={'_end': '_yend', 'quarter_revenue': '_yrev', 'quarter_profit': '_yprof'})
+    year['_key'] = year['_yend'] + pd.DateOffset(years=1)
+    r['_key'] = r['_end']
+    r = pd.merge_asof(r.sort_values('_key'), year.sort_values('_key'), on='_key', by='isin', direction='nearest',
+                      tolerance=pd.Timedelta(days=12))
+    ok = r['_yrev'].gt(0) & r['_yend'].notna()
+    r['rev_yoy'] = ((r['quarter_revenue'] / r['_yrev'] - 1) * 100).where(ok)
+    r['profit_year'] = r['_yprof'].where(r['_yend'].notna())
     win = (r['_at'] <= ctx.ref + pd.Timedelta(days=1)) & (r['_at'] > ctx.ref - pd.Timedelta(days=days))
     return r[win].sort_values('_at', ascending=False)
 
@@ -383,6 +393,7 @@ def results():
                      'd': kit.day(x['_at'], with_year=False),
                      'r': kit.rupees(rev) if kit._finite(rev) else '—',
                      'q': (f'<b class="{"up" if x["rev_qoq"] > 0 else "down"}">{x["rev_qoq"]:+.1f}%</b>' if pd.notna(x.get('rev_qoq')) else '<span class="muted">—</span>'),
+                     'y': (f'<b class="{"up" if x["rev_yoy"] > 0 else "down"}">{x["rev_yoy"]:+.1f}%</b>' if pd.notna(x.get('rev_yoy')) else '<span class="muted">—</span>'),
                      'p': (f'<b class="{"down" if pr < 0 else ""}">{kit.rupees(pr, signed=pr < 0)}</b>' if kit._finite(pr) is not None else '—')
                           + (f'<span class="s">was {kit.rupees(x["profit_prev"], signed=x["profit_prev"] < 0)}</span>' if kit._finite(x.get('profit_prev')) is not None else ''),
                      'm': f'{margin:.1f}%' if margin is not None else '—',
@@ -397,18 +408,21 @@ def results():
                           'd': kit.day(x.get('results_date'), with_year=False) if pd.notna(x.get('results_date')) else '—'})
     with top:
         ds.head(f'Results · {esc(pages._span(p, ctx.ref))}', f'{kit.plural(len(r), "quarterly result")} filed',
-                ['From NSE\'s results XBRL (collected from 15 Oct 2026; banks, NBFCs and insurers partly). Revenue against the '
-                 'quarter before only where we hold it; the filing has no year-ago quarter, so no year-on-year growth yet.'])
+                ['From NSE\'s results XBRL (integrated filings, from Jan 2025; banks, NBFCs and insurers partly). Revenue against a '
+                 'year ago and the quarter before only where our history holds that quarter; a dash where it does not.'])
     up = int((r['rev_qoq'] > 0).sum()) if not r.empty else 0
     dn = int((r['rev_qoq'] < 0).sum()) if not r.empty else 0
-    ds.stats([('Results filed', len(r), 'in the period'), ('Revenue up', up, 'on the quarter before', 'up'), ('Revenue down', dn, 'on the quarter before', 'down'),
+    yu = int((r['rev_yoy'] > 0).sum()) if not r.empty else 0
+    yd = int((r['rev_yoy'] < 0).sum()) if not r.empty else 0
+    ds.stats([('Results filed', len(r), 'in the period'), ('Revenue up', yu, f'on a year ago ({up} on the quarter before)', 'up'),
+              ('Revenue down', yd, f'on a year ago ({dn} on the quarter before)', 'down'),
               ('Losses', int((r['quarter_profit'] < 0).sum()) if not r.empty else 0, 'quarterly loss', 'down'),
               ('Bought after results', len(after), 'insider buys, window just reopened', 'up')])
     ds.section('Who reported, and what did insiders do next?', 'Newest first; insiders = open-market net by promoters, directors and KMP '
                'in the 30 days after the filing')
     if rows:
         ds.html(ds.list_html(rows, [ds.Col('c', 'Company'), ds.Col('d', 'Filed', phone=False), ds.Col('r', 'Revenue', True),
-                                    ds.Col('q', 'vs quarter before', True), ds.Col('p', 'Profit', True), ds.Col('m', 'Margin', True, phone=False),
+                                    ds.Col('y', 'vs a year ago', True), ds.Col('q', 'vs quarter before', True, phone=False), ds.Col('p', 'Profit', True), ds.Col('m', 'Margin', True, phone=False),
                                     ds.Col('i', 'Insiders next 30 days', True)]))
         if len(r) > 300:
             ds.club('Not listed', [f'<b>{len(r) - 300:,}</b> older results in the period'])
