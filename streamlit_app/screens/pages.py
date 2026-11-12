@@ -8,6 +8,7 @@ Content comes from screens/moves.py; looks from ui/ds.py and ui/theme.py.
 """
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 from data import store
 from ui import ds, kit
@@ -67,6 +68,8 @@ def _why_line(stories: list) -> str:
 # ---- Today: the front page, the top of every topic ---------------------------------------------------------------
 
 def today():
+    """The front page as the mock (owner, 12 Nov): four numbers, the shortlist beside what is coming up and who is
+    selling, then deals, raises, risks and big holders in pairs; every card links to its page."""
     ctx = _ctx()
     if ctx is None:
         return
@@ -82,48 +85,37 @@ def today():
     raises = moves.event_stories(ctx, ev, RAISE_KINDS, summary)
     risks = moves.event_stories(ctx, ev, RISK_KINDS, summary)
     owners = moves.event_stories(ctx, ev, STAKE_KINDS | HOLDER_KINDS, summary)
-    b = ideas.insider_breadth(ctx.eligible, ctx.ref, max(days, 7))
+    firm = [s for s in buys if getattr(s, 'verdict', '') == 'leaning_positive']
     with top:
-        if bs['n'] or ss['n']:
-            title = (f'Insiders bought <b class="up">{esc(kit.rupees(bs["value"]))}</b> in {kit.plural(bs["companies"], "company", "companies")}'
-                     f' and sold <b class="down">{esc(kit.rupees(ss["value"]))}</b> in {ss["companies"]}')
-        else:
-            title = 'No promoter, director or KMP traded past the bar'
-        dek = []
-        if b and b.get('buy_share') is not None:
-            prev = (b.get('before') or {}).get('buy_share')
-            dek.append(f'Buying was {b["buy_share"]:.0f}% of the rupees they traded on the market'
-                       + (f', against {prev:.0f}% in the period before.' if prev is not None else '.'))
-        firm = [s for s in buys if getattr(s, 'verdict', '') == 'leaning_positive']
-        if firm:
-            dek.append(f'{kit.plural(len(firm), "buy")} of a kind that has beaten Nifty 500 on our history; the largest: {firm[0].company}, {firm[0].big}.')
-        ds.head(f'{esc(_span(p, ctx.ref))} · open-market trades, deals, raises and filings', title, dek)
-    ds.stats([('Insiders buying', bs['n'], kit.rupees(bs['value']), 'up', '/insiders'),
-              ('Insiders selling', ss['n'], kit.rupees(ss['value']), 'down', '/insiders'),
+        title = (f'Insiders bought <b class="up">{esc(kit.rupees(bs["value"]))}</b>, sold <b class="down">{esc(kit.rupees(ss["value"]))}</b>'
+                 if bs['n'] or ss['n'] else 'A quiet period for insiders')
+        ds.head(f'{pd.Timestamp(ctx.ref):%A, %d %b %Y} · {esc(p.lower() if p != "Today" else "latest session")}', title)
+    pledges = sum(1 for x in risks if getattr(x, 'kind', '').startswith('Pledge'))
+    ds.stats([('Insiders buying', bs['companies'], f'companies · {kit.rupees(bs["value"])}', 'up', '/insiders'),
+              ('Insiders selling', ss['companies'], f'companies · {kit.rupees(ss["value"])}', 'down', '/insiders'),
               ('Big deals', ds_['n'], kit.rupees(ds_['value']), '', '/deals'),
-              ('Raises · buybacks', len(raises), 'allotted, listed or open', '', '/raises'),
-              ('Risks', len(risks), 'pledges and cheap issues', '', '/risks'),
-              ('Big holders', len(owners), '5% holders and funds', '', '/ownership')])
-
-    ds.section('Worth a look now', 'Insider buys of a kind that has beaten Nifty 500 on our own history, largest first. ' + moves.INSIDER_SCOPE, '/insiders', 'Every insider trade')
-    kinds = ['Promoter buying', 'Director or KMP buying']
-    ds.record(_record_line(kinds, summary) if firm else '')
-    ds.stories(firm[:SHORTLIST], 'No insider buy of a kind with a measured edge in this period. The lists below are facts to read, not picks.')
-
-    for title, sub_, items, href in (
-            ('Who is selling?', 'Promoters, and directors or KMP at ₹25 Cr and up: the catch to know, not a sell signal', sells, '/insiders'),
-            ('Who sold, who took it?', 'Bulk and block deals, both sides as one deal; market makers left out', dls, '/deals'),
-            ('Who is raising or returning money?', 'Preferential issues, QIPs, rights, buybacks', raises, '/raises'),
-            ('What could go wrong?', 'Pledges up or invoked, cheap shares to promoters', risks, '/risks'),
-            ('Who are the big holders moving?', '5% holders (SAST) and quarterly fund moves', owners, '/ownership')):
-        ds.section(title, sub_, href, f'All {len(items)}' if len(items) > PREVIEW else 'Open the page')
-        ds.stories(items[:PREVIEW], 'Nothing past the bar in this period.')
-    ds.section('What is coming up?', 'The next 10 days: fund-raising and buyback meetings, tender closes, lock-ins ending', '/calendar', '60 days')
-    cal = moves.upcoming(ctx, 10)
-    if cal:
-        ds.calendar(cal)
-    else:
-        ds.empty('No money events in the next 10 days.')
+              ('Pledges up', pledges, f'{len(risks) - pledges} cheap issues to promoters', 'warn', '/risks')])
+    left, right = st.columns([1.6, 1], gap='medium')
+    with left:
+        ds.section('Worth a look', 'Insider buys of a kind that has beaten Nifty 500 on our own history', '/insiders', 'All insider buys')
+        ds.stories(firm[:SHORTLIST], 'No insider buy of a kind with a measured edge in this period.', detail=False)
+        if firm:
+            ds.record(_record_line(['Promoter buying'], summary))
+    with right:
+        ds.section('Coming up', 'Fund-raising and buyback meetings, tender closes, lock-ins ending', '/calendar', 'Calendar')
+        cal = moves.upcoming(ctx, 10)
+        if cal:
+            ds.calendar(cal, limit=5)
+        else:
+            ds.empty('Nothing in the next 10 days.')
+        ds.section('Selling', 'Promoters; directors and KMP at ₹25 Cr and up', '/insiders', 'All')
+        ds.stories(sells[:PREVIEW], 'No insider sold past the bar.', detail=False)
+    for pair in ((('Big deals', dls, '/deals'), ('Raises', raises, '/raises')), (('Risks', risks, '/risks'), ('Big holders', owners, '/ownership'))):
+        cols = st.columns(2, gap='medium')
+        for col, (title, items, href) in zip(cols, pair):
+            with col:
+                ds.section(title, '', href, f'All {len(items)}' if len(items) > PREVIEW else 'Open')
+                ds.stories(items[:PREVIEW], 'Nothing past the bar in this period.', detail=False)
 
 
 # ---- Topic pages ----------------------------------------------------------------------------------------------------

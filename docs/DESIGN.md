@@ -10,16 +10,20 @@ before it merges.
 - Streamlit's widgets read `.streamlit/config.toml`; `python scripts/sync_theme.py` writes its `[theme]` from theme.py.
 - `tests/test_theme.py` fails on a colour outside theme.py, a CSS variable that is not a token, or a config that drifted.
 
-## Look
-- Flat: no boxes, no shadows. Hairlines between rows, one dark rule above each section, type contrast for hierarchy.
-- Warm-neutral page, near-black ink, one muted steel-blue accent for links and the selected control.
-- Muted green and red for buying and selling only; muted amber for "needs a look". Tints for backgrounds only.
-- One family, Geist; Geist Mono for codes (symbol, BSE code, ISIN). Tabular figures everywhere.
+## Look (owner, 12 Nov 2026: "build it and make sure to have minimalist theme", after the Dribbble-style mock)
+- Soft white cards (18 px corners, no border, no shadow) on a light grey page; generous padding.
+- KPI cards: an icon only where the number has a direction (up, down, needs a look), a grey label, one big number, one grey line.
+- Rows: an initials badge, the name and one grey line (who did what, when), the value and one chip on the right
+  (the move since the trade, or the share of the company). The full sentence is on hover and on the topic pages.
+- No paragraphs on a page: a section's explanation is its title's hover text; the measured record and what was left
+  out are one or two small grey lines at the foot of the card.
+- Controls are pills (menu, period, filters, search). Inter for text, Geist Mono for codes; tabular figures.
+- Green and red for buying and selling only; amber for "needs a look"; one indigo accent for links and the brand.
 
 ## Every page has the same shape (ui/ds.py)
-1. **Masthead**: a kicker (what and which period), the headline is the news with its numbers, one or two lines under it.
-2. **Stat strip**: the page's numbers, each a link to the page that lists them.
-3. **Sections titled as questions** ("Who is buying?"), each with one line under it.
+1. **Head**: a small grey line (the date or what the page is), the headline with its numbers, at most one grey line.
+2. **KPI cards**: the page's numbers, each a link to the page that lists them.
+3. **Cards** (`ds.section` opens one; what follows goes in it), titled as questions or short names.
 4. **Stories**: one decision each, with its 5W-2H in sight, no click and no arithmetic left to the reader:
    who, what, when (traded, made public, days between), where, how, how much (₹, % of the company, % of the person's own
    holding), price (paid, now, the move), why it matters (the measured record, or the published study, or the rule), and

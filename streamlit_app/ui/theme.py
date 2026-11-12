@@ -18,47 +18,48 @@ HERE = Path(__file__).resolve().parent
 # ---- Colour: a warm-neutral page, near-black ink, one muted accent, muted green and red for buying and selling only,
 # muted amber for "needs a look". Tints are the same hues at low strength, for backgrounds only.
 COLORS = {
-    'bg': '#FAFAF8',            # the page
-    'surface': '#FFFFFF',       # a raised surface (menus, popovers, the table's sticky column)
-    'subtle': '#F3F3F0',        # a quiet background: hover, note boxes, the table head
-    'hover': '#F6F6F3',         # a row under the pointer
-    'line': '#E6E6E1',          # hairlines between rows
-    'line-strong': '#D6D6CF',   # rules under heads, between sections
-    'rule': '#2B2E33',          # the dark rule above a section title
-    'ink': '#1E2125',           # text
-    'ink-2': '#4B5058',         # secondary text
-    'ink-3': '#777C84',         # labels, notes
-    'ink-4': '#A9ADB3',         # a dash, an empty value
-    'accent': '#3E5C7E',        # links, the selected control: a muted steel blue
-    'accent-ink': '#2F4A68',
-    'accent-tint': '#EDF1F5',
-    'buy': '#2F7A57',     'buy-tint': '#EAF3EE',
-    'sell': '#AE4B3E',    'sell-tint': '#F7ECEA',
-    'warn': '#9A6B16',    'warn-tint': '#F8F1E2',  'warn-ink': '#6B4A10',
+    'bg': '#F3F4F6',            # the page: a soft grey the cards sit on
+    'surface': '#FFFFFF',       # a card
+    'subtle': '#F1F2F6',        # a quiet fill: avatars, date badges, a neutral chip
+    'hover': '#F8F9FB',         # a row under the pointer
+    'line': '#EEF0F3',          # hairlines between rows inside a card
+    'line-strong': '#E3E6EA',   # an input's edge, a table head's rule
+    'rule': '#E3E6EA',
+    'ink': '#111827',           # text
+    'ink-2': '#4B5563',         # secondary text
+    'ink-3': '#6B7280',         # labels, notes
+    'ink-4': '#A3A9B3',         # a dash, an empty value
+    'accent': '#4F5BD5',        # links, the selected control, the brand mark
+    'accent-ink': '#3F49B8',
+    'accent-tint': '#EEF0FC',
+    'buy': '#15803D',     'buy-tint': '#E9F7EE',
+    'sell': '#C2410C',    'sell-tint': '#FDEFE7',
+    'warn': '#B45309',    'warn-tint': '#FEF5E6',  'warn-ink': '#92400E',
     'nse': '#5B4A8B',     'bse': '#2F6F7E',        # exchange marks
     'on-accent': '#FFFFFF',     # text on a filled accent chip
-    'range-lo': '#EFD9D4', 'range-mid': '#E7E7E2', 'range-hi': '#D3E7DB',   # the 52-week bar, low to high
+    'range-lo': '#F6DCD2', 'range-mid': '#E9EBEF', 'range-hi': '#CFEBDA',   # the 52-week bar, low to high
 }
 
 FONTS = {
-    'ui': "'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    'ui': "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     'mono': "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
 }
-FONT_LINK = ('https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap')
+FONT_LINK = ('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400..600&display=swap')
 
 # ---- Type scale (px): one per role. Headline is the page's news line; title a section's; the rest by use.
 TYPE = {
-    'fs-headline': '34px', 'fs-headline-phone': '24px',
-    'fs-title': '20px', 'fs-card': '15px', 'fs-body': '14px', 'fs-small': '12.5px', 'fs-label': '11px',
-    'fs-stat': '24px', 'fs-stat-phone': '20px',
-    'fw-regular': '400', 'fw-medium': '500', 'fw-strong': '600', 'fw-stat': '400',
+    'fs-headline': '34px', 'fs-headline-phone': '26px',
+    'fs-title': '17px', 'fs-card': '15px', 'fs-body': '14px', 'fs-small': '12.5px', 'fs-label': '11px',
+    'fs-stat': '28px', 'fs-stat-phone': '22px',
+    'fw-regular': '400', 'fw-medium': '500', 'fw-strong': '600', 'fw-stat': '600',
 }
 
 # ---- Space and shape: flat (no shadows), small radius, a 4 px grid.
 SPACE = {
-    'radius': '6px', 'radius-sm': '4px', 'shadow': 'none',
+    'radius': '18px', 'radius-sm': '10px', 'radius-pill': '999px', 'shadow': 'none',
+    'card-pad': '22px 24px', 'card-pad-phone': '18px',
     'gap-1': '4px', 'gap-2': '8px', 'gap-3': '12px', 'gap-4': '16px', 'gap-5': '24px', 'gap-6': '36px',
-    'gutter': '24px', 'gutter-phone': '14px', 'row-h': '44px', 'page-max': '1320px',
+    'gutter': '40px', 'gutter-phone': '14px', 'row-h': '44px', 'page-max': '1280px',
 }
 
 # For Python drawing code (charts): the same values by name.
@@ -93,12 +94,12 @@ def inject() -> None:
 def streamlit_theme() -> dict:
     return {
         'base': 'light', 'primaryColor': COLORS['accent'], 'backgroundColor': COLORS['bg'],
-        'secondaryBackgroundColor': COLORS['subtle'], 'textColor': COLORS['ink'], 'linkColor': COLORS['accent-ink'],
-        'linkUnderline': False, 'borderColor': COLORS['line-strong'], 'showWidgetBorder': True, 'baseRadius': SPACE['radius'],
+        'secondaryBackgroundColor': COLORS['surface'], 'textColor': COLORS['ink'], 'linkColor': COLORS['accent-ink'],
+        'linkUnderline': False, 'borderColor': COLORS['line-strong'], 'showWidgetBorder': True, 'baseRadius': SPACE['radius-sm'],
         'greenColor': COLORS['buy'], 'redColor': COLORS['sell'], 'orangeColor': COLORS['warn'],
         'dataframeHeaderBackgroundColor': COLORS['subtle'],
         # Streamlit accepts one family per font URL (StreamlitInvalidThemeOptionError otherwise).
-        'font': 'Geist:https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap, sans-serif',
+        'font': 'Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif',
         'codeFont': "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&display=swap, monospace",
     }
 

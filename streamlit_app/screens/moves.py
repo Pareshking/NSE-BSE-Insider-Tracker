@@ -116,6 +116,28 @@ def _span(a, b) -> str:
     return f'{a:%d %b}–{b:%d %b}' if a.month != b.month else f'{a:%d}–{b:%d %b}'
 
 
+WARN_TONE = {'Pledge created', 'Pledge rising', 'Pledge invoked', 'Cheap shares to promoters', 'Big investor out', 'Mutual funds trimming',
+             'Foreign investors trimming'}
+UP_TONE = {'Pledge released', 'Promoters pay up', 'Big investor in', 'Mutual funds adding', 'Foreign investors adding', 'Buyback at a premium'}
+
+
+def _short_who(r) -> str:
+    """'Promoter group', 'Director Anita Shah': the one grey line has no room for every entity's name (the full sentence does)."""
+    if r['promoter_group']:
+        return 'Promoter group'
+    role = signals.ROLE_WORDS.get(r['roles'][0], 'insider') if r['roles'] else 'insider'
+    name = r['people'][0] if isinstance(r['people'], list) and r['people'] else ''
+    return f'{role[:1].upper() + role[1:]} {name}'.strip()
+
+
+def _deal_line(sellers, buyers, sh, sq, bq) -> str:
+    if sellers and buyers:
+        return f'{sellers[0][0]} sold {sh(sq)} → {buyers[0][0]}' + (f' and {len(buyers) - 1} more' if len(buyers) > 1 else '')
+    if sellers:
+        return f'{sellers[0][0]} sold {sh(sq)}'
+    return f'{buyers[0][0]} bought {sh(bq)}'
+
+
 def is_new(when, ref) -> bool:
     return ref is not None and pd.notna(when) and pd.Timestamp(when).normalize() >= pd.Timestamp(ref).normalize()
 
@@ -178,6 +200,9 @@ def insiders(_ctx, ref_key: str, side: str, days: int, isin: str | None = None) 
             lede=f'{who} {verb} {r["pct_of_company"]:.2f}% of the company on the market' + (f', {when}' if when else '')
                  + (f' (made public {kit.day(r["last"], with_year=False)})' if not late and pd.notna(r['last']) else ''),
             big=kit.rupees(r['value']), facts=facts, note=note,
+            sub=f'{_short_who(r)} {verb} {r["pct_of_company"]:.2f}%' + (f' · {when}' if when else ''),
+            chip=((f'{move:+.1f}% since', 'up' if move > 0 else 'dn' if move < 0 else 'mut') if move is not None and side == 'BUY'
+                  else (f'{r["pct_of_company"]:.2f}%', 'dn' if side == 'SELL' else 'mut')),
             tags=([('New', 'new')] if is_new(r['last'], ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else []))
         st_.move = move
         st_.verdict = verdict
@@ -299,6 +324,8 @@ def deals(_ctx, ref_key: str, days: int, isin: str | None = None) -> tuple:
         stories.append(Story(
             company=names.get(isin) or str(g['company'].iloc[-1]), href=kit.company_href(sym) if sym else '', market=market_line(sym, p),
             lede=lede, big=kit.rupees(value), facts=facts, note=w_txt if w_warn else '',
+            sub=_deal_line(sellers, buyers, sh, sq, bq) + f' · {kit.day(day, with_year=False)}',
+            chip=(f'{pct:.2f}%', 'dn' if prom_sold else 'mut') if pct is not None and pd.notna(pct) else (),
             tags=([('New', 'new')] if is_new(day, ref) else []) + ([('Promoter sold', 'warn')] if prom_sold else [])))
     club = []
     if small:
@@ -362,6 +389,8 @@ def event_stories(ctx, ev: pd.DataFrame, kinds: set, summary=None) -> list[Story
         out.append(Story(
             company=names.get(isin) or str(r['company']), href=kit.company_href(r['nse_symbol']) if isinstance(r.get('nse_symbol'), str) else '',
             market=market_line(r.get('nse_symbol'), p), lede=str(r['sentence']), big=big, facts=facts, note=w_txt if w_warn else '',
+            sub=str(r['sentence']),
+            chip=(f'{pct:.2f}%', 'dn' if r['kind'] in WARN_TONE else 'up' if r['kind'] in UP_TONE else 'mut') if pct else (),
             tags=([('New', 'new')] if is_new(r.get('last'), ctx.ref) else []) + ([('Measured ahead', 'ok')] if verdict == 'leaning_positive' else [])))
         out[-1].kind = r['kind']
     return out

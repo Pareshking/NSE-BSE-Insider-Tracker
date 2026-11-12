@@ -231,14 +231,14 @@ company.render()
     assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
     h = html['HCLTECH']
     # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the stat strip, the checks, the stories, the noise counted
-    assert '<div class="head ds-head">' in h and '<div class="ds-stats">' in h and 'Over 12 months promoters' in h
+    assert '<div class="head ds-head">' in h and 'class="ds-kpis' in h
     for part in ('>Checks before acting<', '>What did insiders do?<', '>Who owns it?<', '>Every filing<', '>Price and every decision<'):
         assert part in h, part
     for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
         assert f'<dt>{check}</dt>' in h, check
-    assert 'class="ds-story"' in h and 'class="ds-lede"' in h and 'class="ds-facts"' in h     # a news line and its numbers
-    assert 'class="co"' not in h.split('>What did insiders do?<')[1].split('Left out as noise')[0]   # no name repeated on its own page
-    assert 'Left out as noise' in h and 'designated persons' in h                            # 37 staff trades counted, not listed
+    assert 'class="ds-row"' in h and 'class="ln"' in h and 'class="chip' in h and 'class="ds-facts"' in h   # a row, its line, its chip
+    assert 'class="nm"' not in h.split('>What did insiders do?<')[1].split('ds-club')[0]   # no name repeated on its own page
+    assert 'class="ds-club"' in h and 'designated persons' in h                          # 37 staff trades counted, not listed
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):
@@ -340,9 +340,9 @@ pages.{fn}()
 def test_insiders_page_is_5w2h_with_the_noise_clubbed(data_dir, monkeypatch):
     """Redesign 12 Nov: each decision a story with its 5W-2H; staff trades and ESOPs counted at the foot, not listed."""
     h = _page_html(data_dir, monkeypatch, 'insiders')
-    assert '<div class="head ds-head">' in h and 'Insider trades' in h and '<div class="ds-stats">' in h
+    assert '<div class="head ds-head">' in h and 'Insider trades' in h and 'class="ds-kpis' in h
     assert '>Who is buying?<' in h and '>Who is selling?<' in h
-    assert 'Left out as noise' in h
+    assert 'class="ds-club"' in h
     assert 'designated persons, employees and relatives' in h or 'ESOP' in h
 
 
@@ -356,10 +356,11 @@ def test_deals_page_shows_both_sides_as_one_deal(data_dir, monkeypatch):
 
 
 def test_today_shows_the_top_of_every_topic(data_dir, monkeypatch):
+    """Minimal theme (12 Nov): four numbers, then cards: the shortlist, coming up, selling, deals, raises, risks, holders."""
     h = _page_html(data_dir, monkeypatch, 'today')
-    order = ['Worth a look now', 'Who is selling?', 'Who sold, who took it?', 'Who is raising or returning money?',
-             'What could go wrong?', 'Who are the big holders moving?', 'What is coming up?']
-    at = [h.index(f'>{x}<') for x in order]
+    assert h.count('class="kpi"') == 4
+    order = ['Worth a look', 'Coming up', 'Selling', 'Big deals', 'Raises', 'Risks', 'Big holders']
+    at = [h.index(f'>{x}</h2>') for x in order]
     assert at == sorted(at)
     for href in ('/insiders', '/deals', '/raises', '/risks', '/ownership', '/calendar'):
         assert f'href="{href}"' in h, href

@@ -107,7 +107,7 @@ def watchlist():
             x.company, x.market = '', ''
         ds.stories(items)
         if ahead:
-            st.html(ds.sub('Coming up, 30 days') + '<div class="ds-cal"><div><ul>' + ''.join(f'<li>{x}</li>' for x in ahead) + '</ul></div></div>')
+            ds.html(ds.sub('Coming up, 30 days') + '<div class="ds-rows">' + ''.join(f'<div class="ds-ev"><div class="who">{x}</div></div>' for x in ahead) + '</div>')
     if quiet:
         ds.club('Nothing past the bar in this period', [', '.join(quiet)])
 
@@ -240,7 +240,7 @@ def red_flags_section(ctx, days: int) -> None:
     else:
         rows = [{'c': _co(r['company'], r['symbol']) + f'<span class="s">{esc(str(r["symbol"]))} · {esc(str(r["mcap_bucket"] or ""))} · {kit.rupees(r["market_cap"]) if kit._finite(r["market_cap"]) else ""}</span>',
                  'n': str(r['n']), 'f': esc(' · '.join(r['flags']))} for r in flags.head(150).to_dict('records')]
-        st.html(ds.list_html(rows, [ds.Col('c', 'Company'), ds.Col('n', 'Flags', True), ds.Col('f', 'What')]))
+        ds.html(ds.list_html(rows, [ds.Col('c', 'Company'), ds.Col('n', 'Flags', True), ds.Col('f', 'What')]))
         if len(flags) > 150:
             ds.club('Not listed', [f'<b>{len(flags) - 150:,}</b> more companies with two or more flags, smaller first'])
     lend = lenders(ctx, max(days, 30))
@@ -251,7 +251,7 @@ def red_flags_section(ctx, days: int) -> None:
     else:
         rows = [{'l': esc(r['lender']), 'e': f'{r["events"]:,}', 'c': f'{r["companies"]:,}', 'cr': f'{r["created"]:,}', 'rl': f'{r["released"]:,}',
                  'iv': f'<b class="down">{r["invoked"]:,}</b>' if r['invoked'] else '0', 'n': esc(r['names'])} for r in lend.head(40).to_dict('records')]
-        st.html(ds.list_html(rows, [ds.Col('l', 'Lender'), ds.Col('e', 'Filings', True), ds.Col('c', 'Companies', True),
+        ds.html(ds.list_html(rows, [ds.Col('l', 'Lender'), ds.Col('e', 'Filings', True), ds.Col('c', 'Companies', True),
                                     ds.Col('cr', 'Created', True, phone=False), ds.Col('rl', 'Released', True, phone=False),
                                     ds.Col('iv', 'Invoked', True), ds.Col('n', 'For example', phone=False)]))
 
@@ -326,7 +326,7 @@ def sectors():
                      'n': f'<b class="{"up" if r["net"] > 0 else "down" if r["net"] < 0 else ""}">{kit.rupees(r["net"], signed=True)}</b>{bar}',
                      'c': f'{int(r["companies"]):,}', 'f': kit.rupees(r['funds'], signed=True) if r['funds'] else '—'})
     ds.section('Where are insiders putting money?', 'Net = bought minus sold on the market; funds = net in bulk and block deals')
-    st.html(ds.list_html(rows, [ds.Col('s', 'Sector'), ds.Col('n', 'Insiders net', True), ds.Col('b', 'Bought', True, phone=False),
+    ds.html(ds.list_html(rows, [ds.Col('s', 'Sector'), ds.Col('n', 'Insiders net', True), ds.Col('b', 'Bought', True, phone=False),
                                 ds.Col('so', 'Sold', True, phone=False), ds.Col('c', 'Companies', True, phone=False),
                                 ds.Col('f', 'Funds net, deals', True)]))
 
@@ -407,7 +407,7 @@ def results():
     ds.section('Who reported, and what did insiders do next?', 'Newest first; insiders = open-market net by promoters, directors and KMP '
                'in the 30 days after the filing')
     if rows:
-        st.html(ds.list_html(rows, [ds.Col('c', 'Company'), ds.Col('d', 'Filed', phone=False), ds.Col('r', 'Revenue', True),
+        ds.html(ds.list_html(rows, [ds.Col('c', 'Company'), ds.Col('d', 'Filed', phone=False), ds.Col('r', 'Revenue', True),
                                     ds.Col('q', 'vs quarter before', True), ds.Col('p', 'Profit', True), ds.Col('m', 'Margin', True, phone=False),
                                     ds.Col('i', 'Insiders next 30 days', True)]))
         if len(r) > 300:
@@ -417,7 +417,7 @@ def results():
     ds.section('Who bought right after their own results?', 'Promoters, directors and KMP buying in the first sessions after the trading '
                'window reopened. Exploratory: not yet measured on our data')
     if after:
-        st.html(ds.list_html(after, [ds.Col('c', 'Company'), ds.Col('w', 'Who'), ds.Col('v', 'Value', True),
+        ds.html(ds.list_html(after, [ds.Col('c', 'Company'), ds.Col('w', 'Who'), ds.Col('v', 'Value', True),
                                      ds.Col('s', 'After the window opened', phone=False), ds.Col('d', 'Results', phone=False)]))
     else:
         ds.empty('No insider bought in the first sessions after results in this period.')

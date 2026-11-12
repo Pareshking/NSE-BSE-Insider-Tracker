@@ -1,20 +1,20 @@
 [theme]
 # Written by scripts/sync_theme.py from streamlit_app/ui/theme.py: change the tokens there, not here.
 base = "light"
-primaryColor = "#3E5C7E"
-backgroundColor = "#FAFAF8"
-secondaryBackgroundColor = "#F3F3F0"
-textColor = "#1E2125"
-linkColor = "#2F4A68"
+primaryColor = "#4F5BD5"
+backgroundColor = "#F3F4F6"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#111827"
+linkColor = "#3F49B8"
 linkUnderline = false
-borderColor = "#D6D6CF"
+borderColor = "#E3E6EA"
 showWidgetBorder = true
-baseRadius = "6px"
-greenColor = "#2F7A57"
-redColor = "#AE4B3E"
-orangeColor = "#9A6B16"
-dataframeHeaderBackgroundColor = "#F3F3F0"
-font = "Geist:https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap, sans-serif"
+baseRadius = "10px"
+greenColor = "#15803D"
+redColor = "#C2410C"
+orangeColor = "#B45309"
+dataframeHeaderBackgroundColor = "#F1F2F6"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
 codeFont = "'Geist Mono':https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&display=swap, monospace"
 
 [client]

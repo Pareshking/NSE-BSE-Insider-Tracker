@@ -360,7 +360,7 @@ def render():
                               ('Cheap issues', not cheap.empty and (cheap['list'] == 'warn').any()), ('Late filings', len(late) > 0),
                               ('Tradability', isinstance(flags, list) and bool(flags))) if bad}
     ds.section('Checks before acting', 'Amber needs a look')
-    st.html('<dl class="ds-w ds-checks">' + ''.join(f'<dt>{esc(k)}</dt><dd class="{"warn" if k in amber else ""}">{esc(v)}</dd>'
+    ds.html('<dl class="ds-w ds-checks">' + ''.join(f'<dt>{esc(k)}</dt><dd class="{"warn" if k in amber else ""}">{esc(v)}</dd>'
                                                    for k, v in checks.items() if v) + '</dl>')
 
     # ---- Money decisions, 12 months ----
@@ -377,7 +377,8 @@ def render():
 
     # ---- The price with every decision, and the money by who ----
     ds.section('Price and every decision', '▲ bought ▼ sold: insiders on the day made public, funds from ₹5 Cr in deals · hover for who')
-    left, right = st.columns([3, 2], gap='large')
+    with ds.inside():
+        left, right = st.columns([3, 2], gap='large')
     with left:
         marks = e.assign(role=e['person_role'].map(kit.role))
         if not d.empty:
@@ -410,7 +411,7 @@ def render():
     elif table.drop(columns='change').isna().all().all():
         ds.empty('Not parsed yet: the investor types of these filings are still being read.')
     else:
-        st.html(_ownership_html(table, missing))
+        ds.html(_ownership_html(table, missing))
     pg = store.table('promoter_group')
     if not pg.empty and 'symbol' in pg:
         pg = pg[pg['symbol'].astype(str).str.upper() == sym]
@@ -420,7 +421,7 @@ def render():
             rows = [{'m': esc(str(r.get('member_name') or '')), 'c': esc(str(r.get('sub_category') or '')),
                      'p': kit.pct(r.get('pct_of_company'), 2) if kit._finite(r.get('pct_of_company')) is not None else '—',
                      'pl': kit.shares(r.get('pledged_shares')) if kit._finite(r.get('pledged_shares')) else '—'} for r in pg.head(15).to_dict('records')]
-            st.html(ds.sub(f'Promoter group at {kit.day(last)}', f'{kit.plural(len(pg), "member")}, largest first'
+            ds.html(ds.sub(f'Promoter group at {kit.day(last)}', f'{kit.plural(len(pg), "member")}, largest first'
                            + (f'; {len(pg) - 15} smaller not listed' if len(pg) > 15 else ''))
                     + ds.list_html(rows, [ds.Col('m', 'Member'), ds.Col('c', 'Category', phone=False), ds.Col('p', '% of company', True),
                                           ds.Col('pl', 'Pledged shares', True, phone=False)]))
@@ -431,11 +432,13 @@ def render():
     kinds = list(dict.fromkeys(tl['what'])) if not tl.empty else []
     kinds = [k for k in kinds if k in MONEY] + [k for k in kinds if k not in MONEY]
     counts = tl['what'].value_counts().to_dict() if not tl.empty else {}
-    pick = st.pills('Show', kinds, selection_mode='multi', default=[k for k in kinds if k not in QUIET], key=f'co_tl_{sym}',
-                    format_func=lambda k: f'{k} · {counts.get(k, 0)}', label_visibility='collapsed') if kinds else []
+    with ds.inside():
+        pick = st.pills('Show', kinds, selection_mode='multi', default=[k for k in kinds if k not in QUIET], key=f'co_tl_{sym}',
+                        format_func=lambda k: f'{k} · {counts.get(k, 0)}', label_visibility='collapsed') if kinds else []
     shown = tl[tl['what'].isin(pick)] if not tl.empty else tl
-    kit.table(shown, [
-        kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
-        kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],
-        limit=200, height=2800, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
-        detail=lambda r: facts(r['_facts'], r['_links']))
+    with ds.inside():
+        kit.table(shown, [
+            kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
+            kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],
+            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
+            detail=lambda r: facts(r['_facts'], r['_links']))
