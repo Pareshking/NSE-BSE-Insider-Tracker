@@ -356,8 +356,8 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
     r['rev_qoq'] = ((r['quarter_revenue'] / prev['quarter_revenue'] - 1) * 100).where(near & prev['quarter_revenue'].gt(0))
     r['profit_prev'] = prev['quarter_profit'].where(near)
     # Year on year: the same company's quarter about a year earlier, same basis, where our history holds it (the XBRL has
-    # no year-ago column. NSE's integrated-filing results start Feb 2026 (backfill and peek of 12 Nov), so a year-ago quarter
-    # exists for few companies until the Dec 2026 quarter; elsewhere a dash).
+    # no year-ago column. The year-ago quarters are being backfilled (12 Nov: NSE serves Sep 2025 results, TODO D1), so for
+    # now a year-ago quarter exists for few companies; elsewhere a dash).
     year = r[['isin', '_end', 'quarter_revenue', 'quarter_profit']].rename(columns={'_end': '_yend', 'quarter_revenue': '_yrev', 'quarter_profit': '_yprof'})
     year['_key'] = year['_yend'] + pd.DateOffset(years=1)
     r['_key'] = r['_end']
@@ -409,9 +409,9 @@ def results():
                           'd': kit.day(x.get('results_date'), with_year=False) if pd.notna(x.get('results_date')) else '—'})
     with top:
         ds.head(f'Results · {esc(pages._span(p, ctx.ref))}', f'{kit.plural(len(r), "quarterly result")} filed',
-                ['From NSE\'s results XBRL (integrated filings, published from Feb 2026; banks, NBFCs and insurers partly). Revenue '
-                 'against a year ago and the quarter before only where our history holds that quarter; a dash where it does not. '
-                 'A year ago fills in from the Dec 2026 quarter.'])
+                ['From NSE\'s results XBRL (integrated filings; banks, NBFCs and insurers partly). Revenue against a year ago and '
+                 'the quarter before only where our history holds that quarter; a dash where it does not. Year-ago quarters '
+                 'are still being loaded.'])
     up = int((r['rev_qoq'] > 0).sum()) if not r.empty else 0
     dn = int((r['rev_qoq'] < 0).sum()) if not r.empty else 0
     yu = int((r['rev_yoy'] > 0).sum()) if not r.empty else 0
