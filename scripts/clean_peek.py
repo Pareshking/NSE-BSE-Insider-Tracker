@@ -130,6 +130,49 @@ def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     return 0
 
 
+
+def data_pack(r2) -> int:
+    """Every table in clean/current/ and artifacts/: rows, each column's type, fill, distinct count, range or top
+    values, and the newest rows as samples (owner 12 Nov: the design brief is written from the data, not the pages)."""
+    from clean_writer import list_keys
+    keys = sorted(k for pre in ('clean/current/', 'artifacts/') for k in list_keys(r2, pre) if k.endswith('.parquet'))
+    print(f'DATA PACK: {len(keys)} tables')
+    for key in keys:
+        try:
+            d = read_parquet(r2, key)
+        except Exception as exc:   # one unreadable table must not hide the rest
+            print(f'\n===== {key}: unreadable ({type(exc).__name__})')
+            continue
+        if d is None:
+            continue
+        print(f'\n===== {key}: {len(d)} rows, {d.shape[1]} columns')
+        for c in d.columns:
+            s = d[c]
+            fill = s.notna().mean() * 100 if len(s) else 0
+            try:
+                nun = s.nunique(dropna=True)
+            except TypeError:   # lists or dicts in the cells
+                print(f'  {c} [{s.dtype}] fill {fill:.0f}% (nested)')
+                continue
+            line = f'  {c} [{s.dtype}] fill {fill:.0f}%, {nun} distinct'
+            if pd.api.types.is_numeric_dtype(s) and not pd.api.types.is_bool_dtype(s) and s.notna().any():
+                q = s.dropna().quantile([0, .1, .5, .9, 1]).tolist()
+                line += ', min/p10/p50/p90/max ' + '/'.join(f'{x:.4g}' for x in q)
+            elif pd.api.types.is_datetime64_any_dtype(s) and s.notna().any():
+                line += f', {s.min()} .. {s.max()}'
+            elif nun and nun <= 25:
+                line += ', ' + '; '.join(f'{str(k)[:40]}={v}' for k, v in s.value_counts().head(12).items())
+            elif s.notna().any():
+                line += f', e.g. {str(s.dropna().iloc[0])[:70]!r}'
+            print(line)
+        dates = [c for c in d.columns if pd.api.types.is_datetime64_any_dtype(d[c])]
+        dates.sort(key=lambda c: -d[c].notna().sum())
+        sample = d.sort_values(dates[0], ascending=False) if dates and d[dates[0]].notna().any() else d
+        cols = [c for c in d.columns if not c.endswith(('_json', '_raw')) and c not in ('xbrl_json',)][:22]
+        print('  -- newest rows:')
+        print(sample[cols].head(6).astype(str).apply(lambda col: col.str.slice(0, 32)).to_string(index=False))
+    return 0
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -137,6 +180,8 @@ def main() -> int:
         return mcap_gap(r2)
     if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
         return mcap_basis(r2)
+    if syms == ['DATA_PACK']:     # every clean table profiled, for the design brief (12 Nov)
+        return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
