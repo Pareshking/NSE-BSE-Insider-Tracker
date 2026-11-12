@@ -273,3 +273,12 @@ whole market; this page's unit is a filing.
   staff trades, ESOPs, gifts and transfers, in a tall table rather than a short scrolling box.
 - **Staff trades apart**: open-market trades by designated persons, employees and relatives are "Staff trade", one tap away.
   They never counted as decisions (rules above); on HCLTECH's test data 37 small staff sales had buried the promoter's buys.
+
+### Forward record beside the shortlist, and "New" (owner, 12 Nov: updates stay on the site, no email or messages)
+
+- Above the shortlist, after the measured record: how signals of the same kinds did in the forward record (stamped the
+  night each fired, never edited; `artifacts/forward_outcomes.parquet`), median against Nifty 500 per horizon with its
+  cases; a horizon with no complete window has no number. The shortlist is new, so it has no record of its own yet; the
+  line says what it measures.
+- A "New" tag on every row and card made public in the latest session the data holds. A per-reader "since your last
+  visit" would need browser storage and is not built.

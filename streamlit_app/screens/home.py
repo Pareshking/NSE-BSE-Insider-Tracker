@@ -15,7 +15,7 @@ from data import store
 from ui import kit
 from ui.kit import esc
 
-from insiders_clean import evidence, ideas, signals
+from insiders_clean import evidence, ideas, signals, track
 from screens import buybacks, filings_all
 from screens.ctx import issue_rows, load, need_data, qip_rows, rights_rows, split_since, with_flags
 from ui import table as tbl
@@ -93,6 +93,12 @@ def _chips(kinds, reads, big: bool = False) -> str:
     return ''.join(out)
 
 
+def _is_new(r, ctx) -> bool:
+    """Made public in the latest session the data holds (the strip's day): what a daily reader has not seen yet."""
+    ref = getattr(ctx, 'ref', None)
+    return ref is not None and pd.notna(r.get('last')) and pd.Timestamp(r['last']).normalize() >= pd.Timestamp(ref).normalize()
+
+
 def _row(ctx, r, holding, px) -> str:
     """One company as one table line: company and its market line, what happened (one sentence and its tags), value,
     share of the company, and a third number with its own label; a tap opens the facts."""
@@ -151,7 +157,8 @@ def _row(ctx, r, holding, px) -> str:
            if pr is not None and pd.notna(pr.get('pct_off_high')) else '')
     meta = ' · '.join(x for x in (when and f'public {when}', f'traded {late} days earlier' if late > 14 else '', move, off, pledge) if x)
     return (f'<details class="idea mv"><summary>'
-            f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>{sym_line}</div>'
+            f'<div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>'
+            + ('<span class="new">New</span>' if _is_new(r, ctx) else '') + f'{sym_line}</div>'
             f'<div class="mv-what"><p>{esc(r["sentence"])}</p>'
             + (f'<div class="mv-meta{" late" if late > 14 else ""}">{esc(meta)}</div>' if meta else '')
             + f'<div class="idea-chips">{_chips(r["kinds"], r.get("reads"), bool(r.get("big")) and r.get("kind") not in RAISE_KINDS)}</div></div>'
@@ -268,6 +275,33 @@ def _picks(ctx, look: pd.DataFrame, summary, holding, px) -> pd.DataFrame:
     return with_flags(g.head(PICKS)) if not g.empty else g
 
 
+def _forward_line(kinds: list) -> str:
+    """How signals of the shortlist's kinds have done since the forward record started: stamped the night each fired,
+    never edited (artifacts/forward_outcomes.parquet, the Evidence page's table), median excess over Nifty 500 per
+    horizon with its cases; a horizon with no complete window says so. The shortlist itself has no record of its own yet."""
+    fw = store.artifact('artifacts/forward_outcomes.parquet')
+    sig = {ideas.MEASURED_BY[k]: k for k in kinds if k in ideas.MEASURED_BY}
+    if fw is None or fw.empty or not sig or 'signal' not in fw:
+        return ''
+    uni = store.universe_isins()
+    if uni is not None and 'isin' in fw:
+        fw = fw[fw['isin'].isin(uni)]
+    started = pd.to_datetime(fw['recorded_at'], errors='coerce').min()
+    parts = []
+    for code, k in sig.items():
+        mine = fw[fw['signal'] == code]
+        if mine.empty:
+            continue
+        done = [(h, pd.to_numeric(mine[f'excess_{h}'], errors='coerce').dropna()) for h in track.HORIZONS if f'excess_{h}' in mine]
+        done = [(h, x) for h, x in done if len(x)]
+        parts.append(f'<b>{esc(k)}</b> ' + (' · '.join(f'{h} {kit.pct(x.median(), 1, signed=True)} ({kit.plural(len(x), "case")})' for h, x in done)
+                                            if done else f'{kit.plural(len(mine), "signal")} recorded, no complete window yet'))
+    if not parts:
+        return ''
+    return (f'<li class="fwd"><span>Since {kit.day(started)}, recorded the night each fired and never edited, median against Nifty 500:</span> '
+            + '; '.join(parts) + '. <a href="/track-record" target="_self">Every recorded signal →</a></li>')
+
+
 def _check(label: str, text: str, tone: str = '') -> str:
     return f'<li class="{tone}"><b>{esc(label)}</b><span>{esc(text)}</span></li>'
 
@@ -311,7 +345,8 @@ def _pick(ctx, r: dict, summary, holding, px) -> str:
         ('Value', kit.rupees(r['value']) if pd.notna(r.get('value')) and r.get('value') else '—'),
         ('Of company', f'{pct:.2f}%' if pd.notna(pct) and pct else '—'),
         *((('Own stake', third),) if third and r.get('kv3_label') == 'Own stake' else ())))
-    return (f'<article class="pk"><header><div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>'
+    new = '<span class="new">New</span>' if _is_new(r, ctx) else ''
+    return (f'<article class="pk"><header><div class="idea-co"><a href="{esc(href, quote=True)}" target="_self">{esc(str(r["company"]))}</a>{new}'
             f'<div class="sub"><span class="sym">{esc(str(r.get("nse_symbol") or ""))}</span>{mk}</div></div><div class="pk-n">{nums}</div></header>'
             f'<p>{esc(r["sentence"])}</p><ul class="pk-c">{"".join(checks)}</ul>'
             f'<a class="pk-go" href="{esc(href, quote=True)}" target="_self">Everything on {esc(str(r["company"]))} →</a></article>')
@@ -449,7 +484,7 @@ def render():
             kinds = list(dict.fromkeys(k for ks in picks['_ahead'] for k in ks))
             st.html('<ul class="pk-rec">' + ''.join(
                 f'<li><b>{esc(k)}</b> {esc(evidence.verdict(summary, ideas.MEASURED_BY[k])["text"].replace(evidence.CAVEAT, "").rstrip("."))}</li>'
-                for k in kinds) + '<li class="cav">Under a year of history: a hint, not proof. Costs are deducted; the clock starts at the '
+                for k in kinds) + _forward_line(kinds) + '<li class="cav">Under a year of history: a hint, not proof. Costs are deducted; the clock starts at the '
                 'exchange broadcast.</li></ul>'
                 + '<div class="pks">' + ''.join(_pick(ctx, r, summary, holding, px) for r in picks.to_dict('records')) + '</div>')
     # One column, in the order the evidence supports (docs/SIGNALS.md: insider buying is the only measured edge; sales

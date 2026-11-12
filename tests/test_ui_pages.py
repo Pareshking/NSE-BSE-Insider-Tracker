@@ -410,3 +410,23 @@ def test_a_promoter_deal_with_no_filing_does_not_take_the_measured_promoter_read
     assert ideas.PROMOTER_DEAL_BUY not in ideas.MEASURED_BY and ideas.PROMOTER_DEAL_SELL not in ideas.MEASURED_BY
     assert ideas.PROMOTER_DEAL_BUY in dict(ideas.GROUPS['look'])['Insiders buying']
     assert ideas.PROMOTER_DEAL_SELL in dict(ideas.GROUPS['warn'])['Insiders selling']
+
+
+def test_today_forward_line_and_new_tag(monkeypatch):
+    """Today, 12 Nov: beside the shortlist, how signals of its kinds did in the forward record (never edited), per horizon
+    with cases; a horizon with no complete window is not given a number. Rows made public in the latest session say New."""
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import home
+    fw = pd.DataFrame({'signal': ['promoter_buy'] * 3 + ['cluster'], 'isin': ['A', 'B', 'C', 'D'],
+                       'recorded_at': pd.to_datetime(['2026-10-20'] * 4), 'excess_1W': [1.0, 3.0, -1.0, None],
+                       'excess_1M': [2.0, None, None, None], 'excess_3M': [None] * 4, 'excess_6M': [None] * 4})
+    monkeypatch.setattr(home.store, 'artifact', lambda key: fw)
+    monkeypatch.setattr(home.store, 'universe_isins', lambda: None)
+    line = home._forward_line(['Promoter buying', 'Cluster', 'Spotlight'])
+    assert 'Since 20 Oct 2026' in line and '<b>Promoter buying</b> 1W +1.0% (3 cases) · 1M +2.0% (1 case)' in line
+    assert '<b>Cluster</b> 1 signal recorded, no complete window yet' in line and '3M' not in line
+    ctx = SimpleNamespace(ref=pd.Timestamp('2026-11-11'))
+    assert home._is_new({'last': pd.Timestamp('2026-11-11 18:30')}, ctx) and not home._is_new({'last': pd.Timestamp('2026-11-10')}, ctx)
