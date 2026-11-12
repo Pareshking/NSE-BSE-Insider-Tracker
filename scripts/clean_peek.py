@@ -92,6 +92,25 @@ def fund_names(r2) -> int:
     return 0
 
 
+def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
+    """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
+    feed and exchange in the clean deals table, primary rows, market makers included and apart."""
+    d = read_parquet(r2, 'clean/current/deals.parquet')
+    if d is None or d.empty:
+        print('clean/current/deals.parquet: empty or missing')
+        return 0
+    d = d.assign(_day=pd.to_datetime(d['date'], errors='coerce').dt.normalize())
+    w = d[(d['_day'] >= start) & (d['_day'] <= end)]
+    print(f'deals {start} to {end}: {len(w)} rows of {len(d)}; columns feeds/exchange/is_primary present:',
+          {c: c in d for c in ('feeds', 'exchange', 'is_primary', 'client_is_market_maker')})
+    if w.empty:
+        return 0
+    g = w.assign(primary=w['is_primary'].astype('boolean').fillna(False)).groupby(
+        ['_day', 'exchange', 'feeds', 'primary'], dropna=False).size().unstack(['exchange', 'feeds', 'primary'], fill_value=0)
+    print(g.to_string())
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -99,6 +118,8 @@ def main() -> int:
         return mcap_gap(r2)
     if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
         return mcap_basis(r2)
+    if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
+        return deal_days(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
         return fund_names(r2)
     sec = read_parquet(r2, 'clean/current/securities.parquet')
