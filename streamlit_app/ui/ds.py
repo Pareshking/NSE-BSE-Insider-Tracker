@@ -110,7 +110,10 @@ def _initials(name: str) -> str:
 
 
 def story_html(s: Story, detail: bool = True) -> str:
-    tags = ''.join(tag(t, tone) for t, tone in s.tags) + (tag(s.note, 'warn') if s.note and not detail else '')
+    # On a compact row only "New" and the warning: "Measured ahead" is what the Worth-a-look card already says (real
+    # data, 12 Nov: tags beside the name pushed it off the row on a phone).
+    shown = s.tags if detail else [(t, tone) for t, tone in s.tags if tone == 'new']
+    tags = ''.join(tag(t, tone) for t, tone in shown) + (tag(s.note, 'warn') if s.note and not detail else '')
     name = ('' if not s.company else f'<a href="{esc(s.href, quote=True)}" target="_self">{esc(s.company)}</a>' if s.href
             else esc(s.company))
     line = s.sub or s.lede

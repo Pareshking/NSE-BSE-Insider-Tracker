@@ -77,18 +77,16 @@ def market_line(sym, p: dict | None) -> str:
 
 
 def watch(isin, p: dict | None, h: dict | None, flags) -> tuple[str, bool]:
-    """Pledge, today's tradability flags: the checks a reader would otherwise open a company page for."""
-    out, warn = [], False
+    """What needs a look, short: a pledge over the high mark ('16% pledged') and today's NSE flags ('ASM I, T2T').
+    Only the warnings: on real data the long form ('0.0% of promoter shares pledged · no NSE surveillance flag') pushed
+    the company's name off the row (12 Nov)."""
+    out = []
     pl = (h or {}).get('promoter_pledge_pct')
-    if pl is not None and pd.notna(pl):
-        out.append(f'{kit.pct(pl, 1)} of promoter shares pledged')
-        warn |= pl > signals.HIGH_PLEDGE_PCT
+    if pl is not None and pd.notna(pl) and pl > signals.HIGH_PLEDGE_PCT:
+        out.append(f'{pl:.0f}% pledged')
     if isinstance(flags, list) and flags:
         out.append(', '.join(flags))
-        warn = True
-    elif isinstance(flags, list):
-        out.append('no NSE surveillance flag')
-    return ' · '.join(out), warn
+    return ' · '.join(out), bool(out)
 
 
 def record(kind: str, summary) -> tuple[str, str]:
