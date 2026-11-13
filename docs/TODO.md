@@ -140,4 +140,10 @@ Each page shows the render to the owner before it replaces the old one.
 - [x] C7 scheme-level splits (ABSL MF in Swiggy, 4 rows): checked 13 Nov. The deals copy rule keys on client, quantity and price (`insiders_clean/deals.py`), so different schemes or sizes are kept, then added up per client and day.
 - [x] C5 percent units: checked 13 Nov. NSE and BSE SAST file percents, and the shareholding XBRL is computed from share counts or multiplied by 100. `insiders_clean/units.check` now counts out-of-range or fraction-like percent columns on every NSE events table each night, named in the run's notes (Data health). From 13 Nov the same check runs on the tables `scripts/clean_writer.py` writes and on the BSE events tables (`collectors/bse/events.py`), named in their reports' notes.
 - [x] C4 empty is not "nothing happened": checked 13 Nov. Since then an NSE events stream that returns no rows over a window of 7 days or more is marked `empty_unconfirmed` and named in the night's notes (Data health). Today's run is an example: encumbrances, 0 rows in 10 days. Open: BSE SAST, and an "empty" mark on the page itself.
+- [x] C8 fields known wrong as filed, checked 13 Nov 2026: none enters a figure.
+  - `gsmStage` is not read: it holds the code number (`insiders_clean/tradability.py`).
+  - Preferential `boardResDate` equals the posting date, as documented in `insiders_clean/issues.py`.
+  - The tender `demand` field is dropped at parse.
+  - The results listing `page` is handled by `results_filings`.
+  - A BSE deal's company name comes from the security master once its code resolves (`insiders_clean/deals.py`), so a wrong `scripname` (AJMERA for Shree Precoated) only shows on an unmatched row.
 - [x] C13 raw copies (rule 5): NSE SAST Reg 29, corporate actions and the shareholding list are kept byte for byte from 13 Nov (`raw_v2/nse/sast/`, `actions/`, `shareholding_list/`). Open: the SHP master list and NSE's PIT JSON (insider trades come from the XBRL path).
