@@ -58,6 +58,15 @@ def _shares_out(sh: pd.DataFrame | None) -> dict:
     return dict(zip(s['isin'], s['total']))
 
 
+def _promoter_shares(sh: pd.DataFrame | None) -> dict:
+    """ISIN -> the promoter group's shares in the latest shareholding XBRL."""
+    if sh is None or sh.empty or 'promoter_shares' not in sh:
+        return {}
+    s = sh[['isin', 'quarter_end']].dropna(subset=['isin']).assign(p=pd.to_numeric(sh['promoter_shares'], errors='coerce'))
+    s = s.dropna(subset=['p']).sort_values('quarter_end').drop_duplicates('isin', keep='last')
+    return dict(zip(s['isin'], s['p']))
+
+
 def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | None = None,
               days: int = WINDOW) -> pd.DataFrame:
     """One row per company and decision-maker who bought (or sold) on the market in the window: who,
@@ -100,6 +109,13 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
     own = known.groupby(['isin', 'dm']).agg(own_before=('before', 'sum'), own_shares=('bought', 'sum'))
     out = out.join(own, on=['isin', 'dm'])
     out['own_change'] = (out['own_shares'] / out['own_before'] * 100).where(out['own_before'].gt(0))
+    # For the promoter group the base is the group's stake, not the buying entity's (investor check 13 Nov 2026:
+    # Panchsheel's entity +89% and Go Fashion's +160% read as huge bets; the group added a few percent of what it
+    # holds): shares traded over the promoter shares of the latest shareholding pattern (a quarter end, before
+    # most trades in the window; a trade before it is in both, so the change is then slightly understated). Blank
+    # where the company has no shareholding pattern in the data.
+    grp = out['isin'].map(_promoter_shares(sh))
+    out['group_change'] = (out['shares'] / grp * 100).where(out['promoter_group'].astype(bool) & grp.gt(0))
     out['roles'] = g['person_role'].agg(lambda s: sorted(set(s))).to_numpy()
     out['people'] = g['person_name'].agg(lambda s: list(dict.fromkeys(s))).to_numpy()
     total = out['isin'].map(_shares_out(sh))

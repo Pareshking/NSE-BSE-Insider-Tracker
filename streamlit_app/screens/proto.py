@@ -144,7 +144,8 @@ def _insider_page(days: int, title: str):
     st.html(_insider_table(ctx, d, px, names))
     st.html(f'<p class="dt-foot">Clubbed: <b>{clubbed}</b> smaller decisions under ₹{ideas.MIN_VALUE / 1e5:.0f} L or '
             f'{ideas.MIN_PCT:g}% of the company. Pledges, inter-se transfers, ESOP and gifts are not trades and are not counted here. '
-            '"Since" = last close against the average price paid, adjusted for splits.</p>')
+            '"Since" = last close against the average price paid, adjusted for splits. Holding Δ = shares traded against the promoter group\'s '
+            'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
 
 
 def _insider_table(ctx, d, px, names, company_col=True) -> str:
@@ -157,7 +158,8 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
         lag = (pd.Timestamp(r['last']).normalize() - pd.Timestamp(r['trade_to']).normalize()).days if pd.notna(r['trade_to']) else None
         buy = r['side'] == 'BUY'
         who_kind = 'Promoter' if r['promoter_group'] else 'Director/KMP'
-        own = r.get('own_change')
+        own = r.get('group_change') if r['promoter_group'] and kit._finite(r.get('group_change')) is not None else (
+            None if r['promoter_group'] else r.get('own_change'))
         rows.append({
             'co': _company(names.get(r['isin']) or r['company'], r['nse_symbol']),
             # on a phone only the side shows (the role word is .ph), so the value and "since" fit
@@ -165,6 +167,7 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             'who': esc(moves._short_who(r)) + (f' <span class="mute">+{len(r["people"]) - 1}</span>' if len(r['people']) > 1 else ''),
             'val': esc(kit.rupees(r['value'])),
             'pct': _num(r['pct_of_company'], '{:.2f}%'),
+            # the promoter group's stake is the base for a promoter decision, the person's own for a director (13 Nov)
             'own': _num(own, '{:+.1f}%') if buy else _num(-own if kit._finite(own) is not None else own, '{:+.1f}%'),
             'avg': _num(r['avg_price'], '₹{:,.1f}'),
             'since': (f'<span class="{("up" if move > 0 else "dn" if move < 0 else "") if buy else ""}">{move:+.1f}%</span>' if move is not None else '<span class="mute">–</span>'),
@@ -175,7 +178,7 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
         })
     # ' ph': off at phone width (dt.css), so a phone shows who, how much, how big and what since without scrolling
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
-            ('pct', '% of co.', 'r'), ('own', 'Own holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
+            ('pct', '% of co.', 'r'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
             ('days', 'Days', 'r ph'), ('when', 'Last trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Filings', 'l ph')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']
