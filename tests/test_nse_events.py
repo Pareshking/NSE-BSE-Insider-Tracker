@@ -401,3 +401,20 @@ def test_board_meeting_keeps_nse_purpose_as_filed():
     sys.path.insert(0, 'streamlit_app')
     from screens import filings_all
     assert filings_all._meeting_detail(df.loc[0, 'description'], df.loc[0, 'nse_purpose']).startswith('NSE purpose: Fund Raising · ')
+
+
+def test_an_empty_window_is_noted_not_assumed(events):
+    """C4 (13 Nov 2026): a stream with no row over a week or more is said in the notes as empty, not confirmed;
+    a stream with rows, or a short window, is not."""
+    r2, run_daily = events
+
+    class Empty(FakeNSE):
+        def encumbrances(self, s, e):
+            return self._n([])
+
+    rep = run_daily.run(r2, Empty(), date(2026, 10, 22), 10, streams=('encumbrances', 'sast'))
+    assert rep['streams']['encumbrances']['fetched'] == 0 and rep['streams']['encumbrances']['empty_unconfirmed']
+    assert any(n.startswith('encumbrances: NSE returned no rows for the last 10 days') for n in rep['notes'])
+    assert not rep['streams']['sast'].get('empty_unconfirmed')
+    rep = run_daily.run(r2, Empty(), date(2026, 10, 22), 3, streams=('encumbrances',))
+    assert not any('empty, not confirmed' in n for n in rep['notes'])

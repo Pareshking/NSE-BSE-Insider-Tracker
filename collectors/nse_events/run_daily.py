@@ -85,7 +85,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results
+from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results, units
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -756,6 +756,17 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 
 
 REPORT_KEY = 'reports/nse_events/latest_{}.json'
+EMPTY_NOTE_DAYS = 7   # a window this long with no row is said in the notes (C4)
+
+
+def units_check(stream: str, clean: pd.DataFrame, entry: dict, report: dict) -> None:
+    """Percent columns in range (insiders_clean/units): counted on the stream and named in the night's notes."""
+    found = units.check(clean)
+    if found:
+        entry['pct_check'] = found
+        report['notes'].append(f'{stream}: percent columns out of unit or range: ' + ', '.join(
+            f"{c} ({v['out_of_range']} out of range{', looks like fractions' if v['looks_like_fractions'] else ''})"
+            for c, v in found.items()))
 
 
 def publish_report(r2, report: dict, dataset: str) -> None:
@@ -826,6 +837,11 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             except Exception as exc:  # noqa: BLE001 -- one stream failing must not stop the others
                 report['notes'].append(f'{stream}: fetch failed ({type(exc).__name__}: {exc})')
         entry['fetched'] = 0 if new is None else len(new)
+        if new is not None and len(new) == 0 and days >= EMPTY_NOTE_DAYS:
+            # Empty is not "nothing happened" (synthesis C4, 13 Nov 2026: the NSE pledge feed answered [] for 2-12 Nov
+            # while Reg 31 filings lag a median 8 days; BSE SAST [] for a week while NSE listed 30): said, not assumed.
+            entry['empty_unconfirmed'] = True
+            report['notes'].append(f'{stream}: NSE returned no rows for the last {days} days; empty, not confirmed as no events')
         arch, added, parts = merge_into_archive(r2, stream, new, run_date)
         entry.update(added=added, partitions_written=parts, archive_rows=0 if arch is None else len(arch))
         if arch is None or arch.empty:
@@ -857,6 +873,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['isin_replaced'] = int(clean['isin_filed'].notna().sum())   # a retired ISIN filed, the current one used
         entry['clean_rows'] = len(clean)
+        units_check(stream, clean, entry, report)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
     nse.on_response = None
     if {'tenders', 'daily_buybacks', 'actions'} & set(streams):
