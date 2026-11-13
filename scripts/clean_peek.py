@@ -111,6 +111,39 @@ def results_quarters(r2) -> int:
     return 0
 
 
+def results_xbrl(r2, syms: list[str]) -> int:
+    """RESULTS_XBRL:SYM,...: each Sep 2026 results filing of these companies from the archive, its plain duration
+    contexts (start, end, days) with RevenueFromOperations and ProfitLossForPeriod as filed, TypeOfReportingPeriod,
+    and the quarter the clean layer took (13 Nov 2026: Godfrey Phillips and Tega at +150% / +950%)."""
+    import json
+    from insiders_clean import results
+    a = read_parquet(r2, 'archive/nse_events/results/year=2026.parquet')
+    if a is None or a.empty:
+        print('archive results 2026: empty or missing')
+        return 0
+    for sym in syms:
+        g = a[(a['symbol'].astype(str).str.upper() == sym) & a['period_end'].astype(str).str.startswith('2026-09')]
+        print(f'\n===== {sym}: {len(g)} filings ending Sep 2026')
+        for r in g.to_dict('records'):
+            print(f"-- {r.get('consolidated')} {r.get('revision')} broadcast {r.get('broadcast_at')} status {r.get('xbrl_status')}")
+            try:
+                p = json.loads(r['xbrl_json'])
+            except (TypeError, ValueError):
+                print('   no xbrl_json')
+                continue
+            q, y = results.periods(p)
+            for k, c in p['contexts'].items():
+                if c['instant'] or c['dimension'] or not c['start']:
+                    continue
+                f = p['facts'].get(k, {})
+                if 'RevenueFromOperations' not in f and 'DateOfEndOfReportingPeriod' not in f:
+                    continue
+                days = results._days(c)
+                print(f"   {k:12} {c['start']} - {c['end']} ({days} d) revenue {f.get('RevenueFromOperations')} profit "
+                      f"{f.get('ProfitLossForPeriod')} type {f.get('TypeOfReportingPeriod')}{' <- quarter' if k == q else ''}{' <- ytd' if k == y else ''}")
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -257,6 +290,8 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
+        return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
         return deal_days(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
