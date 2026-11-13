@@ -360,6 +360,13 @@ def stakes():
                     ('filed', 'Filed', 'r'), ('ev', 'Evidence', 'l')], rows[:80]) if rows else '<p class="dt-empty">No SAST Reg 29 filings in the period.</p>')
     st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company.</p>')
 
+    try:
+        _pledges(ctx, ref, days, names)
+    except Exception as exc:   # say what failed instead of breaking the page; shown, not hidden
+        st.html(f'<p class="dt-empty">Pledges could not be drawn: {esc(type(exc).__name__)}: {esc(str(exc)[:200])}</p>')
+
+
+def _pledges(ctx, ref, days, names):
     en = ctx.encumbrances
     prow = []
     if en is not None and not en.empty:
