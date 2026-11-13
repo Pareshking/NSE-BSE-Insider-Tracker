@@ -58,6 +58,10 @@ def _shares_out(sh: pd.DataFrame | None) -> dict:
     return dict(zip(s['isin'], s['total']))
 
 
+PRIOR_DAYS = 365
+ROUTINE_MONTHS = 6   # traded in 6 or more of the 12 months before: routine
+
+
 def _promoter_shares(sh: pd.DataFrame | None) -> dict:
     """ISIN -> the promoter group's shares in the latest shareholding XBRL."""
     if sh is None or sh.empty or 'promoter_shares' not in sh:
@@ -118,6 +122,18 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
     out['group_change'] = (out['shares'] / grp * 100).where(out['promoter_group'].astype(bool) & grp.gt(0))
     out['roles'] = g['person_role'].agg(lambda s: sorted(set(s))).to_numpy()
     out['people'] = g['person_name'].agg(lambda s: list(dict.fromkeys(s))).to_numpy()
+    # Routine or first (investor check 13 Nov 2026: the Jindal family buys every month; a first buy in a year is news):
+    # the months of the 12 before the window in which the same people traded this company on the same side.
+    pid = g['person_id'].agg(lambda s: set(s)).to_numpy()
+    hist = t[(t['side'] == side) & (t['seen'] <= ref - pd.Timedelta(days=days))
+             & (t['seen'] > ref - pd.Timedelta(days=days + PRIOR_DAYS))].dropna(subset=['isin', 'person_id'])
+    months = hist.assign(_m=pd.to_datetime(hist['seen']).dt.to_period('M'))[['isin', 'person_id', '_m']].drop_duplicates()
+    by = {k: v for k, v in months.groupby('isin')}
+    out['prior_months'] = [int(by[i].loc[by[i]['person_id'].isin(p), '_m'].nunique()) if i in by else 0
+                           for i, p in zip(out['isin'], pid)]
+    # the other side of a matched deal, when the decision's trade was one (promoter_group.mark_insider_group_transfers)
+    out['cross_with'] = (g['cross_with'].agg(lambda s: list(dict.fromkeys(x for x in s if isinstance(x, str) and x))).to_numpy()
+                         if 'cross_with' in w else [[] for _ in range(len(out))])
     total = out['isin'].map(_shares_out(sh))
     out['pct_of_company'] = (out['shares'] / total * 100).where(total.gt(0), out['pct_mcap'])
     out['pct_basis'] = total.gt(0).map({True: 'shares', False: 'value'})

@@ -198,13 +198,52 @@ def mark_insider_group_transfers(trades: pd.DataFrame, deals: pd.DataFrame) -> t
     company, shares and the deal day within the trade dates. The insider-side rule (insider._promoter_group_transfers)
     needs both promoters' filings on one exchange; this one needs only the exchange's deal pair (13 Nov 2026:
     Gallantt Ispat, Dinesh R Agarwal -> Santosh Kumar Agrawal, 40,00,000 shares at Rs 503 in the block window, shown on
-    Insiders as a Rs 420 Cr promoter sale while Deals called it a group transfer)."""
+    Insiders as a Rs 420 Cr promoter sale while Deals called it a group transfer). Any insider market trade that is one
+    side of a matched deal pair also gets `cross_with`, the other side's name as the exchange filed it (Gallantt, 03 Nov:
+    Dinesh R Agarwal -> Suryalaxmi Infracon, not in the promoter list: a negotiated cross, not a market sale)."""
     t = trades.copy()
     t['group_transfer_by_deal'] = False
-    rep = {'pairs': 0, 'trades_marked': 0}
-    need = {'matched_pair', 'client_is_promoter', 'isin', 'date', 'quantity'}
+    t['cross_with'] = None
+    rep = {'pairs': 0, 'trades_marked': 0, 'crosses_named': 0}
+    need = {'matched_pair', 'client_is_promoter', 'isin', 'date', 'quantity', 'side', 'client_name'}
     if t.empty or deals is None or deals.empty or not need <= set(deals.columns):
         return t, rep
+    d = deals[deals['matched_pair'].notna()]
+    d = d[d.groupby('matched_pair')['side'].transform('nunique').eq(2)]
+    if d.empty:
+        return t, rep
+    prom = d['client_is_promoter'].astype('boolean').fillna(False)
+    d = d.assign(grp=prom.groupby(d['matched_pair']).transform('all'))
+    buy = d[d['side'].eq('BUY')].set_index('matched_pair')
+    sell = d[d['side'].eq('SELL')].set_index('matched_pair')
+    pairs = buy[['isin', 'date', 'quantity', 'grp']].join(sell[['client_name']].rename(columns={'client_name': 'seller'})) \
+        .join(buy[['client_name']].rename(columns={'client_name': 'buyer'}))
+    rep['pairs'] = int(pairs['grp'].sum())
+    cand = (t['kind'].eq('market') & t['person_role'].isin(['promoter', 'promoter_group', 'director', 'kmp'])
+            & t['side'].isin(['BUY', 'SELL']) & t['isin'].notna())
+    if not cand.any():
+        return t, rep
+    frm = pd.to_datetime(t['trade_date_from'].where(t['trade_date_from'].notna(), t['trade_date_to']), errors='coerce')
+    to = pd.to_datetime(t['trade_date_to'], errors='coerce')
+    q = pd.to_numeric(t['quantity'], errors='coerce')
+    group_hit = pd.Series(False, index=t.index)
+    for r in pairs.itertuples():
+        day = pd.Timestamp(r.date)
+        hit = cand & t['isin'].eq(r.isin) & q.eq(r.quantity) & frm.le(day) & to.ge(day)
+        if not hit.any():
+            continue
+        if r.grp and t.loc[hit, 'person_role'].isin(['promoter', 'promoter_group']).all():
+            group_hit |= hit
+        # the other side of the deal, as the exchange names it: a sale's buyer, a buy's seller
+        t.loc[hit & t['side'].eq('SELL'), 'cross_with'] = r.buyer
+        t.loc[hit & t['side'].eq('BUY'), 'cross_with'] = r.seller
+    t.loc[group_hit, 'kind'] = 'inter_se'
+    if 'is_market' in t:
+        t.loc[group_hit, 'is_market'] = False
+    t.loc[group_hit, 'group_transfer_by_deal'] = True
+    rep['trades_marked'] = int(group_hit.sum())
+    rep['crosses_named'] = int(t['cross_with'].notna().sum())
+    return t, rep
     d = deals[deals['matched_pair'].notna()]
     prom = d['client_is_promoter'].astype('boolean').fillna(False)
     both = prom.groupby(d['matched_pair']).transform('all') & d.groupby('matched_pair')['side'].transform('nunique').eq(2)

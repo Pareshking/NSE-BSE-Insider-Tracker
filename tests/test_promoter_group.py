@@ -259,6 +259,7 @@ def test_a_promoter_trade_in_a_promoter_to_promoter_deal_pair_is_a_group_transfe
     import pandas as pd
     from insiders_clean.promoter_group import mark_insider_group_transfers
     deals = pd.DataFrame({'matched_pair': ['p1', 'p1', 'p2', 'p2'], 'client_is_promoter': [True, True, True, False],
+                          'client_name': ['Dinesh R Agarwal', 'Santosh Kumar Agrawal', 'A Promoter', 'Suryalaxmi Infracon'],
                           'side': ['SELL', 'BUY', 'SELL', 'BUY'], 'isin': ['INE297H01019'] * 2 + ['INE000X01011'] * 2,
                           'date': pd.to_datetime(['2026-11-12'] * 4), 'quantity': [4000000.0] * 2 + [500.0] * 2})
     trades = pd.DataFrame({'kind': ['market', 'market', 'market', 'market'], 'is_market': [True] * 4,
@@ -271,4 +272,5 @@ def test_a_promoter_trade_in_a_promoter_to_promoter_deal_pair_is_a_group_transfe
     out, rep = mark_insider_group_transfers(trades, deals)
     assert out['group_transfer_by_deal'].tolist() == [True, True, False, False]   # p2 has a non-promoter side
     assert out.loc[0, 'kind'] == 'inter_se' and not out.loc[0, 'is_market'] and out.loc[2, 'is_market']
-    assert rep == {'pairs': 1, 'trades_marked': 2}
+    assert rep == {'pairs': 1, 'trades_marked': 2, 'crosses_named': 3}
+    assert out['cross_with'].tolist() == ['Santosh Kumar Agrawal', 'Dinesh R Agarwal', None, 'Suryalaxmi Infracon']

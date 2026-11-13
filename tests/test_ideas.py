@@ -500,3 +500,21 @@ def test_promoter_holding_change_is_against_the_group_stake():
     sh = pd.DataFrame({'isin': ['INE1'], 'quarter_end': ['2026-09-30'], 'promoter_shares': [5000.0], 'total_shares': [20000.0]})
     d = ideas.decisions(t, ref, 'BUY', sh, 30)
     assert round(float(d.loc[0, 'own_change']), 1) == 89.3 and round(float(d.loc[0, 'group_change']), 1) == 2.0
+
+
+def test_routine_and_first_buyers_are_told_apart():
+    """13 Nov 2026: a promoter who bought in most months of the last year is routine; one with no buy in it is first."""
+    import pandas as pd
+    from insiders_clean import ideas
+    ref = pd.Timestamp('2026-11-12')
+    rows = []
+    for k in range(8):   # entity A bought in 8 earlier months
+        d = ref - pd.Timedelta(days=40 + 30 * k)
+        rows.append({'person_id': 'a', 'seen': d})
+    rows += [{'person_id': 'a', 'seen': ref}, {'person_id': 'b', 'seen': ref}]
+    t = pd.DataFrame([{**r, 'side': 'BUY', 'person_role': 'director', 'isin': 'INE1' if r['person_id'] == 'a' else 'INE2',
+                       'quantity': 10.0, 'value': 1000.0, 'pct_of_mcap': 0.1, 'trade_date_to': r['seen'],
+                       'trade_date_from': r['seen'], 'company': 'X', 'nse_symbol': 'X', 'holding_before': 100.0,
+                       'person_name': r['person_id'], 'broadcast_date': r['seen']} for r in rows])
+    d = ideas.decisions(t, ref, 'BUY', None, 30).set_index('isin')
+    assert d.loc['INE1', 'prior_months'] >= ideas.ROUTINE_MONTHS and d.loc['INE2', 'prior_months'] == 0
