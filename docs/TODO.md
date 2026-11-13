@@ -133,4 +133,5 @@ Each page shows the render to the owner before it replaces the old one.
 - [ ] R8 Company: header, checks, one evidence timeline
 - [ ] R9 Data health: each source's last fetch, rows, exchange count, status
 - [ ] R10 Results and Calendar: dense tables
+- [ ] R12 SAST stake changes shown twice on the Stakes render (12 Nov data: Silgo Retail / Dempal Shah +1.77%, Molbio / Kotak MF +0.49%, Alankit / Alka Agarwal): find whether these are NSE revisions (two application numbers) or BSE rows `with_bse` failed to match, and fix it in the clean layer (the site does not drop rows)
 - [ ] R11 Menu: the 9 pages (Today, Insiders, Deals, Stakes, Situations, Results, Calendar, Company, Data health); old addresses redirect
