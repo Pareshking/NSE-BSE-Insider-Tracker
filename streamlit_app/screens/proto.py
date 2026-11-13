@@ -156,11 +156,12 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
         _, move = moves._paid_now(ctx, r['isin'], r['avg_price'], r['trade_to'], p.get('latest_close'))
         lag = (pd.Timestamp(r['last']).normalize() - pd.Timestamp(r['trade_to']).normalize()).days if pd.notna(r['trade_to']) else None
         buy = r['side'] == 'BUY'
-        sig = ('Promoter' if r['promoter_group'] else 'Director/KMP') + (' buy' if buy else ' sell')
+        who_kind = 'Promoter' if r['promoter_group'] else 'Director/KMP'
         own = r.get('own_change')
         rows.append({
             'co': _company(names.get(r['isin']) or r['company'], r['nse_symbol']),
-            'sig': _chip(sig, 'up' if buy else 'dn'),
+            # on a phone only the side shows (the role word is .ph), so the value and "since" fit
+            'sig': f'<span class="dt-chip {"up" if buy else "dn"}"><span class="ph">{esc(who_kind)} </span>{"buy" if buy else "sell"}</span>',
             'who': esc(moves._short_who(r)) + (f' <span class="mute">+{len(r["people"]) - 1}</span>' if len(r['people']) > 1 else ''),
             'val': esc(kit.rupees(r['value'])),
             'pct': _num(r['pct_of_company'], '{:.2f}%'),

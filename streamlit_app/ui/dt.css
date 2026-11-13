@@ -38,6 +38,6 @@ table.dt .ev { font: var(--fw-regular) 11px/1 var(--ui); color: var(--ink-3); bo
 .dt-foot { font: var(--fw-regular) var(--fs-small)/1.5 var(--ui); color: var(--ink-3); margin: var(--gap-2) 0 0; }
 .dt-empty { font: var(--fw-regular) var(--fs-body)/1.5 var(--ui); color: var(--ink-3); background: var(--surface); border: 1px dashed var(--line-strong);
   border-radius: var(--radius-sm); padding: 14px; margin: 0; }
-@media (max-width: 640px) { table.dt .ph { display: none; } table.dt .sym { display: none; }
+@media (max-width: 640px) { table.dt .ph { display: none; } table.dt .dt-chip { text-transform: capitalize; } table.dt .sym { display: none; }
   table.dt td { padding: 6px 5px; } table.dt th { padding: 8px 5px; } table.dt td:first-child, table.dt td:nth-child(2) { white-space: normal; }
   .dt-chip { padding: 2px 5px; font-size: 10.5px; } .dt-kpis { gap: var(--gap-4); } .dt-head h1 { font-size: 19px; } table.dt { font-size: 12.5px; } }
