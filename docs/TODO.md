@@ -116,3 +116,21 @@ Open from it:
 - **Table links (fixed 12 Oct):** company and person links inside tables did nothing on the live site. Streamlit's `st.iframe` is sandboxed without top-level navigation, so `target="_top"` was blocked; reproduced in headless Chromium (console: "The frame attempting navigation of the top-level window is sandboxed"). `ui/table.py` now hands the click to an anchor in the parent page. Re-check on the live site after the deploy; if the host wraps the app in another frame, open links in a new tab instead.
 
 - **Group-level round trips (decided 12 Oct: not built).** The D3 Stock Vision LLP / Ankita Vishal Shah case (GREENPOWER, 28 Apr 2026) is two named clients buying and selling near-equal amounts the same day. Nothing in the NSE/BSE rows says the two are related (the "A; B" string on the page is only the list of counterparties of that company and day), so a rule that pairs them would flag ordinary trades between unrelated parties and break rule 7. It needs a source that names the group (a common PAN, or a filing that lists the persons acting in concert); until one is found these rows stay as filed. Market-maker flagging (`client_is_market_maker`) already covers repeat two-way clients.
+
+## Redesign build (owner, 13 Nov 2026: yes to dense tables, a Situations page, group-transfer labels; render first; 9 pages; half-hour chain for 5 hours)
+
+Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
+Each page shows the render to the owner before it replaces the old one.
+
+- [ ] R0 Prototype renders of Today (dense) and Situations on real data (#240, hidden pages, screenshots to the owner)
+- [ ] R1 Deals: a matched pair of different clients (same day, symbol, quantity, price, opposite sides) is one line; "group transfer" when both names are in the company's promoter group, else "negotiated cross"
+- [ ] R2 Pledges: net change per promoter group per day; "rollover" when the net is about zero (Embassy, 11 Nov)
+- [ ] R3 Fetches that are not data (HTML home page for a file, "Missing parameters" text) are marked failed, not stored as success
+- [ ] R4 Today: the dense table replaces the card page
+- [ ] R5 Situations: the live page (in the menu)
+- [ ] R6 Insiders and Deals: dense tables
+- [ ] R7 Stakes: SAST crossings and pledges (net, rollover, invocations first)
+- [ ] R8 Company: header, checks, one evidence timeline
+- [ ] R9 Data health: each source's last fetch, rows, exchange count, status
+- [ ] R10 Results and Calendar: dense tables
+- [ ] R11 Menu: the 9 pages (Today, Insiders, Deals, Stakes, Situations, Results, Calendar, Company, Data health); old addresses redirect
