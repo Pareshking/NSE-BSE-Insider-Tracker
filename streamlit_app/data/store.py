@@ -246,6 +246,17 @@ def latest() -> dict:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
+@st.cache_resource(ttl=600, show_spinner=False)
+def events_report() -> dict:
+    """The last nightly NSE events run (collectors/nse_events/run_daily.publish_report): per stream rows fetched, NSE's
+    own results count, the night's notes. Empty before the first run that publishes it."""
+    body = _read('reports/nse_events/latest_all.json')
+    try:
+        return json.loads(body) if body else {}
+    except ValueError:
+        return {}
+
+
 def report() -> dict:
     info = latest()
     key = info.get('report')

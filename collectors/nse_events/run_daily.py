@@ -755,6 +755,19 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
     return entry
 
 
+REPORT_KEY = 'reports/nse_events/latest_{}.json'
+
+
+def publish_report(r2, report: dict, dataset: str) -> None:
+    """The night's report in R2 (reports/nse_events/latest_all.json for the nightly run), so the site's Data health
+    page shows the exchange's own counts (results: NSE's totalCount against what we listed) and the night's notes.
+    A failed write is printed, never fatal: the data the run wrote is already in R2 (13 Nov 2026)."""
+    try:
+        put(r2, REPORT_KEY.format(dataset), json.dumps(report, default=str).encode('utf-8'), 'application/json')
+    except Exception as exc:  # noqa: BLE001
+        print(f'  report not published: {type(exc).__name__}: {exc}')
+
+
 def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: int = MAX_XBRL_PER_RUN,
         raw=None, backfill_from: date | None = None, max_issue_xbrl: int = MAX_ISSUE_XBRL_PER_RUN,
         now: datetime | None = None, max_results_xbrl: int = MAX_RESULTS_XBRL_PER_RUN, results_workers: int = 1,
@@ -897,6 +910,7 @@ def main(argv=None):
                  results_window=(args.results_from, args.results_to or today) if args.results_from else None,
                  reparse_raw=args.reparse_raw)
     Path('nse_events_report.json').write_text(json.dumps(report, default=str))  # read by the workflow's continue step
+    publish_report(r2, report, args.dataset)
     for name, s in report['streams'].items():
         print(f'  {name}: {s}')
     if 'shareholding_reparse' in report:

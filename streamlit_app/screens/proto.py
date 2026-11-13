@@ -536,6 +536,31 @@ def data_health():
                     ('rem', 'Removed', 'r'), ('flag', 'Held back', 'r'), ('note', 'Known limits', 'l')], rows))
     st.html('<p class="dt-foot">Removed: exact copies, revisions replaced and rows outside the product window, each counted by reason. '
             'Held back: kept but out of rankings until checked. Raw exchange responses are kept byte for byte under raw_v2/.</p>')
+    _events_run(store.events_report())
+
+
+def _events_run(ev: dict) -> None:
+    """The last nightly NSE events run: rows fetched per stream, NSE's own results count against what we listed, and
+    the night's notes (a short listing, a refusal), as the collector wrote them (run_daily.publish_report)."""
+    st.html('<h2 class="dt-h2">Last NSE events run <span>as the collector reported it</span></h2>')
+    if not ev:
+        st.html('<p class="dt-empty">Not published yet: the nightly run writes its report from 13 Nov 2026.</p>')
+        return
+    rows = []
+    for name, e in (ev.get('streams') or {}).items():
+        if not isinstance(e, dict):
+            continue
+        listed = ''
+        if name == 'results' and ev.get('results_total'):
+            got, tot = int(ev.get('results_listed') or 0), int(ev['results_total'])
+            listed = _chip(f'{got:,} of {tot:,} NSE lists', 'up' if got >= tot else 'dn')
+        rows.append({'s': esc(name), 'f': _num(e.get('fetched'), '{:,.0f}'), 'c': _num(e.get('clean_rows'), '{:,.0f}'), 'x': listed})
+    w = ev.get('window') or ['', '']
+    st.html(f'<p class="dt-foot">Run of {esc(str(ev.get("run_date") or "?"))}, window {esc(str(w[0]))} to {esc(str(w[-1]))}.</p>')
+    st.html(_table([('s', 'Stream', 'l'), ('f', 'Fetched', 'r'), ('c', 'Rows kept', 'r'), ('x', 'Against the exchange', 'l')], rows)
+            if rows else '<p class="dt-empty">The report has no streams.</p>')
+    notes = [str(n) for n in ev.get('notes') or []]
+    st.html('<p class="dt-foot">' + ('<b>Notes:</b> ' + ' · '.join(esc(n) for n in notes[:12]) if notes else 'No failures or short listings noted.') + '</p>')
 
 
 # ---- Results: latest quarter per filing, with the comparisons done --------------------------------------------------

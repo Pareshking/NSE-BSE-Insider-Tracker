@@ -478,3 +478,22 @@ def test_site_loads_the_columns_the_dense_pages_read():
     assert {'symbol', 'company', 'event_type', 'shares', 'pct_of_company', 'encumbered_pct', 'lender', 'broadcast_date',
             'attachment'} <= set(store.ONLY['encumbrances'])
     assert {'symbol', 'company', 'quarter_derived', 'quarter_revenue', 'quarter_profit'} <= set(store.ONLY['results'])
+
+
+def test_events_report_is_published_and_shown(monkeypatch):
+    """13 Nov 2026: the nightly NSE events report goes to R2 and Data health shows NSE's own results count."""
+    from collectors.nse_events import run_daily
+    put = []
+    monkeypatch.setattr(run_daily, 'put', lambda r2, key, body, ct: put.append((key, body)))
+    run_daily.publish_report(None, {'run_date': '2026-11-13', 'streams': {}}, 'all')
+    assert put and put[0][0] == 'reports/nse_events/latest_all.json'
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_string(APP_PATHS + """
+from screens import proto
+proto._events_run({'run_date': '2026-11-13', 'window': ['2026-11-06', '2026-11-13'], 'results_listed': 90, 'results_total': 100,
+                   'streams': {'results': {'fetched': 90, 'clean_rows': 88}}, 'notes': ['results: fetch failed (listing short: 90 of 100 for x..y)']})
+""")
+    at.run()
+    assert not at.exception
+    h = ' '.join(e.proto.body for e in at.get('html'))
+    assert '90 of 100 NSE lists' in h and 'listing short' in h
