@@ -32,6 +32,7 @@ table.dt b.up, table.dt b.dn { font-weight: var(--fw-strong); }
 .dt-chip.up { background: var(--buy-tint); color: var(--buy); }
 .dt-chip.dn { background: var(--sell-tint); color: var(--sell); }
 .dt-chip.wn { background: var(--warn-tint); color: var(--warn-ink); }
+table.dt td .wrap { white-space: normal; display: inline-block; min-width: 260px; max-width: 420px; color: var(--ink-3); font-size: 12px; }
 table.dt .ev { font: var(--fw-regular) 11px/1 var(--ui); color: var(--ink-3); border: 1px solid var(--line-strong); border-radius: 4px; padding: 2px 5px; }
 .dt-foot { font: var(--fw-regular) var(--fs-small)/1.5 var(--ui); color: var(--ink-3); margin: var(--gap-2) 0 0; }
 .dt-empty { font: var(--fw-regular) var(--fs-body)/1.5 var(--ui); color: var(--ink-3); background: var(--surface); border: 1px dashed var(--line-strong);

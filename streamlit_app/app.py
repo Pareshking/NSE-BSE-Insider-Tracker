@@ -119,7 +119,8 @@ HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('pers
           st.Page(proto.situations, title='Prototype: Situations', icon=M('table_rows'), url_path='proto-situations', visibility='hidden'),
           st.Page(proto.insiders, title='Prototype: Insiders', icon=M('table_rows'), url_path='proto-insiders', visibility='hidden'),
           st.Page(proto.deals, title='Prototype: Deals', icon=M('table_rows'), url_path='proto-deals', visibility='hidden'),
-          st.Page(proto.stakes, title='Prototype: Stakes', icon=M('table_rows'), url_path='proto-stakes', visibility='hidden')]
+          st.Page(proto.stakes, title='Prototype: Stakes', icon=M('table_rows'), url_path='proto-stakes', visibility='hidden'),
+          st.Page(proto.data_health, title='Prototype: Data health', icon=M('table_rows'), url_path='proto-data', visibility='hidden')]
 ALL = ALL_PAGES + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'transactions': 'Filings', 'promoter_activity': 'Filings',

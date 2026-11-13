@@ -389,3 +389,62 @@ def stakes():
                     ('enc', 'Encumbered after', 'r'), ('lender', 'Lender', 'l'), ('rows', 'Filings', 'r'), ('filed', 'Filed', 'r'),
                     ('src', 'Evidence', 'l')], prow[:60]) if prow else
             '<p class="dt-empty">No pledge filings in the period (NSE Reg 31 feed; filings arrive a median 8 days after the event).</p>')
+
+
+# ---- Data health: can I trust today's numbers? -------------------------------------------------------------------------
+
+SOURCES = [   # (label, clean table, date column, what the date is)
+    ('Insider trades (SEBI PIT, NSE + BSE)', 'insider_trades', 'broadcast_date', 'filed'),
+    ('Bulk and block deals (NSE + BSE)', 'deals', 'date', 'deal day'),
+    ('Stake changes (SAST Reg 29)', 'sast', 'broadcast_ts', 'filed'),
+    ('Pledges (SAST Reg 31, NSE)', 'encumbrances', 'broadcast_date', 'filed'),
+    ('Shareholding patterns', 'shareholding', 'quarter_end', 'quarter or event'),
+    ('Results (integrated filing XBRL)', 'results', 'broadcast_date', 'filed'),
+    ('Tender offers (buyback, open offer, delisting)', 'tenders', 'last_seen', 'last listed'),
+    ('Preferential issues', 'preferential', 'posted_on', 'posted'),
+    ('Rights issues', 'rights', 'posted_on', 'posted'),
+    ('QIPs', 'qip', 'posted_on', 'posted'),
+    ('Board meetings', 'meetings', None, ''),
+    ('Corporate actions', 'actions', None, ''),
+]
+KNOWN = {   # what the raw data showed on 12 Nov 2026 (docs/TODO.md, the design synthesis)
+    'encumbrances': 'NSE posts Reg 31 pledges a median 8 days (up to 56) after the event: the last week is always thin.',
+    'sast': 'BSE\'s SAST feed returned no rows for 6-12 Nov while NSE had 30: BSE rows are unconfirmed until it answers again.',
+    'results': 'Year-ago quarters loaded back to Apr 2025 filings (93% of Sep 2026 companies).',
+}
+
+
+def data_health():
+    ctx = load()
+    if not need_data(ctx):
+        return
+    ref = pd.Timestamp(ctx.ref)
+    rep = store.report() or {}
+    tabs = rep.get('tables', {})
+    _strip(ctx, [f'cleaning run of {kit.day(rep.get("run_date"))}' if rep.get('run_date') else 'no cleaning report'])
+    st.html('<div class="head ds-head dt-head"><h1>Data health</h1><p class="dt-dek">Each source: how many rows we hold, '
+            'the latest date in it, and what the cleaning removed or held back. Amber: older than 3 days; red: older than 10.</p></div>')
+    rows = []
+    for label, name, col, what in SOURCES:
+        try:
+            t = store.table(name)
+        except Exception:   # a table not published yet: say so, don't fail the page
+            t = pd.DataFrame()
+        last = None
+        if col and not t.empty and col in t:
+            last = pd.to_datetime(t[col], errors='coerce', format='mixed').max()
+        age = max(0, (ref.normalize() - last.normalize()).days) if last is not None and pd.notna(last) and what != 'quarter or event' else None
+        tone = '' if age is None else ('up' if age <= 3 else 'wn' if age <= 10 else 'dn')
+        tr = tabs.get(name, {})
+        removed = sum(v.get('count', 0) for v in tr.get('removed', {}).values()) if isinstance(tr.get('removed'), dict) else None
+        flagged = sum(tr.get('flagged', {}).values()) if isinstance(tr.get('flagged'), dict) else None
+        rows.append({'src': esc(label), 'rows': f'{len(t):,}' if not t.empty else '<span class="mute">none</span>',
+                     'last': (esc(kit.day(last)) + (f' <span class="mute">({what})</span>' if what else '')) if last is not None and pd.notna(last) else '<span class="mute">–</span>',
+                     'age': _chip(f'{age} days old' if age else 'current', tone) if age is not None else '<span class="mute">–</span>',
+                     'rem': f'{removed:,}' if removed else '<span class="mute">–</span>',
+                     'flag': f'{flagged:,}' if flagged else '<span class="mute">–</span>',
+                     'note': f'<span class="wrap">{esc(KNOWN.get(name, ""))}</span>'})
+    st.html(_table([('src', 'Source', 'l'), ('rows', 'Rows', 'r'), ('last', 'Latest', 'r'), ('age', 'Age', 'l'),
+                    ('rem', 'Removed', 'r'), ('flag', 'Held back', 'r'), ('note', 'Known limits', 'l')], rows))
+    st.html('<p class="dt-foot">Removed: exact copies, revisions replaced and rows outside the product window, each counted by reason. '
+            'Held back: kept but out of rankings until checked. Raw exchange responses are kept byte for byte under raw_v2/.</p>')
