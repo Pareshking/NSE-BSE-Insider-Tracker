@@ -43,7 +43,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, TARGET_DATE, r2_client
 
-from insiders_clean import adjust, archive, day_range, issues, market_cap, promoter_group, trading_window
+from insiders_clean import adjust, archive, day_range, issues, market_cap, promoter_group, trading_window, units
 from insiders_clean.bse_events import with_bse
 from insiders_clean.calendar import Calendar, seed_state
 from insiders_clean.pipeline import PRODUCT_START, run
@@ -377,6 +377,12 @@ def main():
         key = f'clean/current/{name}.parquet'
         put_parquet(client, key, df)
         written[name] = {'key': key, 'rows': len(df)}
+        found = units.check(df)   # percent columns in one unit and in range (C5, 13 Nov 2026): counted, nothing changed
+        if found:
+            written[name]['pct_check'] = found
+            report['notes'].append(f'{name}: percent columns out of unit or range: ' + ', '.join(
+                f"{c} ({v['out_of_range']} out of range{', looks like fractions' if v['looks_like_fractions'] else ''})"
+                for c, v in found.items()))
     report['written'] = written
     put(client, f'clean/reports/{TARGET_DATE}.json', json.dumps(report, indent=2, default=str).encode(),
         'application/json')
