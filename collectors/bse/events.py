@@ -99,6 +99,17 @@ SHP_NUMBERS = ('promoter_shares', 'total_shares', 'promoter_pledged_shares', 'pr
                'employee_trust_pct', 'promoter_members')
 
 
+
+def _units(name: str, clean: pd.DataFrame, stats: dict, report: dict) -> None:
+    """Percent columns in one unit and in range (insiders_clean/units, C5, 13 Nov 2026): counted, nothing changed."""
+    from insiders_clean import units
+    found = units.check(clean)
+    if found:
+        stats['pct_check'] = found
+        report['notes'].append(f'{name}: percent columns out of unit or range: ' + ', '.join(
+            f"{c} ({v['out_of_range']} out of range{', looks like fractions' if v['looks_like_fractions'] else ''})"
+            for c, v in found.items()))
+
 def _category_cols():
     """NSE's investor-type columns and their parser (imported late: run_daily reads scripts/)."""
     from collectors.nse_events.run_daily import CATEGORY_COLS, CATEGORY_VALUES, _set_categories
@@ -480,6 +491,7 @@ def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start
             report['notes'].append(f'{stream}: no NSE table to link against; every BSE row counts as BSE-only')
         clean, counts = bse_events.clean(arch, get_master(), nse, stream)
         stats['clean'] = counts
+        _units(f'bse_{stream}', clean, stats, report)
         store.cw.put_parquet(store.r2, f'clean/current/bse_{stream}.parquet', clean)
     report['bse_calls'] = bse.calls
     report['via'] = bse.via
@@ -524,6 +536,7 @@ def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats
         stats['clean'] = counts
         if not clean.empty:
             stats['coverage'] = shareholding_coverage(clean)
+        _units('bse_shareholding', clean, stats, report)
         store.cw.put_parquet(store.r2, 'clean/current/bse_shareholding.parquet', clean)
     try:  # a failure here must never cost the shareholding table written above
         report['promoter_group'] = write_promoter_group(store, members, get_master(), now or datetime.now(timezone.utc))
