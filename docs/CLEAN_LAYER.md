@@ -88,7 +88,7 @@ BSE's board meetings, shareholding lists and shareholding XBRLs go to
 gzip-compressed, as NSE's), through the BSE client before parsing.
 
 The NSE events collector stores board meetings, tender offers and daily
-buyback reports here too (`raw_v2/nse/{meetings|tenders|daily_buybacks}/`),
+buyback reports here too (`raw_v2/nse/{meetings|tenders|daily_buybacks}/`; SAST Reg 29, corporate actions and the shareholding list from 13 Nov 2026: `raw_v2/nse/{sast|actions|shareholding_list}/`),
 through the client's `on_response` hook before parsing; a failed raw write
 fails that stream for the night.
 
