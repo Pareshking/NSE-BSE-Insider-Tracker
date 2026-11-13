@@ -161,7 +161,7 @@ def _insider_page(days: int, title: str):
     st.html(_insider_table(ctx, d, px, names))
     st.html(f'<p class="dt-foot">Clubbed: <b>{clubbed}</b> smaller decisions under ₹{ideas.MIN_VALUE / 1e5:.0f} L or '
             f'{ideas.MIN_PCT:g}% of the company. Pledges, inter-se transfers, ESOP and gifts are not trades and are not counted here. '
-            '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": these people did not trade this company on this side in the 12 months before; "routine": in 6 or more of them. An amber "to / from" names the other side when the trade '
+            '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": no promoter-group entity (for a director or KMP, the same person) traded this company on this side in the 12 months before; "routine": in 6 or more of those months. An amber "to / from" names the other side when the trade '
             'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market. Holding Δ = shares traded against the promoter group\'s '
             'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
 
