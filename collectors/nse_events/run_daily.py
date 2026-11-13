@@ -85,7 +85,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results
+from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results, units
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -758,6 +758,16 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 REPORT_KEY = 'reports/nse_events/latest_{}.json'
 
 
+def units_check(stream: str, clean: pd.DataFrame, entry: dict, report: dict) -> None:
+    """Percent columns in range (insiders_clean/units): counted on the stream and named in the night's notes."""
+    found = units.check(clean)
+    if found:
+        entry['pct_check'] = found
+        report['notes'].append(f'{stream}: percent columns out of unit or range: ' + ', '.join(
+            f"{c} ({v['out_of_range']} out of range{', looks like fractions' if v['looks_like_fractions'] else ''})"
+            for c, v in found.items()))
+
+
 def publish_report(r2, report: dict, dataset: str) -> None:
     """The night's report in R2 (reports/nse_events/latest_all.json for the nightly run), so the site's Data health
     page shows the exchange's own counts (results: NSE's totalCount against what we listed) and the night's notes.
@@ -857,6 +867,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
         entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
         entry['isin_replaced'] = int(clean['isin_filed'].notna().sum())   # a retired ISIN filed, the current one used
         entry['clean_rows'] = len(clean)
+        units_check(stream, clean, entry, report)
         put_parquet(r2, f'clean/current/{stream}.parquet', clean)
     nse.on_response = None
     if {'tenders', 'daily_buybacks', 'actions'} & set(streams):
