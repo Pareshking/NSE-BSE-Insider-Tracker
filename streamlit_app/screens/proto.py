@@ -585,12 +585,14 @@ def results():
                      'yoy': _pct_cell(x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
                      'prof': esc(kit.rupees(prof)) if kit._finite(prof) is not None else '–',
                      'profy': esc(kit.rupees(prev_y)) if kit._finite(prev_y) is not None else '<span class="mute">–</span>',
-                     'turn': turn, 'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
+                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else ''),   # noqa: E712 -- results.derive_quarters
+                     'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
     st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
                     ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
                     ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
     st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago, where that quarter was ₹10 Cr or more; smaller bases after; '
-            f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history.</p>')
+            f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history. '
+            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before.</p>')
 
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------

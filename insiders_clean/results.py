@@ -162,7 +162,10 @@ def summary(parsed: dict) -> dict:
     under those names)."""
     quarter, ytd = periods(parsed)
     facts = parsed['facts']
-    meta = facts.get(quarter, {}) if quarter else {}
+    # the identity is on the quarter, or on the year to date when the filing has no quarter (a half year): its ISIN
+    # and codes are needed either way (13 Nov 2026)
+    home = quarter or (ytd if 'ISIN' in facts.get(ytd, {}) else next((k for k, f in facts.items() if 'ISIN' in f), ytd))
+    meta = facts.get(home, {}) if home else {}
     out = {k: (v if isinstance(v := meta.get(t), str) else None) for k, t in META.items()}
     out['period_end_xbrl'] = meta.get('DateOfEndOfReportingPeriod')
     for prefix, ctx in (('quarter', quarter), ('ytd', ytd)):
@@ -189,7 +192,53 @@ def clean(filings: pd.DataFrame) -> pd.DataFrame:
         rows.append({**{k: v for k, v in r.items() if k != 'xbrl_json'}, **s})
     out = pd.DataFrame(rows).sort_values('broadcast_at', ascending=False, na_position='last').reset_index(drop=True)
     out['ytd_disagrees'] = ytd_disagrees(out)
-    return mark_superseded(out)
+    return derive_quarters(mark_superseded(out))
+
+
+# Lines that add up over periods (EPS does not: the share count changes), so a quarter is the year to date less the
+# year to date before it.
+ADDITIVE = [k for k in SUMMARY if not k.startswith('eps_')]
+
+
+def derive_quarters(df: pd.DataFrame) -> pd.DataFrame:
+    """A filing that reports only its year to date (a half year, R13) gets its quarter as that year to date less the
+    company's previous filing on the same basis that covers the same year to the quarter before: its own year to date,
+    or its quarter when that quarter starts the year (Emami: 1 Apr - 30 Sep less 1 Apr - 30 Jun is the Sep quarter).
+    Marked `quarter_derived` (the site says so); left blank where the earlier filing is missing, superseded only,
+    or its end is not about three months before. EPS is not derived."""
+    df = df.copy()
+    df['quarter_derived'] = False
+    need = {'symbol', 'consolidated', 'period_end', 'ytd_start', 'quarter_revenue', 'period_start'}
+    if df.empty or not need <= set(df.columns):
+        return df
+    end = pd.to_datetime(df['period_end'], errors='coerce')
+    ystart = pd.to_datetime(df['ytd_start'], errors='coerce')
+    qstart = pd.to_datetime(df['period_start'], errors='coerce')
+    blank = df[[f'quarter_{k}' for k in ADDITIVE]].isna().all(axis=1)
+    todo = blank & ystart.notna() & end.notna() & ~df['ytd_disagrees'].astype('boolean').fillna(False)
+    if not todo.any():
+        return df
+    live = ~df['superseded'].astype('boolean').fillna(False) if 'superseded' in df else pd.Series(True, index=df.index)
+    basis = df['consolidated'].astype(str).str.strip().str.lower()
+    sym = df['symbol'].astype(str).str.upper()
+    for i in df.index[todo]:
+        lo, hi = end[i] - pd.Timedelta(days=95), end[i] - pd.Timedelta(days=85)
+        cand = df.index[live & (sym == sym[i]) & (basis == basis[i]) & end.between(lo, hi)]
+        prior = None
+        for j in cand:
+            if ystart[j] == ystart[i]:
+                prior = {k: df.at[j, f'ytd_{k}'] for k in ADDITIVE}
+            elif pd.isna(ystart[j]) and qstart[j] == ystart[i]:
+                prior = {k: df.at[j, f'quarter_{k}'] for k in ADDITIVE}
+            if prior is not None:
+                break
+        if prior is None or pd.isna(prior.get('revenue')) or pd.isna(df.at[i, 'ytd_revenue']):
+            continue
+        for k in ADDITIVE:
+            a, b = df.at[i, f'ytd_{k}'], prior.get(k)
+            df.at[i, f'quarter_{k}'] = a - b if pd.notna(a) and pd.notna(b) else None
+        df.at[i, 'quarter_derived'] = True
+    return df
 
 
 def ytd_disagrees(df: pd.DataFrame) -> pd.Series:

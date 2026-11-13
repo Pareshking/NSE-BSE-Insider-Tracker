@@ -198,3 +198,33 @@ def test_an_empty_page_before_the_count_is_retried_then_reported_short():
     nse, report = Gappy(pages, [(2, 1), (2, 2)]), {'notes': []}  # empty twice: the window is short, and said so
     rows = run_daily.results_filings(nse, None, date(2026, 10, 12), date(2026, 10, 15), report)
     assert len(rows) == 1 and report['notes'] and report['notes'][0].startswith('results: fetch failed (listing short: 1 of 3')
+
+
+def test_a_half_year_filing_keeps_its_identity():
+    """The ISIN and codes are read from the year to date when the filing has no quarter (13 Nov 2026)."""
+    half = XBRL.replace('<xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>\n <xbrli:context id="FourD">',
+                        '<xbrli:startDate>2026-04-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>\n <xbrli:context id="FourD">', 1)
+    s = results.summary(results.parse_xbrl(half))
+    assert s['quarter_revenue'] is None and s['isin'] is not None
+
+
+def _row(end, ytd_start, period_start, q_rev=None, y_rev=None, q_profit=None, y_profit=None, basis='Consolidated', at='2026-11-01'):
+    r = {'symbol': 'EMAMILTD', 'consolidated': basis, 'period_end': end, 'ytd_start': ytd_start, 'period_start': period_start,
+         'broadcast_at': at, 'ytd_disagrees': False, 'superseded': False}
+    for k in results.SUMMARY:
+        r[f'quarter_{k}'] = None
+        r[f'ytd_{k}'] = None
+    r.update(quarter_revenue=q_rev, ytd_revenue=y_rev, quarter_profit=q_profit, ytd_profit=y_profit)
+    return r
+
+
+def test_half_year_less_first_quarter_is_the_derived_quarter():
+    """Emami: the Sep 2026 filing has only 1 Apr - 30 Sep; less the June quarter it is the Sep quarter, marked derived.
+    No June filing on the same basis: the quarter stays blank."""
+    df = pd.DataFrame([_row('2026-09-30', '2026-04-01', '2026-04-01', y_rev=2000.0, y_profit=300.0),
+                       _row('2026-06-30', None, '2026-04-01', q_rev=900.0, q_profit=100.0, at='2026-08-01'),
+                       _row('2026-09-30', '2026-04-01', '2026-04-01', y_rev=1500.0, basis='Standalone')])
+    out = results.derive_quarters(df)
+    assert out.loc[0, 'quarter_revenue'] == 1100.0 and out.loc[0, 'quarter_profit'] == 200.0 and bool(out.loc[0, 'quarter_derived'])
+    assert pd.isna(out.loc[2, 'quarter_revenue']) and not out.loc[2, 'quarter_derived']
+    assert not out.loc[1, 'quarter_derived'] and out.loc[1, 'quarter_revenue'] == 900.0
