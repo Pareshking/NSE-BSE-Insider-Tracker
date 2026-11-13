@@ -833,6 +833,8 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             filed = clean['instrument'] if 'instrument' in clean else pd.Series(None, index=clean.index, dtype=object)
             clean['instrument'] = filed.where(filed.notna(), clean['raw_json'].map(parsers.sast_instrument))
             entry['instrument'] = clean['instrument'].fillna('not filed').value_counts().to_dict()
+        if stream == 'sast':
+            clean, entry['refiled_removed'] = parsers.drop_sast_refilings(clean)
         if stream == 'shareholding':
             clean = clean_shareholding(clean)
             entry['coverage'] = shareholding_coverage(clean)

@@ -374,3 +374,16 @@ def test_the_client_has_every_method_the_nightly_calls():
     from collectors.nse_events.client import NSEClient
     called = set(re.findall(r'\bnse\.([a-z_]+)\(', inspect.getsource(run_daily)))
     assert called and not [m for m in called if not hasattr(NSEClient, m)], called
+
+
+def test_a_sast_disclosure_filed_again_is_one_row():
+    """13 Nov 2026: Silgo Retail / Dempal Shah +1.77% showed twice on the Stakes render (two application numbers)."""
+    import pandas as pd
+    from collectors.nse_events import parsers
+    base = {'symbol': 'SILGO', 'acquirer_id': 'dempal-shah', 'action_type': 'Acquisition', 'trade_date_from': '2026-05-21',
+            'trade_date_to': '2026-05-21', 'shares_traded': 100.0, 'percent_equity_traded': 1.77, 'post_stake_pct': 6.22}
+    df = pd.DataFrame([dict(base, application_no='1', broadcast_ts='02-Nov-2026 10:00'),
+                       dict(base, application_no='2', broadcast_ts='03-Nov-2026 11:00'),
+                       dict(base, application_no='3', broadcast_ts='03-Nov-2026 11:00', post_stake_pct=7.0)])
+    out, dropped = parsers.drop_sast_refilings(df)
+    assert dropped == 1 and len(out) == 2 and set(out['application_no']) == {'2', '3'}
