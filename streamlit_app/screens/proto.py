@@ -172,9 +172,10 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             'filed': esc(kit.day(r['last'], with_year=False)) + (' ' + _chip(f'{lag}d late', 'wn') if lag is not None and lag >= moves.LATE_DAYS else ''),
             'ev': f'<span class="ev" title="{r["filings"]} exchange filing(s), NSE and BSE copies merged">×{r["filings"]}</span>',
         })
-    cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l'), ('val', '₹ value', 'r'),
-            ('pct', '% of co.', 'r'), ('own', 'Own holding Δ', 'r'), ('avg', 'Avg price', 'r'), ('since', 'Since', 'r'),
-            ('days', 'Days', 'r'), ('when', 'Last trade', 'r'), ('filed', 'Filed', 'r'), ('ev', 'Filings', 'l')]
+    # ' ph': off at phone width (dt.css), so a phone shows who, how much, how big and what since without scrolling
+    cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
+            ('pct', '% of co.', 'r'), ('own', 'Own holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
+            ('days', 'Days', 'r ph'), ('when', 'Last trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Filings', 'l ph')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']
     return _table(cols, rows)
@@ -344,8 +345,8 @@ def _deal_table(rows, names, limit=80, company_col=True, with_year=False) -> str
             'kind': r['kind'], 'who': f'<span class="clip">{r["who"]}</span>', 'qty': esc(kit.shares(r['qty'])), 'price': _num(r['price'], '₹{:,.2f}'),
             'val': esc(kit.rupees(r['_v'])), 'pct': _num(r['pct'], '{:.2f}%'),
             'src': esc(f'{str(r.get("ex") or "").upper()} {r.get("feed") or ""}'.strip())} for r in rows[:limit]]
-    cols = [('date', 'Date', 'l'), ('co', 'Company', 'l'), ('kind', 'Type', 'l'), ('val', '₹ value', 'r'),
-            ('pct', '% of co.', 'r'), ('qty', 'Shares', 'r'), ('price', 'Price', 'r'), ('who', 'Client', 'l'), ('src', 'Source', 'l')]
+    cols = [('date', 'Date', 'l ph'), ('co', 'Company', 'l'), ('kind', 'Type', 'l'), ('val', '₹ value', 'r'),
+            ('pct', '% of co.', 'r'), ('qty', 'Shares', 'r ph'), ('price', 'Price', 'r ph'), ('who', 'Client', 'l ph'), ('src', 'Source', 'l ph')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']
     return _table(cols, out) if out else '<p class="dt-empty">No deals of ₹1 Cr or more in the period.</p>'
@@ -376,8 +377,8 @@ def deals():
 # ---- Stakes: SAST crossings and pledges ---------------------------------------------------------------------------------
 
 THRESHOLDS = (5, 10, 15, 20, 25, 50, 75)
-SAST_COLS = [('co', 'Company', 'l'), ('who', 'Holder', 'l'), ('act', '', 'l'), ('moved', 'Moved', 'r'), ('stake', 'Stake', 'r'),
-             ('cross', 'Threshold', 'l'), ('mode', 'Mode · Reg', 'l'), ('when', 'Trade', 'r'), ('filed', 'Filed', 'r'), ('ev', 'Evidence', 'l')]
+SAST_COLS = [('co', 'Company', 'l'), ('who', 'Holder', 'l ph'), ('act', '', 'l ph'), ('moved', 'Moved', 'r'), ('stake', 'Stake', 'r'),
+             ('cross', 'Threshold', 'l ph'), ('mode', 'Mode · Reg', 'l ph'), ('when', 'Trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Evidence', 'l ph')]
 
 
 def _crossed(before, after) -> str:
