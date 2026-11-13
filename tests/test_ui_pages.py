@@ -230,15 +230,16 @@ company.render()
     assert {'Insider buy', 'Staff trade'} <= kinds['HCLTECH']   # designated persons apart from decision-makers (12 Nov)
     assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
     h = html['HCLTECH']
-    # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the stat strip, the checks, the stories, the noise counted
+    # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the stat strip, the checks; 13 Nov (R8): insiders,
+    # deals and stakes as the dense tables of the topic pages, without a Company column on the company's own page
     assert '<div class="head ds-head">' in h and 'class="ds-kpis' in h
-    for part in ('>Checks before acting<', '>What did insiders do?<', '>Who owns it?<', '>Every filing<', '>Price and every decision<'):
+    for part in ('>Checks before acting<', '>Insider decisions <', '>Bulk and block deals <', '>Stake changes <',
+                 '>Who owns it?<', '>Every filing<', '>Price and every decision<'):
         assert part in h, part
     for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
         assert f'<dt>{check}</dt>' in h, check
-    assert 'class="ds-row"' in h and 'class="ln"' in h and 'class="chip' in h and 'class="ds-facts"' in h   # a row, its line, its chip
-    assert 'class="nm"' not in h.split('>What did insiders do?<')[1].split('ds-club')[0]   # no name repeated on its own page
-    assert 'class="ds-club"' in h and 'designated persons' in h                          # 37 staff trades counted, not listed
+    ins = h.split('>Insider decisions <')[1].split('>Bulk and block deals <')[0]
+    assert '<table class="dt' in ins and 'Filed ×' in ins and '>Company<' not in ins   # a dense row with its evidence, no name repeated
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):

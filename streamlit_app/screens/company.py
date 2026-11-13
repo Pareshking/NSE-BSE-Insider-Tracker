@@ -281,16 +281,13 @@ def render():
         if not mine.empty:
             raises['QIP'] = qip_rows(mine, ctx.prices).assign(offer_price=lambda r: r.get('issue_price'))
 
-    # ---- The stories: the same builders as the topic pages, this company, 12 months ----
-    buys, club_b, _ = moves.insiders(ctx, key, 'BUY', 365, isin) if isin else ([], [], {})
-    sells, club_s, _ = moves.insiders(ctx, key, 'SELL', 365, isin) if isin else ([], [], {})
-    dls, club_d, _ = moves.deals(ctx, key, 365, isin) if isin else ([], [], {})
+    # ---- Raises, pledges and big holders as stories; insiders, deals and stakes are dense tables below (R8) ----
     ev = moves.events(ctx, key, 365)
     ev = ev[ev['isin'] == isin] if isin and not ev.empty else ev.iloc[0:0]
     other = moves.event_stories(ctx, ev, pages.RAISE_KINDS | pages.RISK_KINDS | pages.RELEASE_KINDS | pages.STAKE_KINDS | pages.HOLDER_KINDS, summary)
     import copy
-    buys, sells, dls, other = ([copy.copy(x) for x in lst] for lst in (buys, sells, dls, other))   # the cached stories stay whole
-    for x in buys + sells + dls + other:   # on its own page the company's name and market line would repeat on every story
+    other = [copy.copy(x) for x in other]   # the cached stories stay whole
+    for x in other:   # on its own page the company's name and market line would repeat on every story
         x.company, x.market = '', ''
 
     # ---- Masthead: codes, the name, the news ----
@@ -363,14 +360,10 @@ def render():
     ds.html('<dl class="ds-w ds-checks">' + ''.join(f'<dt>{esc(k)}</dt><dd class="{"warn" if k in amber else ""}">{esc(v)}</dd>'
                                                    for k, v in checks.items() if v) + '</dl>')
 
-    # ---- Money decisions, 12 months ----
-    ds.section('What did insiders do?', 'Promoters, directors and KMP, 12 months, each decision added up. ' + moves.INSIDER_SCOPE)
-    ds.stories(buys + sells, 'No promoter, director or KMP traded past the bar in 12 months.')
-    ds.club('Left out as noise', club_b + club_s)
-    if dls or club_d:
-        ds.section('Who sold, who took it?', 'Bulk and block deals, 12 months, both sides as one deal')
-        ds.stories(dls, 'No deal past the bar in 12 months.')
-        ds.club('Left out as noise', club_d)
+    # ---- Money decisions, 12 months: the dense tables of the topic pages (redesign 13 Nov 2026, R8) ----
+    from screens import proto
+    with ds.inside():
+        proto.company_tables(ctx, isin, sym)
     if other:
         ds.section('Raises, pledges and big holders', '12 months')
         ds.stories(other)
