@@ -77,7 +77,7 @@ def _css() -> str:
     return _css_for(tuple((HERE / f).stat().st_mtime for f in CSS_FILES))
 
 
-CSS_FILES = ('insiders.css', 'table.css', 'ds.css')
+CSS_FILES = ('insiders.css', 'table.css', 'ds.css', 'dt.css')
 
 
 @lru_cache(maxsize=2)

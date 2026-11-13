@@ -18,6 +18,8 @@ Steps, each counted in the cleaning report:
    legs on the two exchanges are marked `same_size_on_other_exchange`.
 4. `counterparties`: who was on the other side in that security that day,
    so a promoter's block sale shows who bought it.
+5. `matched_pair` / `matched_client`: one buyer and one seller (different
+   clients) of the same quantity at the same price that day: one transfer.
 
 Intraday round trips (same client buying and selling the same size on the
 same day) are flagged by scripts/r2_writer.py (`intraday_round_trip`), kept
@@ -230,6 +232,26 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
                               if o else None for e, k, d, o in
                               zip(legs['exchange'], legs['security_key'], legs['date'], opposite)]
 
+    # 5. Matched pairs (12 Nov 2026, from the raw exchange data): one buyer and one seller, different clients, same
+    # exchange, security and day, the same quantity at the same price (within 0.05%). PRAZIM TRADING -> PI OPPORTUNITIES
+    # AIF V in five stocks on 21 Oct 2026; SERUM INSTITUTE -> POONAWALLA AVIATION. One transfer between two parties, not
+    # two independent market trades: both legs get `matched_pair` (a shared id) and `matched_client` (the other side).
+    # Whether the two are one group is not decidable from the deal row; the pages decide that with the promoter list.
+    legs['matched_pair'] = None
+    legs['matched_client'] = None
+    k = legs.dropna(subset=['date', 'side', 'quantity', 'price']).reset_index()
+    buys = k[k['side'] == 'BUY'][['index'] + day_key + ['quantity', 'price', 'client_id', 'client_name']]
+    sells = k[k['side'] == 'SELL'][['index'] + day_key + ['quantity', 'price', 'client_id', 'client_name']]
+    m = buys.merge(sells, on=day_key + ['quantity'], suffixes=('_b', '_s'))
+    m = m[(m['client_id_b'] != m['client_id_s']) & ((m['price_b'] - m['price_s']).abs() <= 0.0005 * m['price_b'])]
+    # Only one-to-one pairs: a leg that could pair with two others is left alone.
+    m = m[~m['index_b'].duplicated(keep=False) & ~m['index_s'].duplicated(keep=False)]
+    for ib, is_, nb, ns in zip(m['index_b'], m['index_s'], m['client_name_b'], m['client_name_s']):
+        pid = _id(['pair', legs.at[ib, 'deal_id'], legs.at[is_, 'deal_id']])
+        legs.at[ib, 'matched_pair'], legs.at[ib, 'matched_client'] = pid, ns
+        legs.at[is_, 'matched_pair'], legs.at[is_, 'matched_client'] = pid, nb
+    t['matched_pairs'] = int(len(m))
+
     # 3. NSE and BSE legs are separate executions. Each exchange publishes the
     # bulk and block deals done on its own platform (the 0.5% bulk test is per
     # exchange), so a client's NSE leg and BSE leg on one day are two trades,
@@ -269,7 +291,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
             'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price', 'value', 'signed_value',
             'trades', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'market_cap_basis', 'pct_of_mcap',
-            'same_size_on_other_exchange', 'counterparties', 'source_ids',
+            'same_size_on_other_exchange', 'counterparties', 'matched_pair', 'matched_client', 'source_ids',
             'flags', 'needs_review']
     out = legs[cols].reset_index(drop=True)
     t['output_rows'] += len(out)

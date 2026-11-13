@@ -71,6 +71,7 @@ NSE and BSE publish nothing else about the client.
 | `client_is_promoter`, `client_promoter_basis` | The client is the company's promoter: in its latest promoter-group list (`promoter_group_list`) or filed under PIT as its promoter / promoter group (`pit_filing`). Never a fund, whatever `client_type` says (audit 22 Oct, T5: Fosun Pharma Industrial Pte for Gland Pharma). Counted in `tables.deals.promoter_clients` |
 | `investor_group`, `investor_group_id` | One investor across spellings, share classes and series; never merges entity IDs. From `insiders_clean/investor_aliases.csv` (each line with its reason) or a suffix rule |
 | `investor_group_rule` | `alias`, `share class`, `series`, or blank (the name itself) |
+| `matched_pair`, `matched_client` | (13 Nov 2026) One buyer and one seller, different clients, same exchange, security and day, the same quantity at the same price (within 0.05%): one transfer. Both legs carry the shared pair id and the other side's name. Pages call it a group transfer when both legs are `client_is_promoter`, else a negotiated cross. Counted in `tables.deals.matched_pairs` |
 
 The cleaning report counts rows by type and confidence under `tables.deals.participants`.
 
