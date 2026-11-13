@@ -407,12 +407,12 @@ SOURCES = [   # (label, clean table, date column, what the date is)
     ('Stake changes (SAST Reg 29)', 'sast', 'broadcast_ts', 'filed'),
     ('Pledges (SAST Reg 31, NSE)', 'encumbrances', 'broadcast_date', 'filed'),
     ('Shareholding patterns', 'shareholding', 'quarter_end', 'quarter or event'),
-    ('Results (integrated filing XBRL)', 'results', 'broadcast_date', 'filed'),
+    ('Results (integrated filing XBRL)', 'results', ('broadcast_date', 'broadcast_at'), 'filed'),
     ('Tender offers (buyback, open offer, delisting)', 'tenders', 'last_seen', 'last listed'),
     ('Preferential issues', 'preferential', 'posted_on', 'posted'),
     ('Rights issues', 'rights', 'posted_on', 'posted'),
     ('QIPs', 'qip', 'posted_on', 'posted'),
-    ('Board meetings', 'meetings', None, ''),
+    ('Board meetings', 'meetings', 'intimation_ts', 'intimated'),
     ('Corporate actions', 'actions', None, ''),
 ]
 KNOWN = {   # what the raw data showed on 12 Nov 2026 (docs/TODO.md, the design synthesis)
@@ -439,8 +439,10 @@ def data_health():
         except Exception:   # a table not published yet: say so, don't fail the page
             t = pd.DataFrame()
         last = None
-        if col and not t.empty and col in t:
-            last = pd.to_datetime(t[col], errors='coerce', format='mixed').max()
+        cols = [c for c in ((col,) if isinstance(col, str) else (col or ())) if not t.empty and c in t]
+        if cols:
+            v = pd.to_datetime(t[cols[0]], errors='coerce', format='mixed', utc=cols[0].endswith('_at'))
+            last = (v.dt.tz_convert('Asia/Kolkata').dt.tz_localize(None) if cols[0].endswith('_at') else v).max()
         age = max(0, (ref.normalize() - last.normalize()).days) if last is not None and pd.notna(last) and what != 'quarter or event' else None
         tone = '' if age is None else ('up' if age <= 3 else 'wn' if age <= 10 else 'dn')
         tr = tabs.get(name, {})
@@ -541,7 +543,7 @@ def calendar():
                          'detail': f'<span class="wrap">{esc(str(r.get("subject") or "")[:120])}</span>', 'size': ''})
     rows.sort(key=lambda x: x['_d'])
     out = [dict(r, day=esc(pd.Timestamp(r['_d']).strftime('%a %d %b')),
-                away=_chip('today', 'wn') if r['_d'] == ref else esc(f'in {(r["_d"] - ref).days} days')) for r in rows]
+                away=_chip('today', 'wn') if r['_d'] == ref else esc('tomorrow' if (r['_d'] - ref).days == 1 else f'in {(r["_d"] - ref).days} days')) for r in rows]
     st.html(_table([('day', 'Date', 'l'), ('away', '', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'),
                     ('detail', 'Detail', 'l'), ('size', 'Size', 'r')], out[:150]) if out else
             '<p class="dt-empty">Nothing on the calendar in the next 30 days.</p>')
