@@ -94,13 +94,13 @@ def today():
             'who': esc(moves._short_who(r)) + (f' <span class="mute">+{len(r["people"]) - 1}</span>' if len(r['people']) > 1 else ''),
             'val': esc(kit.rupees(r['value'])),
             'pct': _num(r['pct_of_company'], '{:.2f}%'),
-            'own': _num(own, '{:+.1f}%') if buy else _num(own, '{:.1f}%'),
+            'own': _num(own, '{:+.1f}%') if buy else _num(-own if kit._finite(own) is not None else own, '{:+.1f}%'),
             'avg': _num(r['avg_price'], '₹{:,.1f}'),
-            'since': (f'<span class="{"up" if move > 0 else "dn" if move < 0 else ""}">{move:+.1f}%</span>' if move is not None else '<span class="mute">–</span>'),
+            'since': (f'<span class="{("up" if move > 0 else "dn" if move < 0 else "") if buy else ""}">{move:+.1f}%</span>' if move is not None else '<span class="mute">–</span>'),
             'days': str(r['days']),
             'when': esc(kit.day(r['trade_to'], with_year=False)) if pd.notna(r['trade_to']) else '–',
             'filed': esc(kit.day(r['last'], with_year=False)) + (' ' + _chip(f'{lag}d late', 'wn') if lag is not None and lag >= moves.LATE_DAYS else ''),
-            'ev': f'<span class="ev">Filed · {r["filings"]} filing{"s" if r["filings"] != 1 else ""}</span>',
+            'ev': f'<span class="ev" title="{r["filings"]} exchange filing(s), NSE and BSE copies merged">Filed ×{r["filings"]}</span>',
         })
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l'), ('val', '₹ value', 'r'),
             ('pct', '% of co.', 'r'), ('own', 'Own holding Δ', 'r'), ('avg', 'Avg price', 'r'), ('since', 'Since', 'r'),
@@ -140,7 +140,7 @@ def situations():
         offer = r.get('offer_price')
         spread = (offer / close - 1) * 100 if kit._finite(offer) is not None and kit._finite(close) else None
         times = r.get('times_tendered')
-        acc = min(1.0, 1 / times) * 100 if kit._finite(times) and times > 0 else None
+        acc = min(1.0, 1 / times) * 100 if kit._finite(times) and times > 0 and r.get('offer_type') != 'delisting' else None
         left = _days_left(r['_close'], ref)
         live = r.get('status') == 'active' and left is not None and left >= 0
         rows.append({
@@ -172,10 +172,18 @@ def situations():
             close, offer = p.get('latest_close'), r.get('offer_price')
             disc = (offer / close - 1) * 100 if kit._finite(offer) is not None and kit._finite(close) else None
             base, new = r.get('shares_listed'), r.get('shares_allotted')
-            dil = new / (base + new) * 100 if kit._finite(base) and kit._finite(new) and base > 0 else None
+            dil, est = None, False
+            try:
+                a, b = (float(x) for x in str(r.get('ratio') or '').split(':'))
+            except ValueError:
+                a = b = None
+            if a and b and kit._finite(base) and kit._finite(new) and base > 0 and abs(new / base - a / b) <= 0.02 * a / b:
+                dil = new / (base + new) * 100      # the filed base reconciles with the ratio
+            elif a and b:
+                dil, est = a / (a + b) * 100, True  # entitlement if fully taken up (the filed base does not reconcile)
             rrows.append({'co': _company(names.get(r['isin']) or r['company'], r.get('symbol')), 'ratio': esc(str(r.get('ratio') or '–')),
                           'price': _num(offer, '₹{:,.2f}'), 'close': _num(close, '₹{:,.2f}'),
-                          'disc': _num(disc, '{:+.1f}%'), 'dil': _num(dil, '{:.1f}%'),
+                          'disc': _num(disc, '{:+.1f}%'), 'dil': _num(dil, '{:.1f}%') + (' <span class="mute" title="from the ratio, if fully taken up">ratio</span>' if est else ''),
                           'amt': esc(kit.rupees(r.get('amount_raised'))) if kit._finite(r.get('amount_raised')) is not None else '–',
                           'rec': esc(kit.day(r.get('record_date'), with_year=False)) if r.get('record_date') else '–',
                           'allot': esc(kit.day(r['_a'], with_year=False))})
