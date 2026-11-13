@@ -410,7 +410,8 @@ def _sast_rows(sa, names, with_year=False):
         rows.append({'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), r.get('symbol')),
                      'who': '<span class="clip" style="max-width:220px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
                      'act': _chip('Bought' if up else 'Sold', 'up' if up else 'dn'),
-                     'moved': _num(moved, '{:+.2f}%'), 'stake': (_num(before, '{:.2f}%') + ' → ' + _num(after, '{:.2f}%')),
+                     'moved': _num(moved, '{:+.2f}%'), 'stake': (f'<span title="Derived: stake after less the move; NSE files the after and the move only">{_num(before, "{:.2f}%")}</span>'
+                               + ' → ' + _num(after, '{:.2f}%')),
                      'cross': esc(_crossed(before, after)), 'mode': esc(str(r.get('mode') or '')) + f' <span class="mute">{esc(str(r.get("regulation") or "").replace("Reg", ""))}</span>', 'reg': '',
                      'when': esc(kit.day(r.get('trade_date_to'), with_year=with_year)) if r.get('trade_date_to') else '–',
                      'filed': esc(kit.day(r['_f'], with_year=with_year)) + (' ' + _chip(f'{lag}d late', 'wn') if lag is not None and lag > 14 else ''),
@@ -436,7 +437,8 @@ def stakes():
         rows, inter, tiny = _sast_rows(sa, names)
     st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · inter-se transfers and moves under 0.1% clubbed</span></h2>')
     st.html(_table(SAST_COLS, rows[:80]) if rows else '<p class="dt-empty">No SAST Reg 29 filings in the period.</p>')
-    st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company.</p>')
+    st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company. '
+            'Stake: the figure before the arrow is derived (after less the move); NSE files the stake after and the move.</p>')
 
     try:
         _pledges(ctx, ref, days, names)
