@@ -157,6 +157,7 @@ are both read, and all notices for one meeting are combined.
 | `meeting_date` | As filed |
 | `purposes` | Comma list of the flags below |
 | `results`, `dividend`, `buyback`, `bonus`, `fund_raising`, `split`, `rights`, `preferential` | True when the meeting considers it |
+| `nse_purpose` | NSE's purpose field (`bm_purpose`) as filed, every notice of the meeting joined with ` \| `. A flag can come from it alone while `description` says other things (from 13 Nov 2026; blank on rows written before) |
 | `description`, `intimation_ts` | NSE's text and the latest notice time |
 
 Past meetings: NSE's API answers past date ranges (checked 12 Oct 2026: Oct

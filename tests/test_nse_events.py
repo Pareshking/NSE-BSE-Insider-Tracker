@@ -387,3 +387,17 @@ def test_a_sast_disclosure_filed_again_is_one_row():
                        dict(base, application_no='3', broadcast_ts='03-Nov-2026 11:00', post_stake_pct=7.0)])
     out, dropped = parsers.drop_sast_refilings(df)
     assert dropped == 1 and len(out) == 2 and set(out['application_no']) == {'2', '3'}
+
+
+def test_board_meeting_keeps_nse_purpose_as_filed():
+    """13 Nov 2026: a label can come from NSE's purpose field alone (Natural Capsules 'fund raising', the description
+    only results); the purpose is kept so the Calendar shows why."""
+    from collectors.nse_events import parsers
+    df, _ = parsers.parse_board_meetings([{'bm_symbol': 'NATCAPSUQ', 'bm_date': '13-Nov-2026', 'bm_purpose': 'Fund Raising',
+                                           'bm_desc': 'To consider financial results and other business matters',
+                                           'bm_timestamp': '10-Nov-2026 10:00:00', 'sm_isin': 'INE936B01015', 'sm_name': 'Natural Capsules'}])
+    assert bool(df.loc[0, 'fund_raising']) and df.loc[0, 'nse_purpose'] == 'Fund Raising'
+    import sys
+    sys.path.insert(0, 'streamlit_app')
+    from screens import filings_all
+    assert filings_all._meeting_detail(df.loc[0, 'description'], df.loc[0, 'nse_purpose']).startswith('NSE purpose: Fund Raising · ')

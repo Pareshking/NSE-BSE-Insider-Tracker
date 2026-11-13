@@ -255,7 +255,7 @@ def parse_corporate_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
 # --- Board meetings ---------------------------------------------------------------
 
 BM_COLUMNS = ['event_id', 'symbol', 'isin', 'company', 'meeting_date', 'purposes', 'results', 'dividend',
-              'buyback', 'bonus', 'fund_raising', 'split', 'rights', 'preferential', 'description',
+              'buyback', 'bonus', 'fund_raising', 'split', 'rights', 'preferential', 'nse_purpose', 'description',
               'intimation_ts', 'raw_json']
 _BM_FLAGS = {
     'results': r'financial\s+results|quarterly\s+results|audited|unaudited',
@@ -283,7 +283,7 @@ def parse_board_meetings(rows: list[dict]) -> tuple[pd.DataFrame, int]:
             continue
         out.append({'event_id': None, 'symbol': (r.get('bm_symbol') or '').strip().upper() or None,
                     'isin': r.get('sm_isin'), 'company': r.get('sm_name'), 'meeting_date': r.get('bm_date'),
-                    **flags, 'description': (r.get('bm_desc') or '').strip(),
+                    **flags, 'nse_purpose': (r.get('bm_purpose') or '').strip(), 'description': (r.get('bm_desc') or '').strip(),
                     'intimation_ts': r.get('bm_timestamp'), 'raw_json': _raw(r)})
     df = _frame(out, BM_COLUMNS)
     if df.empty:
@@ -292,6 +292,9 @@ def parse_board_meetings(rows: list[dict]) -> tuple[pd.DataFrame, int]:
     df = (df.sort_values('intimation_ts')
             .groupby(['symbol', 'meeting_date'], as_index=False, sort=False)
             .agg({**{c: 'any' for c in flag_cols}, 'isin': 'first', 'company': 'first',
+                  # NSE's purpose field as filed: a label can come from it while the description says other things
+                  # (13 Nov 2026: Natural Capsules "fund raising", description only results), so the page shows it
+                  'nse_purpose': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
                   'description': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
                   'intimation_ts': 'last', 'raw_json': lambda s: '[' + ','.join(s) + ']'}))
     df['purposes'] = df[flag_cols].apply(lambda row: ','.join(c for c in flag_cols if row[c]), axis=1)
