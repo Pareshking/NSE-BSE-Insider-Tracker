@@ -71,7 +71,7 @@ def today():
     v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
     v_sell = d.loc[d['side'] == 'SELL', 'value'].sum() if not d.empty else 0
     _strip(ctx, [f'insider filings, last {DAYS} days', 'NSE + BSE copies merged', 'open-market trades only'])
-    st.html('<div class="dt-head"><h1>Insiders · last 7 days</h1>'
+    st.html('<div class="head ds-head dt-head"><h1>Insiders · last 7 days</h1>'
             f'<div class="dt-kpis"><div><span>Buying</span><b class="up">{esc(kit.rupees(v_buy))}</b><em>{n_buy} decisions</em></div>'
             f'<div><span>Selling</span><b class="dn">{esc(kit.rupees(v_sell))}</b><em>{n_sell} decisions</em></div>'
             f'<div><span>Clubbed</span><b>{clubbed}</b><em>below the size bar</em></div></div></div>')
@@ -125,7 +125,7 @@ def situations():
     ref = pd.Timestamp(ctx.ref)
     px, _, names = moves.lookups(ctx)
     _strip(ctx, ['NSE tender offers', 'rights, QIP and preferential listings', 'prices: last close'])
-    st.html('<div class="dt-head"><h1>Situations</h1><p class="dt-dek">Offers you can tender into, and capital raised, '
+    st.html('<div class="head ds-head dt-head"><h1>Situations</h1><p class="dt-dek">Offers you can tender into, and capital raised, '
             'with the arithmetic done. Spread = offer price against the last close.</p></div>')
 
     # Tender offers: open, and closed in the last 60 days
