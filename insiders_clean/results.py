@@ -138,7 +138,23 @@ def periods(parsed: dict) -> tuple[str | None, str | None]:
     end = max(c['end'] for _, c in plain)
     same = sorted([(k, c) for k, c in plain if c['end'] == end], key=lambda kc: kc[1]['start'])
     quarter, first = same[-1][0], same[0]
+    # A filing that reports only a half year or a full year has no quarter (13 Nov 2026: Emami's Sep 2026 consolidated
+    # filing, IFIndAs V2.1, TypeOfReportingPeriod "Half Yearly", one context 1 Apr - 30 Sep; read as the quarter it
+    # showed revenue +166% on the Sep 2025 quarter). The latest-starting context counts as the quarter only when it
+    # spans about three months; otherwise it is the year to date and the quarter is blank.
+    if _days(same[-1][1]) > QUARTER_MAX_DAYS:
+        return None, quarter
     return quarter, (first[0] if first[1]['start'] < same[-1][1]['start'] else None)
+
+
+QUARTER_MAX_DAYS = 100
+
+
+def _days(c: dict) -> int:
+    try:
+        return (pd.Timestamp(c['end']) - pd.Timestamp(c['start'])).days
+    except (TypeError, ValueError):
+        return 0
 
 
 def summary(parsed: dict) -> dict:

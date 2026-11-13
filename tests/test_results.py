@@ -76,6 +76,20 @@ def test_first_quarter_has_no_separate_year_to_date():
     assert q in ('OneD', 'FourD') and ytd is None
 
 
+def test_a_half_year_filing_has_no_quarter():
+    """13 Nov 2026: Emami's Sep 2026 consolidated filing reports only 1 Apr - 30 Sep (TypeOfReportingPeriod "Half
+    Yearly"); read as the quarter, its revenue showed +166% on the Sep 2025 quarter. Now the quarter is blank and the
+    half year is the year to date."""
+    half = XBRL.replace('<xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>\n <xbrli:context id="FourD">',
+                        '<xbrli:startDate>2026-04-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>\n <xbrli:context id="FourD">', 1)
+    half = half.replace('<in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-07-01', '<in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-04-01')
+    parsed = results.parse_xbrl(half)
+    q, ytd = results.periods(parsed)
+    assert q is None and ytd in ('OneD', 'FourD')
+    s = results.summary(parsed)
+    assert s['quarter_revenue'] is None and s['ytd_revenue'] is not None
+
+
 class FakeNSE:
     def __init__(self, pages, xbrl=XBRL):
         self.pages, self.xbrl_text, self.urls, self.calls = pages, xbrl, [], 0

@@ -114,6 +114,24 @@ def parse_sast(rows: list[dict]) -> pd.DataFrame:
 
 # --- SAST Regulation 31: encumbrances ---------------------------------------------
 
+SAST_SAME = ['symbol', 'acquirer_id', 'action_type', 'trade_date_from', 'trade_date_to', 'shares_traded',
+             'percent_equity_traded', 'post_stake_pct']
+
+
+def drop_sast_refilings(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """One disclosure filed again under a new application number is one row (13 Nov 2026: the Stakes render showed
+    Silgo Retail / Dempal Shah +1.77% and Molbio / Kotak MF +0.49% twice; `event_id` hashes the application number, so
+    a re-filing is a new id). Rows with the same company, acquirer, action, trade dates, shares and stake after are one
+    disclosure: the latest broadcast is kept. Returns the table and how many rows were dropped."""
+    cols = [c for c in SAST_SAME if c in df]
+    if df.empty or len(cols) < len(SAST_SAME):
+        return df, 0
+    at = pd.to_datetime(df['broadcast_ts'], errors='coerce', format='mixed') if 'broadcast_ts' in df else pd.Series(pd.NaT, index=df.index)
+    order = df.assign(_at=at).sort_values('_at', kind='stable')
+    keep = ~order.duplicated(cols, keep='last')
+    return order[keep].drop(columns='_at').sort_index(), int((~keep).sum())
+
+
 ENCUMBRANCE_COLUMNS = ['event_id', 'symbol', 'company', 'promoter_name', 'promoter_id', 'lender', 'event_type',
                        'encumbrance_type', 'event_from', 'event_to', 'shares', 'pct_of_company',
                        'encumbered_shares', 'encumbered_pct', 'pre_event_holding', 'pre_event_holding_pct',
