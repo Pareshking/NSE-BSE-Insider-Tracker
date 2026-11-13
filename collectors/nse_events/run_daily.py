@@ -756,6 +756,7 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
 
 
 REPORT_KEY = 'reports/nse_events/latest_{}.json'
+EMPTY_NOTE_DAYS = 7   # a window this long with no row is said in the notes (C4)
 
 
 def units_check(stream: str, clean: pd.DataFrame, entry: dict, report: dict) -> None:
@@ -836,6 +837,11 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             except Exception as exc:  # noqa: BLE001 -- one stream failing must not stop the others
                 report['notes'].append(f'{stream}: fetch failed ({type(exc).__name__}: {exc})')
         entry['fetched'] = 0 if new is None else len(new)
+        if new is not None and len(new) == 0 and days >= EMPTY_NOTE_DAYS:
+            # Empty is not "nothing happened" (synthesis C4, 13 Nov 2026: the NSE pledge feed answered [] for 2-12 Nov
+            # while Reg 31 filings lag a median 8 days; BSE SAST [] for a week while NSE listed 30): said, not assumed.
+            entry['empty_unconfirmed'] = True
+            report['notes'].append(f'{stream}: NSE returned no rows for the last {days} days; empty, not confirmed as no events')
         arch, added, parts = merge_into_archive(r2, stream, new, run_date)
         entry.update(added=added, partitions_written=parts, archive_rows=0 if arch is None else len(arch))
         if arch is None or arch.empty:
