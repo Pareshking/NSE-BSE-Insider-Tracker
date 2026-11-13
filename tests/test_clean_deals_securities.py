@@ -254,3 +254,18 @@ def test_security_master_marks_official_sme_isins_and_main_board_listing_wins():
     assert master.record('INE000A01001')['is_sme'] is False
     assert master.record('INE000A01003')['is_sme'] is False
     assert all(master.record(f'INEBSESME{i}')['is_sme'] is True for i in range(1, 5))
+
+
+def test_a_matched_buyer_and_seller_are_one_pair(master, report):
+    """12 Nov 2026: PRAZIM TRADING sold and PI OPPORTUNITIES AIF V bought the same quantity at the same price; one
+    transfer, both legs carry the pair and the other side's name. A different quantity is not paired."""
+    rows = [bse_deal('599999', 'ACMEUNIV', 'PRAZIM TRADING', 'SELL', 3066761, 366.0),
+            bse_deal('599999', 'ACMEUNIV', 'PI OPPORTUNITIES AIF V LLP', 'BUY', 3066761, 366.0),
+            bse_deal('599999', 'ACMEUNIV', 'OTHER FUND', 'BUY', 120000, 366.0)]
+    out = clean_deals(canonical('bse', 'bulk_deals', rows), master, report, RUN_DATE)
+    paired = out[out['matched_pair'].notna()]
+    assert len(paired) == 2 and paired['matched_pair'].nunique() == 1
+    sell = paired[paired['side'] == 'SELL'].iloc[0]
+    assert 'Pi Opportunities' in str(sell['matched_client']) or 'PI OPPORTUNITIES' in str(sell['matched_client']).upper()
+    assert out.loc[out['client_name'].str.upper().str.contains('OTHER FUND'), 'matched_pair'].isna().all()
+    assert report.data['tables']['deals']['matched_pairs'] == 1
