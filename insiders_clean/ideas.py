@@ -123,14 +123,18 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
     out['roles'] = g['person_role'].agg(lambda s: sorted(set(s))).to_numpy()
     out['people'] = g['person_name'].agg(lambda s: list(dict.fromkeys(s))).to_numpy()
     # Routine or first (investor check 13 Nov 2026: the Jindal family buys every month; a first buy in a year is news):
-    # the months of the 12 before the window in which the same people traded this company on the same side.
+    # the months of the 12 before the window in which the company's promoters (or the same director) traded on the same side.
     pid = g['person_id'].agg(lambda s: set(s)).to_numpy()
     hist = t[(t['side'] == side) & (t['seen'] <= ref - pd.Timedelta(days=days))
              & (t['seen'] > ref - pd.Timedelta(days=days + PRIOR_DAYS))].dropna(subset=['isin', 'person_id'])
-    months = hist.assign(_m=pd.to_datetime(hist['seen']).dt.to_period('M'))[['isin', 'person_id', '_m']].drop_duplicates()
+    # A promoter group trades through different entities from one month to the next (13 Nov 2026: Jindal Steel read as a
+    # first buy), so for a promoter decision any promoter or promoter-group filer of the company counts; for a director
+    # or KMP, the same person.
+    hp = hist['person_role'].isin(signals.PROMOTER_ROLES)
+    months = hist.assign(_m=pd.to_datetime(hist['seen']).dt.to_period('M'), _pg=hp)[['isin', 'person_id', '_pg', '_m']].drop_duplicates()
     by = {k: v for k, v in months.groupby('isin')}
-    out['prior_months'] = [int(by[i].loc[by[i]['person_id'].isin(p), '_m'].nunique()) if i in by else 0
-                           for i, p in zip(out['isin'], pid)]
+    out['prior_months'] = [int((by[i].loc[by[i]['_pg'], '_m'] if pg else by[i].loc[by[i]['person_id'].isin(p), '_m']).nunique())
+                           if i in by else 0 for i, p, pg in zip(out['isin'], pid, out['promoter_group'].astype(bool))]
     # the other side of a matched deal, when the decision's trade was one (promoter_group.mark_insider_group_transfers)
     out['cross_with'] = (g['cross_with'].agg(lambda s: list(dict.fromkeys(x for x in s if isinstance(x, str) and x))).to_numpy()
                          if 'cross_with' in w else [[] for _ in range(len(out))])
