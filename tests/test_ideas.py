@@ -518,3 +518,17 @@ def test_routine_and_first_buyers_are_told_apart():
                        'person_name': r['person_id'], 'broadcast_date': r['seen']} for r in rows])
     d = ideas.decisions(t, ref, 'BUY', None, 30).set_index('isin')
     assert d.loc['INE1', 'prior_months'] >= ideas.ROUTINE_MONTHS and d.loc['INE2', 'prior_months'] == 0
+
+
+def test_a_promoter_group_buying_through_another_entity_is_not_a_first():
+    """13 Nov 2026: Jindal Steel read as a first buy; the group's other entities bought in earlier months."""
+    import pandas as pd
+    from insiders_clean import ideas
+    ref = pd.Timestamp('2026-11-12')
+    rows = [{'person_id': f'e{k}', 'seen': ref - pd.Timedelta(days=40 + 30 * k)} for k in range(7)] + [{'person_id': 'new', 'seen': ref}]
+    t = pd.DataFrame([{**r, 'side': 'BUY', 'person_role': 'promoter_group', 'isin': 'INE1', 'quantity': 10.0, 'value': 1000.0,
+                       'pct_of_mcap': 0.1, 'trade_date_to': r['seen'], 'trade_date_from': r['seen'], 'company': 'X',
+                       'nse_symbol': 'X', 'holding_before': 100.0, 'person_name': r['person_id'], 'broadcast_date': r['seen']}
+                      for r in rows])
+    d = ideas.decisions(t, ref, 'BUY', None, 30)
+    assert int(d.loc[0, 'prior_months']) >= ideas.ROUTINE_MONTHS
