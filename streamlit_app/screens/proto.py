@@ -327,7 +327,7 @@ def _deal_rows(d):
             rows.append(dict(_v=b['value'], date=b['date'], isin=b['isin'], company=b['company'], sym=b.get('nse_symbol') or b.get('symbol'),
                              kind=_chip('Group transfer', '') if grp else _chip('Negotiated cross', 'wn'),
                              who=f'{esc(str(s_["client_name"]))} <span class="mute">→</span> {esc(str(b["client_name"]))}',
-                             qty=b['quantity'], price=b['price'], pct=b.get('pct_of_mcap'), feed=b.get('feeds'), ex=b.get('exchange')))
+                             qty=b['quantity'], price=b['price'], pct=b.get('pct_of_mcap'), feed=b.get('feeds'), ex=b.get('exchange'), n=b.get('trades')))
     rest = d.drop(index=list(used))
     small = rest['value'] < 1e7
     clubbed_small, rest = int(small.sum()), rest[~small]
@@ -337,7 +337,7 @@ def _deal_rows(d):
         rows.append(dict(_v=r['value'], date=r['date'], isin=r['isin'], company=r['company'], sym=r.get('nse_symbol') or r.get('symbol'),
                          kind=_chip('Buy' if buy else 'Sell', 'up' if buy else 'dn') + (' ' + _chip('Promoter', '') if r.get('client_is_promoter') else ''),
                          who=esc(str(r['client_name'])) + (f' <span class="mute">· other side: {esc(cp)}</span>' if cp else ''),
-                         qty=r['quantity'], price=r['price'], pct=r.get('pct_of_mcap'), feed=r.get('feeds'), ex=r.get('exchange')))
+                         qty=r['quantity'], price=r['price'], pct=r.get('pct_of_mcap'), feed=r.get('feeds'), ex=r.get('exchange'), n=r.get('trades')))
     return rows, churn, clubbed_small
 
 
@@ -345,7 +345,10 @@ def _deal_table(rows, names, limit=80, company_col=True, with_year=False) -> str
     out = [{'date': esc(kit.day(r['date'], with_year=with_year)), 'co': _company(names.get(r['isin']) or r['company'], r['sym']),
             'kind': r['kind'], 'who': f'<span class="clip">{r["who"]}</span>', 'qty': esc(kit.shares(r['qty'])), 'price': _num(r['price'], '₹{:,.2f}'),
             'val': esc(kit.rupees(r['_v'])), 'pct': _num(r['pct'], '{:.2f}%'),
-            'src': esc(f'{str(r.get("ex") or "").upper()} {r.get("feed") or ""}'.strip())} for r in rows[:limit]]
+            # one line per client, day and side: the exchange rows it adds up are counted (C6: others list 2-4 rows a deal)
+            'src': esc(f'{str(r.get("ex") or "").upper()} {r.get("feed") or ""}'.strip())
+                   + (f' <span class="mute" title="exchange rows added into this line">· {int(r["n"])} rows</span>'
+                      if kit._finite(r.get('n')) is not None and r['n'] > 1 else '')} for r in rows[:limit]]
     cols = [('date', 'Date', 'l ph'), ('co', 'Company', 'l'), ('kind', 'Type', 'l'), ('val', '₹ value', 'r'),
             ('pct', '% of co.', 'r'), ('qty', 'Shares', 'r ph'), ('price', 'Price', 'r ph'), ('who', 'Client', 'l ph'), ('src', 'Source', 'l ph')]
     if not company_col:

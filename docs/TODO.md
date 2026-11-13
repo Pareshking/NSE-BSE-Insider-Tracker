@@ -146,4 +146,5 @@ Each page shows the render to the owner before it replaces the old one.
   - The tender `demand` field is dropped at parse.
   - The results listing `page` is handled by `results_filings`.
   - A BSE deal's company name comes from the security master once its code resolves (`insiders_clean/deals.py`), so a wrong `scripname` (AJMERA for Shree Precoated) only shows on an unmatched row.
+- [x] C6 copies merged, shown 13 Nov: a deal line's Source names its feeds (block, bulk) and, where it adds up several exchange rows, "· N rows" (the clean layer's `trades`).
 - [x] C13 raw copies (rule 5): NSE SAST Reg 29, corporate actions and the shareholding list are kept byte for byte from 13 Nov (`raw_v2/nse/sast/`, `actions/`, `shareholding_list/`). Open: the SHP master list and NSE's PIT JSON (insider trades come from the XBRL path).
