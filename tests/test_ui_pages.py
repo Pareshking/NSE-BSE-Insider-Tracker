@@ -239,7 +239,7 @@ company.render()
     for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
         assert f'<dt>{check}</dt>' in h, check
     ins = h.split('>Insider decisions <')[1].split('>Bulk and block deals <')[0]
-    assert '<table class="dt' in ins and 'Filed ×' in ins and '>Company<' not in ins   # a dense row with its evidence, no name repeated
+    assert '<table class="dt' in ins and 'class="ev"' in ins and '>Company<' not in ins   # a dense row with its evidence, no name repeated
 
 
 def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, monkeypatch):

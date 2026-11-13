@@ -5,7 +5,7 @@
 .dt-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--gap-5); flex-wrap: wrap; margin: var(--gap-4) 0 var(--gap-3); }
 .dt-head h1 { font: var(--fw-strong) 22px/1.2 var(--ui); color: var(--ink); margin: 0; letter-spacing: -0.01em; }
 .dt-dek { font: var(--fw-regular) var(--fs-body)/1.5 var(--ui); color: var(--ink-2); margin: 4px 0 0; max-width: 760px; }
-.dt-kpis { display: flex; gap: var(--gap-5); }
+.dt-kpis { display: flex; flex-wrap: wrap; gap: var(--gap-5); }
 .dt-kpis div { display: flex; flex-direction: column; gap: 2px; min-width: 96px; }
 .dt-kpis span { font: var(--fw-medium) var(--fs-label)/1 var(--ui); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
 .dt-kpis b { font: var(--fw-strong) 20px/1.1 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -15,8 +15,8 @@
 .dt-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
 table.dt { width: 100%; border-collapse: collapse; font: var(--fw-regular) 13px/1.3 var(--ui); color: var(--ink); }
 table.dt th { position: sticky; top: 0; background: var(--subtle); color: var(--ink-3); font: var(--fw-medium) var(--fs-label)/1.2 var(--ui);
-  text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; text-align: left; }
-table.dt td { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; height: 30px; }
+  text-transform: uppercase; letter-spacing: .05em; padding: 8px 8px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; text-align: left; }
+table.dt td { padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; height: 30px; }
 table.dt tbody tr:hover td { background: var(--hover); }
 table.dt tbody tr:last-child td { border-bottom: 0; }
 table.dt .r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -33,7 +33,7 @@ table.dt b.up, table.dt b.dn { font-weight: var(--fw-strong); }
 .dt-chip.dn { background: var(--sell-tint); color: var(--sell); }
 .dt-chip.wn { background: var(--warn-tint); color: var(--warn-ink); }
 table.dt td .wrap { white-space: normal; display: inline-block; min-width: 260px; max-width: 420px; color: var(--ink-3); font-size: 12px; }
-table.dt td .clip { display: inline-block; max-width: 460px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+table.dt td .clip { display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 table.dt .ev { font: var(--fw-regular) 11px/1 var(--ui); color: var(--ink-3); border: 1px solid var(--line-strong); border-radius: 4px; padding: 2px 5px; }
 .dt-foot { font: var(--fw-regular) var(--fs-small)/1.5 var(--ui); color: var(--ink-3); margin: var(--gap-2) 0 0; }
 .dt-empty { font: var(--fw-regular) var(--fs-body)/1.5 var(--ui); color: var(--ink-3); background: var(--surface); border: 1px dashed var(--line-strong);

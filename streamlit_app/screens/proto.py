@@ -122,11 +122,11 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             'days': str(r['days']),
             'when': esc(kit.day(r['trade_to'], with_year=False)) if pd.notna(r['trade_to']) else '–',
             'filed': esc(kit.day(r['last'], with_year=False)) + (' ' + _chip(f'{lag}d late', 'wn') if lag is not None and lag >= moves.LATE_DAYS else ''),
-            'ev': f'<span class="ev" title="{r["filings"]} exchange filing(s), NSE and BSE copies merged">Filed ×{r["filings"]}</span>',
+            'ev': f'<span class="ev" title="{r["filings"]} exchange filing(s), NSE and BSE copies merged">×{r["filings"]}</span>',
         })
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l'), ('val', '₹ value', 'r'),
             ('pct', '% of co.', 'r'), ('own', 'Own holding Δ', 'r'), ('avg', 'Avg price', 'r'), ('since', 'Since', 'r'),
-            ('days', 'Days', 'r'), ('when', 'Last trade', 'r'), ('filed', 'Filed', 'r'), ('ev', 'Evidence', 'l')]
+            ('days', 'Days', 'r'), ('when', 'Last trade', 'r'), ('filed', 'Filed', 'r'), ('ev', 'Filings', 'l')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']
     return _table(cols, rows)
@@ -337,7 +337,10 @@ def _crossed(before, after) -> str:
         return ''
     lo, hi = sorted((before, after))
     hit = [t for t in THRESHOLDS if lo < t <= hi]
-    return ('crossed ' if after > before else 'fell below ') + ', '.join(f'{t}%' for t in hit) if hit else ''
+    if not hit:
+        return ''
+    span = f'{hit[0]}%' if len(hit) == 1 else f'{hit[0]}–{hit[-1]}%'   # a range keeps the column narrow (5–20%, not 5%, 10%, 15%, 20%)
+    return ('crossed ' if after > before else 'fell below ') + span
 
 
 def _sast_rows(sa, names, with_year=False):
@@ -355,7 +358,7 @@ def _sast_rows(sa, names, with_year=False):
         up = (moved or 0) > 0
         att = r.get('attachment')
         rows.append({'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), r.get('symbol')),
-                     'who': '<span class="clip" style="max-width:300px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
+                     'who': '<span class="clip" style="max-width:220px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
                      'act': _chip('Bought' if up else 'Sold', 'up' if up else 'dn'),
                      'moved': _num(moved, '{:+.2f}%'), 'stake': (_num(before, '{:.2f}%') + ' → ' + _num(after, '{:.2f}%')),
                      'cross': esc(_crossed(before, after)), 'mode': esc(str(r.get('mode') or '')) + f' <span class="mute">{esc(str(r.get("regulation") or "").replace("Reg", ""))}</span>', 'reg': '',
