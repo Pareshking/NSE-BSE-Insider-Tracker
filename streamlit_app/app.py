@@ -77,29 +77,21 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 # each the same shape (screens/pages.py); Today shows the top of every one. Companies, Investors, Evidence and Filings follow.
 # Redesign of 12 Nov 2026 (owner: "redesign it from blank", "free to increase number of pages", then "whatever possible
 # without requiring AI API, do it"): one page per question. The top bar keeps the daily pages in sight and groups the rest.
+# Redesign of 13 Nov 2026 (owner: dense tables, a Situations page, 9 pages; design synthesis of 12 Nov from the raw
+# exchange data): the menu holds the 9 pages; the earlier pages stay reachable by their addresses.
 SECTIONS = {
     '': [
-        st.Page(pages.today, title='Today', icon=M('today'), url_path='today', default=True),
-        st.Page(more_pages.watchlist, title='Watchlist', icon=M('star'), url_path='watchlist'),
-        st.Page(more_pages.screener, title='Screener', icon=M('filter_list'), url_path='screener'),
+        st.Page(proto.today, title='Today', icon=M('today'), url_path='today', default=True),
+        st.Page(proto.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
+        st.Page(proto.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
+        st.Page(proto.stakes, title='Stakes', icon=M('pie_chart'), url_path='stakes'),
+        st.Page(proto.situations, title='Situations', icon=M('local_offer'), url_path='situations'),
     ],
-    'Money': [
-        st.Page(pages.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
-        st.Page(pages.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
-        st.Page(pages.raises, title='Raises', icon=M('payments'), url_path='raises'),
-        st.Page(pages.ownership, title='Holders', icon=M('pie_chart'), url_path='ownership'),
-        st.Page(more_pages.sectors, title='Sectors', icon=M('category'), url_path='sectors'),
-        st.Page(more_pages.results, title='Results', icon=M('receipt_long'), url_path='results'),
-    ],
-    'Watch out': [
-        st.Page(pages.risks, title='Risks', icon=M('warning'), url_path='risks'),
-        st.Page(pages.calendar, title='Calendar', icon=M('calendar_month'), url_path='calendar'),
-    ],
-    'Research': [
+    'More': [
+        st.Page(proto.results, title='Results', icon=M('receipt_long'), url_path='results'),
+        st.Page(proto.calendar, title='Calendar', icon=M('calendar_month'), url_path='calendar'),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
-        st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors'),
-        st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record'),
-        st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all'),
+        st.Page(proto.data_health, title='Data health', icon=M('fact_check'), url_path='data-health'),
     ],
 }
 ALL_PAGES = [p for ps in SECTIONS.values() for p in ps]
@@ -115,21 +107,25 @@ COMPANY_PAGE = next(p for p in ALL_PAGES if p.url_path == 'company')
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
 HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden'), st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden'),
-          st.Page(proto.today, title='Prototype: Today', icon=M('table_rows'), url_path='proto-today', visibility='hidden'),
-          st.Page(proto.situations, title='Prototype: Situations', icon=M('table_rows'), url_path='proto-situations', visibility='hidden'),
-          st.Page(proto.insiders, title='Prototype: Insiders', icon=M('table_rows'), url_path='proto-insiders', visibility='hidden'),
-          st.Page(proto.deals, title='Prototype: Deals', icon=M('table_rows'), url_path='proto-deals', visibility='hidden'),
-          st.Page(proto.stakes, title='Prototype: Stakes', icon=M('table_rows'), url_path='proto-stakes', visibility='hidden'),
-          st.Page(proto.data_health, title='Prototype: Data health', icon=M('table_rows'), url_path='proto-data', visibility='hidden'),
-          st.Page(proto.results, title='Prototype: Results', icon=M('table_rows'), url_path='proto-results', visibility='hidden'),
-          st.Page(proto.calendar, title='Prototype: Calendar', icon=M('table_rows'), url_path='proto-calendar', visibility='hidden')]
+          # The pages of 12 Nov, out of the menu (13 Nov), still at their addresses
+          st.Page(more_pages.watchlist, title='Watchlist', icon=M('star'), url_path='watchlist', visibility='hidden'),
+          st.Page(more_pages.screener, title='Screener', icon=M('filter_list'), url_path='screener', visibility='hidden'),
+          st.Page(pages.raises, title='Raises', icon=M('payments'), url_path='raises', visibility='hidden'),
+          st.Page(pages.ownership, title='Holders', icon=M('pie_chart'), url_path='ownership', visibility='hidden'),
+          st.Page(more_pages.sectors, title='Sectors', icon=M('category'), url_path='sectors', visibility='hidden'),
+          st.Page(pages.risks, title='Risks', icon=M('warning'), url_path='risks', visibility='hidden'),
+          st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors', visibility='hidden'),
+          st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record', visibility='hidden'),
+          st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all', visibility='hidden')]
 ALL = ALL_PAGES + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'transactions': 'Filings', 'promoter_activity': 'Filings',
          'bulk_block_concentration': 'Filings', 'data_quality': 'Data quality', 'sast': 'Filings', 'transfers': 'Filings',
          'filings': 'Today',   # AI filing cards off the site (owner, 21 Oct); the reader code is kept
          'market': 'Today', 'actions': 'Today', 'brief': 'Today', 'shareholding': 'Today',
-         'insider-trades': 'Insiders', 'other-filings': 'Filings', 'capital-raises': 'Raises'}
+         'insider-trades': 'Insiders', 'other-filings': 'Filings', 'capital-raises': 'Raises',
+         'proto-today': 'Today', 'proto-insiders': 'Insiders', 'proto-deals': 'Deals', 'proto-stakes': 'Stakes',
+         'proto-situations': 'Situations', 'proto-results': 'Results', 'proto-calendar': 'Calendar', 'proto-data': 'Data health'}
 
 
 def _redirect(path: str, target: str):

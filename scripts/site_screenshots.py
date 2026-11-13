@@ -17,10 +17,11 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-PAGES = [('proto-results', 'proto-results'), ('proto-calendar', 'proto-calendar'), ('proto-data', 'proto-data'), ('proto-insiders', 'proto-insiders'), ('proto-deals', 'proto-deals'), ('proto-stakes', 'proto-stakes'), ('proto-today', 'proto-today'), ('proto-situations', 'proto-situations'), ('', 'today'), ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('screener', 'screener'), ('sectors', 'sectors'),
-         ('results', 'results'), ('insiders', 'insiders'), ('deals', 'deals'), ('raises', 'raises'), ('risks', 'risks'),
-         ('ownership', 'holders'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('track-record', 'evidence'), ('filings-all', 'filings'),
-         ('entity', 'people'), ('data', 'data'), ('market', 'old-market-address'), ('insider-trades', 'old-insider-trades-address')]
+PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes', 'stakes'), ('situations', 'situations'),
+         ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('data-health', 'data-health'),
+         ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
+         ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
+         ('proto-today', 'old-proto-address')]
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
