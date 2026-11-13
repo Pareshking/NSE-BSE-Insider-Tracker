@@ -122,10 +122,10 @@ Open from it:
 Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
 Each page shows the render to the owner before it replaces the old one.
 
-- [ ] R0 Prototype renders of Today (dense) and Situations on real data (#240, hidden pages, screenshots to the owner)
-- [ ] R1 Deals: a matched pair of different clients (same day, symbol, quantity, price, opposite sides) is one line; "group transfer" when both names are in the company's promoter group, else "negotiated cross"
-- [ ] R2 Pledges: net change per promoter group per day; "rollover" when the net is about zero (Embassy, 11 Nov)
-- [ ] R3 Fetches that are not data (HTML home page for a file, "Missing parameters" text) are marked failed, not stored as success
+- [x] R0 Prototype renders of Today (dense) and Situations on real data (#240, hidden pages, screenshots to the owner)
+- [x] R1 Deals: a matched pair of different clients (same day, symbol, quantity, price, opposite sides) is one line; "group transfer" when both names are in the company's promoter group, else "negotiated cross"
+- [x] R2 Pledges: net change per promoter group per day; "rollover" when the net is about zero (Embassy, 11 Nov)
+- [x] R3 Fetches that are not data (HTML home page for a file, "Missing parameters" text) are marked failed, not stored as success
 - [ ] R4 Today: the dense table replaces the card page
 - [ ] R5 Situations: the live page (in the menu)
 - [ ] R6 Insiders and Deals: dense tables

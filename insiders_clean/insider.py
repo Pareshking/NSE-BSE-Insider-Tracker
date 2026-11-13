@@ -829,6 +829,26 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
                            'linked_bse_nightly_on_span': int(bse_night.loc[[j for _, j in pairs]].sum()) if pairs else 0,
                            'bse_refiled': len(refiled)}
 
+    # Pledges netted per company and filing day (13 Nov 2026, from the raw exchange data): Embassy Developments' promoter
+    # group released 9.79 cr shares and pledged 6.79 cr + 3.00 cr again on one filing, Rs 1,021.6 cr of rows whose pledged
+    # total did not change. Every pledge row carries the day's net change in pledged shares for the company
+    # (created - released - invoked, primary rows only) and `pledge_rollover` when shares were both pledged and released
+    # that day and the net is under 5% of the larger side.
+    df['pledge_day_net'] = np.nan
+    df['pledge_rollover'] = False
+    pk = df['kind'].isin(['pledge_create', 'pledge_revoke', 'pledge_invoke']) & _true(df['is_primary']) & df['isin'].notna()
+    if pk.any():
+        q = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
+        sign = df['kind'].map({'pledge_create': 1, 'pledge_revoke': -1, 'pledge_invoke': -1})
+        g = pd.DataFrame({'isin': df['isin'], 'day': df['broadcast_date'], 'net': q * sign,
+                          'made': q.where(df['kind'].eq('pledge_create'), 0),
+                          'freed': q.where(df['kind'].ne('pledge_create'), 0)})[pk]
+        day = g.groupby(['isin', 'day'], dropna=False)[['net', 'made', 'freed']].transform('sum')
+        df.loc[pk, 'pledge_day_net'] = day['net'].to_numpy()
+        roll = (day['made'] > 0) & (day['freed'] > 0) & (day['net'].abs() < 0.05 * day[['made', 'freed']].max(axis=1))
+        df.loc[pk, 'pledge_rollover'] = roll.to_numpy()
+        t['pledge_rollover_rows'] = int(roll.sum())
+
     cols = ['trade_id', 'source_id', 'exchange', 'listed_on', 'is_primary', 'primary_id', 'app_id',
             'prev_app_id', 'nse_submission_type', 'nse_revision_remark',
             'isin', 'security_match', 'company', 'nse_symbol', 'bse_code', 'symbol',
@@ -840,6 +860,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
             'pct_of_mcap', 'trade_date_from', 'trade_date_to', 'intimation_date', 'broadcast_date',
             'insider_to_company_sessions', 'insider_filed_late',
             'company_to_exchange_sessions', 'company_filed_late', 'trade_to_public_sessions',
+            'pledge_day_net', 'pledge_rollover',
             'source_url', 'flags', 'marks', 'needs_review']
     out = df[cols].reset_index(drop=True)
     t['output_rows'] += len(out)

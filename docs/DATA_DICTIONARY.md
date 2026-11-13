@@ -75,6 +75,13 @@ NSE and BSE publish nothing else about the client.
 
 The cleaning report counts rows by type and confidence under `tables.deals.participants`.
 
+## insider_trades: pledges netted per day (13 Nov 2026)
+
+| Column | Meaning |
+|---|---|
+| `pledge_day_net` | On pledge rows: the company's net change in pledged shares on that filing day, primary rows only (created - released - invoked) |
+| `pledge_rollover` | Shares were both pledged and released that day and the net is under 5% of the larger side (Embassy, 11 Nov 2026: 9.79 cr released, 6.79 cr + 3.00 cr pledged again). Counted in `tables.insider_trades.pledge_rollover_rows` |
+
 ## insider_trades: promoter-group link
 
 Added by the clean step from `clean/current/promoter_group.parquet` (`insiders_clean/promoter_group.py`). Identity only:

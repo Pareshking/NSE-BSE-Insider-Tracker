@@ -163,3 +163,18 @@ def test_flush_keeps_a_capture_that_could_not_be_stored(tmp_path, monkeypatch):
 def test_flush_of_a_missing_folder_is_not_an_error(tmp_path):
     import raw_flush
     assert raw_flush.flush(OnceR2(), tmp_path / 'nope', bucket='b')['found'] == 0
+
+
+def test_an_html_page_or_error_text_is_kept_but_marked():
+    """12 Nov 2026: BSE's old bhavcopy URL answered 200 with its home page; NSE's governance API with 'Missing parameters'."""
+    r2 = OnceR2()
+    st_ = store(r2, T1)
+    page = st_.put('bse', 'bhav', b'<!DOCTYPE html><html><head><title>BSE</title></head></html>',
+                   url='https://www.bseindia.com/download/BhavCopy/Equity/EQ_ISINCODE_150125.zip', content_type='text/html')
+    err = st_.put('nse', 'gov', b'Missing parameters: recId. Possible values: 47516, 41062, etc',
+                  url='https://www.nseindia.com/api/corporate-governance?index=equities&symbol=X', content_type='text/html')
+    ok = st_.put('nse', 'deals', b'"Date ","Symbol "\n', url='https://www.nseindia.com/api/historicalOR/x?csv=true',
+                 content_type='text/csv')
+    assert page['content_check'] == 'html_page_instead_of_data' and err['content_check'] in ('html_page_instead_of_data', 'error_text')
+    assert ok['content_check'] == '' and st_.suspect == 2
+    assert r2.objects[page['blob_key']].startswith(b'<!DOCTYPE')   # raw kept byte for byte
