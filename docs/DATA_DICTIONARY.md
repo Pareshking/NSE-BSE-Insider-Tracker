@@ -377,6 +377,9 @@ quarter, so year-on-year comparisons need our own history.
 | `xbrl_status` | `ok`, `pending` (refused or over the night's cap of 500; retried), `no_xbrl`, `failed: <error>` |
 | `bse_code`, `xbrl_symbol`, `rounding`, `reporting_quarter`, `period_type`, `period_start`, `period_end_xbrl`, `board_meeting`, `audit_opinion`, `segments` | From the XBRL |
 | `quarter_*`, `ytd_*` (`revenue`, `other_income`, `total_income`, `total_expenses`, `finance_costs`, `depreciation`, `profit_before_exceptional_and_tax`, `exceptional_items`, `profit_before_tax`, `tax`, `profit`, `profit_owners`, `eps_basic`, `eps_diluted`), `ytd_start` | The quarter and the year to date under the INDAS names; blank where the layout (banks, NBFCs, insurers) files them under other names (all facts are in the archive) |
+| `ytd_disagrees` | True where the filing's quarter revenue is above its own year to date (neither is used) |
+| `superseded` | A later filing of the same company, period end and basis was broadcast |
+| `quarter_derived` | True where the filing gives only its year to date (a half year: no quarter context of about three months) and the `quarter_*` lines are that less the previous filing on the same basis covering the same year to the quarter before (13 Nov 2026); EPS is not derived |
 
 ## Archive and raw layer columns (not clean tables)
 
