@@ -116,7 +116,10 @@ COMPANY_PAGE = next(p for p in ALL_PAGES if p.url_path == 'company')
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
 HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden'), st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden'),
           st.Page(proto.today, title='Prototype: Today', icon=M('table_rows'), url_path='proto-today', visibility='hidden'),
-          st.Page(proto.situations, title='Prototype: Situations', icon=M('table_rows'), url_path='proto-situations', visibility='hidden')]
+          st.Page(proto.situations, title='Prototype: Situations', icon=M('table_rows'), url_path='proto-situations', visibility='hidden'),
+          st.Page(proto.insiders, title='Prototype: Insiders', icon=M('table_rows'), url_path='proto-insiders', visibility='hidden'),
+          st.Page(proto.deals, title='Prototype: Deals', icon=M('table_rows'), url_path='proto-deals', visibility='hidden'),
+          st.Page(proto.stakes, title='Prototype: Stakes', icon=M('table_rows'), url_path='proto-stakes', visibility='hidden')]
 ALL = ALL_PAGES + HIDDEN
 # Old addresses keep working.
 MOVED = {'confluence_screener': 'Today', 'entity_tracker': 'People & funds', 'transactions': 'Filings', 'promoter_activity': 'Filings',
