@@ -161,7 +161,7 @@ def _insider_page(days: int, title: str):
     st.html(_insider_table(ctx, d, px, names))
     st.html(f'<p class="dt-foot">Clubbed: <b>{clubbed}</b> smaller decisions under ₹{ideas.MIN_VALUE / 1e5:.0f} L or '
             f'{ideas.MIN_PCT:g}% of the company. Pledges, inter-se transfers, ESOP and gifts are not trades and are not counted here. '
-            '"Since" = last close against the average price paid, adjusted for splits. An amber "to / from" names the other side when the trade '
+            '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": these people did not trade this company on this side in the 12 months before; "routine": in 6 or more of them. An amber "to / from" names the other side when the trade '
             'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market. Holding Δ = shares traded against the promoter group\'s '
             'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
 
@@ -184,6 +184,9 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             'sig': f'<span class="dt-chip {"up" if buy else "dn"}"><span class="ph">{esc(who_kind)} </span>{"buy" if buy else "sell"}</span>',
             'who': esc(moves._short_who(r)) + (f' <span class="mute">+{len(r["people"]) - 1}</span>' if len(r['people']) > 1 else ''),
             # a trade that is one side of a matched bulk/block deal: the other side, as the exchange named it (13 Nov 2026)
+            # routine (traded in most of the 12 months before) or the first in 12 months; the product window starts 8 Oct 2025
+            'hist': (' ' + _chip(f'routine · {r["prior_months"]} of 12 months', '') if r.get('prior_months', 0) >= ideas.ROUTINE_MONTHS
+                     else ' ' + _chip('first in 12 months', 'up' if buy else 'dn') if r.get('prior_months') == 0 else ''),
             'cross': ((' ' + _chip(('to ' if not buy else 'from ') + str(r['cross_with'][0])[:40] + (' +' + str(len(r['cross_with']) - 1)
                                     if len(r['cross_with']) > 1 else ''), 'wn')) if isinstance(r.get('cross_with'), list) and r['cross_with'] else ''),
             'val': esc(kit.rupees(r['value'])),
@@ -198,7 +201,8 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             'ev': f'<span class="ev" title="{r["filings"]} exchange filing(s), NSE and BSE copies merged">×{r["filings"]}</span>',
         })
     # ' ph': off at phone width (dt.css), so a phone shows who, how much, how big and what since without scrolling
-    for x in rows:   # the counterparty rides with who
+    for x in rows:   # history and the counterparty ride with the signal and who
+        x['sig'] += x.pop('hist', '')
         x['who'] += x.pop('cross', '')
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
             ('pct', '% of co.', 'r'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
