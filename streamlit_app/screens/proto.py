@@ -22,6 +22,17 @@ SAST_LATE_DAYS = 30   # on Today a SAST filing this late after its trade is coun
 TODAY_DEAL_MCAP = 500e7   # ₹500 Cr: smaller companies' deals stay on the Deals page, not on Today (13 Nov 2026)
 
 
+def _unconfirmed(stream: str) -> str:
+    """' NSE returned no rows ...' when the last nightly run marked this stream empty over a week or more
+    (run_daily: empty_unconfirmed, C4): an empty table is then not "nothing happened"."""
+    try:
+        e = (store.events_report().get('streams') or {}).get(stream) or {}
+    except Exception:  # noqa: BLE001 -- the report is optional
+        return ''
+    return (' NSE returned no rows for this window on the last run: empty, not confirmed as no events.'
+            if e.get('empty_unconfirmed') else '')
+
+
 def _strip(ctx, parts: list[str]) -> None:
     ref = pd.Timestamp(ctx.ref) if ctx.ref is not None else None
     lead = f'Data to <b>{ref:%d %b %Y}</b>' if ref is not None else 'Data date unknown'
@@ -260,7 +271,7 @@ def situations():
     st.html(_table([('co', 'Company', 'l'), ('type', 'Type', 'l'), ('price', 'Offer', 'r'), ('close', 'Last close', 'r'),
                     ('spread', 'Spread', 'r'), ('size', 'Shares sought', 'r'), ('times', 'Tendered', 'r'),
                     ('acc', 'Acceptance', 'r'), ('win', 'Window', 'r'), ('left', 'Status', 'l')], rows)
-            if rows else '<p class="dt-empty">No tender offers open or closed in the last 60 days (NSE tender list).</p>')
+            if rows else f'<p class="dt-empty">No tender offers open or closed in the last 60 days (NSE tender list).{_unconfirmed("tenders")}</p>')
 
     # Rights issues (listing stage, last 120 days): shares_listed is the pre-issue base (ratio checks: Ola 2:25, Century 3:8)
     rt = store.table('rights')
@@ -469,7 +480,7 @@ def stakes():
         sa = sa[(sa['_f'] > ref - pd.Timedelta(days=days)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
         rows, inter, tiny = _sast_rows(sa, names)
     st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · inter-se transfers and moves under 0.1% clubbed</span></h2>')
-    st.html(_table(SAST_COLS, rows[:80]) if rows else '<p class="dt-empty">No SAST Reg 29 filings in the period.</p>')
+    st.html(_table(SAST_COLS, rows[:80]) if rows else f'<p class="dt-empty">No SAST Reg 29 filings in the period.{_unconfirmed("sast")}</p>')
     st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company. '
             'Stake: the figure before the arrow is derived (after less the move); NSE files the stake after and the move.</p>')
 
@@ -521,7 +532,7 @@ def _pledges(ctx, ref, days, names):
     st.html(_table([('co', 'Company', 'l'), ('ev', 'What happened', 'l'), ('net', 'Net shares', 'r'), ('pct', 'Net % of co.', 'r'),
                     ('enc', 'Encumbered after', 'r'), ('lender', 'Lender', 'l'), ('rows', 'Filings', 'r'), ('filed', 'Filed', 'r'),
                     ('src', 'Evidence', 'l')], prow[:60]) if prow else
-            '<p class="dt-empty">No pledge filings in the period (NSE Reg 31 feed; filings arrive a median 8 days after the event).</p>')
+            f'<p class="dt-empty">No pledge filings in the period (NSE Reg 31 feed; filings arrive a median 8 days after the event).{_unconfirmed("encumbrances")}</p>')
 
 
 # ---- Data health: can I trust today's numbers? -------------------------------------------------------------------------
@@ -635,7 +646,7 @@ def results():
             f'<div><span>Revenue up YoY</span><b class="up">{n_up}</b><em>companies</em></div>'
             f'<div><span>Revenue down YoY</span><b class="dn">{n_dn}</b><em>companies</em></div></div></div>')
     if r.empty:
-        st.html(f'<p class="dt-empty">No results filed in the last {days} days.</p>')
+        st.html(f'<p class="dt-empty">No results filed in the last {days} days.{_unconfirmed("results")}</p>')
         return
     # Rank by the size of the change only where the year-ago quarter is at least Rs 10 Cr: a tiny base makes +1,775%
     # (Tarc, 12 Nov) and hides the companies that matter; smaller bases follow, then filings with no comparison.

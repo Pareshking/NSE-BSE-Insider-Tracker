@@ -506,3 +506,11 @@ def test_encumbered_after_is_the_post_event_holding():
     g = pd.DataFrame({'promoter_id': ['a', 'b', 'a'], 'encumbered_pct': [4.89, 0.1, 5.0],
                       'post_event_holding_pct': ['     7.60', '0.24', '     8.00']})
     assert abs(proto._encumbered_after(g) - 8.24) < 1e-9
+
+
+def test_an_empty_stream_says_not_confirmed(monkeypatch):
+    """C4 on the page (13 Nov 2026): when the last run marked a stream empty over a week, the empty table says so."""
+    from data import store
+    from screens import proto
+    monkeypatch.setattr(store, 'events_report', lambda: {'streams': {'encumbrances': {'fetched': 0, 'empty_unconfirmed': True}}})
+    assert 'not confirmed' in proto._unconfirmed('encumbrances') and proto._unconfirmed('sast') == ''
