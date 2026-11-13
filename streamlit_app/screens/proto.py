@@ -374,7 +374,8 @@ def _pledges(ctx, ref, days, names):
         en = en[(en['_d'] > ref - pd.Timedelta(days=days)) & (en['_d'] <= ref)]
         sign = en['event_type'].map({'Creation': 1, 'Release': -1, 'Invocation': -1}).fillna(0)
         en = en.assign(_net=pd.to_numeric(en['shares'], errors='coerce') * sign)
-        for (isin, day), g in en.groupby(['isin', '_d']):
+        key = 'isin' if 'isin' in en else 'symbol'   # the site's encumbrances table has no ISIN (DATA_DICTIONARY)
+        for (isin, day), g in en.groupby([key, '_d']):
             made = g.loc[g['event_type'] == 'Creation', 'shares'].sum()
             freed = g.loc[g['event_type'] != 'Creation', 'shares'].sum()
             net = made - freed
@@ -383,7 +384,7 @@ def _pledges(ctx, ref, days, names):
             pctc = (g['pct_of_company'] * g['event_type'].map({'Creation': 1, 'Release': -1, 'Invocation': -1}).fillna(0)).sum()
             r0 = g.iloc[0]
             att = r0.get('attachment')
-            prow.append({'_k': (0 if inv else 1, -abs(pctc)), 'co': _company(names.get(isin) or r0.get('company_display') or r0.get('company'), r0.get('symbol')),
+            prow.append({'_k': (0 if inv else 1, -abs(pctc)), 'co': _company((names.get(isin) if key == 'isin' else None) or r0.get('company_display') or r0.get('company'), r0.get('symbol')),
                          'ev': (_chip('Invoked', 'dn') if inv else _chip('Rollover', '') if roll else _chip('Pledged more', 'wn') if net > 0 else _chip('Released', 'up')),
                          'net': esc(kit.shares(net)) if net else '0', 'pct': _num(pctc, '{:+.2f}%'),
                          'enc': _num(g['encumbered_pct'].iloc[-1], '{:.2f}%'),
