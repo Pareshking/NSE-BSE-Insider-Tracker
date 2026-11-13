@@ -126,13 +126,13 @@ Each page shows the render to the owner before it replaces the old one.
 - [x] R1 Deals: a matched pair of different clients (same day, symbol, quantity, price, opposite sides) is one line; "group transfer" when both names are in the company's promoter group, else "negotiated cross"
 - [x] R2 Pledges: net change per promoter group per day; "rollover" when the net is about zero (Embassy, 11 Nov)
 - [x] R3 Fetches that are not data (HTML home page for a file, "Missing parameters" text) are marked failed, not stored as success
-- [ ] R4 Today: the dense table replaces the card page (built 13 Nov, in PR #243 with the menu switch; goes live when the owner merges it)
-- [ ] R5 Situations: the live page (in the menu) (built 13 Nov, in PR #243 with the menu switch; goes live when the owner merges it)
-- [ ] R6 Insiders and Deals: dense tables (built 13 Nov, in PR #243 with the menu switch; goes live when the owner merges it)
-- [ ] R7 Stakes: SAST crossings and pledges (net, rollover, invocations first) (built 13 Nov, in PR #243 with the menu switch; goes live when the owner merges it)
+- [x] R4 Today: the dense table replaces the card page (live 13 Nov, #243)
+- [x] R5 Situations: the live page (in the menu) (live 13 Nov, #243)
+- [x] R6 Insiders and Deals: dense tables (live 13 Nov, #243)
+- [x] R7 Stakes: SAST crossings and pledges (net, rollover, invocations first) (live 13 Nov, #243)
 - [x] R8 Company: header and checks kept; insider decisions, deals and SAST stake changes as the dense tables of the topic pages, 12 months, no Company column (13 Nov)
 - [x] R9 Data health: each source's last fetch, rows, removed and held back, known limits (13 Nov; exchange counts where a source gives one are still to add)
 - [x] R10 Results and Calendar: dense tables (13 Nov)
 - [x] R12 SAST stake changes shown twice on the Stakes render (12 Nov data: Silgo Retail / Dempal Shah +1.77%, Molbio / Kotak MF +0.49%, Alankit / Alka Agarwal): find whether these are NSE revisions (two application numbers) or BSE rows `with_bse` failed to match, and fix it in the clean layer (the site does not drop rows). **Done 13 Nov:** `event_id` hashes the application number, so a re-filing is a new id; `parsers.drop_sast_refilings` keeps the latest broadcast of the same company, acquirer, action, trade dates, shares and stake after, counted as `refiled_removed` in the nightly report.
 - [x] R13 Results: a filing that reports only a half year or a full year (IFIndAs V2.1, TypeOfReportingPeriod "Half Yearly") was read as a quarter (Emami Sep 2026: +166% revenue on the Sep 2025 quarter; Godfrey Phillips +157%, Tega +950% look the same). The quarter is now blank for those filings and the period is the year to date; fixed in `insiders_clean/results.periods`, applied on the next clean run. **Derived 13 Nov:** `results.derive_quarters` sets the quarter as the year to date less the previous filing on the same basis covering the same year to the quarter before, marked `quarter_derived` (EPS not derived; blank where that filing is missing); such filings also keep their ISIN now (it was read from the blank quarter). Open: compare half years with half years for companies that never file a June quarter.
-- [ ] R11 Menu: the 9 pages (Today, Insiders, Deals, Stakes, Situations, Results, Calendar, Company, Data health); old addresses redirect (built 13 Nov, in PR #243 with the menu switch; goes live when the owner merges it)
+- [x] R11 Menu: the 9 pages (Today, Insiders, Deals, Stakes, Situations, Results, Calendar, Company, Data health); old addresses redirect (live 13 Nov, #243)
