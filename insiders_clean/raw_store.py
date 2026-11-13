@@ -52,6 +52,25 @@ def _missing(err: Exception) -> bool:
     return code in ('404', 'NoSuchKey', 'NotFound') or status == 404 or type(err).__name__ == 'NoSuchKey'
 
 
+_FILE_EXT = ('.zip', '.csv', '.xml', '.json', '.gz')
+
+
+def content_check(url: str, content_type: str | None, body: bytes) -> str:
+    """'' when the body looks like what was asked for, else why not. 12 Nov 2026, from the raw exchange data: BSE's old
+    bhavcopy URLs answered HTTP 200 with BSE's home page (text/html, 14,287 bytes) and NSE's corporate-governance API
+    answered "Missing parameters: recId" (61 bytes); both were stored as successful fetches. Kept raw either way (raw is
+    never filtered); the fetch record says so, and the collector and the data-health page can treat it as failed."""
+    path = (url or '').split('?')[0].lower()
+    ct = (content_type or '').split(';')[0].strip().lower()
+    head = body[:200].lstrip().lower()
+    is_html = ct == 'text/html' or head.startswith(b'<!doctype html') or head.startswith(b'<html')
+    if is_html and (path.endswith(_FILE_EXT) or '/api/' in path):
+        return 'html_page_instead_of_data'
+    if len(body) < 300 and (b'missing parameter' in body.lower() or b'invalid request' in body.lower()):
+        return 'error_text'
+    return ''
+
+
 class RawStore:
     def __init__(self, client, bucket: str | None = None, collector: str = 'unknown', clock=None):
         self.client = client
@@ -61,6 +80,7 @@ class RawStore:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.written = 0
         self.reused = 0
+        self.suspect = 0
 
     def _exists(self, key: str) -> bool:
         try:
@@ -103,7 +123,10 @@ class RawStore:
             'content_type': content_type, 'fetched_at_utc': now.isoformat(), 'bytes': len(body),
             'sha256': digest, 'blob_key': blob_key, 'collector': self.collector,
             'collector_commit': self.commit, 'covers': covers or {},
+            'content_check': content_check(url, content_type, body),
         }
+        if record['content_check']:
+            self.suspect += 1
         fetch_key = (f'{PREFIX}/{source}/{dataset}/fetches/{now:%Y-%m-%d}/'
                      f'{now:%Y%m%dT%H%M%S%fZ}_{digest[:12]}.json')
         self._put_once(fetch_key, json.dumps(record, sort_keys=True).encode(), 'application/json')
