@@ -469,3 +469,12 @@ def test_results_year_on_year_and_quarter_before_only_where_held():
     out = more_pages._latest_results(SimpleNamespace(results=res, ref=pd.Timestamp('2026-11-11')), 30).set_index('isin')
     assert round(out.loc['A', 'rev_yoy'], 1) == 20.0 and round(out.loc['A', 'rev_qoq'], 2) == 9.09
     assert pd.isna(out.loc['B', 'rev_yoy']) and pd.isna(out.loc['B', 'rev_qoq'])     # no history: a dash, never a guess
+
+
+def test_site_loads_the_columns_the_dense_pages_read():
+    """13 Nov 2026: the live Stakes page failed with KeyError 'pct_of_company': data/store.ONLY keeps a few columns of
+    some tables for memory, and the pledge table on Stakes reads more. Every column the dense pages read is kept."""
+    from data import store
+    assert {'symbol', 'company', 'event_type', 'shares', 'pct_of_company', 'encumbered_pct', 'lender', 'broadcast_date',
+            'attachment'} <= set(store.ONLY['encumbrances'])
+    assert {'symbol', 'company', 'quarter_derived', 'quarter_revenue', 'quarter_profit'} <= set(store.ONLY['results'])
