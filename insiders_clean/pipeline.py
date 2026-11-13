@@ -12,7 +12,7 @@ from . import universe
 from .participants import add_participant_columns, report as participants_report
 from .insider import clean_insider
 from .missing import normalise
-from .promoter_group import link as link_promoter_group, mark_deal_promoters
+from .promoter_group import link as link_promoter_group, mark_deal_promoters, mark_insider_group_transfers
 from .report import Report
 from .securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -93,6 +93,9 @@ def run(canonical: dict, run_date: str, calendar_state: dict, vr_master: pd.Data
     deals = apply_product_window(deals, 'date', 'deals', report, 'deal_id')
     if deals is not None and not deals.empty:   # a promoter's own bulk/block deal is never a fund's (audit 22 Oct)
         deals, report.table('deals')['promoter_clients'] = mark_deal_promoters(deals, promoter_group, insider)
+    if insider is not None and not insider.empty and deals is not None and not deals.empty:
+        # a promoter's market trade that is one side of a promoter-to-promoter deal pair is a group transfer (13 Nov 2026)
+        insider, report.table('insider_trades')['group_transfers_by_deal'] = mark_insider_group_transfers(insider, deals)
 
     # Every company the master knows, not only those with insider or deal filings: a company with only a
     # corporate action, SAST or shareholding filing needs its name and page too (VRL Logistics, audit 22 Oct).
