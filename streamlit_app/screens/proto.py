@@ -448,3 +448,93 @@ def data_health():
                     ('rem', 'Removed', 'r'), ('flag', 'Held back', 'r'), ('note', 'Known limits', 'l')], rows))
     st.html('<p class="dt-foot">Removed: exact copies, revisions replaced and rows outside the product window, each counted by reason. '
             'Held back: kept but out of rankings until checked. Raw exchange responses are kept byte for byte under raw_v2/.</p>')
+
+
+# ---- Results: latest quarter per filing, with the comparisons done --------------------------------------------------
+
+def _pct_cell(v, colour=True):
+    if kit._finite(v) is None:
+        return '<span class="mute">–</span>'
+    cls = ('up' if v > 0 else 'dn' if v < 0 else '') if colour else ''
+    return f'<span class="{cls}">{v:+.1f}%</span>'
+
+
+def results():
+    from screens import more_pages
+    ctx = load()
+    if not need_data(ctx):
+        return
+    days = _period('dt_results_period')
+    _, _, names = moves.lookups(ctx)
+    r = more_pages._latest_results(ctx, days)
+    _strip(ctx, [f'results filed in the last {days} days', 'NSE integrated filing XBRL', 'year-ago from our own history (from Apr 2025 filings)'])
+    n_up = int((r['rev_yoy'] > 0).sum()) if not r.empty else 0
+    n_dn = int((r['rev_yoy'] < 0).sum()) if not r.empty else 0
+    st.html(f'<div class="head ds-head dt-head"><h1>Results · last {days} days</h1>'
+            f'<div class="dt-kpis"><div><span>Filings</span><b>{len(r)}</b><em>quarterly results</em></div>'
+            f'<div><span>Revenue up YoY</span><b class="up">{n_up}</b><em>companies</em></div>'
+            f'<div><span>Revenue down YoY</span><b class="dn">{n_dn}</b><em>companies</em></div></div></div>')
+    if r.empty:
+        st.html(f'<p class="dt-empty">No results filed in the last {days} days.</p>')
+        return
+    r = r.assign(_abs=r['rev_yoy'].abs()).sort_values(['_abs'], ascending=False, na_position='last')
+    rows = []
+    for x in r.head(120).to_dict('records'):
+        prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
+        turn = ''
+        if kit._finite(prof) is not None and kit._finite(prev_y) is not None:
+            if prev_y < 0 <= prof:
+                turn = _chip('Back to profit', 'up')
+            elif prev_y >= 0 > prof:
+                turn = _chip('Into loss', 'dn')
+        rows.append({'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')),
+                     'q': esc(kit.day(x['_end'], with_year=True)) if pd.notna(x['_end']) else '–',
+                     'basis': esc('Cons.' if x['_cons'] else 'Stand.'),
+                     'rev': esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–',
+                     'yoy': _pct_cell(x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
+                     'prof': esc(kit.rupees(prof)) if kit._finite(prof) is not None else '–',
+                     'profy': esc(kit.rupees(prev_y)) if kit._finite(prev_y) is not None else '<span class="mute">–</span>',
+                     'turn': turn, 'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
+    st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
+                    ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
+                    ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
+    st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago; '
+            f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history.</p>')
+
+
+# ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------
+
+def calendar():
+    from screens import filings_all
+    ctx = load()
+    if not need_data(ctx):
+        return
+    ref = pd.Timestamp(ctx.ref).normalize()
+    _strip(ctx, ['board meetings on fund raising or buybacks', 'tender windows closing', 'lock-ins ending', 'record dates'])
+    st.html('<div class="head ds-head dt-head"><h1>Calendar · next 30 days</h1>'
+            '<p class="dt-dek">Events that can move a stock, from the filings: meetings on fund raising or a buyback, offers closing, '
+            'lock-ins ending, and record dates for buybacks, bonuses, splits and rights.</p></div>')
+    rows = []
+    _, up = filings_all._upcoming(ctx, ctx.ref, filings_all._names(ctx))
+    if up is not None and not up.empty:
+        up = up.assign(_d=pd.to_datetime(up['made_public'], errors='coerce').dt.normalize())
+        up = up[(up['_d'] >= ref) & (up['_d'] <= ref + pd.Timedelta(days=30))]
+        for r in up.to_dict('records'):
+            rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('nse_symbol')), 'what': esc(str(r.get('what') or '')),
+                         'detail': f'<span class="wrap">{esc(str(r.get("what_sub") or "")[:120])}</span>',
+                         'size': esc(kit.rupees(r['value'])) if kit._finite(r.get('value')) is not None else ''})
+    a = ctx.actions
+    if a is not None and not a.empty and 'ex_date' in a:
+        a = a.assign(_d=pd.to_datetime(a['ex_date'], errors='coerce').dt.normalize())
+        keep = a['purpose'].astype(str).str.lower().isin(['buyback', 'bonus', 'split', 'rights', 'consolidation'])
+        for r in a[keep & (a['_d'] >= ref) & (a['_d'] <= ref + pd.Timedelta(days=30))].to_dict('records'):
+            rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('symbol')),
+                         'what': esc(f'Ex-date: {str(r.get("purpose") or "").capitalize()}'),
+                         'detail': f'<span class="wrap">{esc(str(r.get("subject") or "")[:120])}</span>', 'size': ''})
+    rows.sort(key=lambda x: x['_d'])
+    out = [dict(r, day=esc(pd.Timestamp(r['_d']).strftime('%a %d %b')),
+                away=_chip('today', 'wn') if r['_d'] == ref else esc(f'in {(r["_d"] - ref).days} days')) for r in rows]
+    st.html(_table([('day', 'Date', 'l'), ('away', '', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'),
+                    ('detail', 'Detail', 'l'), ('size', 'Size', 'r')], out[:150]) if out else
+            '<p class="dt-empty">Nothing on the calendar in the next 30 days.</p>')
+    st.html('<p class="dt-foot">An ex-date is the first day a buyer no longer gets the benefit: buy before it. Dividends are left out.</p>')
