@@ -302,7 +302,7 @@ def render():
     lines = []
     if latest:
         lines.append(f'Latest: {latest["who"]} ({latest["role"]}) {"bought" if latest["side"] == "BUY" else "sold"} {kit.rupees(latest["value"])} '
-                     f'on the market, made public {kit.day(latest["seen"])}' + (f'; the price is {latest["move"]:+.1f}% since.' if latest['move'] is not None else '.'))
+                     f'on the market, made public {kit.day(latest["seen"])}.')   # the move since is in the table, against the average paid (13 Nov)
     pnet = prom['signed_value'].sum() if not prom.empty else 0.0
     signed_mcap = (prom['pct_of_mcap'] * prom['side'].map({'BUY': 1, 'SELL': -1})).sum() if not prom.empty else 0.0
     lines.append('Over 12 months promoters ' + (f'put in net {kit.rupees(pnet)} ({kit.pct(signed_mcap, 2, signed=True)} of the company) on the market.' if pnet > 0

@@ -50,8 +50,66 @@ def _company(name, sym) -> str:
 
 # ---- Today: one dense table ------------------------------------------------------------------------------------------
 
+def _more(path: str, text: str) -> str:
+    return f'<p class="dt-foot"><a href="/{path}" target="_self">{esc(text)} →</a></p>'
+
+
 def today():
-    _insider_page(DAYS, 'Insiders · last 7 days')
+    """The top of every page, last 7 days (synthesis, 12 Nov: Today shows each page's head, ranked by % of the company)."""
+    ctx = load()
+    if not need_data(ctx):
+        return
+    ref = pd.Timestamp(ctx.ref)
+    px, _, names = moves.lookups(ctx)
+    d, clubbed = _decisions(ctx, DAYS)
+    dl = ctx.deals
+    dl = dl[(dl['date'] > ref - pd.Timedelta(days=DAYS)) & (dl['date'] <= ref)] if not dl.empty else dl
+    drows, churn, small = _deal_rows(dl) if not dl.empty else ([], 0, 0)
+    drows.sort(key=lambda x: -(kit._finite(x['pct']) or 0))
+    sa = ctx.sast
+    srows, inter, tiny = [], 0, 0
+    if sa is not None and not sa.empty:
+        sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
+        sa = sa[(sa['_f'] > ref - pd.Timedelta(days=DAYS)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
+        if not sa.empty:
+            srows, inter, tiny = _sast_rows(sa, names)
+            srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
+    v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
+    v_sell = d.loc[d['side'] == 'SELL', 'value'].sum() if not d.empty else 0
+    _strip(ctx, ['last 7 days', 'NSE + BSE copies merged', 'noise counted, not listed'])
+    st.html('<div class="head ds-head dt-head"><h1>Today</h1>'
+            f'<div class="dt-kpis"><div><span>Insider buying</span><b class="up">{esc(kit.rupees(v_buy))}</b><em>{int((d["side"] == "BUY").sum()) if not d.empty else 0} decisions</em></div>'
+            f'<div><span>Insider selling</span><b class="dn">{esc(kit.rupees(v_sell))}</b><em>{int((d["side"] == "SELL").sum()) if not d.empty else 0} decisions</em></div>'
+            f'<div><span>Deals</span><b>{len(drows)}</b><em>₹1 Cr and over</em></div>'
+            f'<div><span>Thresholds</span><b>{len(srows)}</b><em>SAST crossings</em></div></div></div>')
+    top = d.sort_values('pct_of_company', ascending=False).head(15) if not d.empty else d
+    st.html('<h2 class="dt-h2">Insider decisions <span>largest first by % of the company</span></h2>')
+    st.html(_insider_table(ctx, top, px, names) if not top.empty else '<p class="dt-empty">No insider decision past the bar in 7 days.</p>')
+    st.html(_more('insiders', f'All {len(d)} decisions, {clubbed} smaller clubbed'))
+    st.html('<h2 class="dt-h2">Bulk and block deals <span>largest first by % of the company</span></h2>')
+    st.html(_deal_table(drows, names, limit=10))
+    st.html(_more('deals', f'All {len(drows)} deals; {churn} market-maker legs and {small} under ₹1 Cr clubbed'))
+    st.html('<h2 class="dt-h2">Holders crossing a threshold <span>SAST Reg 29 · 5, 10, 15, 20, 25, 50, 75%</span></h2>')
+    st.html(_table(SAST_COLS, srows[:10]) if srows else '<p class="dt-empty">No holder crossed a threshold in 7 days.</p>')
+    st.html(_more('stakes', 'All stake changes and pledges'))
+    st.html(_more('situations', 'Open offers, buybacks, rights and raises'))
+
+
+def _decisions(ctx, days: int):
+    """Insider decisions past the bar in the window (buys: ideas._qualifies; sells: promoters past it, others from
+    ideas.BIG_VALUE), and how many were clubbed below it."""
+    ref = ctx.ref
+    frames, clubbed = [], 0
+    for side in ('BUY', 'SELL'):
+        d = ideas.decisions(ctx.eligible, ref, side, ctx.shareholding, days)
+        if d.empty:
+            continue
+        pg = d['promoter_group'].astype(bool)
+        keep = ideas._qualifies(d) if side == 'BUY' else (pg & ideas._qualifies(d)) | (~pg & (d['value'] >= ideas.BIG_VALUE))
+        clubbed += int((~keep).sum())
+        frames.append(d[keep].assign(side=side))
+    d = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return (pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()), clubbed
 
 
 def _period(key: str, default: str = '7 days') -> int:
@@ -69,18 +127,8 @@ def _insider_page(days: int, title: str):
     ctx = load()
     if not need_data(ctx):
         return
-    ref = ctx.ref
     px, hold, names = moves.lookups(ctx)
-    frames, clubbed = [], 0
-    for side in ('BUY', 'SELL'):
-        d = ideas.decisions(ctx.eligible, ref, side, ctx.shareholding, days)
-        if d.empty:
-            continue
-        pg = d['promoter_group'].astype(bool)
-        keep = ideas._qualifies(d) if side == 'BUY' else (pg & ideas._qualifies(d)) | (~pg & (d['value'] >= ideas.BIG_VALUE))
-        clubbed += int((~keep).sum())
-        frames.append(d[keep].assign(side=side))
-    d = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    d, clubbed = _decisions(ctx, days)
     n_buy = int((d['side'] == 'BUY').sum()) if not d.empty else 0
     n_sell = int((d['side'] == 'SELL').sum()) if not d.empty else 0
     v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
