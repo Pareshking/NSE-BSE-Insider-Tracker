@@ -189,3 +189,44 @@ def mark_deal_promoters(deals: pd.DataFrame, group: pd.DataFrame | None,
     d.loc[in_pit, 'client_promoter_basis'] = 'pit_filing'
     return d, {'legs': int((in_list | in_pit).sum()), 'by_list': int(in_list.sum()), 'by_pit_filing': int(in_pit.sum())}
 
+
+
+def mark_insider_group_transfers(trades: pd.DataFrame, deals: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """A promoter's market trade that is one side of a bulk/block deal pair between two promoter-group clients
+    (deals.matched_pair, both `client_is_promoter`) moves shares inside the group: no decision to buy or sell, so it
+    is read as an inter-se transfer (kind 'inter_se', never market), marked `group_transfer_by_deal`. Matched on
+    company, shares and the deal day within the trade dates. The insider-side rule (insider._promoter_group_transfers)
+    needs both promoters' filings on one exchange; this one needs only the exchange's deal pair (13 Nov 2026:
+    Gallantt Ispat, Dinesh R Agarwal -> Santosh Kumar Agrawal, 40,00,000 shares at Rs 503 in the block window, shown on
+    Insiders as a Rs 420 Cr promoter sale while Deals called it a group transfer)."""
+    t = trades.copy()
+    t['group_transfer_by_deal'] = False
+    rep = {'pairs': 0, 'trades_marked': 0}
+    need = {'matched_pair', 'client_is_promoter', 'isin', 'date', 'quantity'}
+    if t.empty or deals is None or deals.empty or not need <= set(deals.columns):
+        return t, rep
+    d = deals[deals['matched_pair'].notna()]
+    prom = d['client_is_promoter'].astype('boolean').fillna(False)
+    both = prom.groupby(d['matched_pair']).transform('all') & d.groupby('matched_pair')['side'].transform('nunique').eq(2)
+    d = d[both]
+    if d.empty:
+        return t, rep
+    pairs = d.drop_duplicates('matched_pair')[['isin', 'date', 'quantity']]
+    rep['pairs'] = len(pairs)
+    cand = (t['kind'].eq('market') & t['person_role'].isin(['promoter', 'promoter_group']) & t['side'].isin(['BUY', 'SELL'])
+            & t['isin'].notna())
+    if not cand.any():
+        return t, rep
+    frm = pd.to_datetime(t['trade_date_from'].where(t['trade_date_from'].notna(), t['trade_date_to']), errors='coerce')
+    to = pd.to_datetime(t['trade_date_to'], errors='coerce')
+    q = pd.to_numeric(t['quantity'], errors='coerce')
+    hit = pd.Series(False, index=t.index)
+    for isin, day, qty in pairs.itertuples(index=False):
+        day = pd.Timestamp(day)
+        hit |= cand & t['isin'].eq(isin) & q.eq(qty) & frm.le(day) & to.ge(day)
+    t.loc[hit, 'kind'] = 'inter_se'
+    if 'is_market' in t:
+        t.loc[hit, 'is_market'] = False
+    t.loc[hit, 'group_transfer_by_deal'] = True
+    rep['trades_marked'] = int(hit.sum())
+    return t, rep

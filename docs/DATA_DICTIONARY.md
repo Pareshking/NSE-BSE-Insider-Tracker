@@ -38,6 +38,7 @@ Added by the data checks (`docs/CLEAN_LAYER.md`, "Data checks").
 | `kind` = `holding_only` | A disclosure of a holding with no shares traded; never a trade (`is_market` false, no side) |
 | `security_type_raw` | The security as filed (NSE `secType`, BSE `security_type`): Equity Shares, ADR/GDR/FCCB, Warrants, Derivative ... A filed type that is not equity flags the row `not_equity_shares` (held back) (audit 22 Oct) |
 | `kind` = `inter_se` + mark `promoter_group_transfer` | A filed market buy by a promoter / promoter-group filer paired, on one exchange, with another's market sale of the same company, dates and shares (prices within 2%): shares moved inside the group, never a market decision (audit 22 Oct, T4) |
+| `group_transfer_by_deal` (with `kind` = `inter_se`) | A promoter / promoter-group filer's market trade that is one side of a bulk/block deal pair between two promoter-group clients (`deals.matched_pair`, both `client_is_promoter`): same company and shares, the deal day within the trade dates. Needs only the exchange's deal pair, not both filings (13 Nov 2026: Gallantt Ispat) |
 | `person_role` of a relative | "Directors / Employees Immediate Relative" -> `immediate_relative`; "Promoter(s) Immediate Relative" -> `promoter_group` (ICDR 2(1)(pp)(ii)) |
 | `kind` from the transaction type | A blank mode with a transaction type of pledge / revoke / invoke takes that pledge kind (counted `kind_from_transaction_type`) |
 

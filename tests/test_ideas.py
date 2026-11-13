@@ -485,3 +485,18 @@ def test_a_pledge_sentence_names_an_off_quarter_filing_by_its_date():
     assert ideas._as_of(pd.Timestamp('2026-09-30')) == 'at Sep 2026'
     assert ideas._as_of(pd.Timestamp('2026-10-31')) == 'in the filing of 31 Oct 2026'
     assert ideas._as_of(pd.Timestamp('2026-12-15')) == 'in the filing of 15 Dec 2026'
+
+
+def test_promoter_holding_change_is_against_the_group_stake():
+    """13 Nov 2026: Panchsheel's buying entity showed +89% own holding; for a promoter decision the base is the group's
+    stake in the latest shareholding pattern."""
+    import pandas as pd
+    from insiders_clean import ideas
+    ref = pd.Timestamp('2026-11-12')
+    t = pd.DataFrame({'side': ['BUY'], 'person_role': ['promoter'], 'seen': [ref], 'isin': ['INE1'], 'person_id': ['p1'],
+                      'quantity': [100.0], 'value': [10000.0], 'pct_of_mcap': [0.5], 'trade_date_to': [ref],
+                      'trade_date_from': [ref], 'company': ['X'], 'nse_symbol': ['X'], 'holding_before': [112.0],
+                      'person_name': ['Entity A'], 'broadcast_date': [ref]})
+    sh = pd.DataFrame({'isin': ['INE1'], 'quarter_end': ['2026-09-30'], 'promoter_shares': [5000.0], 'total_shares': [20000.0]})
+    d = ideas.decisions(t, ref, 'BUY', sh, 30)
+    assert round(float(d.loc[0, 'own_change']), 1) == 89.3 and round(float(d.loc[0, 'group_change']), 1) == 2.0
