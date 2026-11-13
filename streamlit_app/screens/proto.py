@@ -296,11 +296,11 @@ def deals():
             f'<div><span>Market makers</span><b>{churn}</b><em>legs clubbed</em></div>'
             f'<div><span>Small</span><b>{clubbed_small}</b><em>legs under ₹1 Cr</em></div></div></div>')
     out = [{'date': esc(kit.day(r['date'], with_year=False)), 'co': _company(names.get(r['isin']) or r['company'], r['sym']),
-            'kind': r['kind'], 'who': r['who'], 'qty': esc(kit.shares(r['qty'])), 'price': _num(r['price'], '₹{:,.2f}'),
+            'kind': r['kind'], 'who': f'<span class="clip">{r["who"]}</span>', 'qty': esc(kit.shares(r['qty'])), 'price': _num(r['price'], '₹{:,.2f}'),
             'val': esc(kit.rupees(r['_v'])), 'pct': _num(r['pct'], '{:.2f}%'),
             'src': esc(f'{str(r.get("ex") or "").upper()} {r.get("feed") or ""}'.strip())} for r in rows[:80]]
-    st.html(_table([('date', 'Date', 'l'), ('co', 'Company', 'l'), ('kind', 'Type', 'l'), ('who', 'Client', 'l'),
-                    ('qty', 'Shares', 'r'), ('price', 'Price', 'r'), ('val', '₹ value', 'r'), ('pct', '% of co.', 'r'),
+    st.html(_table([('date', 'Date', 'l'), ('co', 'Company', 'l'), ('kind', 'Type', 'l'), ('val', '₹ value', 'r'),
+                    ('pct', '% of co.', 'r'), ('qty', 'Shares', 'r'), ('price', 'Price', 'r'), ('who', 'Client', 'l'),
                     ('src', 'Source', 'l')], out) if out else '<p class="dt-empty">No deals of ₹1 Cr or more in the period.</p>')
     note = '' if 'matched_pair' in ctx.deals else ' Matched pairs show as one line once the nightly clean has run with the new rule.'
     st.html(f'<p class="dt-foot">A group transfer is a matched buyer and seller who are both the company\'s promoters; a negotiated cross is '
@@ -347,16 +347,16 @@ def stakes():
             up = (moved or 0) > 0
             att = r.get('attachment')
             rows.append({'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), r.get('symbol')),
-                         'who': esc(str(r.get('acquirer_name') or ''))[:60] + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
+                         'who': '<span class="clip" style="max-width:300px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
                          'act': _chip('Bought' if up else 'Sold', 'up' if up else 'dn'),
                          'moved': _num(moved, '{:+.2f}%'), 'stake': (_num(before, '{:.2f}%') + ' → ' + _num(after, '{:.2f}%')),
-                         'cross': esc(_crossed(before, after)), 'mode': esc(str(r.get('mode') or '')), 'reg': esc(str(r.get('regulation') or '')),
+                         'cross': esc(_crossed(before, after)), 'mode': esc(str(r.get('mode') or '')) + f' <span class="mute">{esc(str(r.get("regulation") or "").replace("Reg", ""))}</span>', 'reg': '',
                          'when': esc(kit.day(r.get('trade_date_to'), with_year=False)) if r.get('trade_date_to') else '–',
                          'filed': esc(kit.day(r['_f'], with_year=False)) + (' ' + _chip(f'{lag}d late', 'wn') if lag is not None and lag > 14 else ''),
                          'ev': f'<a class="ev" href="{esc(att, quote=True)}" target="_blank">Filing</a>' if isinstance(att, str) and att.startswith('http') else ''})
     st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · inter-se transfers and moves under 0.1% clubbed</span></h2>')
     st.html(_table([('co', 'Company', 'l'), ('who', 'Holder', 'l'), ('act', '', 'l'), ('moved', 'Moved', 'r'), ('stake', 'Stake', 'r'),
-                    ('cross', 'Threshold', 'l'), ('mode', 'Mode', 'l'), ('reg', 'Reg', 'l'), ('when', 'Trade', 'r'),
+                    ('cross', 'Threshold', 'l'), ('mode', 'Mode · Reg', 'l'), ('when', 'Trade', 'r'),
                     ('filed', 'Filed', 'r'), ('ev', 'Evidence', 'l')], rows[:80]) if rows else '<p class="dt-empty">No SAST Reg 29 filings in the period.</p>')
     st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company.</p>')
 
