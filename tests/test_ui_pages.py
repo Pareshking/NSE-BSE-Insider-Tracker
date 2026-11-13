@@ -475,8 +475,8 @@ def test_site_loads_the_columns_the_dense_pages_read():
     """13 Nov 2026: the live Stakes page failed with KeyError 'pct_of_company': data/store.ONLY keeps a few columns of
     some tables for memory, and the pledge table on Stakes reads more. Every column the dense pages read is kept."""
     from data import store
-    assert {'symbol', 'company', 'event_type', 'shares', 'pct_of_company', 'encumbered_pct', 'lender', 'broadcast_date',
-            'attachment'} <= set(store.ONLY['encumbrances'])
+    assert {'symbol', 'company', 'event_type', 'shares', 'pct_of_company', 'post_event_holding_pct', 'promoter_id', 'lender',
+            'broadcast_date', 'attachment'} <= set(store.ONLY['encumbrances'])
     assert {'symbol', 'company', 'quarter_derived', 'quarter_revenue', 'quarter_profit'} <= set(store.ONLY['results'])
 
 
@@ -497,3 +497,12 @@ proto._events_run({'run_date': '2026-11-13', 'window': ['2026-11-06', '2026-11-1
     assert not at.exception
     h = ' '.join(e.proto.body for e in at.get('html'))
     assert '90 of 100 NSE lists' in h and 'listing short' in h
+
+
+def test_encumbered_after_is_the_post_event_holding():
+    """NSE's encumbPerc is the encumbrance before the event; after = postEventHoldingPerc, summed over holders (13 Nov)."""
+    import pandas as pd
+    from screens import proto
+    g = pd.DataFrame({'promoter_id': ['a', 'b', 'a'], 'encumbered_pct': [4.89, 0.1, 5.0],
+                      'post_event_holding_pct': ['     7.60', '0.24', '     8.00']})
+    assert abs(proto._encumbered_after(g) - 8.24) < 1e-9
