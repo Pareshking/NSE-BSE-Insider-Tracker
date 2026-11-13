@@ -281,12 +281,14 @@ def _actions(ctx, since, names) -> tuple[pd.DataFrame, pd.DataFrame]:
                      is_mm=False, also_filed=False)
 
 
-def _meeting_detail(desc) -> str:
+def _meeting_detail(desc, purpose=None) -> str:
     """NSE joins every notice of a meeting into one text: keep the short agenda line, not the 'has informed the
-    Exchange' boilerplate."""
+    Exchange' boilerplate. NSE's purpose field goes first when filed: the label can come from it alone (13 Nov 2026)."""
     parts = [x.strip() for x in _txt(desc).split('|') if x.strip()]
     agenda = [x for x in parts if 'has informed the exchange' not in x.lower()]
-    return (agenda or parts or [''])[0][:140]
+    line = (agenda or parts or [''])[0][:140]
+    p = ' / '.join(dict.fromkeys(x.strip() for x in _txt(purpose).split('|') if x.strip()))
+    return f'NSE purpose: {p[:60]} · {line}' if p else line
 
 
 def _upcoming(ctx, ref, names) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -304,7 +306,7 @@ def _upcoming(ctx, ref, names) -> tuple[pd.DataFrame, pd.DataFrame]:
             said = [MEETING_WORDS[c] for c in flags if pd.notna(r.get(c)) and bool(r.get(c))]
             rows.append(dict(kind='meeting', date=pd.Timestamp(r['meeting_date']), symbol=r.get('symbol'), isin=r.get('isin'),
                              company=r.get('company_display') or r.get('company'), what='Board meets: ' + ', '.join(said),
-                             detail=_meeting_detail(r.get('description')), value=None))
+                             detail=_meeting_detail(r.get('description'), r.get('nse_purpose')), value=None))
     bb = buybacks.rows(store.table('buybacks'), ctx.prices, ctx.meetings)
     if not bb.empty:
         close = pd.to_datetime(bb['offer_close'], errors='coerce')
