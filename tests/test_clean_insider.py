@@ -228,3 +228,16 @@ def test_revision_with_prev_app_id_replaces_the_original_and_blank_markers_do_no
     rep2 = type(report)('2026-10-07')
     out2 = run([a, b], master, calendar, rep2)
     assert 'superseded_by_revision' not in rep2.data['tables']['insider_trades']['removed']
+
+
+def test_pledge_released_and_pledged_again_the_same_day_is_a_rollover(real_nse_rows, master, calendar, report):
+    """13 Nov 2026: Embassy's promoter group released 9.79 cr pledged shares and pledged 6.79 cr + 3.00 cr again on one
+    filing. The day's net change in pledged shares is 0 and the rows are a rollover, not pledge activity."""
+    base = dict(real_nse_rows[0], beforeSharesNo='226311492', afterSharesNo='226311492', sellquantity='')
+    rows = [dict(base, modeOfAcquisition='Pledge Revoke', transactionType='Pledge Revoke', buyQuantity='97905440'),
+            dict(base, modeOfAcquisition='Pledge Creation', transactionType='Pledge Creation', buyQuantity='67905440'),
+            dict(base, modeOfAcquisition='Pledge Creation', transactionType='Pledge Creation', buyQuantity='30000000',
+                 acqName='OMR Investments LLP')]
+    out = run(rows, master, calendar, report)
+    p = out[out['kind'].astype(str).str.startswith('pledge')]
+    assert len(p) == 3 and (p['pledge_day_net'] == 0).all() and p['pledge_rollover'].all()
