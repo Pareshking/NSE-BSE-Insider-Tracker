@@ -92,7 +92,9 @@ from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_f
 STREAMS = ('sast', 'actions', 'meetings', 'shareholding', 'tenders', 'daily_buybacks')
 DATE_COLUMN = {'sast': 'trade_date_to', 'actions': 'ex_date', 'meetings': 'meeting_date',
                'shareholding': 'quarter_end', 'tenders': 'offer_open', 'daily_buybacks': 'report_date'}
-RAW_STREAMS = ('meetings', 'tenders', 'daily_buybacks')  # kept byte for byte in raw_v2/
+# kept byte for byte in raw_v2/ (rule 5). SAST Reg 29 and corporate actions added 13 Nov 2026 (synthesis C13: they had no
+# raw copy); the shareholding list is kept by its own hook below (its XBRLs are kept gzipped by fetch_xbrl).
+RAW_STREAMS = ('meetings', 'tenders', 'daily_buybacks', 'sast', 'actions')
 MAX_XBRL_PER_RUN = 300
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -827,7 +829,10 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 elif reparse_raw:   # no NSE call: the kept XBRLs, read again
                     report['shareholding_reparse'] = reparse_shareholding_raw(r2)
                 else:
+                    if raw is not None:   # the listing raw (C13); the XBRL files after it are kept by fetch_xbrl
+                        nse.on_response = raw_hook(raw, 'shareholding_list', {'from': start.isoformat(), 'to': run_date})
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
+                    nse.on_response = None
                     known = merge_into_archive(r2, stream, None, run_date)[0]
                     new = fetch_xbrl(nse, listing, known, report, max_xbrl, members, raw, run_date)
                     blocked = bool(report.get('xbrl_blocked'))

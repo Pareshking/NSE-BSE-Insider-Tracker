@@ -190,3 +190,24 @@ def test_a_quarter_above_its_own_year_to_date_is_flagged_not_fixed():
                        'ytd_start': ['2025-04-01', '2025-04-01', '2025-04-01', '2025-07-01', '2025-04-01'],
                        'period_end': ['2025-09-30', '2026-03-31', '2025-09-30', '2025-09-30', '2025-09-30']})
     assert results.ytd_disagrees(df).tolist() == [True, False, False, False, False]
+
+
+def test_sast_actions_and_the_shareholding_list_keep_their_raw_bytes(monkeypatch):
+    """C13 (13 Nov 2026): NSE SAST Reg 29, corporate actions and the shareholding list had no raw copy (rule 5)."""
+    import clean_writer
+
+    from collectors.nse_events import run_daily
+
+    class Resp:
+        status_code = 200
+
+        def __init__(self, path):
+            self.content = path.read_bytes()
+    monkeypatch.setattr(clean_writer.requests, 'get', lambda url, **kw: Resp(
+        FIXTURES / ('nse_sme_sample.csv' if 'SME' in url else 'nse_equity_sample.csv')))
+    r2, s = OnceR2(), Session()
+    nse = NSEClient(session=s, sleep=lambda x: None)
+    run_daily.run(r2, nse, date(2026, 10, 12), 10, streams=('sast', 'actions', 'shareholding'),
+                  raw=RawStore(r2, bucket='b', collector='test'))
+    for d in ('sast', 'actions', 'shareholding_list'):
+        assert any(k.startswith(f'raw_v2/nse/{d}/fetches/') for k in r2.objects), d
