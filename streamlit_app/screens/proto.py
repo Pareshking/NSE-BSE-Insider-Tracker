@@ -487,7 +487,10 @@ def results():
     if r.empty:
         st.html(f'<p class="dt-empty">No results filed in the last {days} days.</p>')
         return
-    r = r.assign(_abs=r['rev_yoy'].abs()).sort_values(['_abs'], ascending=False, na_position='last')
+    # Rank by the size of the change only where the year-ago quarter is at least Rs 10 Cr: a tiny base makes +1,775%
+    # (Tarc, 12 Nov) and hides the companies that matter; smaller bases follow, then filings with no comparison.
+    base = r['quarter_revenue'] / (1 + r['rev_yoy'] / 100)
+    r = r.assign(_abs=r['rev_yoy'].abs(), _big=(base >= 1e8).fillna(False)).sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
     rows = []
     for x in r.head(120).to_dict('records'):
         prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
@@ -508,7 +511,7 @@ def results():
     st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
                     ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
                     ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
-    st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago; '
+    st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago, where that quarter was ₹10 Cr or more; smaller bases after; '
             f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history.</p>')
 
 
@@ -529,7 +532,14 @@ def calendar():
     if up is not None and not up.empty:
         up = up.assign(_d=pd.to_datetime(up['made_public'], errors='coerce').dt.normalize())
         up = up[(up['_d'] >= ref) & (up['_d'] <= ref + pd.Timedelta(days=30))]
-        for r in up.to_dict('records'):
+        lock = up['what'].astype(str).str.lower().str.contains('lock-in')
+        for (d, sym, co), g in up[lock].groupby(['_d', 'nse_symbol', 'company'], dropna=False):
+            n, val = len(g), pd.to_numeric(g['value'], errors='coerce').sum()
+            rows.append({'_d': d, 'co': _company(co, sym), 'what': 'Lock-in ends',
+                         'detail': f'<span class="wrap">{n} allotment{"s" if n > 1 else ""} free to trade</span>' if n > 1 else
+                                   f'<span class="wrap">{esc(str(g["what_sub"].iloc[0] or "")[:120])}</span>',
+                         'size': esc(kit.rupees(val)) if val > 0 else ''})
+        for r in up[~lock].to_dict('records'):
             rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('nse_symbol')), 'what': esc(str(r.get('what') or '')),
                          'detail': f'<span class="wrap">{esc(str(r.get("what_sub") or "")[:120])}</span>',
                          'size': esc(kit.rupees(r['value'])) if kit._finite(r.get('value')) is not None else ''})
