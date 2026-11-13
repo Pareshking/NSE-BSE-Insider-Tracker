@@ -444,6 +444,18 @@ def stakes():
         st.html(f'<p class="dt-empty">Pledges could not be drawn: {esc(type(exc).__name__)}: {esc(str(exc)[:200])}</p>')
 
 
+def _encumbered_after(g):
+    """% of the company encumbered after the day's events, over the holders who filed: each holder's last
+    `post_event_holding_pct`. NSE's `encumbPerc` (our `encumbered_pct`) is the encumbrance BEFORE the event: Themis
+    Medicare 4.89% before + 2.71% created = 7.60% after; Paisalo 3.17 + 1.10 = 4.27 (raw sample, 13 Nov 2026)."""
+    if 'post_event_holding_pct' not in g:
+        return None
+    v = pd.to_numeric(g['post_event_holding_pct'].astype(str).str.strip(), errors='coerce')
+    who = g['promoter_id'] if 'promoter_id' in g else pd.Series(0, index=g.index)
+    last = v.groupby(who.to_numpy()).last()
+    return float(last.sum()) if last.notna().any() else None
+
+
 def _pledges(ctx, ref, days, names):
     en = ctx.encumbrances
     prow = []
@@ -465,7 +477,7 @@ def _pledges(ctx, ref, days, names):
             prow.append({'_k': (0 if inv else 1, -abs(pctc)), 'co': _company((names.get(isin) if key == 'isin' else None) or r0.get('company_display') or r0.get('company'), r0.get('symbol')),
                          'ev': (_chip('Invoked', 'dn') if inv else _chip('Rollover', '') if roll else _chip('Pledged more', 'wn') if net > 0 else _chip('Released', 'up')),
                          'net': esc(kit.shares(net)) if net else '0', 'pct': _num(pctc, '{:+.2f}%'),
-                         'enc': _num(g['encumbered_pct'].iloc[-1], '{:.2f}%'),
+                         'enc': _num(_encumbered_after(g), '{:.2f}%'),
                          'lender': esc(', '.join(sorted(set(str(x) for x in g['lender'].dropna())))[:60]),
                          'rows': str(len(g)), 'filed': esc(kit.day(day, with_year=False)),
                          'src': f'<a class="ev" href="{esc(att, quote=True)}" target="_blank">Filing</a>' if isinstance(att, str) and att.startswith('http') else ''})

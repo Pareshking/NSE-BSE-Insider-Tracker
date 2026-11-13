@@ -112,7 +112,7 @@ ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_to
                     'symbol', 'company', 'quarter_derived'),   # the Company timeline's quarter line (audit 22 Oct); Results page names, derived mark (13 Nov)
         # the Stakes page nets pledges per company and day and shows % of the company, encumbered after and the filing (13 Nov)
         'encumbrances': ('symbol', 'company', 'event_type', 'encumbrance_type', 'lender', 'shares', 'pct_of_company',
-                         'encumbered_pct', 'broadcast_date', 'attachment'),
+                         'post_event_holding_pct', 'promoter_id', 'broadcast_date', 'attachment'),
         'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
                            'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
 
