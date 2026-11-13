@@ -18,6 +18,8 @@ from ui import kit
 from ui.kit import esc
 
 DAYS = 7
+SAST_LATE_DAYS = 30   # on Today a SAST filing this late after its trade is counted, not listed (13 Nov 2026)
+TODAY_DEAL_MCAP = 500e7   # ₹500 Cr: smaller companies' deals stay on the Deals page, not on Today (13 Nov 2026)
 
 
 def _strip(ctx, parts: list[str]) -> None:
@@ -64,13 +66,26 @@ def today():
     d, clubbed = _decisions(ctx, DAYS)
     dl = ctx.deals
     dl = dl[(dl['date'] > ref - pd.Timedelta(days=DAYS)) & (dl['date'] <= ref)] if not dl.empty else dl
-    drows, churn, small = _deal_rows(dl) if not dl.empty else ([], 0, 0)
+    # Today ranks deals by % of the company, which puts small SME names on top (investor check 13 Nov 2026: three of
+    # the top four were SME stocks traded between the same two funds); on Today only companies of TODAY_DEAL_MCAP and
+    # up, the rest counted and on the Deals page.
+    mc = pd.to_numeric(dl['market_cap'], errors='coerce') if 'market_cap' in dl else pd.Series(float('nan'), index=dl.index)
+    tiny = mc.lt(TODAY_DEAL_MCAP)
+    n_tiny = int(dl.loc[tiny, 'isin'].nunique()) if not dl.empty else 0
+    drows, churn, small = _deal_rows(dl[~tiny]) if not dl.empty else ([], 0, 0)
     drows.sort(key=lambda x: -(kit._finite(x['pct']) or 0))
     sa = ctx.sast
-    srows, inter, tiny = [], 0, 0
+    srows, inter, tiny, n_late = [], 0, 0, 0
     if sa is not None and not sa.empty:
         sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
         sa = sa[(sa['_f'] > ref - pd.Timedelta(days=DAYS)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
+        # a filing made a month or more after the trade is old news on Today (13 Nov 2026: both "crossings" shown were
+        # filed 85 and 97 days late, mode "Others"): counted, and on the Stakes page
+        lag = (sa['_f'].dt.tz_localize(None) if getattr(sa['_f'].dt, 'tz', None) is not None else sa['_f']) \
+            - pd.to_datetime(sa.get('trade_date_to'), errors='coerce')
+        late = lag.dt.days.gt(SAST_LATE_DAYS)
+        n_late = int(late.sum())
+        sa = sa[~late]
         if not sa.empty:
             srows, inter, tiny = _sast_rows(sa, names)
             srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
@@ -88,10 +103,12 @@ def today():
     st.html(_more('insiders', f'All {len(d)} decisions, {clubbed} smaller clubbed'))
     st.html('<h2 class="dt-h2">Bulk and block deals <span>largest first by % of the company</span></h2>')
     st.html(_deal_table(drows, names, limit=10))
-    st.html(_more('deals', f'All {len(drows)} deals; {churn} market-maker legs and {small} under ₹1 Cr clubbed'))
+    st.html(_more('deals', f'All deals; here {churn} market-maker legs and {small} under ₹1 Cr clubbed, '
+                           f'{n_tiny} companies under ₹{TODAY_DEAL_MCAP / 1e7:,.0f} Cr left to the Deals page'))
     st.html('<h2 class="dt-h2">Holders crossing a threshold <span>SAST Reg 29 · 5, 10, 15, 20, 25, 50, 75%</span></h2>')
     st.html(_table(SAST_COLS, srows[:10]) if srows else '<p class="dt-empty">No holder crossed a threshold in 7 days.</p>')
-    st.html(_more('stakes', 'All stake changes and pledges'))
+    st.html(_more('stakes', 'All stake changes and pledges' + (f'; {n_late} filed over {SAST_LATE_DAYS} days after the trade are there, not here'
+                                                                  if n_late else '')))
     st.html(_more('situations', 'Open offers, buybacks, rights and raises'))
 
 
