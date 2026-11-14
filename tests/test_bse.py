@@ -460,3 +460,12 @@ def test_a_bse_only_insider_trade_takes_shares_times_the_bse_close_of_its_trade_
     got = clean_insider(raw, master, calendar, type(report)('2026-10-09'), '2026-10-09', bse_caps=(shares, closes)).iloc[0]
     assert got['market_cap_basis'] == 'shares_x_close' and got['market_cap_at_trade'] == pytest.approx(1e7 * 335.0)
     assert got['pct_of_mcap'] == pytest.approx(got['value'] / (1e7 * 335.0) * 100)
+
+
+def test_an_empty_bse_window_is_noted_not_assumed():
+    """C4 (14 Nov 2026): BSE SAST answered [] for a week while NSE listed 30 Reg 29 filings; a nightly stream with no row
+    over a week is said in the notes as empty, not confirmed. One with rows is not."""
+    bse = EventsBSE([], js('actions_20251008_20251015.json'))
+    rep = events.run(None, bse, date(2025, 11, 30), ('sast', 'actions'), days=10, log=lambda *_: None)
+    assert rep['streams']['sast'].get('empty_unconfirmed') and not rep['streams']['actions'].get('empty_unconfirmed')
+    assert any(n.startswith('sast: BSE returned no rows') for n in rep['notes'])

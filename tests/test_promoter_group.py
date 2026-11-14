@@ -272,5 +272,24 @@ def test_a_promoter_trade_in_a_promoter_to_promoter_deal_pair_is_a_group_transfe
     out, rep = mark_insider_group_transfers(trades, deals)
     assert out['group_transfer_by_deal'].tolist() == [True, True, False, False]   # p2 has a non-promoter side
     assert out.loc[0, 'kind'] == 'inter_se' and not out.loc[0, 'is_market'] and out.loc[2, 'is_market']
-    assert rep == {'pairs': 1, 'trades_marked': 2, 'crosses_named': 3}
+    assert rep == {'pairs': 1, 'trades_marked': 2, 'crosses_named': 3, 'placements': 0}
     assert out['cross_with'].tolist() == ['Santosh Kumar Agrawal', 'Dinesh R Agarwal', None, 'Suryalaxmi Infracon']
+
+
+def test_a_promoter_sale_placed_with_several_buyers_names_them():
+    """14 Nov 2026: V2 Retail, 06 Nov: Ricon Commodities (promoter) sold 98,65,000 shares at Rs 160; several investors bought
+    at Rs 160 the same day. The insider sale lists those buyers; a buyer at another price is not one of them."""
+    import pandas as pd
+    from insiders_clean.promoter_group import mark_insider_group_transfers
+    day = pd.Timestamp('2026-11-06')
+    deals = pd.DataFrame({
+        'matched_pair': [None] * 4, 'isin': ['INE1'] * 4, 'date': [day] * 4,
+        'side': ['SELL', 'BUY', 'BUY', 'BUY'], 'client_is_promoter': [True, False, False, False],
+        'client_name': ['Ricon Commodities', 'Aditya Kumar Halwasiya', 'Rajiv Goenka', 'Someone Else'],
+        'quantity': [9865000.0, 8300000.0, 1565000.0, 100000.0], 'price': [160.0, 160.0, 160.0, 171.0]})
+    trades = pd.DataFrame({'kind': ['market'], 'is_market': [True], 'person_role': ['promoter_group'], 'side': ['SELL'],
+                           'isin': ['INE1'], 'quantity': [9865000.0], 'trade_date_from': ['2026-11-06'],
+                           'trade_date_to': ['2026-11-06']})
+    out, rep = mark_insider_group_transfers(trades, deals)
+    assert out.loc[0, 'placement_buyers'] == ['Aditya Kumar Halwasiya', 'Rajiv Goenka'] and rep['placements'] == 1
+    assert out.loc[0, 'is_market']   # still a sale: the promoter's stake went down

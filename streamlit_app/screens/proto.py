@@ -108,9 +108,10 @@ def today():
             f'<div><span>Insider selling</span><b class="dn">{esc(kit.rupees(v_sell))}</b><em>{int((d["side"] == "SELL").sum()) if not d.empty else 0} decisions</em></div>'
             f'<div><span>Deals</span><b>{len(drows)}</b><em>₹1 Cr and over</em></div>'
             f'<div><span>Thresholds</span><b>{len(srows)}</b><em>SAST crossings</em></div></div></div>')
-    top = d.sort_values('pct_of_company', ascending=False).head(15) if not d.empty else d
-    st.html('<h2 class="dt-h2">Insider decisions <span>largest first by % of the company</span></h2>')
-    st.html(_insider_table(ctx, top, px, names) if not top.empty else '<p class="dt-empty">No insider decision past the bar in 7 days.</p>')
+    st.html('<h2 class="dt-h2">Insider decisions <span>largest first</span></h2>')
+    sort = _sort_by('dt_today_sort')
+    top = d.sort_values(sort, ascending=False).head(15) if not d.empty else d
+    st.html(_insider_table(ctx, top, px, names, sort=sort) if not top.empty else '<p class="dt-empty">No insider decision past the bar in 7 days.</p>')
     st.html(_more('insiders', f'All {len(d)} decisions, {clubbed} smaller clubbed'))
     st.html('<h2 class="dt-h2">Bulk and block deals <span>largest first by % of the company</span></h2>')
     st.html(_deal_table(drows, names, limit=10))
@@ -151,6 +152,16 @@ def insiders():
     _insider_page(days, f'Insider trades · last {days} days')
 
 
+SORTS = {'% of company': 'pct_of_company', '₹ value': 'value'}
+
+
+def _sort_by(key: str) -> str:
+    """The insider tables' order (owner, 14 Nov 2026: "% of company" kept as the default; "₹ value" one click away, so
+    Havells' Rs 303 Cr is not under an Rs 80 lakh buy in a small company)."""
+    pick = st.segmented_control('Sort', list(SORTS), default='% of company', key=key, label_visibility='collapsed') or '% of company'
+    return SORTS[pick]
+
+
 def _insider_page(days: int, title: str):
     ctx = load()
     if not need_data(ctx):
@@ -169,17 +180,17 @@ def _insider_page(days: int, title: str):
     if d.empty:
         st.html(f'<p class="dt-empty">No open-market insider decisions above the bar in the last {days} days.</p>')
         return
-    st.html(_insider_table(ctx, d, px, names))
+    st.html(_insider_table(ctx, d, px, names, sort=_sort_by('dt_ins_sort')))
     st.html(f'<p class="dt-foot">Clubbed: <b>{clubbed}</b> smaller decisions under ₹{ideas.MIN_VALUE / 1e5:.0f} L or '
             f'{ideas.MIN_PCT:g}% of the company. Pledges, inter-se transfers, ESOP and gifts are not trades and are not counted here. '
             '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": no promoter-group entity (for a director or KMP, the same person) traded this company on this side in the 12 months before; "routine": in 6 or more of those months. An amber "to / from" names the other side when the trade '
-            'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market. Holding Δ = shares traded against the promoter group\'s '
+            'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market; "placed with N buyers" when a promoter\'s sale went to several named buyers at one price that day. Holding Δ = shares traded against the promoter group\'s '
             'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
 
 
-def _insider_table(ctx, d, px, names, company_col=True) -> str:
+def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_company') -> str:
     # % of company first (the comparable size), then rupees
-    d = d.sort_values(['side', 'pct_of_company'], ascending=[True, False], kind='stable')
+    d = d.sort_values(['side', sort], ascending=[True, False], kind='stable')
     rows = []
     for r in d.to_dict('records'):
         p = px.get(r['isin']) or {}
@@ -198,6 +209,9 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
             # routine (traded in most of the 12 months before) or the first in 12 months; the product window starts 8 Oct 2025
             'hist': (' ' + _chip(f'routine · {r["prior_months"]} of 12 months', '') if r.get('prior_months', 0) >= ideas.ROUTINE_MONTHS
                      else ' ' + _chip('first in 12 months', 'up' if buy else 'dn') if r.get('prior_months') == 0 else ''),
+            # a sale placed with several buyers at one price (promoter_group._placements)
+            'place': (' ' + _chip(f'placed with {len(r["placement_buyers"])} buyers at ₹{r["avg_price"]:,.0f}', 'wn')
+                      if isinstance(r.get('placement_buyers'), list) and r['placement_buyers'] else ''),
             'cross': ((' ' + _chip(('to ' if not buy else 'from ') + str(r['cross_with'][0])[:40] + (' +' + str(len(r['cross_with']) - 1)
                                     if len(r['cross_with']) > 1 else ''), 'wn')) if isinstance(r.get('cross_with'), list) and r['cross_with'] else ''),
             'val': esc(kit.rupees(r['value'])),
@@ -214,7 +228,7 @@ def _insider_table(ctx, d, px, names, company_col=True) -> str:
     # ' ph': off at phone width (dt.css), so a phone shows who, how much, how big and what since without scrolling
     for x in rows:   # history and the counterparty ride with the signal and who
         x['sig'] += x.pop('hist', '')
-        x['who'] += x.pop('cross', '')
+        x['who'] += x.pop('cross', '') + x.pop('place', '')
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
             ('pct', '% of co.', 'r'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
             ('days', 'Days', 'r ph'), ('when', 'Last trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Filings', 'l ph')]
@@ -655,6 +669,9 @@ def results():
     rows = []
     for x in r.head(120).to_dict('records'):
         prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
+        half = x.get('half_year') == True   # noqa: E712 -- more_pages._latest_results: half year with half year
+        if half:
+            prof, prev_y = x.get('ytd_profit'), x.get('ytd_profit_year')
         turn = ''
         if kit._finite(prof) is not None and kit._finite(prev_y) is not None:
             if prev_y < 0 <= prof:
@@ -664,18 +681,21 @@ def results():
         rows.append({'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')),
                      'q': esc(kit.day(x['_end'], with_year=True)) if pd.notna(x['_end']) else '–',
                      'basis': esc('Cons.' if x['_cons'] else 'Stand.'),
-                     'rev': esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–',
-                     'yoy': _pct_cell(x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
+                     'rev': (esc(kit.rupees(x.get('ytd_revenue'))) if half else
+                             esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–'),
+                     'yoy': _pct_cell(x.get('ytd_yoy') if half else x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
                      'prof': esc(kit.rupees(prof)) if kit._finite(prof) is not None else '–',
                      'profy': esc(kit.rupees(prev_y)) if kit._finite(prev_y) is not None else '<span class="mute">–</span>',
-                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else ''),   # noqa: E712 -- results.derive_quarters
+                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else '')   # noqa: E712 -- results.derive_quarters
+                             + (' ' + _chip('Half year', '') if half else ''),
                      'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
     st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
                     ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
                     ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
     st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago, where that quarter was ₹10 Cr or more; smaller bases after; '
             f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history. '
-            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before.</p>')
+            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before. "Half year": no quarter could be '
+            'derived, so the half year is compared with the half year a year earlier (revenue, YoY and profit are then for the half year).</p>')
 
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------
