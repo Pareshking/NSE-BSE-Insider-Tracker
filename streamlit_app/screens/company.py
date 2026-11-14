@@ -236,8 +236,21 @@ def render():
         from screens import companies_list
         companies_list.render_list()
         return
-    t = ctx.trades[ctx.trades['nse_symbol'].astype(str).str.upper() == sym].copy()
     sec = ctx.securities[ctx.securities['nse_symbol'].astype(str).str.upper() == sym] if not ctx.securities.empty else pd.DataFrame()
+    # A BSE-only company is opened by its BSE code (the top search, 14 Nov 2026): found by code, its rows by ISIN
+    if sec.empty and not ctx.securities.empty and 'bse_code' in ctx.securities and sym.isdigit():
+        sec = ctx.securities[ctx.securities['bse_code'].astype(str).str.split('.').str[0] == sym]
+    sec_isin = sec['isin'].dropna().iloc[0] if len(sec) and 'isin' in sec and sec['isin'].notna().any() else None
+
+    def mine(f: pd.DataFrame) -> pd.DataFrame:
+        """This company's rows: by NSE symbol, or by ISIN (a BSE-only company has no NSE symbol)."""
+        if f is None or f.empty:
+            return pd.DataFrame() if f is None else f
+        hit = f['nse_symbol'].astype(str).str.upper() == sym if 'nse_symbol' in f else pd.Series(False, index=f.index)
+        if sec_isin and 'isin' in f:
+            hit |= f['isin'] == sec_isin
+        return f[hit]
+    t = mine(ctx.trades).copy()
     rec = sec.iloc[0] if len(sec) else (t.iloc[0] if len(t) else None)
     if rec is None:
         ds.head('Company', esc(sym), [f'No company with the symbol {sym} in our data. Open one from any page, or check the spelling.'])
@@ -251,11 +264,11 @@ def render():
     key = str(ctx.ref)
     summary = store.artifact('artifacts/track_summary.parquet')
 
-    e = ctx.eligible[ctx.eligible['nse_symbol'].astype(str).str.upper() == sym]
+    e = mine(ctx.eligible)
     win = e[e['seen'] > ctx.ref - pd.Timedelta(days=365)]
     prom = win[win['person_role'].isin(signals.PROMOTER_ROLES)]
     off = win[win['person_role'].isin(['director', 'kmp'])]
-    d = ctx.deals[ctx.deals['nse_symbol'].astype(str).str.upper() == sym] if not ctx.deals.empty else pd.DataFrame()
+    d = mine(ctx.deals) if not ctx.deals.empty else pd.DataFrame()
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]
