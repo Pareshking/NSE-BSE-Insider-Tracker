@@ -532,3 +532,20 @@ def test_a_promoter_group_buying_through_another_entity_is_not_a_first():
                       for r in rows])
     d = ideas.decisions(t, ref, 'BUY', None, 30)
     assert int(d.loc[0, 'prior_months']) >= ideas.ROUTINE_MONTHS
+
+
+def test_placement_buyers_read_back_from_parquet_reach_the_decision():
+    """14 Nov 2026: parquet gives list columns back as arrays; the decision still carries the buyers."""
+    import io
+    import pandas as pd
+    from insiders_clean import ideas
+    ref = pd.Timestamp('2026-11-12')
+    t = pd.DataFrame({'side': ['SELL'], 'person_role': ['promoter'], 'seen': [ref], 'isin': ['INE1'], 'person_id': ['p1'],
+                      'quantity': [100.0], 'value': [16000.0], 'pct_of_mcap': [0.5], 'trade_date_to': [ref],
+                      'trade_date_from': [ref], 'company': ['X'], 'nse_symbol': ['X'], 'holding_before': [1000.0],
+                      'person_name': ['Ricon'], 'broadcast_date': [ref], 'placement_buyers': [['A', 'B']]})
+    buf = io.BytesIO()
+    t.to_parquet(buf)
+    t = pd.read_parquet(io.BytesIO(buf.getvalue()))
+    d = ideas.decisions(t, ref, 'SELL', None, 30)
+    assert d.loc[0, 'placement_buyers'] == ['A', 'B']
