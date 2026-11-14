@@ -573,6 +573,7 @@ def test_company_page_opens_by_bse_code(data_dir, monkeypatch):
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
     at = AppTest.from_string(APP_PATHS + """
 import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()   # tables cached by earlier tests from another folder
 st.query_params['symbol'] = '544717'
 from ui import theme
 theme.inject()
