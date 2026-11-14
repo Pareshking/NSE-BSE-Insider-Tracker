@@ -790,3 +790,80 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
             else '<p class="dt-empty">No SAST Reg 29 filing for this company in 12 months.</p>')
     if inter or tiny:
         st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers, <b>{tiny}</b> moves under 0.1% of the company.</p>')
+
+
+# ---- Investors: every mutual fund and large investor, each a link (owner, 14 Nov 2026) ---------------------------------
+
+DIRECTORY = [   # (title, client types, rupee floor over the period)
+    ('Mutual funds', ('mutual_fund',), 0),
+    ('Foreign investors', ('fpi',), 0),
+    ('Insurers and pension funds', ('insurer', 'pension'), 0),
+    ('AIF / PMS', ('pms_aif',), 0),
+    ('Banks', ('bank',), 0),
+    ('Other funds', ('fund_other',), 0),
+    ('Large individuals', ('individual',), 10e7),
+    ('Large companies and trusts', ('corporate', 'trust'), 10e7),
+]
+DIRECTORY_PERIODS = {'90 days': 90, '12 months': 365, 'Since Oct 2025': 4000}
+
+
+def investors_directory():
+    """Every mutual fund, foreign investor, insurer, pension fund, AIF / PMS and bank that did a bulk or block deal, and
+    the individuals and companies with Rs 10 Cr or more, each name a link to its page: what it bought and sold, net,
+    deals, companies, last deal. One investor under all its spellings (participants.investor_group). Market makers and
+    promoters trading their own company are not investors here. The type is read from the name (participants.RULES)."""
+    ctx = load()
+    if not need_data(ctx):
+        return
+    pick = st.segmented_control('Period', list(DIRECTORY_PERIODS), default='12 months', key='dt_dir_period',
+                                label_visibility='collapsed') or '12 months'
+    days = DIRECTORY_PERIODS[pick]
+    d = ctx.deals
+    _strip(ctx, ['bulk and block deals, NSE and BSE', 'type read from the name', 'market makers and promoters left out'])
+    st.html('<div class="head ds-head dt-head"><h1>Investors</h1><p class="dt-dek">Every mutual fund and large investor in the '
+            'bulk and block deals, each name a link to everything it bought and sold.</p></div>')
+    if d is None or d.empty or 'client_type' not in d:
+        st.html('<p class="dt-empty">No deals with a client type yet.</p>')
+        return
+    ref = pd.to_datetime(d['date'], errors='coerce').max()
+    w = d[(pd.to_datetime(d['date'], errors='coerce') > ref - pd.Timedelta(days=days))
+          & d['is_primary'].astype('boolean').fillna(False)
+          & ~d['client_is_market_maker'].astype('boolean').fillna(False)
+          & ~d.get('client_is_promoter', pd.Series(False, index=d.index)).astype('boolean').fillna(False)]
+    if w.empty:
+        st.html('<p class="dt-empty">No deals in the period.</p>')
+        return
+    gid = w['investor_group_id'].where(w['investor_group_id'].notna(), w['client_id']) if 'investor_group_id' in w else w['client_id']
+    name = w['investor_group'].where(w['investor_group'].notna(), w['client_name']) if 'investor_group' in w else w['client_name']
+    v = pd.to_numeric(w['value'], errors='coerce').fillna(0)
+    w = w.assign(_g=gid, _n=name, _b=v.where(w['side'].eq('BUY'), 0), _s=v.where(w['side'].eq('SELL'), 0))
+    g = w.groupby('_g')
+    tab = pd.DataFrame({'name': g['_n'].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else s.iloc[0]),
+                        'type': g['client_type'].agg(lambda s: s.mode().iloc[0] if not s.mode().empty else s.iloc[0]),
+                        'bought': g['_b'].sum(), 'sold': g['_s'].sum(), 'deals': g.size(),
+                        'companies': g['isin'].nunique(), 'last': g['date'].max()}).reset_index()
+    tab['gross'] = tab['bought'] + tab['sold']
+    tab['net'] = tab['bought'] - tab['sold']
+    kpis = []
+    for title, types, floor in DIRECTORY[:3]:
+        x = tab[tab['type'].isin(types)]
+        kpis.append(f'<div><span>{esc(title)}</span><b>{len(x)}</b><em>net {esc(kit.rupees(x["net"].sum(), signed=True))}</em></div>')
+    st.html('<div class="dt-kpis" style="margin-bottom:8px">' + ''.join(kpis) + '</div>')
+    for title, types, floor in DIRECTORY:
+        x = tab[tab['type'].isin(types) & tab['gross'].ge(floor)].sort_values('gross', ascending=False)
+        st.html(f'<h2 class="dt-h2">{esc(title)} <span>{len(x)} · largest first by value traded'
+                + (f' · ₹{floor / 1e7:,.0f} Cr and up' if floor else '') + '</span></h2>')
+        if x.empty:
+            st.html('<p class="dt-empty">None in the period.</p>')
+            continue
+        rows = [{'n': f'<a href="{esc(kit.entity_href(r["_g"]), quote=True)}" target="_self">{esc(str(r["name"]))}</a>',
+                 'b': esc(kit.rupees(r['bought'])) if r['bought'] else '<span class="mute">–</span>',
+                 's': esc(kit.rupees(r['sold'])) if r['sold'] else '<span class="mute">–</span>',
+                 'net': f'<span class="{"up" if r["net"] > 0 else "dn" if r["net"] < 0 else ""}">{esc(kit.rupees(r["net"], signed=True))}</span>',
+                 'd': str(int(r['deals'])), 'c': str(int(r['companies'])),
+                 'l': esc(kit.day(r['last'], with_year=True)) if pd.notna(r['last']) else '–'} for r in x.to_dict('records')]
+        st.html(_table([('n', 'Investor', 'l'), ('b', 'Bought', 'r'), ('s', 'Sold', 'r'), ('net', 'Net', 'r'),
+                        ('d', 'Deals', 'r ph'), ('c', 'Companies', 'r ph'), ('l', 'Last deal', 'r ph')], rows))
+    st.html('<p class="dt-foot">Bulk and block deals on NSE and BSE only: what an investor did in these deals, not its whole '
+            'portfolio. The type is read from the name filed (a "Mutual Fund" in the name, a foreign vehicle form, an insurance '
+            'company), so a fund filed under an unclear name sits in "Other funds". One investor under all its spellings.</p>')

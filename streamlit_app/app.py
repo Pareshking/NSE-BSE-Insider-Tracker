@@ -92,6 +92,7 @@ SECTIONS = {
         st.Page(proto.results, title='Results', icon=M('receipt_long'), url_path='results'),
         st.Page(proto.calendar, title='Calendar', icon=M('calendar_month'), url_path='calendar'),
         st.Page(company.render, title='Companies', icon=M('apartment'), url_path='company'),
+        st.Page(proto.investors_directory, title='Investors', icon=M('account_balance'), url_path='investors'),
         st.Page(proto.data_health, title='Data health', icon=M('fact_check'), url_path='data-health'),
     ],
 }
@@ -120,7 +121,7 @@ HIDDEN = [DATA_PAGE, ENTITY_PAGE, st.Page(coming.render, title='Coming next', ic
           st.Page(pages.ownership, title='Holders', icon=M('pie_chart'), url_path='ownership', visibility='hidden'),
           st.Page(more_pages.sectors, title='Sectors', icon=M('category'), url_path='sectors', visibility='hidden'),
           st.Page(pages.risks, title='Risks', icon=M('warning'), url_path='risks', visibility='hidden'),
-          st.Page(investors.render, title='Investors', icon=M('account_balance'), url_path='investors', visibility='hidden'),
+          st.Page(investors.render, title='Investor flows', icon=M('account_balance'), url_path='investor-flows', visibility='hidden'),
           st.Page(track_record.render, title='Evidence', icon=M('query_stats'), url_path='track-record', visibility='hidden'),
           st.Page(filings_all.render, title='Filings', icon=M('list'), url_path='filings-all', visibility='hidden')]
 ALL = ALL_PAGES + HIDDEN

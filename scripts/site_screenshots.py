@@ -20,7 +20,7 @@ from playwright.async_api import async_playwright
 PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes', 'stakes'), ('situations', 'situations'),
          ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('data-health', 'data-health'),
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
-         ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
+         ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
          ('proto-today', 'old-proto-address')]
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.

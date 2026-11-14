@@ -584,3 +584,22 @@ company.render()
     assert not at.exception, at.exception[0].value
     h = ' '.join(e.proto.body for e in at.get('html'))
     assert 'No company with the symbol' not in h and '>Bulk and block deals <' in h
+
+
+def test_investors_directory_lists_funds_as_links(data_dir, monkeypatch):
+    """14 Nov 2026 (owner: "one page with all mutual fund names as links, large investors etc"): the directory renders a
+    section per investor type, each name a link to its page, market makers and promoters left out."""
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from ui import theme
+theme.inject()
+from screens import proto
+proto.investors_directory()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value
+    h = ' '.join(e.proto.body for e in at.get('html'))
+    assert '>Investors</h1>' in h and '>Mutual funds <' in h and '>Large individuals <' in h
+    assert 'PROMOTER HOLDCO' not in h.upper() or '/entity?id=' in h
