@@ -1,5 +1,5 @@
 """The top search's options (owner, 14 Nov 2026: "search is not predictive or free search"): every company by name, NSE
-symbol, BSE code and ISIN, and the people and funds who matter (promoters, directors and KMP who traded on the market in
+symbol, BSE code and ISIN (BSE-only companies by name, code and ISIN), and the people and funds who matter (promoters, directors and KMP who traded on the market in
 the last 12 months; bulk/block clients with Rs 1 Cr or more of deals in that time, market makers out). Streamlit's box
 filters the labels as one types, so whatever is in a label can be typed. Built once per data day."""
 from __future__ import annotations
@@ -34,6 +34,16 @@ def _options(_ctx, ref_key: str) -> tuple[list[str], dict]:
             lab = ' · '.join(parts)
             labels.append(lab)
             targets[lab] = ('company', str(sym))
+        # BSE-only companies (no NSE symbol): opened by their BSE code (company.render resolves it)
+        if 'bse_code' in sec:
+            b = sec[sec['nse_symbol'].isna() & sec['bse_code'].notna()].drop_duplicates('bse_code')
+            bname = b['display_name'] if 'display_name' in b else b.get('company', b['bse_code'])
+            for n, code, isin in zip(bname, b['bse_code'], b.get('isin', pd.Series(index=b.index, dtype=object))):
+                c = str(code).split('.')[0]
+                lab = ' · '.join([str(n), f'BSE {c}'] + ([isin] if isinstance(isin, str) and isin else []))
+                if lab not in targets:
+                    labels.append(lab)
+                    targets[lab] = ('company', c)
     ref = pd.Timestamp(ctx.ref) if ctx.ref is not None else None
     people = []
     t = ctx.trades

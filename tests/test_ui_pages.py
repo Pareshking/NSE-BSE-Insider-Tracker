@@ -552,8 +552,8 @@ def test_top_search_finds_codes_isins_and_people():
     ref = pd.Timestamp('2026-11-12')
     ctx = types.SimpleNamespace(
         ref=ref,
-        securities=pd.DataFrame({'nse_symbol': ['HAVELLS'], 'display_name': ['Havells India'], 'bse_code': ['517354'],
-                                 'isin': ['INE176B01034']}),
+        securities=pd.DataFrame({'nse_symbol': ['HAVELLS', None], 'display_name': ['Havells India', 'Himalaya Nutravedics India'],
+                                 'bse_code': ['517354', '544943'], 'isin': ['INE176B01034', 'INE0ABC01010']}),
         trades=pd.DataFrame({'person_id': ['p1', 'p2'], 'person_name': ['Anil Rai Gupta', 'A Staff Member'],
                              'person_role': ['promoter', 'designated_person'], 'is_market': [True, True],
                              'broadcast_date': [ref, ref]}),
@@ -562,6 +562,25 @@ def test_top_search_finds_codes_isins_and_people():
     opts, targets = search._options.__wrapped__(ctx, str(ref))
     lab = 'Havells India · HAVELLS · BSE 517354 · INE176B01034'
     assert lab in opts and targets[lab] == ('company', 'HAVELLS')
+    assert targets['Himalaya Nutravedics India · BSE 544943 · INE0ABC01010'] == ('company', '544943')   # BSE-only
     assert targets['Person or fund · Anil Rai Gupta'] == ('entity', 'p1')
     assert 'Person or fund · Kotak Mahindra Mutual Fund' in targets
     assert not any('Staff Member' in o or 'Small Client' in o for o in opts)   # staff and small clients are left out
+
+
+def test_company_page_opens_by_bse_code(data_dir, monkeypatch):
+    """14 Nov 2026: the top search opens a BSE-only company by its BSE code; the page finds it and its deals by ISIN."""
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(data_dir))
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()   # tables cached by earlier tests from another folder
+st.query_params['symbol'] = '544717'
+from ui import theme
+theme.inject()
+from screens import company
+company.render()
+""", default_timeout=60)
+    at.run()
+    assert not at.exception, at.exception[0].value
+    h = ' '.join(e.proto.body for e in at.get('html'))
+    assert 'No company with the symbol' not in h and '>Bulk and block deals <' in h
