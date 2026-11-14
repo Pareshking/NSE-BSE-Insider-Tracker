@@ -428,6 +428,9 @@ class Store:
         self.cw.put(self.r2, key, json.dumps(obj, indent=2, default=str).encode(), 'application/json')
 
 
+EMPTY_NOTE_DAYS = 7   # a nightly window this long with no row is said in the notes (C4)
+
+
 def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start: date | None = None,
         end: date | None = None, days: int = NIGHTLY_DAYS, redo: bool = False, master=None, log=print,
         max_xbrl: int = MAX_XBRL_PER_RUN, now: datetime | None = None) -> dict:
@@ -479,6 +482,12 @@ def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start
                 progress['chunks'][key] = {'rows': len(frame), 'added': added, 'partitions': parts, 'done_at': run_date}
                 progress['updated'] = datetime.now(timezone.utc).isoformat()
                 store.put_json(progress_key(stream), progress)
+        if (not history and not blocked and not stats['errors'] and stats.get('fetched', 0) == 0
+                and (b - a).days >= EMPTY_NOTE_DAYS and stream != 'meetings'):
+            # Empty is not "nothing happened" (synthesis C4: BSE SAST answered [] for a week while NSE listed 30 Reg 29
+            # filings): said in the notes, not assumed (14 Nov 2026)
+            stats['empty_unconfirmed'] = True
+            report['notes'].append(f'{stream}: BSE returned no rows for {a.isoformat()}..{b.isoformat()}; empty, not confirmed as no events')
         if store is None:
             continue
         arch = store.whole(stream)
