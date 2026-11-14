@@ -64,6 +64,7 @@ from screens import (
     track_record,
 )
 from screens.ctx import load
+from screens.search import search_options
 from data import store
 from ui import kit, theme
 
@@ -96,17 +97,22 @@ SECTIONS = {
 }
 ALL_PAGES = [p for ps in SECTIONS.values() for p in ps]
 def _search_picked():
-    """The top search: remember the company, clear the box (so the next page does not jump again)."""
+    """The top search: remember where to go (a company or a person / fund), clear the box (so the next page does not
+    jump again)."""
     pick = st.session_state.get('top_search')
     if pick:
-        st.session_state['_go_symbol'] = pick.rsplit(' · ', 1)[1]
+        st.session_state['_go_search'] = _SEARCH_TARGETS.get(pick)
     st.session_state['top_search'] = None
+
+
+_SEARCH_TARGETS: dict = {}
 
 
 COMPANY_PAGE = next(p for p in ALL_PAGES if p.url_path == 'company')
 # Reachable by address and from the footer, not in the menu: they are about the data, not a signal.
 DATA_PAGE = st.Page(data_status.render, title='Data quality', icon=M('fact_check'), url_path='data', visibility='hidden')
-HIDDEN = [DATA_PAGE, st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden'), st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden'),
+ENTITY_PAGE = st.Page(entity.render, title='People & funds', icon=M('person_search'), url_path='entity', visibility='hidden')
+HIDDEN = [DATA_PAGE, ENTITY_PAGE, st.Page(coming.render, title='Coming next', icon=M('hourglass_top'), url_path='coming', visibility='hidden'),
           # The pages of 12 Nov, out of the menu (13 Nov), still at their addresses
           st.Page(more_pages.watchlist, title='Watchlist', icon=M('star'), url_path='watchlist', visibility='hidden'),
           st.Page(more_pages.screener, title='Screener', icon=M('filter_list'), url_path='screener', visibility='hidden'),
@@ -166,14 +172,16 @@ if not ctx.trades.empty:
     with left:
         kit.strip(parts)
     with right:
-        sec = ctx.securities.dropna(subset=['nse_symbol']).drop_duplicates('nse_symbol') if not ctx.securities.empty else ctx.securities
-        names = sec['display_name'] if 'display_name' in sec else sec.get('company', sec['nse_symbol'])
-        options = sorted(f'{n} · {s}' for n, s in zip(names, sec['nse_symbol'])) if len(sec) else []
-        st.selectbox('Search a company', options, index=None, placeholder='Search a company',
+        options, targets = search_options(ctx)
+        _SEARCH_TARGETS.clear()
+        _SEARCH_TARGETS.update(targets)
+        st.selectbox('Search a company, code or person', options, index=None, placeholder='Company, symbol, BSE code, ISIN or person',
                      key='top_search', label_visibility='collapsed', on_change=_search_picked)
-    go = st.session_state.pop('_go_symbol', None)
-    if go:
-        st.switch_page(COMPANY_PAGE, query_params={'symbol': go})
+    go = st.session_state.pop('_go_search', None)
+    if go and go[0] == 'company':
+        st.switch_page(COMPANY_PAGE, query_params={'symbol': go[1]})
+    elif go and go[0] == 'entity':
+        st.switch_page(ENTITY_PAGE, query_params={'id': go[1]})
 
 # A link the pages draw (a company, a person, Filings) switches page in this session, with its own address.
 inapp.links({**{p.url_path: p for p in ALL}, '': SECTIONS[''][0]})
