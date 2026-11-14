@@ -192,6 +192,20 @@ def mark_deal_promoters(deals: pd.DataFrame, group: pd.DataFrame | None,
 
 
 def mark_insider_group_transfers(trades: pd.DataFrame, deals: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Matched deal pairs (group transfers, crosses), then placements with several buyers; see _mark_pairs and
+    _placements."""
+    t, rep = _mark_pairs(trades, deals)
+    rep['placements'] = 0
+    if t.empty or deals is None or deals.empty:
+        t['placement_buyers'] = None
+        return t, rep
+    cand = (t['kind'].eq('market') & t['person_role'].isin(['promoter', 'promoter_group']) & t['side'].eq('SELL')
+            & t['isin'].notna())
+    t, rep['placements'] = _placements(t, deals, cand)
+    return t, rep
+
+
+def _mark_pairs(trades: pd.DataFrame, deals: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """A promoter's market trade that is one side of a bulk/block deal pair between two promoter-group clients
     (deals.matched_pair, both `client_is_promoter`) moves shares inside the group: no decision to buy or sell, so it
     is read as an inter-se transfer (kind 'inter_se', never market), marked `group_transfer_by_deal`. Matched on
@@ -244,6 +258,45 @@ def mark_insider_group_transfers(trades: pd.DataFrame, deals: pd.DataFrame) -> t
     rep['trades_marked'] = int(group_hit.sum())
     rep['crosses_named'] = int(t['cross_with'].notna().sum())
     return t, rep
+
+
+PLACEMENT_PRICE_TOL = 0.0005   # 0.05%: the buyers paid the seller's price
+
+
+def _placements(t: pd.DataFrame, deals: pd.DataFrame, cand: pd.Series) -> tuple[pd.DataFrame, int]:
+    """A promoter's sale placed with several buyers (14 Nov 2026: V2 Retail, 06 Nov, Ricon Commodities and Ram Chandra
+    Agarwal sold at Rs 160 to Aditya Kumar Halwasiya, Rajiv Goenka, Paresh N Bhagat and others; the legs do not pair one
+    to one, so no `cross_with`). The insider sale matches the seller's own deal leg (a promoter client, same company,
+    day and shares); the buyers are the non-promoter clients who bought that company that day at that price.
+    `placement_buyers`: their names as filed. Nothing is inferred beyond the exchange's deal rows."""
+    t['placement_buyers'] = None
+    if not {'isin', 'date', 'quantity', 'price', 'side', 'client_is_promoter', 'client_name'} <= set(deals.columns):
+        return t, 0
+    d = deals.dropna(subset=['isin', 'date', 'quantity', 'price'])
+    prom = d['client_is_promoter'].astype('boolean').fillna(False)
+    sells = d[d['side'].eq('SELL') & prom]
+    buys = d[d['side'].eq('BUY') & ~prom]
+    if sells.empty or buys.empty:
+        return t, 0
+    rows = cand & t['side'].eq('SELL') & t['person_role'].isin(['promoter', 'promoter_group']) & t['cross_with'].isna()
+    frm = pd.to_datetime(t['trade_date_from'].where(t['trade_date_from'].notna(), t['trade_date_to']), errors='coerce')
+    to = pd.to_datetime(t['trade_date_to'], errors='coerce')
+    q = pd.to_numeric(t['quantity'], errors='coerce')
+    n = 0
+    for s_ in sells.itertuples():
+        day = pd.Timestamp(s_.date)
+        hit = rows & t['isin'].eq(s_.isin) & q.eq(s_.quantity) & frm.le(day) & to.ge(day)
+        if not hit.any():
+            continue
+        b = buys[buys['isin'].eq(s_.isin) & buys['date'].eq(s_.date)
+                 & ((buys['price'] - s_.price).abs() <= PLACEMENT_PRICE_TOL * s_.price)]
+        if len(b) < 2:   # one buyer is a cross; that is cross_with's job
+            continue
+        names = list(dict.fromkeys(str(x) for x in b['client_name'] if isinstance(x, str) and x))
+        for i in t.index[hit]:
+            t.at[i, 'placement_buyers'] = names
+        n += int(hit.sum())
+    return t, n
     d = deals[deals['matched_pair'].notna()]
     prom = d['client_is_promoter'].astype('boolean').fillna(False)
     both = prom.groupby(d['matched_pair']).transform('all') & d.groupby('matched_pair')['side'].transform('nunique').eq(2)

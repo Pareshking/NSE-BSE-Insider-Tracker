@@ -136,6 +136,8 @@ def decisions(t: pd.DataFrame, ref: pd.Timestamp, side: str, sh: pd.DataFrame | 
     out['prior_months'] = [int((by[i].loc[by[i]['_pg'], '_m'] if pg else by[i].loc[by[i]['person_id'].isin(p), '_m']).nunique())
                            if i in by else 0 for i, p, pg in zip(out['isin'], pid, out['promoter_group'].astype(bool))]
     # the other side of a matched deal, when the decision's trade was one (promoter_group.mark_insider_group_transfers)
+    out['placement_buyers'] = (g['placement_buyers'].agg(lambda s: list(dict.fromkeys(n for v in s if isinstance(v, list) for n in v))).to_numpy()
+                               if 'placement_buyers' in w else [[] for _ in range(len(out))])
     out['cross_with'] = (g['cross_with'].agg(lambda s: list(dict.fromkeys(x for x in s if isinstance(x, str) and x))).to_numpy()
                          if 'cross_with' in w else [[] for _ in range(len(out))])
     total = out['isin'].map(_shares_out(sh))
