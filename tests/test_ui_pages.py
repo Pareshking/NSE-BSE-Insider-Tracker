@@ -539,3 +539,29 @@ def test_a_half_year_only_filing_is_compared_half_year_with_half_year():
     out = more_pages._latest_results(ctx, 30).set_index('isin')
     assert bool(out.loc['A', 'half_year']) and round(float(out.loc['A', 'ytd_yoy']), 1) == 20.0
     assert not bool(out.loc['B', 'half_year']) and round(float(out.loc['B', 'rev_yoy']), 1) == 25.0
+
+
+def test_top_search_finds_codes_isins_and_people():
+    """14 Nov 2026: the top search found names and NSE symbols only; a BSE code, an ISIN, a promoter or a fund now match."""
+    import sys
+    import types
+    from pathlib import Path
+    import pandas as pd
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'streamlit_app'))
+    from screens import search
+    ref = pd.Timestamp('2026-11-12')
+    ctx = types.SimpleNamespace(
+        ref=ref,
+        securities=pd.DataFrame({'nse_symbol': ['HAVELLS'], 'display_name': ['Havells India'], 'bse_code': ['517354'],
+                                 'isin': ['INE176B01034']}),
+        trades=pd.DataFrame({'person_id': ['p1', 'p2'], 'person_name': ['Anil Rai Gupta', 'A Staff Member'],
+                             'person_role': ['promoter', 'designated_person'], 'is_market': [True, True],
+                             'broadcast_date': [ref, ref]}),
+        deals=pd.DataFrame({'client_id': ['c1', 'c2'], 'client_name': ['Kotak Mahindra Mutual Fund', 'Small Client'],
+                            'value': [5e8, 1e6], 'date': [ref, ref], 'client_is_market_maker': [False, False]}))
+    opts, targets = search._options.__wrapped__(ctx, str(ref))
+    lab = 'Havells India · HAVELLS · BSE 517354 · INE176B01034'
+    assert lab in opts and targets[lab] == ('company', 'HAVELLS')
+    assert targets['Person or fund · Anil Rai Gupta'] == ('entity', 'p1')
+    assert 'Person or fund · Kotak Mahindra Mutual Fund' in targets
+    assert not any('Staff Member' in o or 'Small Client' in o for o in opts)   # staff and small clients are left out

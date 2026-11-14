@@ -664,8 +664,13 @@ def results():
         return
     # Rank by the size of the change only where the year-ago quarter is at least Rs 10 Cr: a tiny base makes +1,775%
     # (Tarc, 12 Nov) and hides the companies that matter; smaller bases follow, then filings with no comparison.
-    base = r['quarter_revenue'] / (1 + r['rev_yoy'] / 100)
-    r = r.assign(_abs=r['rev_yoy'].abs(), _big=(base >= 1e8).fillna(False)).sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
+    # a half-year-only filing ranks by its half-year change on its half-year base (14 Nov 2026: they all sorted last,
+    # past the 120 rows shown)
+    hy = r['half_year'].astype('boolean').fillna(False) if 'half_year' in r else pd.Series(False, index=r.index)
+    chg = r['rev_yoy'].where(~hy, r['ytd_yoy'] if 'ytd_yoy' in r else float('nan'))
+    rev = r['quarter_revenue'].where(~hy, r['ytd_revenue'] if 'ytd_revenue' in r else float('nan'))
+    base = rev / (1 + chg / 100)
+    r = r.assign(_abs=chg.abs(), _big=(base >= 1e8).fillna(False)).sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
     rows = []
     for x in r.head(120).to_dict('records'):
         prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
