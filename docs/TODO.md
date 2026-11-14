@@ -119,6 +119,8 @@ Open from it:
 
 ## Redesign build (owner, 13 Nov 2026: yes to dense tables, a Situations page, group-transfer labels; render first; 9 pages; half-hour chain for 5 hours)
 
+**Status 14 Nov 2026:** R0–R13 live. The synthesis cleaning findings C4–C8, C12 and C13 are handled or checked, and the investor-check fixes 1–6 are live, plus the sort switch and placements. Still open, owner only: TODO 15 (retention deletes) and TODO 28 (object lock). Read-only audit tools: `clean_peek` RESULTS_XBRL:SYM and TRADES:SYM.
+
 Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
 Each page shows the render to the owner before it replaces the old one.
 
