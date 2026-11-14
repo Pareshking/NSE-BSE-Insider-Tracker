@@ -514,3 +514,28 @@ def test_an_empty_stream_says_not_confirmed(monkeypatch):
     from screens import proto
     monkeypatch.setattr(store, 'events_report', lambda: {'streams': {'encumbrances': {'fetched': 0, 'empty_unconfirmed': True}}})
     assert 'not confirmed' in proto._unconfirmed('encumbrances') and proto._unconfirmed('sast') == ''
+
+
+def test_a_half_year_only_filing_is_compared_half_year_with_half_year():
+    """14 Nov 2026: a filing with no quarter (no June quarter to derive one) gets its half year compared with the half year
+    a year earlier, of the same length, marked half_year; a filing with a quarter keeps the quarter comparison."""
+    import sys
+    import types
+    from pathlib import Path
+    import pandas as pd
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'streamlit_app'))
+    from screens import more_pages
+    rows = [  # company A: half years only; company B: quarters
+        dict(isin='A', period_end='2026-09-30', ytd_start='2026-04-01', ytd_revenue=1200.0, ytd_profit=120.0, quarter_revenue=None,
+             broadcast_at='2026-11-05T10:00:00+05:30'),
+        dict(isin='A', period_end='2025-09-30', ytd_start='2025-04-01', ytd_revenue=1000.0, ytd_profit=150.0, quarter_revenue=None,
+             broadcast_at='2025-11-05T10:00:00+05:30'),
+        dict(isin='B', period_end='2026-09-30', ytd_start='2026-04-01', ytd_revenue=900.0, ytd_profit=50.0, quarter_revenue=500.0,
+             broadcast_at='2026-11-06T10:00:00+05:30'),
+        dict(isin='B', period_end='2025-09-30', ytd_start='2025-04-01', ytd_revenue=800.0, ytd_profit=40.0, quarter_revenue=400.0,
+             broadcast_at='2025-11-06T10:00:00+05:30')]
+    res = pd.DataFrame(rows).assign(consolidated='Consolidated', quarter_profit=None, superseded=False)
+    ctx = types.SimpleNamespace(results=res, ref=pd.Timestamp('2026-11-12'))
+    out = more_pages._latest_results(ctx, 30).set_index('isin')
+    assert bool(out.loc['A', 'half_year']) and round(float(out.loc['A', 'ytd_yoy']), 1) == 20.0
+    assert not bool(out.loc['B', 'half_year']) and round(float(out.loc['B', 'rev_yoy']), 1) == 25.0

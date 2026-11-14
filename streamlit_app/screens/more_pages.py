@@ -366,6 +366,24 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
     ok = r['_yrev'].gt(0) & r['_yend'].notna()
     r['rev_yoy'] = ((r['quarter_revenue'] / r['_yrev'] - 1) * 100).where(ok)
     r['profit_year'] = r['_yprof'].where(r['_yend'].notna())
+    # A filing with no quarter (a half year only, and no June quarter to derive one from: results.derive_quarters) is
+    # compared half year with half year: its year to date against the same company's year to date a year earlier, of
+    # the same length (14 Nov 2026). Marked on the page; never mixed with a quarter.
+    if {'ytd_revenue', 'ytd_start'} <= set(r.columns):
+        for c in ('ytd_revenue', 'ytd_profit'):
+            if c in r:
+                r[c] = pd.to_numeric(r[c], errors='coerce')
+        r['_ylen'] = (r['_end'] - pd.to_datetime(r['ytd_start'], errors='coerce')).dt.days
+        ya = r[['isin', '_end', '_ylen', 'ytd_revenue'] + (['ytd_profit'] if 'ytd_profit' in r else [])].rename(
+            columns={'_end': '_hend', '_ylen': '_hlen', 'ytd_revenue': '_hrev', 'ytd_profit': '_hprof'})
+        ya['_key'] = ya['_hend'] + pd.DateOffset(years=1)
+        r = pd.merge_asof(r.sort_values('_key'), ya.dropna(subset=['_key']).sort_values('_key'), on='_key', by='isin',
+                          direction='nearest', tolerance=pd.Timedelta(days=12))
+        same = (r['_ylen'] - r['_hlen']).abs().le(10) & r['_ylen'].gt(100)   # a half year (or nine months) with its like
+        half = r['quarter_revenue'].isna() & r['ytd_revenue'].notna() & same & r['_hrev'].gt(0)
+        r['half_year'] = half
+        r['ytd_yoy'] = ((r['ytd_revenue'] / r['_hrev'] - 1) * 100).where(half)
+        r['ytd_profit_year'] = r['_hprof'].where(half) if '_hprof' in r else None
     win = (r['_at'] <= ctx.ref + pd.Timedelta(days=1)) & (r['_at'] > ctx.ref - pd.Timedelta(days=days))
     return r[win].sort_values('_at', ascending=False)
 

@@ -669,6 +669,9 @@ def results():
     rows = []
     for x in r.head(120).to_dict('records'):
         prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
+        half = x.get('half_year') == True   # noqa: E712 -- more_pages._latest_results: half year with half year
+        if half:
+            prof, prev_y = x.get('ytd_profit'), x.get('ytd_profit_year')
         turn = ''
         if kit._finite(prof) is not None and kit._finite(prev_y) is not None:
             if prev_y < 0 <= prof:
@@ -678,18 +681,21 @@ def results():
         rows.append({'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')),
                      'q': esc(kit.day(x['_end'], with_year=True)) if pd.notna(x['_end']) else '–',
                      'basis': esc('Cons.' if x['_cons'] else 'Stand.'),
-                     'rev': esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–',
-                     'yoy': _pct_cell(x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
+                     'rev': (esc(kit.rupees(x.get('ytd_revenue'))) if half else
+                             esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–'),
+                     'yoy': _pct_cell(x.get('ytd_yoy') if half else x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
                      'prof': esc(kit.rupees(prof)) if kit._finite(prof) is not None else '–',
                      'profy': esc(kit.rupees(prev_y)) if kit._finite(prev_y) is not None else '<span class="mute">–</span>',
-                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else ''),   # noqa: E712 -- results.derive_quarters
+                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else '')   # noqa: E712 -- results.derive_quarters
+                             + (' ' + _chip('Half year', '') if half else ''),
                      'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
     st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
                     ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
                     ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
     st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago, where that quarter was ₹10 Cr or more; smaller bases after; '
             f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history. '
-            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before.</p>')
+            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before. "Half year": no quarter could be '
+            'derived, so the half year is compared with the half year a year earlier (revenue, YoY and profit are then for the half year).</p>')
 
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------
