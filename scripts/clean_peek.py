@@ -144,6 +144,28 @@ def results_xbrl(r2, syms: list[str]) -> int:
     return 0
 
 
+def trades_and_deals(r2, sym: str) -> int:
+    """TRADES:SYM: a company's insider market rows and bulk/block deals, Oct-Nov 2026, as cleaned (14 Nov 2026: why a
+    placement or a cross is or is not labelled)."""
+    t = read_parquet(r2, 'clean/current/insider_trades.parquet')
+    d = read_parquet(r2, 'clean/current/deals.parquet')
+    pd.set_option('display.width', 250)
+    pd.set_option('display.max_columns', 30)
+    if t is not None:
+        x = t[(t['nse_symbol'].astype(str).str.upper() == sym) & (t['trade_date_to'].astype(str) >= '2026-10-01')]
+        cols = [c for c in ('person_name', 'person_role', 'side', 'kind', 'is_market', 'is_primary', 'exchange', 'quantity', 'value',
+                            'trade_date_from', 'trade_date_to', 'cross_with', 'placement_buyers', 'group_transfer_by_deal') if c in x]
+        print(f'insider rows {sym}: {len(x)}')
+        print(x[cols].to_string())
+    if d is not None:
+        y = d[(d['nse_symbol'].astype(str).str.upper() == sym) & (d['date'].astype(str) >= '2026-10-01')]
+        cols = [c for c in ('date', 'exchange', 'client_name', 'side', 'quantity', 'price', 'client_is_promoter', 'matched_pair',
+                            'client_is_market_maker') if c in y]
+        print(f'deals {sym}: {len(y)}')
+        print(y[cols].to_string())
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -290,6 +312,8 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
+        return trades_and_deals(r2, syms[0].split(':', 1)[1])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
         return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
