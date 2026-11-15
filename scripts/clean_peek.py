@@ -253,6 +253,62 @@ def compress_age(r2) -> int:
     return 0
 
 
+def results_check(r2) -> int:
+    """RESULTS_CHECK: before deleting raw_v2/nse/results_xbrl/ (owner, 15 Nov 2026: "delete it as we already have the
+    data, right? Confirm it first"): every archived results filing read OK has its facts in xbrl_json, they parse back,
+    the clean table can be rebuilt from them, and how many raw objects there are (blobs and fetch records)."""
+    import json
+    import os as _os
+    from insiders_clean import results
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    frames = []
+    for y in (2025, 2026):
+        a = read_parquet(r2, f'archive/nse_events/results/year={y}.parquet')
+        if a is not None:
+            frames.append(a)
+    a = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    print(f'archive results rows: {len(a)}; status: {a["xbrl_status"].astype(str).value_counts().to_dict()}')
+    ok = a[a['xbrl_status'].astype(str).eq('ok')]
+    empty = ok['xbrl_json'].isna() | ok['xbrl_json'].astype(str).str.len().lt(50)
+    print(f'ok rows: {len(ok)}; ok rows with no facts stored: {int(empty.sum())}')
+    bad = facts = 0
+    for js in ok['xbrl_json'].dropna():
+        try:
+            p = json.loads(js)
+            n = sum(len(v) for v in p.get('facts', {}).values())
+            facts += n
+            if n == 0:
+                bad += 1
+        except (TypeError, ValueError):
+            bad += 1
+    print(f'ok rows whose stored facts do not parse or are empty: {bad}; facts stored in all: {facts:,}')
+    rebuilt = results.clean(a)
+    print(f'clean table rebuilt from the archive alone: {len(rebuilt)} rows, quarter revenue present in '
+          f'{int(pd.to_numeric(rebuilt["quarter_revenue"], errors="coerce").notna().sum())}')
+    blobs = fetches = other = 0
+    token = None
+    while True:
+        kw = {'Bucket': bucket, 'Prefix': 'raw_v2/nse/results_xbrl/'}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            k = o['Key']
+            if '/blobs/' in k:
+                blobs += 1
+            elif '/fetches/' in k:
+                fetches += 1
+            else:
+                other += 1
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    print(f'raw_v2/nse/results_xbrl: {blobs} blobs, {fetches} fetch records, {other} other')
+    urls = set(ok['xbrl_url'].dropna())
+    print(f'distinct XBRL links of ok rows: {len(urls)}')
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -399,6 +455,8 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms == ['RESULTS_CHECK']:   # is everything in the raw results XBRL also in the archive (15 Nov)
+        return results_check(r2)
     if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
         return compress_age(r2)
     if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
