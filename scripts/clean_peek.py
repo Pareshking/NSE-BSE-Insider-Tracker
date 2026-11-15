@@ -442,6 +442,76 @@ def raw_pack(r2) -> int:
                     break
     return 0
 
+def results_orphans(r2) -> int:
+    """RESULTS_ORPHANS (15 Nov 2026): results XBRL fetched OK into raw_v2 whose link is not on any archive row. Each
+    link is looked up in every saved NSE results listing (raw_v2/nse/results_list) to say what it is: a filing the
+    archive holds under a newer link (revised XBRL), a filing missing from the archive (a gap), or a link no saved
+    listing names. Read-only."""
+    import json
+    from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
+    from clean_writer import get, get_blob, list_keys
+    from insiders_clean import results
+    frames = [f for f in (read_parquet(r2, f'archive/nse_events/results/year={y}.parquet') for y in (2025, 2026, 2027))
+              if f is not None]
+    a = pd.concat(frames, ignore_index=True)
+    arch_urls = set(a['xbrl_url'].dropna())
+    by_event = a.set_index('event_id')
+    print(f'archive: {len(a):,} rows, {a["event_id"].nunique():,} filings, {len(arch_urls):,} links')
+
+    def rec(k):
+        try:
+            return json.loads(get(r2, k) or b'{}')
+        except ValueError:
+            return {}
+    with ThreadPoolExecutor(24) as ex:
+        xrecs = list(ex.map(rec, [k for k in list_keys(r2, 'raw_v2/nse/results_xbrl/fetches/') if k.endswith('.json')]))
+        lrecs = list(ex.map(rec, [k for k in list_keys(r2, 'raw_v2/nse/results_list/fetches/') if k.endswith('.json')]))
+    orphans = {r['url']: r for r in xrecs if r.get('http_status') == 200 and r.get('url') and r['url'] not in arch_urls}
+    print(f'raw results XBRL fetch records: {len(xrecs):,}; distinct links not in the archive: {len(orphans):,}')
+
+    def listing(r):
+        try:
+            body = get_blob(r2, r['blob_key'])
+            j = json.loads(body)
+            return results.filing_rows(j.get('data', []) if isinstance(j, dict) else j)
+        except Exception:  # noqa: BLE001 -- an unreadable page is counted, not fatal
+            return None
+    with ThreadPoolExecutor(24) as ex:
+        pages = list(ex.map(listing, [r for r in lrecs if r.get('http_status') == 200 and r.get('blob_key')]))
+    unreadable = sum(p is None for p in pages)
+    listed = pd.concat([p for p in pages if p is not None and not p.empty], ignore_index=True)
+    print(f'saved listing pages: {len(pages):,} ({unreadable} unreadable); listing rows: {len(listed):,}, '
+          f'filings {listed["event_id"].nunique():,}')
+    first = listed.drop_duplicates('xbrl_url').set_index('xbrl_url')
+    kinds, gap_rows = Counter(), []
+    for url in orphans:
+        if url not in first.index:
+            kinds['not_in_any_saved_listing'] += 1
+            continue
+        row = first.loc[url]
+        eid = row['event_id']
+        if eid in by_event.index:
+            cur = by_event.loc[eid]
+            cur = cur.iloc[0] if isinstance(cur, pd.DataFrame) else cur
+            kinds['filing_in_archive_under_another_link/' + str(cur['xbrl_status']).split(':')[0]] += 1
+        else:
+            kinds['filing_missing_from_archive'] += 1
+            gap_rows.append(row)
+    print('orphan links by what they are: ' + json.dumps(dict(kinds)))
+    if gap_rows:
+        g = pd.DataFrame(gap_rows)
+        print('missing filings by quarter end: ' + json.dumps(g['period_end'].value_counts().sort_index().to_dict()))
+        print('missing filings by broadcast month: '
+              + json.dumps(g['broadcast_date'].astype(str).str[:7].value_counts().sort_index().to_dict()))
+        print(g[['symbol', 'period_end', 'broadcast_date', 'revision', 'consolidated']].head(10).to_string(index=False))
+    # listed filings (any saved page) never in the archive, whether or not their XBRL was fetched
+    never = listed[~listed['event_id'].isin(by_event.index)].drop_duplicates('event_id')
+    print(f'listed filings never in the archive (any reason): {len(never):,}; by quarter end: '
+          + json.dumps(never['period_end'].value_counts().sort_index().tail(8).to_dict()))
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -457,6 +527,8 @@ def main() -> int:
         return results_quarters(r2)
     if syms == ['RESULTS_CHECK']:   # is everything in the raw results XBRL also in the archive (15 Nov)
         return results_check(r2)
+    if syms == ['RESULTS_ORPHANS']:   # raw results XBRL whose link is on no archive row: what they are (15 Nov)
+        return results_orphans(r2)
     if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
         return compress_age(r2)
     if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)

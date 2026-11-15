@@ -57,3 +57,40 @@ def test_results_xbrl_trim_keeps_raw_of_unread_filing_after_it_was_compressed():
     gone = {k for k, _ in doomed}
     assert gone == {read + '.gz', 'raw_v2/nse/results_xbrl/fetches/2026-11-01/a.json'}
     assert failed + '.gz' not in gone and kept == 2
+
+
+def test_compress_covers_snapshots_and_readers_fall_back():
+    """raw/ and reference/market_cap/ are kept gzipped (15 Nov 2026); clean_writer.get reads them by the plain key."""
+    import clean_writer
+    r2 = R2()
+    body = json.dumps([{'symbol': f'S{i}', 'market_cap': i * 1000} for i in range(200)], indent=2).encode()
+    r2.objects['reference/market_cap/2026-11-14/data.json'] = body
+    r2.objects['raw/nse/insider_trading/2026-11-14/raw.json'] = body
+    r2.objects['clean/current/x.json'] = body                          # not in the list: left alone
+    st.compress(r2, do_delete=True)
+    assert 'reference/market_cap/2026-11-14/data.json' not in r2.objects
+    assert clean_writer.get(r2, 'reference/market_cap/2026-11-14/data.json') == body
+    assert clean_writer.get(r2, 'raw/nse/insider_trading/2026-11-14/raw.json') == body
+    assert 'clean/current/x.json' in r2.objects
+    assert clean_writer.get(r2, 'reference/market_cap/2026-11-13/data.json') is None
+
+
+def test_writer_stores_snapshot_gzipped_and_drops_plain_copy():
+    import r2_writer
+    r2 = R2()
+    r2.objects['reference/market_cap/2026-11-14/data.json'] = b'old'
+    key = r2_writer.put_gz(r2, 'reference/market_cap/2026-11-14/data.json', b'[1, 2]')
+    assert key.endswith('.gz') and gzip.decompress(r2.objects[key]) == b'[1, 2]'
+    assert 'reference/market_cap/2026-11-14/data.json' not in r2.objects
+
+
+def test_price_zips_go_after_30_days_fetch_records_stay():
+    from datetime import date
+    r2 = R2()
+    for day, body in (('2026-09-01', b'PK old zip'), ('2026-11-10', b'PK new zip')):
+        key = f'raw_v2/exchange_files/nse_pr_zip/blobs/{sha256_hex(body)[:2]}/{sha256_hex(body)}.zip'
+        r2.objects[key] = body
+        r2.objects[f'raw_v2/exchange_files/nse_pr_zip/fetches/{day}/x.json'] = json.dumps(
+            {'blob_key': key, 'covers': {'day': day}, 'url': f'https://n/PR{day}.zip', 'sha256': sha256_hex(body)}).encode()
+    doomed, gone = st.price_zips_doomed(r2, date(2026, 11, 15))
+    assert [g['day'] for g in gone] == ['2026-09-01'] and len(doomed) == 1 and doomed[0][0].endswith('.zip')

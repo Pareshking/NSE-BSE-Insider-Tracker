@@ -21,7 +21,7 @@ for this run have completed, so a manifest entry never points at data that
 isn't actually in the bucket yet.
 """
 from __future__ import annotations
-import hashlib, io, json, os, re
+import gzip, hashlib, io, json, os, re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import boto3
@@ -579,6 +579,18 @@ def get_status(exchange, nse_key, bse_key, nse_cert, bse_cert):
     return ((bse_cert or {}).get('datasets', {}).get(bse_key, {}) or {}).get('status', 'MISSING')
 
 
+
+def put_gz(client, key: str, body: bytes) -> str:
+    """Store `body` gzipped (mtime 0) at {key}.gz and remove a plain copy of the same key, so a reader that falls back
+    to .gz never sees an older plain one first (15 Nov 2026: raw/ and reference/market_cap/ are kept gzipped)."""
+    client.put_object(Bucket=BUCKET, Key=key + '.gz', Body=gzip.compress(body, 9, mtime=0), ContentType='application/gzip')
+    try:
+        client.head_object(Bucket=BUCKET, Key=key)
+    except Exception:  # noqa: BLE001 -- the usual answer: no plain copy
+        return key + '.gz'
+    client.delete_objects(Bucket=BUCKET, Delete={'Objects': [{'Key': key}], 'Quiet': True})
+    return key + '.gz'
+
 def write_dataset(client, exchange, category, rows, status, match_annotations=None,
                   round_trips_dropped=0):
     entry = {
@@ -600,8 +612,7 @@ def write_dataset(client, exchange, category, rows, status, match_annotations=No
         return entry
 
     raw_bytes = json.dumps(rows, indent=2, default=str, ensure_ascii=False).encode('utf-8')
-    raw_key = f'raw/{exchange}/{category}/{TARGET_DATE}/raw.json'
-    client.put_object(Bucket=BUCKET, Key=raw_key, Body=raw_bytes, ContentType='application/json')
+    raw_key = put_gz(client, f'raw/{exchange}/{category}/{TARGET_DATE}/raw.json', raw_bytes)
 
     parquet_bytes, unique_ids = rows_to_parquet_bytes(exchange, category, rows, match_annotations)
     parquet_key = f'canonical/{exchange}/{category}/{TARGET_DATE}/data.parquet'
@@ -706,8 +717,7 @@ def write_market_cap(client):
         return entry
 
     raw_bytes = json.dumps(rows, indent=2, default=str, ensure_ascii=False).encode('utf-8')
-    key = f'reference/market_cap/{TARGET_DATE}/data.json'
-    client.put_object(Bucket=BUCKET, Key=key, Body=raw_bytes, ContentType='application/json')
+    key = put_gz(client, f'reference/market_cap/{TARGET_DATE}/data.json', raw_bytes)
     entry.update({
         'written': True,
         'key': key,

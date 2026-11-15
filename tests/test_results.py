@@ -228,3 +228,29 @@ def test_half_year_less_first_quarter_is_the_derived_quarter():
     assert out.loc[0, 'quarter_revenue'] == 1100.0 and out.loc[0, 'quarter_profit'] == 200.0 and bool(out.loc[0, 'quarter_derived'])
     assert pd.isna(out.loc[2, 'quarter_revenue']) and not out.loc[2, 'quarter_derived']
     assert not out.loc[1, 'quarter_derived'] and out.loc[1, 'quarter_revenue'] == 900.0
+
+
+def test_reparse_adds_listed_filings_missing_from_the_archive_from_kept_raw():
+    """15 Nov 2026: 2,442 listed results filings were never written to the archive. With no NSE call, each listed filing
+    not in the archive is added from the kept listing page and its kept XBRL (plain, compressed in place, or stored
+    gzipped by the collector); one with no kept XBRL is pending, so the nightly run fetches it."""
+    import gzip
+    from test_archive_and_writer import FakeR2
+    from insiders_clean.raw_store import RawStore
+    r2 = FakeR2()
+    raw = RawStore(r2, bucket='b', collector='test')
+    rows = [ROW, {**ROW, 'seq_Id': '201511', 'xbrl': ROW['xbrl'].replace('1739230', '1739231')},
+            {**ROW, 'seq_Id': '201509', 'xbrl': ROW['xbrl'].replace('1739230', '1739232')}]
+    raw.put('nse', 'results_list', json.dumps({'data': rows, 'totalCount': 3}).encode(), url='list?page=1',
+            content_type='application/json')
+    raw.put('nse', 'results_xbrl', XBRL.encode(), url=rows[1]['xbrl'], content_type='application/xml')
+    raw.put('nse', 'results_xbrl', gzip.compress(XBRL.encode(), 9, mtime=0), url=rows[2]['xbrl'],
+            content_type='application/gzip')
+    known = results.filing_rows([ROW]).assign(xbrl_status='ok', xbrl_json='{}')   # 201512 already archived
+    report = {'notes': []}
+    new = run_daily.reparse_results_raw(r2, known, report)
+    assert sorted(new['seq_id']) == ['201509', '201511'] and set(new['xbrl_status']) == {'ok'}
+    assert results.clean(new)['quarter_revenue'].notna().all()
+    del r2.objects[next(k for k in r2.objects if '/results_xbrl/fetches/' in k)]   # one filing with no kept XBRL
+    new = run_daily.reparse_results_raw(r2, known, report)
+    assert sorted(new['xbrl_status']) == ['ok', 'pending'] and report['results_reparse']['missing_from_archive'] == 2
