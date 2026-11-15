@@ -201,6 +201,58 @@ def sizes(r2) -> int:
     return 0
 
 
+def compress_age(r2) -> int:
+    """COMPRESS: per raw_v2 dataset and per other top folder, how much a sample gzips to, and bytes by age (read-only,
+    15 Nov 2026: the owner wants the bucket at 1 GB or less)."""
+    import gzip as _gz
+    import os as _os
+    import random
+    from datetime import datetime, timezone
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    now = datetime.now(timezone.utc)
+    groups = {}
+    token = None
+    while True:
+        kw = {'Bucket': bucket}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            parts = o['Key'].split('/')
+            g = '/'.join(parts[:3]) if parts[0] == 'raw_v2' and len(parts) > 3 else '/'.join(parts[:2]) if len(parts) > 2 else parts[0]
+            groups.setdefault(g, []).append((o['Key'], o['Size'], (now - o['LastModified']).days))
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    rows = []
+    for g, objs in groups.items():
+        total = sum(s for _, s, _ in objs)
+        if total < 5e6:
+            continue
+        old90 = sum(s for _, s, a in objs if a > 90)
+        old180 = sum(s for _, s, a in objs if a > 180)
+        sample = random.Random(0).sample(objs, min(25, len(objs)))
+        raw_b = gz_b = 0
+        for k, sz, _ in sample:
+            if sz > 20e6:
+                continue
+            body = r2.get_object(Bucket=bucket, Key=k)['Body'].read()
+            raw_b += len(body)
+            gz_b += len(_gz.compress(body, 9))
+        ratio = gz_b / raw_b if raw_b else 1.0
+        rows.append((g, len(objs), total, ratio, old90, old180, max(a for _, _, a in objs)))
+    rows.sort(key=lambda r: -r[2])
+    print(f"{'group':<44}{'objs':>8}{'GB':>8}{'gz x':>7}{'GB if gz':>10}{'GB >90d':>9}{'GB >180d':>10}{'oldest d':>9}")
+    t = tg = 0
+    for g, n, total, ratio, o90, o180, oldest in rows:
+        t += total
+        tg += total * min(ratio, 1.0)
+        print(f"{g:<44}{n:>8,}{total / 1e9:>8.3f}{(1 / ratio if ratio else 0):>7.1f}{total * min(ratio, 1.0) / 1e9:>10.3f}"
+              f"{o90 / 1e9:>9.3f}{o180 / 1e9:>10.3f}{oldest:>9}")
+    print(f"TOTAL listed groups {t / 1e9:.2f} GB; if every group were gzipped {tg / 1e9:.2f} GB")
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -347,6 +399,8 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
+        return compress_age(r2)
     if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
         return sizes(r2)
     if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
