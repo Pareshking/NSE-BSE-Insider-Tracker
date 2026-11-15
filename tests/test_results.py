@@ -254,3 +254,14 @@ def test_reparse_adds_listed_filings_missing_from_the_archive_from_kept_raw():
     del r2.objects[next(k for k in r2.objects if '/results_xbrl/fetches/' in k)]   # one filing with no kept XBRL
     new = run_daily.reparse_results_raw(r2, known, report)
     assert sorted(new['xbrl_status']) == ['ok', 'pending'] and report['results_reparse']['missing_from_archive'] == 2
+
+
+def test_a_file_nse_lists_at_zero_bytes_is_not_fetched():
+    """15 Nov 2026: Adani Green and UPL standalone filings (Apr-May 2026) list their XBRL at "0 Bytes" and the link
+    answers 404; they were 'failed: RuntimeError' and retried for nothing. Now `no_xbrl_at_nse`, with no NSE call."""
+    rows = results.filing_rows([{**ROW, 'xbrlFileSize': '0 Bytes'}, {**ROW, 'seq_Id': '201511', 'xbrlFileSize': '109.27 KB'}])
+    nse = FakeNSE([])
+    nse.xbrl_text = XBRL
+    got = run_daily.fetch_results_xbrl(nse, None, rows, None, {'notes': []}, max_xbrl=5)
+    assert dict(zip(got['seq_id'], got['xbrl_status'])) == {'201512': results.NO_FILE, '201511': 'ok'}
+    assert len(nse.urls) == 1

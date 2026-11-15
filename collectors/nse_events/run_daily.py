@@ -673,6 +673,9 @@ def fetch_results_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame,
         if not isinstance(url, str) or not url.startswith('http'):
             rows.at[i, 'xbrl_status'] = 'no_xbrl'
             continue
+        if results.nse_has_no_file(row.get('xbrl_size')):   # NSE lists the file at 0 bytes: nothing to fetch
+            rows.at[i, 'xbrl_status'] = results.NO_FILE
+            continue
         if len(todo) >= max_xbrl:
             rows.at[i, 'xbrl_status'] = 'pending'
             continue
@@ -785,6 +788,7 @@ def reparse_results_raw(r2, known: pd.DataFrame | None, report: dict, workers: i
     rows['xbrl_json'] = [j for _, j in out]
     no_link = ~rows['xbrl_url'].astype(str).str.startswith('http')
     rows.loc[no_link, 'xbrl_status'] = 'no_xbrl'
+    rows.loc[rows['xbrl_size'].map(results.nse_has_no_file) & rows['xbrl_status'].ne('ok'), 'xbrl_status'] = results.NO_FILE
     counts.update(listed_filings=int(listed['event_id'].nunique()), missing_from_archive=len(rows),
                   status=rows['xbrl_status'].astype(str).str.split(':').str[0].value_counts().to_dict())
     report['results_reparse'] = counts

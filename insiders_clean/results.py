@@ -28,7 +28,14 @@ IST = timezone(timedelta(hours=5, minutes=30))
 TYPE = 'Integrated Filing- Financials'
 FILING_COLUMNS = ['event_id', 'seq_id', 'symbol', 'company', 'period_end', 'audited', 'consolidated', 'revision',
                   'revised_at', 'revision_remark', 'broadcast_at', 'broadcast_date', 'kind', 'xbrl_url', 'ixbrl_url',
-                  'pdf_url', 'xbrl_status', 'xbrl_json']
+                  'pdf_url', 'xbrl_size', 'xbrl_status', 'xbrl_json']
+# 15 Nov 2026: NSE's listing gives each file's size; "0 Bytes" means NSE published no XBRL for that filing (Adani Green,
+# UPL standalone, Apr-May 2026: their link answers HTTP 404). Such a filing is `no_xbrl_at_nse`, not fetched.
+NO_FILE = 'no_xbrl_at_nse'
+
+
+def nse_has_no_file(size) -> bool:
+    return isinstance(size, str) and size.strip().lower() in ('0 bytes', '0 kb', '0')
 # INDAS names of the lines kept as columns (quarter_ and ytd_ prefixed); other layouts keep them in xbrl_json.
 SUMMARY = {'revenue': 'RevenueFromOperations', 'other_income': 'OtherIncome', 'total_income': 'Income',
            'total_expenses': 'Expenses', 'finance_costs': 'FinanceCosts',
@@ -90,7 +97,8 @@ def filing_rows(rows: list[dict]) -> pd.DataFrame:
                     'broadcast_at': at.isoformat() if at is not None else None,
                     'broadcast_date': at.date().isoformat() if at is not None else None,
                     'kind': kind_of(xbrl), 'xbrl_url': xbrl, 'ixbrl_url': _link(r.get('ixbrl')),
-                    'pdf_url': _link(r.get('pdf_attach')), 'xbrl_status': None, 'xbrl_json': None})
+                    'pdf_url': _link(r.get('pdf_attach')), 'xbrl_size': _text(r.get('xbrlFileSize')),
+                    'xbrl_status': None, 'xbrl_json': None})
     return pd.DataFrame(out, columns=FILING_COLUMNS)
 
 
