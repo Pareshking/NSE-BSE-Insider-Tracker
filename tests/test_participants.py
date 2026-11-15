@@ -28,6 +28,9 @@ def test_groups_and_market_maker_override():
     assert group_of('HDFC STANDARD LIFE INSURANCE COMPANY LTD', al) == ('HDFC Life Insurance Company Limited', 'alias')
     assert group_of('PINE OAK GLOBAL FUND - CLASS B', al)[0] == group_of('PINE OAK GLOBAL FUND', al)[0]
     assert group_of('NUVAMA CROSSOVER OPPORTUNITIES FUND - SERIES IIIA', al)[1] == 'series'
+    schemes = {group_of(f'NIPPON INDIA EQUITY OPPORTUNITIES AIF - SCHEME {n}', al) for n in (6, 7, 9)}
+    assert len(schemes) == 1 and next(iter(schemes))[1] == 'scheme'   # one investor, not three (15 Nov 2026)
+    assert group_of('NIPPON INDIA SMALL CAP FUND', al)[1] is None       # a mutual fund scheme name is left as it is
     d = pd.DataFrame({'client_id': ['a', 'b', 'c'], 'client_name': ['PINE OAK GLOBAL FUND', 'PINE OAK GLOBAL FUND - CLASS B', 'HRTI PRIVATE LIMITED'],
                       'client_is_market_maker': [False, False, True]})
     out = add_participant_columns(d)

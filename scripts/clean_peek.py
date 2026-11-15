@@ -546,6 +546,51 @@ def results_failed(r2) -> int:
     return 0
 
 
+def results_windows(r2) -> int:
+    """RESULTS_WINDOWS (15 Nov 2026): for each listing window kept in raw_v2/nse/results_list, NSE's own totalCount
+    against the distinct filings our saved pages hold, so a short quarter is told apart from a short listing. Read-only."""
+    import json
+    from collections import defaultdict
+    from concurrent.futures import ThreadPoolExecutor
+    from clean_writer import get, get_blob, list_keys
+    from insiders_clean import results
+
+    def rec(k):
+        try:
+            return json.loads(get(r2, k) or b'{}')
+        except ValueError:
+            return {}
+    with ThreadPoolExecutor(24) as ex:
+        recs = [r for r in ex.map(rec, [k for k in list_keys(r2, 'raw_v2/nse/results_list/fetches/') if k.endswith('.json')])
+                if r.get('http_status') == 200 and r.get('blob_key')]
+
+    def body(r):
+        try:
+            return r, json.loads(get_blob(r2, r['blob_key']))
+        except Exception:  # noqa: BLE001
+            return r, None
+    with ThreadPoolExecutor(24) as ex:
+        pages = list(ex.map(body, recs))
+    total, seqs, quarters = {}, defaultdict(set), defaultdict(lambda: defaultdict(int))
+    for r, j in pages:
+        p = r.get('params') or {}
+        w = (p.get('from'), p.get('to'))
+        if not isinstance(j, dict):
+            continue
+        total[w] = max(total.get(w, 0), int(j.get('totalCount') or 0))
+        df = results.filing_rows(j.get('data', []))
+        for sid, qe in zip(df['seq_id'], df['period_end']):
+            if sid not in seqs[w]:
+                seqs[w].add(sid)
+                quarters[w][str(qe)[:7]] += 1
+    print('window (from..to)            NSE count  we hold  short   top quarters')
+    for w in sorted(total, key=lambda x: str(x[0])):
+        got = len(seqs[w])
+        top = sorted(quarters[w].items(), key=lambda kv: -kv[1])[:3]
+        print(f'  {w[0]}..{w[1]}  {total[w]:>9,} {got:>8,} {total[w] - got:>6,}   {top}')
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -561,6 +606,8 @@ def main() -> int:
         return results_quarters(r2)
     if syms == ['RESULTS_CHECK']:   # is everything in the raw results XBRL also in the archive (15 Nov)
         return results_check(r2)
+    if syms == ['RESULTS_WINDOWS']:   # NSE's count per results listing window against what we hold (15 Nov)
+        return results_windows(r2)
     if syms == ['RESULTS_FAILED']:   # results filings whose XBRL was not read, with the raw kept (15 Nov)
         return results_failed(r2)
     if syms == ['RESULTS_ORPHANS']:   # raw results XBRL whose link is on no archive row: what they are (15 Nov)

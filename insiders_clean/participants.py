@@ -21,8 +21,10 @@ the name ("PINE OAK GLOBAL FUND"); those are `fund_other`, low, not a guess.
 The investor group never merges two entity IDs (insiders_clean/entities.py
 stays conservative); it is an extra column. It comes from the curated list
 `investor_aliases.csv` (each line with its reason) and from two suffix rules:
-a share class ("- CLASS B", "CLASS B PARTICIPATING SHARES") and a scheme
-series ("- SERIES IIIA") belong to the same investor.
+a share class ("- CLASS B", "CLASS B PARTICIPATING SHARES"), a scheme
+series ("- SERIES IIIA") and a numbered AIF scheme ("NIPPON INDIA EQUITY
+OPPORTUNITIES AIF - SCHEME 6", 15 Nov 2026: schemes 6, 7 and 9 showed as three
+investors) belong to the same investor.
 """
 from __future__ import annotations
 
@@ -91,7 +93,8 @@ def classify(name) -> tuple[str, str, str]:
 
 
 _SUFFIX = [('share class', re.compile(r'\s*-?\s*\bCLASS [A-Z0-9]+\b.*$', re.IGNORECASE)),
-           ('series', re.compile(r'\s*-\s*SERIES\s+[IVXLC0-9]+[A-Z]?\s*$', re.IGNORECASE))]
+           ('series', re.compile(r'\s*-\s*SERIES\s+[IVXLC0-9]+[A-Z]?\s*$', re.IGNORECASE)),
+           ('scheme', re.compile(r'\s*-\s*SCHEME\s+(?:NO\.?\s*)?[IVXLC0-9]+[A-Z]?\s*$', re.IGNORECASE))]
 ALIASES_CSV = Path(__file__).with_name('investor_aliases.csv')
 
 
