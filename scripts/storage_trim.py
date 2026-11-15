@@ -75,6 +75,8 @@ def results_xbrl_doomed(client) -> tuple[list[tuple[str, int]], int]:
     objs = dict(listing(client, 'raw_v2/nse/results_xbrl/'))
     doomed, kept_blobs = [], set()
     fetch_keys = [k for k in objs if '/fetches/' in k]
+    why = {'failed_filing': 0, 'url_not_in_archive': 0, 'other_status': 0}
+    samples = []
 
     def read(k):
         return k, json.loads(client.get_object(Bucket=BUCKET, Key=k)['Body'].read())
@@ -83,11 +85,21 @@ def results_xbrl_doomed(client) -> tuple[list[tuple[str, int]], int]:
         for k, rec in pool.map(read, fetch_keys):
             if rec.get('url') in keep_urls or rec.get('url') not in done_urls:
                 kept_blobs.add(rec.get('blob_key'))
+                kind = ('failed_filing' if rec.get('url') in keep_urls else
+                        'other_status' if rec.get('http_status') != 200 else 'url_not_in_archive')
+                why[kind] += 1
+                if kind != 'failed_filing' and len(samples) < 5:
+                    samples.append({x: rec.get(x) for x in ('url', 'http_status', 'bytes', 'fetched_at_utc', 'content_check')})
                 continue
             doomed.append((k, objs[k]))
+    kept_blobs |= {b + '.gz' for b in kept_blobs if b}   # a blob compressed in place keeps its fetch record's name
     for k, sz in objs.items():
         if '/blobs/' in k and k not in kept_blobs:
             doomed.append((k, sz))
+    orphans = sum(1 for k in objs if '/blobs/' in k and k in kept_blobs)
+    print(f'  kept fetch records by reason: {why}; kept blobs {orphans:,}; archive urls {len(set(a["xbrl_url"].dropna())):,}')
+    for x in samples:
+        print(f'  kept example: {json.dumps(x, default=str)[:300]}')
     return doomed, len(objs) - len(doomed)
 
 
