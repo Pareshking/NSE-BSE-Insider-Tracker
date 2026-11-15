@@ -65,12 +65,17 @@ def results_xbrl_doomed(client) -> tuple[list[tuple[str, int]], int]:
     keep_urls = set(a.loc[~a['xbrl_url'].isin(done_urls), 'xbrl_url'].dropna())
     objs = dict(listing(client, 'raw_v2/nse/results_xbrl/'))
     doomed, kept_blobs = [], set()
-    for k in [k for k in objs if '/fetches/' in k]:
-        rec = json.loads(client.get_object(Bucket=BUCKET, Key=k)['Body'].read())
-        if rec.get('url') in keep_urls or rec.get('url') not in done_urls:
-            kept_blobs.add(rec.get('blob_key'))
-            continue
-        doomed.append((k, objs[k]))
+    fetch_keys = [k for k in objs if '/fetches/' in k]
+
+    def read(k):
+        return k, json.loads(client.get_object(Bucket=BUCKET, Key=k)['Body'].read())
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=24) as pool:   # 33,000 small reads: one at a time took over half an hour
+        for k, rec in pool.map(read, fetch_keys):
+            if rec.get('url') in keep_urls or rec.get('url') not in done_urls:
+                kept_blobs.add(rec.get('blob_key'))
+                continue
+            doomed.append((k, objs[k]))
     for k, sz in objs.items():
         if '/blobs/' in k and k not in kept_blobs:
             doomed.append((k, sz))
