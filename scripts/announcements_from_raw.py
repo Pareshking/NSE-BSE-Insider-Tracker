@@ -37,7 +37,7 @@ def saved_answers(r2, source: str, workers: int = 16):
     The records and the bodies are read in parallel (thousands of small objects: one at a time took over an hour)."""
     from concurrent.futures import ThreadPoolExecutor
 
-    from clean_writer import get, list_keys
+    from clean_writer import get, get_blob, list_keys
     keys = sorted(k for k in list_keys(r2, f'raw_v2/{source}/announcements/fetches/') if k.endswith('.json'))
 
     def record(key):
@@ -48,7 +48,7 @@ def saved_answers(r2, source: str, workers: int = 16):
 
     def body(rec):
         try:
-            return rec, json.loads(get(r2, rec['blob_key']))
+            return rec, json.loads(get_blob(r2, rec['blob_key']))
         except (TypeError, ValueError):
             return rec, None
 

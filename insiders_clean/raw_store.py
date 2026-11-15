@@ -23,6 +23,7 @@ forbids deletes under `raw_v2/`; code cannot prove that on its own.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -31,6 +32,27 @@ from datetime import datetime, timezone
 PREFIX = 'raw_v2'
 _EXT = {'application/json': 'json', 'text/csv': 'csv', 'text/html': 'html', 'application/xml': 'xml',
         'text/xml': 'xml', 'application/zip': 'zip', 'application/gzip': 'gz'}
+
+
+# 15 Nov 2026 (owner: "bring it to 1 GB or less", "compress"): text answers are stored gzipped at `{blob_key}.gz`
+# (mtime 0, so the same bytes always give the same object). The fetch record keeps `blob_key` (the name of the bytes as
+# sent, by their SHA-256) and says `stored_as: gzip`; `read_blob` returns the exact bytes as sent either way.
+GZIP_EXT = {'json', 'csv', 'xml', 'html'}
+GZIP_MIN_BYTES = 1024
+
+
+def gz(body: bytes) -> bytes:
+    return gzip.compress(body, 9, mtime=0)
+
+
+def read_blob(get, key: str) -> bytes | None:
+    """The bytes as sent for `blob_key`: the plain object, else `{key}.gz` un-gzipped. `get(key)` returns bytes or
+    None. A blob the collector stored already gzipped (its key ends .gz, e.g. shareholding XBRL) is returned as kept."""
+    data = get(key)
+    if data is not None or key.endswith('.gz'):
+        return data
+    packed = get(key + '.gz')
+    return gzip.decompress(packed) if packed is not None else None
 
 
 def sha256_hex(body: bytes) -> str:
@@ -114,7 +136,11 @@ class RawStore:
         ext = _ext(content_type, body)
         now = fetched_at or self.clock()
         blob_key = f'{PREFIX}/{source}/{dataset}/blobs/{digest[:2]}/{digest}.{ext}'
-        if self._put_once(blob_key, body, content_type or 'application/octet-stream'):
+        packed = ext in GZIP_EXT and len(body) >= GZIP_MIN_BYTES
+        if packed and self._exists(blob_key):          # stored plain before compression began: same bytes by name
+            self.reused += 1
+        elif self._put_once(blob_key + '.gz', gz(body), 'application/gzip') if packed else \
+                self._put_once(blob_key, body, content_type or 'application/octet-stream'):
             self.written += 1
         else:
             self.reused += 1
@@ -125,6 +151,8 @@ class RawStore:
             'collector_commit': self.commit, 'covers': covers or {},
             'content_check': content_check(url, content_type, body),
         }
+        if packed:
+            record['stored_as'] = 'gzip'
         if record['content_check']:
             self.suspect += 1
         fetch_key = (f'{PREFIX}/{source}/{dataset}/fetches/{now:%Y-%m-%d}/'

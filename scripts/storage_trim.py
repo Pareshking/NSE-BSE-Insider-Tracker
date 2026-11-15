@@ -8,12 +8,19 @@ Steps, each a dry run unless --delete is given (it lists what would go and the b
                  kept, so they can be retried. The clean table is rebuilt from the archive every night, never from raw.
   filing_text    archive/filing_text/: day files older than FILING_TEXT_DAYS (by the day in the key, the broadcast day).
                  Only the switched-off announcement reader reads it.
-  report         objects and bytes per top folder, and the total against the target.
+  compress       raw_v2/ text blobs (json, csv, xml, html, bin) kept plain: each is gzipped (mtime 0) to `{key}.gz`, the
+                 gzip is checked to give back the exact bytes and their SHA-256 (the blob's own name), written, then
+                 the plain copy is deleted. Nothing is lost: readers take `{key}.gz` when the plain key is gone
+                 (insiders_clean.raw_store.read_blob). A blob that gzips to more than 90% of its size is left as it is.
+  report         objects and bytes per top folder, and the total against the target. With --limit-gb the job fails
+                 when the bucket is above that (the weekly guard).
 
-    python scripts/storage_trim.py results_xbrl filing_text report [--delete]
+    python scripts/storage_trim.py results_xbrl filing_text compress report [--delete] [--limit-gb 5]
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -31,6 +38,8 @@ from r2_writer import BUCKET, r2_client  # noqa: E402
 FILING_TEXT_DAYS = int(os.environ.get('FILING_TEXT_DAYS', '90'))
 TARGET_GB = float(os.environ.get('STORAGE_TARGET_GB', '1'))
 DAY_KEY = re.compile(r'year=(\d{4})/month=(\d{2})/day=(\d{2})')
+PACK_EXT = ('.json', '.csv', '.xml', '.html', '.bin')
+SHA_NAME = re.compile(r'/([0-9a-f]{64})\.[a-z]+$')
 
 
 def listing(client, prefix: str):
@@ -92,6 +101,46 @@ def filing_text_doomed(client, today: date) -> list[tuple[str, int]]:
     return out
 
 
+def compress(client, do_delete: bool) -> None:
+    objs = dict(listing(client, 'raw_v2/'))
+    todo = [(k, sz) for k, sz in objs.items() if '/blobs/' in k and k.endswith(PACK_EXT) and sz >= 1024]
+    print(f'compress: {len(todo):,} plain text blobs, {sum(s for _, s in todo) / 1e9:.3f} GB')
+    if not todo:
+        return
+    if not do_delete:
+        todo = todo[::max(1, len(todo) // 300)]   # dry run: a sample, to say what it would save
+    counts = {'packed': 0, 'kept_poor_ratio': 0, 'kept_name_mismatch': 0, 'bytes_before': 0, 'bytes_after': 0}
+
+    def one(item):
+        key, size = item
+        data = client.get_object(Bucket=BUCKET, Key=key)['Body'].read()
+        m = SHA_NAME.search(key)
+        if not m or hashlib.sha256(data).hexdigest() != m[1]:
+            return 'kept_name_mismatch', size, size
+        packed = gzip.compress(data, 9, mtime=0)
+        if len(packed) > 0.9 * len(data):
+            return 'kept_poor_ratio', size, size
+        if gzip.decompress(packed) != data:   # never: checked before anything is deleted
+            return 'kept_name_mismatch', size, size
+        if do_delete:
+            client.put_object(Bucket=BUCKET, Key=key + '.gz', Body=packed, ContentType='application/gzip')
+            head = client.head_object(Bucket=BUCKET, Key=key + '.gz')
+            if int(head['ContentLength']) != len(packed):
+                raise SystemExit(f'{key}.gz: written size differs; the plain copy is kept')
+            client.delete_object(Bucket=BUCKET, Key=key)
+        return 'packed', size, len(packed)
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=24) as pool:
+        for state, before, after in pool.map(one, todo):
+            counts[state] += 1
+            counts['bytes_before'] += before
+            counts['bytes_after'] += after
+    ratio = counts['bytes_after'] / max(1, counts['bytes_before'])
+    word = 'done' if do_delete else f'dry run on a sample of {len(todo):,}; about {ratio:.0%} of the size would remain'
+    print(f'  {word}: ' + ', '.join(f'{k} {v:,}' for k, v in counts.items()))
+
+
 def report(client) -> float:
     top = {}
     for k, sz in listing(client, ''):
@@ -107,7 +156,8 @@ def report(client) -> float:
 
 def main(argv: list[str]) -> int:
     do_delete = '--delete' in argv
-    steps = [a for a in argv if not a.startswith('--')] or ['report']
+    limit = float(argv[argv.index('--limit-gb') + 1]) if '--limit-gb' in argv else None
+    steps = [a for i, a in enumerate(argv) if not a.startswith('--') and argv[i - 1:i] != ['--limit-gb']] or ['report']
     client = r2_client()
     today = date.today()
     for step in steps:
@@ -119,8 +169,14 @@ def main(argv: list[str]) -> int:
             doomed = filing_text_doomed(client, today)
             print(f'filing_text: {len(doomed):,} day files older than {FILING_TEXT_DAYS} days, '
                   f'{sum(s for _, s in doomed) / 1e9:.3f} GB to delete')
+        elif step == 'compress':
+            compress(client, do_delete)
+            continue
         elif step == 'report':
-            report(client)
+            total = report(client)
+            if limit is not None and total > limit:
+                print(f'::error::bucket is {total:.2f} GB, above the {limit:g} GB limit')
+                return 1
             continue
         else:
             raise SystemExit(f'unknown step {step}')
