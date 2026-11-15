@@ -522,14 +522,17 @@ def results_failed(r2) -> int:
     a = pd.concat(frames, ignore_index=True)
     bad = a[a['xbrl_status'].astype(str).str.startswith('failed')]
     print(f'failed results filings: {len(bad)}; ' + json.dumps(bad['xbrl_status'].astype(str).value_counts().to_dict()))
-    blob_of = {}
-    for k in list_keys(r2, 'raw_v2/nse/results_xbrl/fetches/'):
+    from concurrent.futures import ThreadPoolExecutor
+    want = set(bad['xbrl_url'])
+
+    def read(k):
         try:
-            rec = json.loads(get(r2, k) or b'{}')
+            return json.loads(get(r2, k) or b'{}')
         except ValueError:
-            continue
-        if rec.get('url') in set(bad['xbrl_url']):
-            blob_of[rec['url']] = rec
+            return {}
+    with ThreadPoolExecutor(24) as ex:   # 4,000 small reads: one at a time ran past the job limit
+        recs = list(ex.map(read, list_keys(r2, 'raw_v2/nse/results_xbrl/fetches/')))
+    blob_of = {r['url']: r for r in recs if r.get('url') in want}
     for _, r in bad.sort_values('broadcast_at').iterrows():
         rec = blob_of.get(r['xbrl_url'])
         head = ''
