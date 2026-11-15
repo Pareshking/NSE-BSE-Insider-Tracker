@@ -166,6 +166,41 @@ def trades_and_deals(r2, sym: str) -> int:
     return 0
 
 
+def sizes(r2) -> int:
+    """SIZES: objects and bytes per top-level folder, and per second level for the three largest (read-only, 15 Nov
+    2026: the owner asked why the bucket holds 11.89 GB)."""
+    import os as _os
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    top, sub = {}, {}
+    token = None
+    while True:
+        kw = {'Bucket': bucket}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            parts = o['Key'].split('/')
+            t = parts[0]
+            n, b = top.get(t, (0, 0))
+            top[t] = (n + 1, b + o['Size'])
+            k2 = '/'.join(parts[:2]) if len(parts) > 2 else t
+            n, b = sub.get(k2, (0, 0))
+            sub[k2] = (n + 1, b + o['Size'])
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    total = sum(b for _, b in top.values())
+    print(f'TOTAL {sum(n for n, _ in top.values()):,} objects, {total / 1e9:.2f} GB')
+    for t, (n, b) in sorted(top.items(), key=lambda kv: -kv[1][1]):
+        print(f'{t + "/":<14} {n:>9,} objects {b / 1e9:>8.3f} GB  {100 * b / total:5.1f}%')
+    big = [t for t, _ in sorted(top.items(), key=lambda kv: -kv[1][1])[:4]]
+    for t in big:
+        print(f'-- inside {t}/')
+        for k, (n, b) in sorted(((k, v) for k, v in sub.items() if k.startswith(t + '/')), key=lambda kv: -kv[1][1])[:12]:
+            print(f'   {k + "/":<40} {n:>9,} objects {b / 1e9:>8.3f} GB')
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -312,6 +347,8 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
+        return sizes(r2)
     if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
