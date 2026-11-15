@@ -121,6 +121,18 @@ Open from it:
 
 **Status 14 Nov 2026:** R0–R13 live. The synthesis cleaning findings C4–C8, C12 and C13 are handled or checked, and the investor-check fixes 1–6 are live, plus the sort switch and placements. Still open, owner only: TODO 15 (retention deletes) and TODO 28 (object lock). Read-only audit tools: `clean_peek` RESULTS_XBRL:SYM and TRADES:SYM.
 
+**Storage, 15 Nov 2026 (owner: "bring it to 1 GB or less"):**
+- R2 went from 11.9 GB to 3.53 GB.
+  - Raw results XBRL whose facts are in the archive is deleted: 52,436 objects, 3.64 GB.
+  - filing_text older than 90 days is deleted: 2.85 GB.
+  - raw_v2 text is gzipped: 18,153 files, 2.24 GB down to 0.37 GB, each checked byte for byte.
+- New raw text is stored gzipped (`raw_store.read_blob` reads both forms).
+- filing_text is deleted entirely and its nightly trigger is off. The owner has no plan for the announcement reader or AI reading; the code is kept.
+- Weekly guard: `storage-trim.yml` runs Sundays (trim, compress, report) and fails above 5 GB.
+- Still open:
+  - 3,984 results XBRL fetch records (integrated filings, quarter to 30 Sep 2026) whose URL is not in the results archive. They are kept; check whether the Results table is short.
+  - Optional trims: reference/market_cap gzip, NSE price zips kept 30 days, legacy raw/ and canonical/ if unread.
+
 Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
 Each page shows the render to the owner before it replaces the old one.
 

@@ -4,6 +4,8 @@ name: Filing text cache (no AI)
 # insiders_clean/filing_text.py). No model reads anything here. After every successful announcement collection it
 # fills the last 3 days; by hand it takes any range and stops at the time budget (run it again to continue: finished
 # filings are skipped). The text is raw: cleaning for a model is a later step (docs/BLUEPRINT_TODO.md 4.14).
+# 15 Nov 2026 (owner: no plan for the announcement reader or AI reading; "delete it, let the code be there"): the
+# nightly trigger is off and the weekly storage trim keeps 0 days. By hand only.
 on:
   workflow_dispatch:
     inputs:
@@ -24,10 +26,6 @@ on:
         required: false
         default: true
         type: boolean
-  workflow_run:
-    workflows: ['Announcement collection (no AI)']
-    types: [completed]
-    branches: [main]
 
 permissions:
   contents: read

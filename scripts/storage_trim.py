@@ -6,7 +6,7 @@ Steps, each a dry run unless --delete is given (it lists what would go and the b
                  (archive/nse_events/results, xbrl_status ok, facts present and parsed: checked by clean_peek
                  RESULTS_CHECK, 15 Nov: 25,815 of 25,815). Blobs and fetch records of filings NOT read (failed) are
                  kept, so they can be retried. The clean table is rebuilt from the archive every night, never from raw.
-  filing_text    archive/filing_text/: day files older than FILING_TEXT_DAYS (by the day in the key, the broadcast day).
+  filing_text    archive/filing_text/: day files older than FILING_TEXT_DAYS (0: all but today's) (by the day in the key, the broadcast day).
                  Only the switched-off announcement reader reads it.
   compress       raw_v2/ text blobs (json, csv, xml, html, bin) kept plain: each is gzipped (mtime 0) to `{key}.gz`, the
                  gzip is checked to give back the exact bytes and their SHA-256 (the blob's own name), written, then
@@ -35,7 +35,9 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from clean_writer import read_parquet  # noqa: E402
 from r2_writer import BUCKET, r2_client  # noqa: E402
 
-FILING_TEXT_DAYS = int(os.environ.get('FILING_TEXT_DAYS', '90'))
+# 15 Nov 2026: 0 (owner: no announcement reader or AI reading planned; the text is deleted, the code kept). Set
+# FILING_TEXT_DAYS to keep some again if the reader comes back.
+FILING_TEXT_DAYS = int(os.environ.get('FILING_TEXT_DAYS', '0'))
 TARGET_GB = float(os.environ.get('STORAGE_TARGET_GB', '1'))
 DAY_KEY = re.compile(r'year=(\d{4})/month=(\d{2})/day=(\d{2})')
 PACK_EXT = ('.json', '.csv', '.xml', '.html', '.bin')
