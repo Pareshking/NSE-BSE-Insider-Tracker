@@ -573,8 +573,10 @@ def results_windows(r2) -> int:
         pages = list(ex.map(body, recs))
     total, seqs, quarters = {}, defaultdict(set), defaultdict(lambda: defaultdict(int))
     for r, j in pages:
-        p = r.get('params') or {}
-        w = (p.get('from'), p.get('to'))
+        import re as _re
+        m = _re.search(r'from_date=([0-9-]+).*?to_date=([0-9-]+)', str(r.get('url', '')))
+        c = r.get('covers') or r.get('params') or {}
+        w = (m[1], m[2]) if m else (c.get('from'), c.get('to'))
         if not isinstance(j, dict):
             continue
         total[w] = max(total.get(w, 0), int(j.get('totalCount') or 0))
@@ -584,7 +586,13 @@ def results_windows(r2) -> int:
                 seqs[w].add(sid)
                 quarters[w][str(qe)[:7]] += 1
     print('window (from..to)            NSE count  we hold  short   top quarters')
-    for w in sorted(total, key=lambda x: str(x[0])):
+    def day(x):   # dd-mm-yyyy in NSE's link
+        try:
+            d, mth, y = str(x[0]).split('-')
+            return f'{y}-{mth}-{d}'
+        except ValueError:
+            return str(x[0])
+    for w in sorted(total, key=day):
         got = len(seqs[w])
         top = sorted(quarters[w].items(), key=lambda kv: -kv[1])[:3]
         print(f'  {w[0]}..{w[1]}  {total[w]:>9,} {got:>8,} {total[w] - got:>6,}   {top}')
