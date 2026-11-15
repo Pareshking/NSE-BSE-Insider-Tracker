@@ -94,7 +94,7 @@ def test_backfill_stores_the_response_before_parsing_and_flags_round_trips():
     rep = bf.run_dataset('bulk', date(2024, 1, 1), date(2024, 12, 31), http, bf.R2Sink(r2, 'bulk', '2026-10-09'),
                          '2026-10-09', log=lambda *_: None)
     blobs = [k for k in r2.objects if k.startswith('raw_v2/nse/bulk_deals/blobs/')]
-    assert len(blobs) == 1 and r2.objects[blobs[0]] == body  # exact bytes, round trips included
+    assert len(blobs) == 1 and raw_store.read_blob(r2.objects.get, blobs[0].removesuffix(".gz")) == body  # exact bytes, round trips included
     assert rep['rows_stored'] == rep['rows_fetched']  # nothing dropped
 
 
@@ -178,3 +178,32 @@ def test_an_html_page_or_error_text_is_kept_but_marked():
     assert page['content_check'] == 'html_page_instead_of_data' and err['content_check'] in ('html_page_instead_of_data', 'error_text')
     assert ok['content_check'] == '' and st_.suspect == 2
     assert r2.objects[page['blob_key']].startswith(b'<!DOCTYPE')   # raw kept byte for byte
+
+
+def test_large_text_stored_gzipped_and_read_back_exactly():
+    """15 Nov 2026 (owner: bring the bucket to 1 GB): text over 1 KB is kept gzipped at {blob_key}.gz; the record keeps
+    the name of the bytes as sent and says stored_as gzip; read_blob gives back the exact bytes."""
+    import gzip
+    r2, body = OnceR2(), json.dumps({'data': [{'symbol': f'S{i}', 'desc': 'x' * 40} for i in range(100)]}).encode()
+    rec = store(r2, T1).put('nse', 'announcements', body, url='https://x/api', content_type='application/json')
+    assert rec['blob_key'].endswith(f'{sha256_hex(body)}.json') and rec['stored_as'] == 'gzip'
+    assert rec['blob_key'] not in r2.objects and len(r2.objects[rec['blob_key'] + '.gz']) < len(body) / 3
+    assert gzip.decompress(r2.objects[rec['blob_key'] + '.gz']) == body
+    assert raw_store.read_blob(r2.objects.get, rec['blob_key']) == body
+    again = store(r2, T2).put('nse', 'announcements', body, url='https://x/api', content_type='application/json')
+    assert again['blob_key'] == rec['blob_key']        # same bytes, one object
+
+
+def test_plain_blob_from_before_compression_is_reused_not_doubled():
+    r2, body = OnceR2(), b'a,b\n' + b'1,2\n' * 400
+    key = f'raw_v2/bse/x/blobs/{sha256_hex(body)[:2]}/{sha256_hex(body)}.csv'
+    r2.objects[key] = body
+    rec = store(r2, T1).put('bse', 'x', body, url='https://x/f.csv', content_type='text/csv')
+    assert rec['blob_key'] == key and key + '.gz' not in r2.objects
+    assert raw_store.read_blob(r2.objects.get, key) == body
+
+
+def test_read_blob_keeps_collector_gzip_as_is():
+    r2 = {'k.gz': b'\x1f\x8bpacked'}
+    assert raw_store.read_blob(r2.get, 'k.gz') == b'\x1f\x8bpacked'
+    assert raw_store.read_blob(r2.get, 'missing.json') is None

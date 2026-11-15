@@ -47,7 +47,8 @@ def keys(r2, prefix):
 
 
 def body(r2, key):
-    return r2.get_object(Bucket=BUCKET, Key=key)['Body'].read()
+    from clean_writer import get_blob
+    return get_blob(r2, key)
 
 
 def rows_of(data):

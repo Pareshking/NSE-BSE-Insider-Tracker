@@ -80,7 +80,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 
-from clean_writer import get, list_keys, nse_lists, put, put_parquet, read_parquet
+from clean_writer import get, get_blob, list_keys, nse_lists, put, put_parquet, read_parquet
 from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
@@ -417,7 +417,7 @@ def reparse_shareholding_raw(r2, workers: int = 16) -> dict:
     counts = {'fetch_records': len(keys), 'filings_with_raw': len(newest), 'raw_missing': 0, 'raw_hash_mismatch': 0}
 
     def body_of(rec):
-        blob = get(r2, rec['blob_key'])
+        blob = get_blob(r2, rec['blob_key'])
         if blob is None:
             return 'raw_missing', None
         data = gzip.decompress(blob) if (rec.get('params') or {}).get('stored_as') == 'gzip' else blob

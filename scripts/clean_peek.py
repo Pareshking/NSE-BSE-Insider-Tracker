@@ -436,7 +436,7 @@ def raw_pack(r2) -> int:
                 print(f'  -- fetch: {json.dumps({k: rec.get(k) for k in ("url", "params", "http_status", "content_type", "bytes", "covers", "fetched_at_utc")}, default=str)[:600]}')
                 bkey = rec.get('blob_key') or ''
                 ext = bkey.rsplit('.', 1)[-1] if '.' in bkey else 'bin'
-                blob = get(r2, bkey) if bkey else None
+                blob = __import__('clean_writer').get_blob(r2, bkey) if bkey else None
                 print('  ' + (_body_excerpt(blob, ext).replace('\n', '\n  ') if blob is not None else f'(blob not found; record keys {list(rec)})'))
                 if len(shown) >= 3:
                     break

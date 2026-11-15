@@ -72,6 +72,12 @@ def get(client, key) -> bytes | None:
         return None
 
 
+def get_blob(client, key) -> bytes | None:
+    """A raw_v2 blob by its fetch record's `blob_key`: the bytes as sent, whether kept plain or gzipped at key + .gz."""
+    from insiders_clean.raw_store import read_blob
+    return read_blob(lambda k: get(client, k), key)
+
+
 def put(client, key, body: bytes, content_type: str):
     client.put_object(Bucket=BUCKET, Key=key, Body=body, ContentType=content_type)
 
