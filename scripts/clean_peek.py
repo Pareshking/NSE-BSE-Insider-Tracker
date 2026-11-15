@@ -512,6 +512,40 @@ def results_orphans(r2) -> int:
     return 0
 
 
+def results_failed(r2) -> int:
+    """RESULTS_FAILED (15 Nov 2026): every results filing whose XBRL was not read (status failed), with what was kept:
+    the link, whether a raw copy exists, and the first bytes of it. Read-only."""
+    import json
+    from clean_writer import get, get_blob, list_keys
+    frames = [f for f in (read_parquet(r2, f'archive/nse_events/results/year={y}.parquet') for y in (2025, 2026, 2027))
+              if f is not None]
+    a = pd.concat(frames, ignore_index=True)
+    bad = a[a['xbrl_status'].astype(str).str.startswith('failed')]
+    print(f'failed results filings: {len(bad)}; ' + json.dumps(bad['xbrl_status'].astype(str).value_counts().to_dict()))
+    blob_of = {}
+    for k in list_keys(r2, 'raw_v2/nse/results_xbrl/fetches/'):
+        try:
+            rec = json.loads(get(r2, k) or b'{}')
+        except ValueError:
+            continue
+        if rec.get('url') in set(bad['xbrl_url']):
+            blob_of[rec['url']] = rec
+    for _, r in bad.sort_values('broadcast_at').iterrows():
+        rec = blob_of.get(r['xbrl_url'])
+        head = ''
+        if rec and rec.get('blob_key'):
+            body = get_blob(r2, rec['blob_key']) or b''
+            if rec['blob_key'].endswith('.gz'):
+                import gzip
+                body = gzip.decompress(body)
+            head = body[:160].decode('utf-8', 'replace').replace('\n', ' ')
+        print(f"  {r['symbol']:<12} {r['period_end']} {str(r['broadcast_date'])} {r['revision']:<9} {r['xbrl_status']:<22} "
+              f"raw={'yes ' + str(rec.get('bytes')) if rec else 'no'} {r['xbrl_url']}")
+        if head:
+            print(f'      starts: {head}')
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -527,6 +561,8 @@ def main() -> int:
         return results_quarters(r2)
     if syms == ['RESULTS_CHECK']:   # is everything in the raw results XBRL also in the archive (15 Nov)
         return results_check(r2)
+    if syms == ['RESULTS_FAILED']:   # results filings whose XBRL was not read, with the raw kept (15 Nov)
+        return results_failed(r2)
     if syms == ['RESULTS_ORPHANS']:   # raw results XBRL whose link is on no archive row: what they are (15 Nov)
         return results_orphans(r2)
     if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
