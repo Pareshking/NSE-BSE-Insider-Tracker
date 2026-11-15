@@ -418,3 +418,23 @@ def test_an_empty_window_is_noted_not_assumed(events):
     assert not rep['streams']['sast'].get('empty_unconfirmed')
     rep = run_daily.run(r2, Empty(), date(2026, 10, 22), 3, streams=('encumbrances',))
     assert not any('empty, not confirmed' in n for n in rep['notes'])
+
+
+def test_results_xbrl_raw_is_stored_gzip_compressed():
+    """15 Nov 2026: 4 GB of plain results XBRL in raw_v2; new files are stored gzip-compressed (exact bytes kept)."""
+    import gzip
+    from collectors.nse_events import run_daily
+
+    class Raw:
+        def __init__(self):
+            self.calls = []
+
+        def put(self, source, dataset, body, **kw):
+            self.calls.append((dataset, body, kw))
+
+    raw = Raw()
+    run_daily.store_raw(raw, 'results_xbrl', '<xbrl>x</xbrl>', 'u', {}, 'application/xml')
+    run_daily.store_raw(raw, 'meetings', '[]', 'u', {}, 'application/json')
+    ds, body, kw = raw.calls[0]
+    assert gzip.decompress(body) == b'<xbrl>x</xbrl>' and kw['params']['stored_as'] == 'gzip'
+    assert raw.calls[1][1] == b'[]'

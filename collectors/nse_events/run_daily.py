@@ -513,13 +513,22 @@ def build_buybacks(r2, master, run_date, report) -> None:
         put_parquet(r2, 'clean/current/buybacks.parquet', add_identity(bb, master))
 
 
+GZIP_RAW = {'results_xbrl'}   # stored gzip-compressed, as shareholding_xbrl (15 Nov 2026: 4 GB of plain XML, 15x smaller)
+
+
 def store_raw(raw: RawStore | None, dataset: str, body: str, url: str, report: dict, content_type: str, covers=None):
     """The exact text NSE sent, write-once in raw_v2. Never stops the run: a
-    failure is counted in the report."""
+    failure is counted in the report. A dataset in GZIP_RAW is stored gzip-compressed (no timestamp, so the same file is
+    the same blob), its fetch record naming `stored_as` gzip and the SHA-256 of the bytes as sent."""
     if raw is None:
         return
     try:
-        raw.put('nse', dataset, body.encode('utf-8'), url=url, content_type=content_type, covers=covers)
+        data = body.encode('utf-8')
+        if dataset in GZIP_RAW:
+            raw.put('nse', dataset, gzip.compress(data, 9, mtime=0), url=url, content_type='application/gzip', covers=covers,
+                    params={'stored_as': 'gzip', 'sha256_as_sent': raw_store.sha256_hex(data), 'content_type_as_sent': content_type})
+            return
+        raw.put('nse', dataset, data, url=url, content_type=content_type, covers=covers)
     except Exception as exc:  # noqa: BLE001
         counts = report.setdefault('raw_not_stored', {})
         counts[type(exc).__name__] = counts.get(type(exc).__name__, 0) + 1
