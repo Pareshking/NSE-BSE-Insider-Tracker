@@ -183,7 +183,7 @@ def sizes(r2) -> int:
             t = parts[0]
             n, b = top.get(t, (0, 0))
             top[t] = (n + 1, b + o['Size'])
-            k2 = '/'.join(parts[:2]) if len(parts) > 2 else t
+            k2 = '/'.join(parts[:3 if t == 'raw_v2' else 2]) if len(parts) > 2 else t
             n, b = sub.get(k2, (0, 0))
             sub[k2] = (n + 1, b + o['Size'])
         if not resp.get('IsTruncated'):
@@ -196,7 +196,7 @@ def sizes(r2) -> int:
     big = [t for t, _ in sorted(top.items(), key=lambda kv: -kv[1][1])[:4]]
     for t in big:
         print(f'-- inside {t}/')
-        for k, (n, b) in sorted(((k, v) for k, v in sub.items() if k.startswith(t + '/')), key=lambda kv: -kv[1][1])[:12]:
+        for k, (n, b) in sorted(((k, v) for k, v in sub.items() if k.startswith(t + '/')), key=lambda kv: -kv[1][1])[:25]:
             print(f'   {k + "/":<40} {n:>9,} objects {b / 1e9:>8.3f} GB')
     return 0
 
