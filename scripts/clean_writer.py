@@ -65,9 +65,20 @@ def archive_state_key(exchange, category):
     return archive_prefix(exchange, category) + '_state.json'
 
 
+# 15 Nov 2026 (owner: bring the bucket down): these are stored gzipped at {key}.gz; a read of the plain key falls back.
+GZ_PREFIXES = ('raw/', 'reference/market_cap/')
+
+
 def get(client, key) -> bytes | None:
     try:
         return client.get_object(Bucket=BUCKET, Key=key)['Body'].read()
+    except client.exceptions.NoSuchKey:
+        pass
+    if not key.startswith(GZ_PREFIXES) or key.endswith('.gz'):
+        return None
+    try:
+        import gzip
+        return gzip.decompress(client.get_object(Bucket=BUCKET, Key=key + '.gz')['Body'].read())
     except client.exceptions.NoSuchKey:
         return None
 

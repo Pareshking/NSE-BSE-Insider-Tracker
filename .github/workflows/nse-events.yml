@@ -46,7 +46,7 @@ on:
         required: false
         default: ''
       reparse_raw:
-        description: 'dataset=shareholding: 1 = no NSE call; fill ownership by investor type from the XBRLs kept in raw_v2/'
+        description: 'dataset=shareholding or results: 1 = no NSE call. shareholding: ownership by investor type from the kept XBRLs; results: listed filings missing from the archive, from the kept listings and XBRLs'
         required: false
         default: '0'
   schedule:

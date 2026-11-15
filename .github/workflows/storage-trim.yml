@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       steps:
-        description: 'Steps, space separated: results_xbrl filing_text compress report'
+        description: 'Steps, space separated: results_xbrl filing_text price_zips compress report'
         required: false
         default: 'report'
       delete:
@@ -44,6 +44,6 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           # A scheduled run has no inputs: it runs every step and deletes.
-          STEPS: ${{ github.event_name == 'schedule' && 'results_xbrl filing_text compress report' || inputs.steps || 'report' }}
+          STEPS: ${{ github.event_name == 'schedule' && 'results_xbrl filing_text price_zips compress report' || inputs.steps || 'report' }}
           DELETE: ${{ (github.event_name == 'schedule' || inputs.delete == '1') && '--delete' || '' }}
         run: python -u scripts/storage_trim.py $STEPS $DELETE --limit-gb 5

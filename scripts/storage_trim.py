@@ -8,10 +8,13 @@ Steps, each a dry run unless --delete is given (it lists what would go and the b
                  kept, so they can be retried. The clean table is rebuilt from the archive every night, never from raw.
   filing_text    archive/filing_text/: day files older than FILING_TEXT_DAYS (0: all but today's) (by the day in the key, the broadcast day).
                  Only the switched-off announcement reader reads it.
-  compress       raw_v2/ text blobs (json, csv, xml, html, bin) kept plain: each is gzipped (mtime 0) to `{key}.gz`, the
+  compress       raw_v2/ text blobs (json, csv, xml, html, bin), raw/ and reference/market_cap/ JSON kept plain: each is gzipped (mtime 0) to `{key}.gz`, the
                  gzip is checked to give back the exact bytes and their SHA-256 (the blob's own name), written, then
                  the plain copy is deleted. Nothing is lost: readers take `{key}.gz` when the plain key is gone
                  (insiders_clean.raw_store.read_blob). A blob that gzips to more than 90% of its size is left as it is.
+  price_zips     raw_v2/exchange_files/nse_pr_zip/: blobs of NSE PR zips for days older than PRICE_ZIP_DAYS (30).
+                 The fetch records stay (URL, day, SHA-256: NSE keeps the file at that URL), and a list of what went is
+                 written to manifests/storage_trim/. The parsed market caps stay in marketcap/daily/nse/.
   report         objects and bytes per top folder, and the total against the target. With --limit-gb the job fails
                  when the bucket is above that (the weekly guard).
 
@@ -38,9 +41,12 @@ from r2_writer import BUCKET, r2_client  # noqa: E402
 # 15 Nov 2026: 0 (owner: no announcement reader or AI reading planned; the text is deleted, the code kept). Set
 # FILING_TEXT_DAYS to keep some again if the reader comes back.
 FILING_TEXT_DAYS = int(os.environ.get('FILING_TEXT_DAYS', '0'))
+PRICE_ZIP_DAYS = int(os.environ.get('PRICE_ZIP_DAYS', '30'))
 TARGET_GB = float(os.environ.get('STORAGE_TARGET_GB', '1'))
 DAY_KEY = re.compile(r'year=(\d{4})/month=(\d{2})/day=(\d{2})')
 PACK_EXT = ('.json', '.csv', '.xml', '.html', '.bin')
+# Our own snapshots, read through clean_writer.get / r2_data._get_bytes, which fall back to {key}.gz (15 Nov 2026).
+PLAIN_GZ_PREFIXES = ('raw/', 'reference/market_cap/')
 SHA_NAME = re.compile(r'/([0-9a-f]{64})\.[a-z]+$')
 
 
@@ -118,7 +124,9 @@ def filing_text_doomed(client, today: date) -> list[tuple[str, int]]:
 def compress(client, do_delete: bool) -> None:
     objs = dict(listing(client, 'raw_v2/'))
     todo = [(k, sz) for k, sz in objs.items() if '/blobs/' in k and k.endswith(PACK_EXT) and sz >= 1024]
-    print(f'compress: {len(todo):,} plain text blobs, {sum(s for _, s in todo) / 1e9:.3f} GB')
+    for prefix in PLAIN_GZ_PREFIXES:   # not named by hash: the round trip is the check
+        todo += [(k, sz) for k, sz in listing(client, prefix) if k.endswith('.json') and sz >= 1024]
+    print(f'compress: {len(todo):,} plain text objects, {sum(s for _, s in todo) / 1e9:.3f} GB')
     if not todo:
         return
     if not do_delete:
@@ -128,9 +136,10 @@ def compress(client, do_delete: bool) -> None:
     def one(item):
         key, size = item
         data = client.get_object(Bucket=BUCKET, Key=key)['Body'].read()
-        m = SHA_NAME.search(key)
-        if not m or hashlib.sha256(data).hexdigest() != m[1]:
-            return 'kept_name_mismatch', size, size
+        if key.startswith('raw_v2/'):
+            m = SHA_NAME.search(key)
+            if not m or hashlib.sha256(data).hexdigest() != m[1]:
+                return 'kept_name_mismatch', size, size
         packed = gzip.compress(data, 9, mtime=0)
         if len(packed) > 0.9 * len(data):
             return 'kept_poor_ratio', size, size
@@ -153,6 +162,25 @@ def compress(client, do_delete: bool) -> None:
     ratio = counts['bytes_after'] / max(1, counts['bytes_before'])
     word = 'done' if do_delete else f'dry run on a sample of {len(todo):,}; about {ratio:.0%} of the size would remain'
     print(f'  {word}: ' + ', '.join(f'{k} {v:,}' for k, v in counts.items()))
+
+
+def price_zips_doomed(client, today: date) -> tuple[list[tuple[str, int]], list[dict]]:
+    """(blobs to delete, what each was): a blob goes when every fetch record naming it covers a day before the cutoff."""
+    prefix = 'raw_v2/exchange_files/nse_pr_zip/'
+    objs = dict(listing(client, prefix))
+    cutoff = (today - timedelta(days=PRICE_ZIP_DAYS)).isoformat()
+
+    def read(k):
+        return json.loads(client.get_object(Bucket=BUCKET, Key=k)['Body'].read())
+    from concurrent.futures import ThreadPoolExecutor
+    newest: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=24) as pool:
+        for rec in pool.map(read, [k for k in objs if '/fetches/' in k and k.endswith('.json')]):
+            b, day = rec.get('blob_key'), (rec.get('covers') or {}).get('day') or ''
+            if b and day >= str((newest.get(b) or {}).get('day', '')):
+                newest[b] = {'blob_key': b, 'day': day, 'url': rec.get('url'), 'sha256': rec.get('sha256')}
+    gone = [v for v in newest.values() if v['day'] and v['day'] < cutoff and v['blob_key'] in objs]
+    return [(v['blob_key'], objs[v['blob_key']]) for v in gone], gone
 
 
 def report(client) -> float:
@@ -183,6 +211,13 @@ def main(argv: list[str]) -> int:
             doomed = filing_text_doomed(client, today)
             print(f'filing_text: {len(doomed):,} day files older than {FILING_TEXT_DAYS} days, '
                   f'{sum(s for _, s in doomed) / 1e9:.3f} GB to delete')
+        elif step == 'price_zips':
+            doomed, gone = price_zips_doomed(client, today)
+            print(f'price_zips: {len(doomed):,} NSE PR zips for days before the last {PRICE_ZIP_DAYS}, '
+                  f'{sum(s for _, s in doomed) / 1e9:.3f} GB to delete (fetch records kept)')
+            if do_delete and gone:
+                client.put_object(Bucket=BUCKET, Key=f'manifests/storage_trim/nse_pr_zip_pruned_{today.isoformat()}.json',
+                                  Body=json.dumps(gone, indent=1).encode(), ContentType='application/json')
         elif step == 'compress':
             compress(client, do_delete)
             continue

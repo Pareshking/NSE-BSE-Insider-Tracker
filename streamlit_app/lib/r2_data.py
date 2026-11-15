@@ -108,7 +108,18 @@ def _is_missing_object(client, exc: Exception) -> bool:
 
 
 def _get_bytes(client, key: str) -> bytes | None:
-    """Object body, or None when the object simply isn't there."""
+    """Object body, or None when the object simply isn't there. raw/ and reference/market_cap/ are stored gzipped at
+    {key}.gz (15 Nov 2026); a read of the plain key falls back to it."""
+    body = _get_one(client, key)
+    if body is None and key.startswith(("raw/", "reference/market_cap/")) and not key.endswith(".gz"):
+        packed = _get_one(client, key + ".gz")
+        if packed is not None:
+            import gzip
+            return gzip.decompress(packed)
+    return body
+
+
+def _get_one(client, key: str) -> bytes | None:
     try:
         return client.get_object(Bucket=_bucket(), Key=key)["Body"].read()
     except Exception as exc:

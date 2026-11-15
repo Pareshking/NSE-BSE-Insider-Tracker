@@ -129,9 +129,10 @@ Open from it:
 - New raw text is stored gzipped (`raw_store.read_blob` reads both forms).
 - filing_text is deleted entirely and its nightly trigger is off. The owner has no plan for the announcement reader or AI reading; the code is kept.
 - Weekly guard: `storage-trim.yml` runs Sundays (trim, compress, report) and fails above 5 GB.
-- Still open:
-  - 3,984 results XBRL fetch records (integrated filings, quarter to 30 Sep 2026) whose URL is not in the results archive. They are kept; check whether the Results table is short.
-  - Optional trims: reference/market_cap gzip, NSE price zips kept 30 days, legacy raw/ and canonical/ if unread.
+- Results gap (clean_peek RESULTS_ORPHANS, 15 Nov): 2,442 results filings NSE listed were never written to the archive; 2,021 are of the June 2026 quarter, broadcast July-August. Raw XBRL is kept for 2,331 of them. `run_daily --dataset results --reparse-raw` adds them from the kept listings and XBRLs, with no NSE call; the rest are marked pending, and the nightly run fetches them. The other 1,645 unmatched raw links are older copies of revised filings; the archive holds those filings under the newer link.
+- raw/ and reference/market_cap/ are kept gzipped at {key}.gz. clean_writer.get and r2_data._get_bytes fall back to the .gz copy, and r2_writer.put_gz writes it.
+- NSE PR zips are kept for 30 days (storage_trim price_zips). The fetch records stay, a list of the deleted zips goes to manifests/storage_trim/, and the parsed market caps stay in marketcap/daily/nse/.
+- canonical/ and raw/ are not legacy: r2_writer writes them every night, clean_writer reads canonical/, and r2_retention keeps 14 days of both. They are kept.
 
 Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
 Each page shows the render to the owner before it replaces the old one.

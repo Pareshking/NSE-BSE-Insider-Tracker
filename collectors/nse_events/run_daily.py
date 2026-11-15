@@ -261,6 +261,8 @@ CATEGORY_VALUES = tuple(f'{b}_{k}' for b in parsers.SHP_CATEGORIES for k in ('sh
                         if f'{b}_{k}' != 'promoter_shares') + ('dr_shares', 'pct_base_shares')
 CATEGORY_COLS = ('categories_status', 'categories_check', 'categories_unmapped') + CATEGORY_VALUES
 SHP_RAW_FETCHES = 'raw_v2/nse/shareholding_xbrl/fetches/'
+RESULTS_LIST_FETCHES = 'raw_v2/nse/results_list/fetches/'
+RESULTS_XBRL_FETCHES = 'raw_v2/nse/results_xbrl/fetches/'
 
 
 def _set_categories(frame: pd.DataFrame, i, body: str) -> None:
@@ -725,6 +727,70 @@ def fetch_results_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame,
     return rows
 
 
+def reparse_results_raw(r2, known: pd.DataFrame | None, report: dict, workers: int = 16) -> pd.DataFrame:
+    """Results filings NSE listed (every listing page kept in raw_v2/nse/results_list/) that are not in the archive,
+    with no NSE call (15 Nov 2026: 2,442 filings, 2,021 of the June 2026 quarter broadcast in July-August, were listed
+    and mostly fetched by a backfill whose archive write never happened). Each takes its newest listing row; its XBRL is
+    read from raw_v2/nse/results_xbrl/ when kept (status ok, or failed when it does not parse), else it is marked
+    pending, so the nightly run fetches it (pending filings are retried outside the window). Counts in the report."""
+    have = set(known['event_id']) if known is not None and not known.empty else set()
+
+    def record(k):
+        try:
+            return json.loads(get(r2, k) or b'{}')
+        except ValueError:
+            return {}
+    with ThreadPoolExecutor(workers) as ex:
+        lrecs = list(ex.map(record, [k for k in list_keys(r2, RESULTS_LIST_FETCHES) if k.endswith('.json')]))
+        xrecs = list(ex.map(record, [k for k in list_keys(r2, RESULTS_XBRL_FETCHES) if k.endswith('.json')]))
+    lrecs = sorted((r for r in lrecs if r.get('http_status') == 200 and r.get('blob_key')),
+                   key=lambda r: r.get('fetched_at_utc', ''))
+
+    def page(r):
+        try:
+            j = json.loads(get_blob(r2, r['blob_key']))
+            return results.filing_rows(j.get('data', []) if isinstance(j, dict) else j)
+        except Exception:  # noqa: BLE001 -- counted below
+            return None
+    with ThreadPoolExecutor(workers) as ex:
+        pages = list(ex.map(page, lrecs))
+    counts = {'listing_pages': len(pages), 'listing_pages_unreadable': sum(p is None for p in pages)}
+    frames = [p for p in pages if p is not None and not p.empty]
+    if not frames:
+        report['results_reparse'] = counts
+        return pd.DataFrame(columns=results.FILING_COLUMNS)
+    listed = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last')   # newest page last
+    rows = listed[~listed['event_id'].isin(have)].reset_index(drop=True)
+    blob_of = {}
+    for r in sorted(xrecs, key=lambda r: r.get('fetched_at_utc', '')):
+        if r.get('http_status') == 200 and r.get('url') and r.get('blob_key'):
+            blob_of[r['url']] = r['blob_key']
+
+    def read(url):
+        key = blob_of.get(url) if isinstance(url, str) else None
+        if key is None:
+            return 'pending', None
+        body = get_blob(r2, key)
+        if body is None:
+            return 'pending', None
+        if key.endswith('.gz'):   # stored gzipped by the collector (GZIP_RAW)
+            body = gzip.decompress(body)
+        try:
+            return 'ok', json.dumps(results.parse_xbrl(body), ensure_ascii=False)
+        except Exception as exc:  # noqa: BLE001
+            return f'failed: {type(exc).__name__}', None
+    with ThreadPoolExecutor(workers) as ex:
+        out = list(ex.map(read, rows['xbrl_url']))
+    rows['xbrl_status'] = [s for s, _ in out]
+    rows['xbrl_json'] = [j for _, j in out]
+    no_link = ~rows['xbrl_url'].astype(str).str.startswith('http')
+    rows.loc[no_link, 'xbrl_status'] = 'no_xbrl'
+    counts.update(listed_filings=int(listed['event_id'].nunique()), missing_from_archive=len(rows),
+                  status=rows['xbrl_status'].astype(str).str.split(':').str[0].value_counts().to_dict())
+    report['results_reparse'] = counts
+    return rows
+
+
 def issue_coverage(arch: pd.DataFrame | None) -> dict:
     """Filings per kind and stage, and XBRL status counts. Counts only."""
     if arch is None or arch.empty:
@@ -820,6 +886,9 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                     new = fetch_issue_xbrl(nse, iraw, issue_filings(nse, iraw, start, today, report), known, report,
                                            max_issue_xbrl)
                     blocked = bool(report.get('issue_xbrl_blocked'))
+                elif stream == RESULTS and reparse_raw:   # no NSE call: listed filings missing from the archive
+                    known = merge_into_archive(r2, stream, None, run_date)[0]
+                    new = reparse_results_raw(r2, known, report)
                 elif stream == RESULTS:
                     known = merge_into_archive(r2, stream, None, run_date)[0]
                     rraw = raw if raw is not None else RawStore(r2, BUCKET, collector='collectors.nse_events.run_daily')
@@ -923,7 +992,8 @@ def main(argv=None):
                     help='results only: list this window [from, to] instead of the last --days (a backfill, window by window)')
     ap.add_argument('--results-to', type=date.fromisoformat, default=None)
     ap.add_argument('--reparse-raw', action='store_true',
-                    help='shareholding only: no NSE call; fill the investor-type columns from the XBRLs kept in raw_v2/')
+                    help='no NSE call. shareholding: fill the investor-type columns from the XBRLs kept in raw_v2/; '
+                         'results: add listed filings missing from the archive, from the kept listings and XBRLs')
     ap.add_argument('--results-workers', type=int, default=1,
                     help='results XBRL files fetched at once (a backfill of years); 1 = one at a time with NSE\'s pause')
     args = ap.parse_args(argv)
@@ -931,8 +1001,8 @@ def main(argv=None):
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
     if args.backfill_from and streams != ('meetings',):
         ap.error('--from needs --dataset meetings')
-    if args.reparse_raw and streams != ('shareholding',):
-        ap.error('--reparse-raw needs --dataset shareholding')
+    if args.reparse_raw and streams not in (('shareholding',), ('results',)):
+        ap.error('--reparse-raw needs --dataset shareholding or results')
     r2 = r2_client()
     report = run(r2, NSEClient(), today, args.days, streams, args.max_xbrl,
                  raw=RawStore(r2, bucket=BUCKET, collector='nse_events'), backfill_from=args.backfill_from,
@@ -946,6 +1016,8 @@ def main(argv=None):
         print(f'  {name}: {s}')
     if 'shareholding_reparse' in report:
         print(f'  shareholding_reparse: {report["shareholding_reparse"]}')
+    if 'results_reparse' in report:
+        print(f'  results_reparse: {report["results_reparse"]}')
     if 'promoter_group' in report:
         print(f'  promoter_group: {report["promoter_group"]}')
     for n in report['notes']:
