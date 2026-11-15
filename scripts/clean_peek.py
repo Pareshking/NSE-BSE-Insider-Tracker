@@ -166,6 +166,149 @@ def trades_and_deals(r2, sym: str) -> int:
     return 0
 
 
+def sizes(r2) -> int:
+    """SIZES: objects and bytes per top-level folder, and per second level for the three largest (read-only, 15 Nov
+    2026: the owner asked why the bucket holds 11.89 GB)."""
+    import os as _os
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    top, sub = {}, {}
+    token = None
+    while True:
+        kw = {'Bucket': bucket}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            parts = o['Key'].split('/')
+            t = parts[0]
+            n, b = top.get(t, (0, 0))
+            top[t] = (n + 1, b + o['Size'])
+            k2 = '/'.join(parts[:3 if t == 'raw_v2' else 2]) if len(parts) > 2 else t
+            n, b = sub.get(k2, (0, 0))
+            sub[k2] = (n + 1, b + o['Size'])
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    total = sum(b for _, b in top.values())
+    print(f'TOTAL {sum(n for n, _ in top.values()):,} objects, {total / 1e9:.2f} GB')
+    for t, (n, b) in sorted(top.items(), key=lambda kv: -kv[1][1]):
+        print(f'{t + "/":<14} {n:>9,} objects {b / 1e9:>8.3f} GB  {100 * b / total:5.1f}%')
+    big = [t for t, _ in sorted(top.items(), key=lambda kv: -kv[1][1])[:4]]
+    for t in big:
+        print(f'-- inside {t}/')
+        for k, (n, b) in sorted(((k, v) for k, v in sub.items() if k.startswith(t + '/')), key=lambda kv: -kv[1][1])[:25]:
+            print(f'   {k + "/":<40} {n:>9,} objects {b / 1e9:>8.3f} GB')
+    return 0
+
+
+def compress_age(r2) -> int:
+    """COMPRESS: per raw_v2 dataset and per other top folder, how much a sample gzips to, and bytes by age (read-only,
+    15 Nov 2026: the owner wants the bucket at 1 GB or less)."""
+    import gzip as _gz
+    import os as _os
+    import random
+    from datetime import datetime, timezone
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    now = datetime.now(timezone.utc)
+    groups = {}
+    token = None
+    while True:
+        kw = {'Bucket': bucket}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            parts = o['Key'].split('/')
+            g = '/'.join(parts[:3]) if parts[0] == 'raw_v2' and len(parts) > 3 else '/'.join(parts[:2]) if len(parts) > 2 else parts[0]
+            groups.setdefault(g, []).append((o['Key'], o['Size'], (now - o['LastModified']).days))
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    rows = []
+    for g, objs in groups.items():
+        total = sum(s for _, s, _ in objs)
+        if total < 5e6:
+            continue
+        old90 = sum(s for _, s, a in objs if a > 90)
+        old180 = sum(s for _, s, a in objs if a > 180)
+        sample = random.Random(0).sample(objs, min(25, len(objs)))
+        raw_b = gz_b = 0
+        for k, sz, _ in sample:
+            if sz > 20e6:
+                continue
+            body = r2.get_object(Bucket=bucket, Key=k)['Body'].read()
+            raw_b += len(body)
+            gz_b += len(_gz.compress(body, 9))
+        ratio = gz_b / raw_b if raw_b else 1.0
+        rows.append((g, len(objs), total, ratio, old90, old180, max(a for _, _, a in objs)))
+    rows.sort(key=lambda r: -r[2])
+    print(f"{'group':<44}{'objs':>8}{'GB':>8}{'gz x':>7}{'GB if gz':>10}{'GB >90d':>9}{'GB >180d':>10}{'oldest d':>9}")
+    t = tg = 0
+    for g, n, total, ratio, o90, o180, oldest in rows:
+        t += total
+        tg += total * min(ratio, 1.0)
+        print(f"{g:<44}{n:>8,}{total / 1e9:>8.3f}{(1 / ratio if ratio else 0):>7.1f}{total * min(ratio, 1.0) / 1e9:>10.3f}"
+              f"{o90 / 1e9:>9.3f}{o180 / 1e9:>10.3f}{oldest:>9}")
+    print(f"TOTAL listed groups {t / 1e9:.2f} GB; if every group were gzipped {tg / 1e9:.2f} GB")
+    return 0
+
+
+def results_check(r2) -> int:
+    """RESULTS_CHECK: before deleting raw_v2/nse/results_xbrl/ (owner, 15 Nov 2026: "delete it as we already have the
+    data, right? Confirm it first"): every archived results filing read OK has its facts in xbrl_json, they parse back,
+    the clean table can be rebuilt from them, and how many raw objects there are (blobs and fetch records)."""
+    import json
+    import os as _os
+    from insiders_clean import results
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    frames = []
+    for y in (2025, 2026):
+        a = read_parquet(r2, f'archive/nse_events/results/year={y}.parquet')
+        if a is not None:
+            frames.append(a)
+    a = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    print(f'archive results rows: {len(a)}; status: {a["xbrl_status"].astype(str).value_counts().to_dict()}')
+    ok = a[a['xbrl_status'].astype(str).eq('ok')]
+    empty = ok['xbrl_json'].isna() | ok['xbrl_json'].astype(str).str.len().lt(50)
+    print(f'ok rows: {len(ok)}; ok rows with no facts stored: {int(empty.sum())}')
+    bad = facts = 0
+    for js in ok['xbrl_json'].dropna():
+        try:
+            p = json.loads(js)
+            n = sum(len(v) for v in p.get('facts', {}).values())
+            facts += n
+            if n == 0:
+                bad += 1
+        except (TypeError, ValueError):
+            bad += 1
+    print(f'ok rows whose stored facts do not parse or are empty: {bad}; facts stored in all: {facts:,}')
+    rebuilt = results.clean(a)
+    print(f'clean table rebuilt from the archive alone: {len(rebuilt)} rows, quarter revenue present in '
+          f'{int(pd.to_numeric(rebuilt["quarter_revenue"], errors="coerce").notna().sum())}')
+    blobs = fetches = other = 0
+    token = None
+    while True:
+        kw = {'Bucket': bucket, 'Prefix': 'raw_v2/nse/results_xbrl/'}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        for o in resp.get('Contents', []):
+            k = o['Key']
+            if '/blobs/' in k:
+                blobs += 1
+            elif '/fetches/' in k:
+                fetches += 1
+            else:
+                other += 1
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    print(f'raw_v2/nse/results_xbrl: {blobs} blobs, {fetches} fetch records, {other} other')
+    urls = set(ok['xbrl_url'].dropna())
+    print(f'distinct XBRL links of ok rows: {len(urls)}')
+    return 0
+
+
 def deal_days(r2, start: str = '2026-09-28', end: str = '2026-10-16') -> int:
     """TODO item 18: were the 07 and 08 Oct 2026 NSE block deals (blocked that night) written later? Counts per day,
     feed and exchange in the clean deals table, primary rows, market makers included and apart."""
@@ -312,6 +455,12 @@ def main() -> int:
         return data_pack(r2)
     if syms == ['RESULTS_QUARTERS']:   # results rows per quarter end and basis: how far back the backfill reached
         return results_quarters(r2)
+    if syms == ['RESULTS_CHECK']:   # is everything in the raw results XBRL also in the archive (15 Nov)
+        return results_check(r2)
+    if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
+        return compress_age(r2)
+    if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
+        return sizes(r2)
     if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
