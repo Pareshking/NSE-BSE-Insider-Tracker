@@ -30,7 +30,8 @@ FILING_COLUMNS = ['event_id', 'seq_id', 'symbol', 'company', 'period_end', 'audi
                   'revised_at', 'revision_remark', 'broadcast_at', 'broadcast_date', 'kind', 'xbrl_url', 'ixbrl_url',
                   'pdf_url', 'xbrl_size', 'xbrl_status', 'xbrl_json']
 # 15 Nov 2026: NSE's listing gives each file's size; "0 Bytes" means NSE published no XBRL for that filing (Adani Green,
-# UPL standalone, Apr-May 2026: their link answers HTTP 404). Such a filing is `no_xbrl_at_nse`, not fetched.
+# UPL standalone, Apr-May 2026: their link answers HTTP 404). Such a filing is `no_xbrl_at_nse`, not fetched. A link
+# that answers HTTP 404 is `no_xbrl_at_nse` too (older listings give no size: L&T's FY25 revisions, Jul 2025).
 NO_FILE = 'no_xbrl_at_nse'
 
 
