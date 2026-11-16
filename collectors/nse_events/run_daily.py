@@ -696,6 +696,8 @@ def fetch_results_xbrl(nse: NSEClient, raw: RawStore | None, rows: pd.DataFrame,
             stop.set()
             return 'blocked', None
         except Exception as exc:  # noqa: BLE001 -- one bad file must not stop the rest
+            if str(exc).startswith('HTTP 404'):   # 15 Nov 2026: NSE lists the filing but has no file at its link
+                return results.NO_FILE, None
             return f'failed: {type(exc).__name__}', None
 
     if workers <= 1:

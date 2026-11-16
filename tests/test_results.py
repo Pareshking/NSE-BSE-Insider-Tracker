@@ -265,3 +265,14 @@ def test_a_file_nse_lists_at_zero_bytes_is_not_fetched():
     got = run_daily.fetch_results_xbrl(nse, None, rows, None, {'notes': []}, max_xbrl=5)
     assert dict(zip(got['seq_id'], got['xbrl_status'])) == {'201512': results.NO_FILE, '201511': 'ok'}
     assert len(nse.urls) == 1
+
+
+def test_a_link_nse_answers_404_is_no_file_not_failed():
+    """15 Nov 2026: 17 filings of May-Aug 2025 (L&T revisions, UPL, Allcargo ...) list no size and their link answers
+    HTTP 404 at NSE; they are `no_xbrl_at_nse`, not 'failed: RuntimeError' retried for nothing."""
+    class NSE404(FakeNSE):
+        def xbrl(self, url):
+            raise RuntimeError(f'HTTP 404 for {url}')
+    rows = results.filing_rows([ROW])
+    got = run_daily.fetch_results_xbrl(NSE404([]), None, rows, None, {'notes': []}, max_xbrl=5)
+    assert list(got['xbrl_status']) == [results.NO_FILE]
