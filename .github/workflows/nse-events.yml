@@ -1,4 +1,7 @@
 name: NSE Corporate Events (daily)
+# The run name says what a manual run collects, so the nightly watchdog (scripts/nightly_watchdog.py) counts only a
+# whole run ("(all)") as the nightly, not a results backfill or a shareholding catch-up.
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('NSE Corporate Events ({0})', inputs.dataset || 'all') || 'NSE Corporate Events (daily)' }}
 
 # SAST Reg 29, corporate actions, board meetings, shareholding + pledges,
 # buyback tender offers and daily buyback reports.
