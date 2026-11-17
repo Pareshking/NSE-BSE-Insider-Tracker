@@ -1,0 +1,30 @@
+name: Nightly watchdog
+
+# scripts/nightly_watchdog.py. 16 Nov 2026: GitHub started neither R2 Storage Write nor its backup, and the site stayed
+# on 13 Nov data. Three times each morning (one is enough if GitHub drops the others) it starts a nightly run that has
+# not succeeded since it was due and is not waiting.
+on:
+  schedule:
+    - cron: '37 1 * * *'   # 07:07 IST
+    - cron: '37 4 * * *'   # 10:07 IST
+    - cron: '37 7 * * *'   # 13:07 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write   # to start the nightly workflows
+
+concurrency:
+  group: nightly-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start a dropped nightly run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u scripts/nightly_watchdog.py
