@@ -26,7 +26,7 @@ PER_MONTH = 3
 
 
 def probe(url):
-    ref = 'https://www.bseindia.com/' if 'bseindia.com' in url else 'https://www.nseindia.com/'
+    ref = 'https://www.bseindia.com/' if 'bseindia.com' in url else 'https://www.nseindia.in/'
     try:
         r = requests.get(url, headers={'User-Agent': UA, 'Referer': ref, 'Range': 'bytes=0-15'},
                          timeout=(15, 60), stream=True)

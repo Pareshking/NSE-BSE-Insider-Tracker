@@ -34,7 +34,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 
-BASE     = 'https://www.nseindia.com'
+BASE     = 'https://www.nseindia.in'
 LIST_URL = f'{BASE}/api/corporates-pit-gg?index=equities'
 TARGET   = date.fromisoformat(os.getenv('TARGET_DATE', '2026-08-31'))
 LOOKBACK = int(os.getenv('LOOKBACK_DAYS', '90'))
