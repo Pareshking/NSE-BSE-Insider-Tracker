@@ -629,7 +629,7 @@ def pdf_text(data: bytes) -> str:
 def download(url: str, session=None) -> bytes:
     """The attachment's bytes, asked for with its own exchange as referer."""
     s = session or requests
-    referer = 'https://www.bseindia.com/' if 'bseindia.com' in url else 'https://www.nseindia.com/'
+    referer = 'https://www.bseindia.com/' if 'bseindia.com' in url else 'https://www.nseindia.in/'
     log('download', url.rsplit('/', 1)[-1])
     r = s.get(url, headers={'User-Agent': UA, 'Referer': referer}, timeout=(15, 120))
     log('download: HTTP', r.status_code, f'{len(r.content):,} bytes')

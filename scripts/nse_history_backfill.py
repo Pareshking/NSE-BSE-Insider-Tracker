@@ -60,9 +60,9 @@ from insiders_clean import archive
 from insiders_clean.dates import parse_dates
 from insiders_clean.history import deal_rows, pit_row
 
-HOME = 'https://www.nseindia.com/'
-PIT_URL = 'https://www.nseindia.com/api/corporates-pit'
-DEALS_URL = 'https://www.nseindia.com/api/historicalOR/bulk-block-short-deals'
+HOME = 'https://www.nseindia.in/'
+PIT_URL = 'https://www.nseindia.in/api/corporates-pit'
+DEALS_URL = 'https://www.nseindia.in/api/historicalOR/bulk-block-short-deals'
 UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/126.0.0.0 Safari/537.36')
 HEADERS = {
@@ -72,9 +72,9 @@ HEADERS = {
     'Connection': 'keep-alive',
 }
 REFERER = {
-    'insider': 'https://www.nseindia.com/companies-listing/corporate-filings-insider-trading',
-    'bulk': 'https://www.nseindia.com/report-detail/display-bulk-and-block-deals',
-    'block': 'https://www.nseindia.com/report-detail/display-bulk-and-block-deals',
+    'insider': 'https://www.nseindia.in/companies-listing/corporate-filings-insider-trading',
+    'bulk': 'https://www.nseindia.in/report-detail/display-bulk-and-block-deals',
+    'block': 'https://www.nseindia.in/report-detail/display-bulk-and-block-deals',
 }
 PACE_SECONDS = (4.0, 6.0)
 RETRIES = 3

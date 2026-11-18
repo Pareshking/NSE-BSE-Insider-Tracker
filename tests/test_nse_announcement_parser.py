@@ -124,10 +124,10 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
     rows = client.xbrl_announcements(date(2026, 10, 15), date(2026, 10, 15), "equities")
     assert rows == [{"appId": "APP-1"}]
     assert requested == [(
-        "https://www.nseindia.com/api/XBRL-announcements?index=equities&from_date=15-10-2026&to_date=15-10-2026&type=announcements",
+        "https://www.nseindia.in/api/XBRL-announcements?index=equities&from_date=15-10-2026&to_date=15-10-2026&type=announcements",
         {"timeout": 10, "retries": 1},
     )]
-    assert client.s.headers['Referer'] == "https://www.nseindia.com/"
+    assert client.s.headers['Referer'] == "https://www.nseindia.in/"
     assert 'X-Requested-With' not in client.s.headers
 
 
@@ -135,11 +135,11 @@ def test_client_uses_dedicated_official_xbrl_announcements_endpoint(monkeypatch)
 def test_integrated_filing_client_uses_distinct_official_symbol_scoped_endpoints():
     client = NSEClient()
     assert client.integrated_filing_financials_url(symbol='IOC') == (
-        'https://www.nseindia.com/api/integrated-filing-financials?index=equities&symbol=IOC')
+        'https://www.nseindia.in/api/integrated-filing-financials?index=equities&symbol=IOC')
     assert client.integrated_filing_financials_url(quarter_end_date='30-Sep-2026') == (
-        'https://www.nseindia.com/api/integrated-filing-financials?index=equities&quarterEndDate=30-Sep-2026')
+        'https://www.nseindia.in/api/integrated-filing-financials?index=equities&quarterEndDate=30-Sep-2026')
     assert client.corporate_governance_url('IOC') == (
-        'https://www.nseindia.com/api/corporate-governance?index=equities&symbol=IOC')
+        'https://www.nseindia.in/api/corporate-governance?index=equities&symbol=IOC')
     with pytest.raises(ValueError):
         client.integrated_filing_financials_url('')
     with pytest.raises(ValueError):

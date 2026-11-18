@@ -11,9 +11,9 @@ from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 
-TARGET=date.fromisoformat(os.getenv('TARGET_DATE','2026-08-31')); LOOKBACK=int(os.getenv('LOOKBACK_DAYS','90')); URL='https://www.nseindia.com/companies-listing/corporate-filings-PREF'; OUT=Path('artifacts/nse_validation/preferential'); OUT.mkdir(parents=True,exist_ok=True)
+TARGET=date.fromisoformat(os.getenv('TARGET_DATE','2026-08-31')); LOOKBACK=int(os.getenv('LOOKBACK_DAYS','90')); URL='https://www.nseindia.in/companies-listing/corporate-filings-PREF'; OUT=Path('artifacts/nse_validation/preferential'); OUT.mkdir(parents=True,exist_ok=True)
 UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139 Safari/537.36'
-APIS=['https://www.nseindia.com/api/corporate-further-issues-pref?index=FIPREFIP','https://www.nseindia.com/api/corporate-further-issues-pref?index=FIPREFLS']
+APIS=['https://www.nseindia.in/api/corporate-further-issues-pref?index=FIPREFIP','https://www.nseindia.in/api/corporate-further-issues-pref?index=FIPREFLS']
 
 def browser():
     o=Options()
@@ -30,7 +30,7 @@ def _tables(d):
         if rs: out.append({'rows':rs,'row_count':max(0,len(rs)-1),'columns':rs[0]})
     return out
 def _js_fetch_once(d,url):
-    script="""const url=arguments[0], done=arguments[arguments.length-1]; fetch(url,{credentials:'include',headers:{'Accept':'application/json,text/plain,*/*'}}).then(async r=>done(JSON.stringify({status:r.status,url:r.url,text:await r.text()}))).catch(e=>done(JSON.stringify({status:0,url:url,error:String(e)})));"""
+    script="""const url=arguments[0], done=arguments[arguments.length-1]; const u=new URL(url); /* same site as the page: nseindia.com redirects to nseindia.in (18 Nov 2026) */ fetch(location.origin+u.pathname+u.search,{credentials:'include',headers:{'Accept':'application/json,text/plain,*/*'}}).then(async r=>done(JSON.stringify({status:r.status,url:r.url,text:await r.text()}))).catch(e=>done(JSON.stringify({status:0,url:url,error:String(e)})));"""
     raw=json.loads(d.execute_async_script(script,url));
     _raw_capture('nse','preferential_issue',raw.get('text',''),url=url,status=raw.get('status',0),content_type='application/json')
     try: raw['json']=json.loads(raw.get('text',''))

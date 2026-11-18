@@ -25,7 +25,7 @@ sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parent))
 from raw_capture import capture as _raw_capture  # exact bytes, before parsing
 from nse_deals_csv import is_csv, rows_from_csv
 
-BASE    = 'https://www.nseindia.com'
+BASE    = 'https://www.nseindia.in'
 PAGE    = f'{BASE}/report-detail/display-bulk-and-block-deals'
 TARGET  = date.fromisoformat(os.getenv('TARGET_DATE', '2026-08-31'))
 LOOKBACK = int(os.getenv('LOOKBACK_DAYS', '90'))
@@ -35,12 +35,14 @@ UA      = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/139 Safari/
 
 _JS = """
 const [url, cb] = [arguments[0], arguments[arguments.length-1]];
-fetch(url, {
+// Same site as the page the browser landed on (18 Nov 2026: www.nseindia.com redirects to www.nseindia.in; a fetch to
+// the other host is cross-site and the browser blocks it: status 0, 0 bytes, every night from 13 Nov).
+const u = new URL(url);
+fetch(location.origin + u.pathname + u.search, {
   credentials: 'include',
   headers: {
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nseindia.com/report-detail/display-bulk-and-block-deals'
+    'Accept-Language': 'en-US,en;q=0.9'
   }
 }).then(async r => {
   const t = await r.text();

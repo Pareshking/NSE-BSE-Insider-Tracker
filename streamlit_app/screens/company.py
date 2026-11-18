@@ -310,7 +310,7 @@ def render():
         if k in rec and pd.notna(rec.get(k)):
             ident.append(f'{label}<span class="mono">{esc(str(rec.get(k)))}</span>')
     ident += [esc(str(rec.get(k))) for k in ('sector', 'industry') if k in rec and pd.notna(rec.get(k))]
-    ident.append(f'<a href="https://www.nseindia.com/get-quotes/equity?symbol={q}" target="_blank" rel="noopener">NSE ↗</a>')
+    ident.append(f'<a href="https://www.nseindia.in/get-quotes/equity?symbol={q}" target="_blank" rel="noopener">NSE ↗</a>')
     latest = _latest_trade(e, ctx.prices, now)
     lines = []
     if latest:

@@ -34,8 +34,8 @@ from collectors.nse_events.client import Blocked, NSEClient  # noqa: E402
 from insiders_clean import tradability  # noqa: E402
 from raw_capture import capture  # noqa: E402
 
-SOURCES = {'asm': 'https://www.nseindia.com/api/reportASM', 'gsm': 'https://www.nseindia.com/api/reportGSM',
-           'esm': 'https://www.nseindia.com/api/reportESM',
+SOURCES = {'asm': 'https://www.nseindia.in/api/reportASM', 'gsm': 'https://www.nseindia.in/api/reportGSM',
+           'esm': 'https://www.nseindia.in/api/reportESM',
            'sec_list': 'https://nsearchives.nseindia.com/content/equities/sec_list.csv'}
 ARCHIVE = {'surveillance': 'archive/tradability/surveillance/', 'sec_list': 'archive/tradability/sec_list/'}
 CLEAN_KEY = 'clean/current/tradability.parquet'
