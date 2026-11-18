@@ -271,7 +271,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
-        run: python -u -m collectors.bse.events --days 30
+        run: set -o pipefail; mkdir -p artifacts; python -u -m collectors.bse.events --days 30 | tee artifacts/bse_events.log
 
       # --- Clean layer: archive every record once, rebuild clean/ from it ---
       # The calendar step first, so tonight's deadlines can use tonight's
@@ -322,3 +322,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run precompute-slim.yml --ref "${{ github.ref_name }}"
+      # 18 Nov 2026: four NSE datasets were skipped every night for days while this run was green. Last, so nothing
+      # above is held back; red when a dataset was not written or the BSE step noted a failure (scripts/nightly_alarm.py).
+      - name: 'Alarm: data not written'
+        if: always()
+        run: python scripts/nightly_alarm.py

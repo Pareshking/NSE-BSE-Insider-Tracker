@@ -8,6 +8,9 @@ nightly workflow it finds the last time the workflow was due, allowing `GRACE_HO
   busy   a run is queued or running: wait for it (GitHub keeps one waiting run per group, a second would replace it);
   start  neither: start it (workflow_dispatch, default inputs) and say so in the job summary.
 
+A run that failed only at its last step, the alarm that some data was not written (scripts/nightly_alarm.py), counts as
+done: it fetched what it could, and starting it again would ask the exchanges for the same thing.
+
 A full run is a scheduled one, or a manual one of the whole workflow: for NSE events only `dataset` all counts (a
 results backfill is not the nightly), told by the run name.
 
@@ -46,13 +49,24 @@ def _full(run: dict, full_name: str | None) -> bool:
     return full_name is None or run.get('displayTitle') == full_name
 
 
+ALARM_STEP = 'Alarm: data not written'
+
+
+def _done(r: dict) -> bool:
+    if r.get('conclusion') == 'success':
+        return True
+    failed = r.get('failed_steps')
+    return r.get('conclusion') == 'failure' and bool(failed) and set(failed) <= {ALARM_STEP}
+
+
 def decide(runs: list[dict], due: datetime, full_name: str | None = None) -> str:
-    """'ok', 'busy' or 'start' for runs as `gh run list --json event,status,conclusion,createdAt,displayTitle` gives."""
+    """'ok', 'busy' or 'start' for runs as `gh run list --json event,status,conclusion,createdAt,displayTitle` gives
+    (with `failed_steps`, the names of a failed run's failed steps, where known)."""
     if any(r.get('status') != 'completed' for r in runs):
         return 'busy'
     for r in runs:
         created = datetime.fromisoformat(str(r.get('createdAt', '')).replace('Z', '+00:00'))
-        if created >= due and r.get('conclusion') == 'success' and _full(r, full_name):
+        if created >= due and _done(r) and _full(r, full_name):
             return 'ok'
     return 'start'
 
@@ -68,7 +82,13 @@ def main() -> int:
     for wf, (days, hour, full_name) in WATCHED.items():
         due = last_due(now, days, hour)
         runs = json.loads(gh('run', 'list', '-R', repo, '--workflow', wf, '--limit', '30',
-                             '--json', 'event,status,conclusion,createdAt,displayTitle'))
+                             '--json', 'databaseId,event,status,conclusion,createdAt,displayTitle'))
+        for r in runs:
+            created = datetime.fromisoformat(str(r.get('createdAt', '')).replace('Z', '+00:00'))
+            if r.get('conclusion') == 'failure' and created >= due:
+                jobs = json.loads(gh('run', 'view', str(r['databaseId']), '-R', repo, '--json', 'jobs')).get('jobs', [])
+                r['failed_steps'] = [st.get('name') for j in jobs for st in j.get('steps', [])
+                                     if st.get('conclusion') == 'failure']
         state = decide(runs, due, full_name)
         if state == 'start':
             gh('workflow', 'run', wf, '-R', repo)
