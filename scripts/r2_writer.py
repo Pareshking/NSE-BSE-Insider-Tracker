@@ -787,6 +787,9 @@ def main():
     client.put_object(Bucket=BUCKET, Key=manifest_key, Body=manifest_bytes,
                        ContentType='application/json')
 
+    # The nightly alarm (scripts/nightly_alarm.py) reads this local copy at the end of the run (18 Nov 2026).
+    Path('artifacts').mkdir(exist_ok=True)
+    Path('artifacts/r2_manifest.json').write_bytes(manifest_bytes)
     print(f'\nManifest written: s3://{BUCKET}/{manifest_key}')
     print(f'{written}/{len(manifest["datasets"])} datasets written to R2 for {TARGET_DATE}')
     print(json.dumps(manifest, indent=2, default=str))

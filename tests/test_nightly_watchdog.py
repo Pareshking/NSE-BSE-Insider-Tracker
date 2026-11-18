@@ -36,3 +36,14 @@ def test_a_results_backfill_is_not_the_nightly():
                 'createdAt': '2026-11-16T20:00:00Z', 'displayTitle': 'NSE Corporate Events (results)'}
     assert w.decide([backfill], due, name) == 'start'
     assert w.decide([{**backfill, 'displayTitle': name}], due, name) == 'ok'
+
+
+def test_a_run_red_only_from_the_data_alarm_is_not_restarted():
+    due = datetime(2026, 11, 16, 18, tzinfo=UTC)
+    alarm = {'event': 'schedule', 'status': 'completed', 'conclusion': 'failure', 'createdAt': '2026-11-17T00:10:00Z',
+             'failed_steps': ['Alarm: data not written']}
+    assert w.decide([alarm], due) == 'ok'
+    crashed = {**alarm, 'failed_steps': ['NSE Bulk', 'Alarm: data not written']}
+    assert w.decide([crashed], due) == 'start'
+    unknown = {**alarm, 'failed_steps': None}
+    assert w.decide([unknown], due) == 'start'
