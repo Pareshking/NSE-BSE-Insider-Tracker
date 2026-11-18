@@ -43,10 +43,27 @@ def alt_key(name) -> str | None:
     return k if k and k != entity_key(s) else None
 
 
+def _identity(filing: dict) -> dict:
+    """The filing's identity in one form whatever the feed gave (18 Nov 2026: BSE filings carry quarter_end as a date,
+    others as text or a number, and a batch mixing them failed to write as parquet every night from at least 13 Nov:
+    "object of type str cannot be converted to int ... column quarter_end"). Dates become YYYY-MM-DD text, codes text."""
+    out = {k: filing.get(k) for k in ('event_id', 'record_id', 'symbol', 'isin', 'company', 'quarter_end',
+                                      'submission_date', 'xbrl_url')}
+    for k in ('quarter_end', 'submission_date'):
+        v = out[k]
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            out[k] = None
+            continue
+        d = pd.to_datetime(str(v), errors='coerce', format='mixed', dayfirst=not str(v)[:4].isdigit())
+        out[k] = None if pd.isna(d) else (d.isoformat() if k == 'submission_date' else d.date().isoformat())
+    for k in ('event_id', 'record_id', 'symbol', 'isin'):
+        out[k] = None if out[k] is None or (isinstance(out[k], float) and pd.isna(out[k])) else str(out[k])
+    return out
+
+
 def member_rows(members: list[dict], filing: dict, check: str, sha: str | None, run_date: str) -> pd.DataFrame:
     """Parsed members of one filing -> rows with the filing's identity."""
-    rows = [{**{k: filing.get(k) for k in ('event_id', 'record_id', 'symbol', 'isin', 'company', 'quarter_end',
-                                            'submission_date', 'xbrl_url')},
+    rows = [{**_identity(filing),
              **m, 'member_id': entity_key(m['member_name_filed']), 'member_alt_id': alt_key(m['member_name_filed']),
              'member_name': entity_display(m['member_name_filed']), 'members_check': check,
              'xbrl_sha256': sha, 'parsed_on': run_date} for m in members]

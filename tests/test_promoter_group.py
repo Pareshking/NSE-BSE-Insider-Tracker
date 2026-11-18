@@ -293,3 +293,22 @@ def test_a_promoter_sale_placed_with_several_buyers_names_them():
     out, rep = mark_insider_group_transfers(trades, deals)
     assert out.loc[0, 'placement_buyers'] == ['Aditya Kumar Halwasiya', 'Rajiv Goenka'] and rep['placements'] == 1
     assert out.loc[0, 'is_market']   # still a sale: the promoter's stake went down
+
+
+def test_member_rows_of_mixed_feeds_write_as_one_parquet():
+    """18 Nov 2026: a batch mixing BSE filings (quarter_end a date, code a number) with text ones failed to write every
+    night ("cannot be converted ... column quarter_end"); the identity columns now have one form."""
+    import io
+    import pandas as pd
+    from insiders_clean import promoter_group as pg
+    m = [{'member_name_filed': 'ABC Holdings Pvt Ltd', 'member_no': 1}]
+    rows = [pg.member_rows(m, {'event_id': 'e1', 'symbol': 500325, 'quarter_end': pd.Timestamp('2026-09-30'),
+                               'submission_date': pd.Timestamp('2026-10-20 18:01')}, 'ok', None, 'x'),
+            pg.member_rows(m, {'event_id': 'e2', 'symbol': '500326', 'quarter_end': '30-SEP-2026'}, 'ok', None, 'x'),
+            pg.member_rows(m, {'event_id': 'e3', 'symbol': 'ACME', 'quarter_end': '2026-06-30'}, 'ok', None, 'x')]
+    batch = pd.concat(rows, ignore_index=True)
+    batch.to_parquet(io.BytesIO())
+    assert list(batch['quarter_end']) == ['2026-09-30', '2026-09-30', '2026-06-30']
+    assert list(batch['symbol']) == ['500325', '500326', 'ACME']
+    table, _ = pg.clean_members([batch])
+    assert len(table) == 3
