@@ -176,3 +176,4 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
   .stApp [data-testid="stButtonGroup"] [role="radiogroup"] { flex-wrap: wrap; row-gap: 4px; }
 }
 .cg-nospark { font-size: 11px; color: var(--ink-4); text-align: center; }
+@media (max-width: 640px) { .co-head h1.co-verdict { font-size: 26px !important; padding-left: 12px; border-left-width: 4px; } }

@@ -180,8 +180,7 @@ def test_a_matched_block_is_its_size_and_its_seller_not_a_nil_net():
     assert by['deals'].note == '12.3% of the company changed hands · sold by FIH Mauritius Investments LTD · bought most by SBI Mutual Fund'
     assert by['insiders'].note == 'none in 90 days; 12 months: net +₹65.8 Cr'
     s, lean = cg.verdict(cs, fl, deals)
-    assert s == ('No clear move by insiders or funds; 12.3% of the company changed hands in bulk and block deals '
-                 '(seller: FIH Mauritius Investments LTD); no red flags') and lean == 'quiet'
+    assert s == 'No clear move by insiders or funds; 12.3% of the company changed hands in deals; no red flags' and lean == 'quiet'
 
 
 def test_deal_flow_nets_value_and_share_of_the_company():

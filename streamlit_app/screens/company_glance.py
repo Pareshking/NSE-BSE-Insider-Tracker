@@ -469,8 +469,7 @@ def verdict(cs: list[Chip], flags: list[Flag], deals: dict | None = None) -> tup
     else:
         head, lean = 'No clear move by insiders or funds', 'quiet'
     if block:
-        seller = f' (seller: {_short(deals["top_seller"])})' if deals.get('top_seller') else ''
-        head += f'; {gross_pct:.1f}% of the company changed hands in bulk and block deals{seller}'
+        head += f'; {gross_pct:.1f}% of the company changed hands in deals'   # who sold and bought: on the deals chip
     if big:
         head += f'; {_deal_words(deals)}'
         if (lean == 'accumulating' and deal_move < 0) or (lean == 'leaving' and deal_move > 0):
