@@ -18,11 +18,15 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes', 'stakes'), ('situations', 'situations'),
-         ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('data-health', 'data-health'),
+         ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('company?symbol=IIFL', 'company-iifl'), ('data-health', 'data-health'),
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
          ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
-         ('proto-today', 'old-proto-address'), ('entity?id=sbi-mutual-fund', 'entity-sbi-mf'), ('ownership', 'holders'),
-         ('investor-flows', 'investor-flows'), ('ownership', 'holders-90d')]
+         ('proto-today', 'old-proto-address'),
+         # the shared date control (ui/dates.py): a preset, a Custom range and a past day, each from the address
+         ('insiders?range=1m', 'insiders-1m'), ('deals?from=2026-10-01&to=2026-10-31', 'deals-custom'),
+         ('today?day=2026-11-10', 'today-past-day'), ('calendar?range=3m', 'calendar-3m'),
+         ('entity?id=sbi-mutual-fund', 'entity-sbi-mf'), ('ownership', 'holders'), ('investor-flows', 'investor-flows'),
+         ('ownership', 'holders-90d')]
 # Long pages drawn taller at phone width, so the screenshot reaches their charts (the entity page's holdings).
 TALL = {'entity-sbi-mf': 7000, 'holders-90d': 4000}
 # A period button pressed before the screenshot, where the default period is often empty.

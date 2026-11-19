@@ -606,6 +606,25 @@ def results_windows(r2) -> int:
     return 0
 
 
+def raw_deal_legs(r2, code: str, day: str) -> int:
+    """RAW_DEALS:BSECODE_OR_SYMBOL:YYYY-MM-DD: the archived bulk and block rows of one security on one day, both
+    exchanges, as filed (19 Nov 2026: IIFL Finance's seller showed twice the shares its buyers took)."""
+    from clean_writer import read_archive
+    for ex in ('bse', 'nse'):
+        for cat in ('bulk_deals', 'block_deals'):
+            a = read_archive(r2, ex, cat)
+            if a is None or a.empty:
+                print(f'--- {ex} {cat}: empty'); continue
+            hit = a.apply(lambda r: any(str(v).strip().upper() == code for v in r.values), axis=1)
+            x = a[hit]
+            x = x[x.astype(str).apply(lambda r: r.str.contains(day).any() or r.str.contains(pd.Timestamp(day).strftime('%d-%m-%Y')).any()
+                                      or r.str.contains(pd.Timestamp(day).strftime('%d/%m/%Y')).any(), axis=1)]
+            print(f'--- {ex} {cat}: {len(x)} rows; columns {list(a.columns)}')
+            if len(x):
+                print(x.to_string(max_colwidth=40))
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -631,6 +650,9 @@ def main() -> int:
         return compress_age(r2)
     if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
         return sizes(r2)
+    if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
+        _, code, day = syms[0].split(':')
+        return raw_deal_legs(r2, code, day)
     if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)

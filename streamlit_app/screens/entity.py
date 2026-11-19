@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import charts, kit
+from ui import charts, dates, kit
 
 from insiders_clean import fund_managers, investors, participants, public_holders, signals
 from screens.ctx import load, need_data, split_since, with_prices, with_sparks
@@ -208,8 +208,17 @@ def render():
     if len(held) or len(gone):
         both = pd.concat([held[['isin', 'company']], gone[['isin', 'company']]]) if len(gone) else held[['isin', 'company']]
         _holdings_card(held, gone, history(ph, eid, name, both))
+    # the lists below over the page's dates (owner, 19 Nov 2026: "a date selector ... must be present"); the tiles above
+    # keep their own 12 months and all data, as labelled
+    rng = dates.range_picker('entity', *dates.bounds(t['broadcast_date'] if len(t) else None, d['date'] if len(d) else None,
+                                                     hi=ctx.ref), default='all', caption=True)
+    had = len(t) + len(d)
+    t = t[rng.mask(t['broadcast_date'])] if len(t) else t
+    d_list = d[rng.mask(d['date'])] if len(d) else d
+    if had and not len(t) and not len(d_list):
+        kit.empty(f'No insider filing or deal under this name, {dates.describe(rng)}.')
     if len(t):
-        with kit.card('Insider filings', 'en_it'):
+        with kit.card('Insider filings', 'en_it', dates.describe(rng)):
             s = t.sort_values('broadcast_date', ascending=False)
             kit.table(with_sparks(s.assign(seen=pd.to_datetime(s['broadcast_date'], errors='coerce'),
                                            mode=s['mode_raw'].fillna(s['kind'])), ctx), [
@@ -227,9 +236,9 @@ def render():
             kit.table(per, [kit.Col('company', 'Company', 'co'), kit.Col('net', 'Net', 'smoney'), kit.Col('buy', 'Bought', 'money', phone=False),
                             kit.Col('sell', 'Sold', 'money', phone=False), kit.Col('pct', 'Share of company', 'spct'),
                             kit.Col('last', 'Last deal', 'date', phone=False)], limit=30, key='en_net_t', keep_empty=True)
-    if len(d):
-        with kit.card('Deals', 'en_dl'):
-            s = d.sort_values('date', ascending=False)
+    if len(d_list):
+        with kit.card('Deals', 'en_dl', dates.describe(rng)):
+            s = d_list.sort_values('date', ascending=False)
             kit.table(s, [
                 kit.Col('company', 'Company', 'co'), kit.Col('date', 'Date', 'date'), kit.Col('side', 'Side', 'side'),
                 kit.Col('quantity', 'Shares', 'shares', phone=False), kit.Col('price', 'Price', 'price', phone=False),
