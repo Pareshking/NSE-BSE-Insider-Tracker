@@ -4,6 +4,21 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## NPS pension fund portfolios, 19 Nov 2026 (branch `nps-portfolios`, draft PR)
+
+The 10 NPS pension fund managers' month-end scheme portfolios (NPS Trust's list, `npstrust.org.in/scheme-portfolio`),
+collected with the mutual fund houses as `kind='pension'` houses (`nps_...` keys) into the same archive and tables
+(`docs/DATA_DICTIONARY.md`, Fund month-end portfolios). Done: the parser reads the PFRDA form (value in rupees,
+`Particulars`, `Isin No.`, `Mkt_Value`, `No of Units`, `Name Of Scheme :`) with the 32 mutual fund houses unchanged
+(tests; dry run of sbi, hdfc, nippon); `kind` on holdings, `house_kind` on changes and per-stock rows, coverage still
+mutual funds only; Funds page section "What did NPS pension funds add and cut?" (mutual fund lists unchanged).
+Dry run Oct and Sep 2026: SBI, LIC, ICICI, Axis both months; Aditya Birla Sep only (its October link answers 404 on
+its own site, 19 Nov). Not collected, none worked around: UTI Retirement Solutions and Max Life (expired site
+certificates), HDFC Pension (Akamai 403 to anything but a full browser visit), Kotak (Radware bot check on the list
+call), Tata (now tatapensionfund.com; the Portfolio list never loads headless, Download buttons carry no address).
+**Next:** after merge, run Mutual fund portfolios (workflow) for 2026-09 and 2026-10 (the archive needs both months for a change);
+retry Aditya Birla October; recheck UTI and Max Life certificates monthly.
+
 ## Market flows, 19 Nov 2026 (branch `market-flows`, draft PR)
 
 A daily table of market-wide flows for a context line on Today ("FPIs sold Rs X Cr, DIIs bought Rs Y Cr on 18 Nov;

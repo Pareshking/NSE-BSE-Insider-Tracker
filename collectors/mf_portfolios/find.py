@@ -37,6 +37,11 @@ class House:
     api: Callable[[str], list] | None = None    # month -> (text, href) links, for a page whose list is a JSON call
     base_exclude: bool = True    # apply EXCLUDE; off where every link is a scheme's portfolio and EXCLUDE's words
                                  # (debt, dividend, sector ...) would drop scheme names
+    kind: str = 'mf'             # 'mf' (a mutual fund house, SEBI) or 'pension' (an NPS pension fund manager, PFRDA)
+    value_unit: str = 'lakh'     # the unit of the filed market value: 'lakh' (SEBI format) or 'rupee' (NPS: "Amount in Rs.")
+    pages: Callable[[str], list] | None = None   # month -> page addresses, for a page that lists one month at a time
+                                 # (its links name no month, so the month is added to their text)
+    browser_fetch: bool = False  # download through the browser (a site whose certificate chain only a browser completes)
 
 
 def month_tokens(month: str) -> re.Pattern:
@@ -134,3 +139,20 @@ def links_rendered(url: str, browser, click: list | None = None, wait_ms: int = 
     out = [(t.strip(), h) for t, h in anchors if h]
     out += [('', urljoin(url, m)) for m in re.findall(r'["\']([^"\'\s<>]+\.(?:xlsx|xls|xlsm|zip))["\']', html, re.I)]
     return out + seen
+
+
+def fetch_rendered(url: str, browser, timeout_ms: int = 120000) -> tuple[bytes, str | None, int]:
+    """A file downloaded by the browser itself (its own network and certificate handling), as a visitor's click would."""
+    ctx = browser.new_context(user_agent=UA, accept_downloads=True)
+    page = ctx.new_page()
+    try:
+        with page.expect_download(timeout=timeout_ms) as d:
+            try:
+                page.goto(url, timeout=timeout_ms)
+            except Exception:  # noqa: BLE001 - a file address starts a download instead of a page
+                pass
+        path = d.value.path()
+        with open(path, 'rb') as f:
+            return f.read(), None, 200
+    finally:
+        ctx.close()

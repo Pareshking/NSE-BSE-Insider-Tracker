@@ -8,6 +8,10 @@ sometimes the old .xls format. This module reads any of them the same way and ne
     parse_workbook(body, filename) -> one row per holding line: sheet, scheme, isin, name, quantity, value_lakh,
                                       pct_aum (as filed: a fraction or a percent, see `pct_scale`)
 
+NPS pension fund managers file the PFRDA form the same way (a sheet per scheme: Particulars, ISIN No., Industry,
+Quantity or No of Units, Market Value, % of Portfolio), with the value in rupees, not lakh: the house says which
+(`value_unit`), and `value_lakh` is always lakh.
+
 A sheet without such a header row is skipped and counted (index sheets, notes). Only equity shares are kept for the
 stock tables (`is_equity`: an INE ISIN whose security code is 01, the depositories' code for equity shares); every
 other line is counted, not dropped silently.
@@ -37,6 +41,7 @@ PASSIVE = re.compile(r'\betf\b|exchange traded|index fund|\bindex\b|\bnifty\b|\b
 HEADER_SCAN = 40      # rows from the top of a sheet searched for the header row
 BLOCK = re.compile(r'^scheme\s*:\s*', re.I)   # 'SCHEME: UTI - Large Cap Fund', a scheme's title row
 SCHEME_SCAN = 12      # rows from the top searched for the scheme name
+VALUE_UNIT = {'lakh': 1.0, 'rupee': 1e5}   # the filed market value / this = Rs lakh
 
 
 def is_equity(isin: pd.Series) -> pd.Series:
@@ -55,7 +60,7 @@ def _scheme(rows: list) -> str | None:
         cells = [c for c in r if _norm(c)]
         for i, c in enumerate(cells):
             t = _norm(c)
-            if 'scheme name' in t or t.startswith('name of the scheme'):
+            if 'scheme name' in t or re.match(r'name of (?:the )?scheme', t):   # 'Name Of Scheme :' (NPS, SBI)
                 rest = cells[i + 1:]
                 if rest:
                     return str(rest[0]).strip()
@@ -69,22 +74,28 @@ def _scheme(rows: list) -> str | None:
     return first
 
 
+def _is_qty(x: str) -> bool:
+    """A quantity column: 'Quantity', 'Qty', 'No. of shares', or 'No of Units' (ICICI Pension Fund's Tier II sheets)."""
+    return 'quantity' in x or x == 'qty' or bool(re.match(r'no\.? ?of (?:shares|units)$', x))
+
+
 def _header(rows: list) -> tuple[int, dict] | None:
     for k, r in enumerate(rows[:HEADER_SCAN]):
         n = [_norm(c) for c in r]
-        if not any(x.startswith('isin') for x in n) or not any('quantity' in x or x in ('qty', 'no. of shares') for x in n):
+        if not any(x.startswith('isin') for x in n) or not any(_is_qty(x) for x in n):
             continue
         col: dict = {}
         for j, x in enumerate(n):
             if x.startswith('isin') and 'isin' not in col:
                 col['isin'] = j
-            elif ('quantity' in x or x in ('qty', 'no. of shares')) and 'qty' not in col:
+            elif _is_qty(x) and 'qty' not in col:
                 col['qty'] = j
-            elif ('market' in x or 'fair value' in x or x.startswith(('value', 'mkt'))) and 'val' not in col:
-                col['val'] = j
+            elif ('market' in x or 'fair value' in x or x.replace('_', ' ').startswith(('value', 'mkt'))) and 'val' not in col:
+                col['val'] = j   # 'Mkt_Value' (NPS, SBI Pension Funds), 'Mkt Value Rs. in Lacs' (Sundaram)
             elif ('% to' in x or '% of' in x or 'to net assets' in x or x in ('%', '% aum')) and 'pct' not in col:
                 col['pct'] = j
-            elif ('name of' in x or 'instrument' in x or 'issuer' in x or x in ('company', 'security')) and 'name' not in col:
+            elif ('name of' in x or 'instrument' in x or 'issuer' in x or x in ('company', 'security', 'particulars')) \
+                    and 'name' not in col:   # 'Particulars': the PFRDA form's name column
                 col['name'] = j
         return k, col
     return None
@@ -150,9 +161,13 @@ def _sheets(name: str, data: bytes):
     raise ValueError(f'{name}: not a workbook (first bytes {data[:8]!r})')
 
 
-def parse_workbook(body: bytes, filename: str) -> tuple[pd.DataFrame, dict]:
-    """Every holding line in the file, and a count of what was read and skipped."""
-    rows, report = [], {'workbooks': 0, 'sheets': 0, 'sheets_read': 0, 'skipped': {}}
+def parse_workbook(body: bytes, filename: str, value_unit: str = 'lakh') -> tuple[pd.DataFrame, dict]:
+    """Every holding line in the file, and a count of what was read and skipped. `value_unit` is the unit the file's
+    market value is in, as the filer states it: 'lakh' (the SEBI format, "Rs. in Lakhs") or 'rupee' (the PFRDA form
+    NPS pension funds file, "Amount in Rs."); `value_lakh` is always in lakh."""
+    if value_unit not in VALUE_UNIT:
+        raise ValueError(f'value_unit {value_unit!r}: one of {sorted(VALUE_UNIT)}')
+    rows, report = [], {'workbooks': 0, 'sheets': 0, 'sheets_read': 0, 'skipped': {}, 'value_unit': value_unit}
     for name, data in _books(body, filename):
         report['workbooks'] += 1
         for sheet, srows in _sheets(name, data):
@@ -164,6 +179,7 @@ def parse_workbook(body: bytes, filename: str) -> tuple[pd.DataFrame, dict]:
             report['sheets_read'] += 1
             rows += got
     df = pd.DataFrame(rows, columns=['sheet', 'scheme', 'isin', 'name', 'quantity', 'value_lakh', 'pct_aum'])
+    df['value_lakh'] = pd.to_numeric(df['value_lakh'], errors='coerce') / VALUE_UNIT[value_unit]
     report['lines'] = int(len(df))
     report['equity_lines'] = int(is_equity(df['isin']).sum()) if len(df) else 0
     report['equity_lines_no_quantity'] = int((is_equity(df['isin']) & df['quantity'].isna()).sum()) if len(df) else 0
@@ -276,6 +292,21 @@ def by_stock(ch: pd.DataFrame) -> pd.DataFrame:
     out['price'] = (out['_v'] * 1e5 / out['_s']).where(out['_s'].gt(0))
     out['active_net_cr'] = out['active_net'] * out['price'] / 1e7
     return out[cols]
+
+
+def tag_house_kind(ch: pd.DataFrame, h: pd.DataFrame) -> pd.DataFrame:
+    """`house_kind` on each change row: 'mf' or 'pension', the house's `kind` in the holdings (a house archived before
+    the column existed is a mutual fund). Named apart from `kind`, which on a change row is new / added / cut ..."""
+    kinds = h.drop_duplicates('amc').set_index('amc')['kind'] if 'kind' in h else pd.Series(dtype=object)
+    return ch.assign(house_kind=ch['amc'].map(kinds).fillna('mf'))
+
+
+def stock_months(ch: pd.DataFrame) -> pd.DataFrame:
+    """`by_stock` for every month and house kind: mutual funds and NPS pension funds counted apart, never mixed."""
+    if 'house_kind' not in ch:
+        ch = ch.assign(house_kind='mf')
+    parts = [by_stock(g).assign(month=m, house_kind=k) for (m, k), g in ch.groupby(['month', 'house_kind'], sort=True)]
+    return pd.concat(parts, ignore_index=True) if parts else by_stock(ch.iloc[:0]).assign(month=None, house_kind=None)
 
 
 def month_end(month: str) -> pd.Timestamp:

@@ -2,7 +2,9 @@
 
 Owner, 19 Nov 2026: "I can't say anything what mutual funds or PMS etc buying this month or selling this month".
 Every fund house files its schemes' holdings as on the last day of each month by the 10th of the next
-(scripts/mf_portfolios.py collects them; insiders_clean/mf_holdings.py reads them). The month's change per stock is
+(scripts/mf_portfolios.py collects them; insiders_clean/mf_holdings.py reads them). NPS pension fund managers file
+the same month-end portfolios with PFRDA; they are collected too and shown in a section of their own, never mixed into
+the mutual fund lists or the coverage line (which measures mutual funds). The month's change per stock is
 what active schemes held at this month-end less what they held at the last (index funds and ETFs, which buy by rule,
 kept apart; a bonus or split between the two dates applied first). The page says how many houses are in and what
 share of mutual-fund holdings they are, measured against the companies' own shareholding filings.
@@ -25,6 +27,15 @@ from ui.kit import esc
 TOP = 15
 MIN_NET_CR = 1.0          # a stock's net buying or selling under Rs 1 Cr is counted, not listed
 NEW_MIN_HOUSES = 2        # "several houses started a position": two or more
+
+
+def by_kind(df: pd.DataFrame | None, kind: str) -> pd.DataFrame | None:
+    """Rows of one house kind: 'mf' (mutual funds; a table written before the column existed is all mutual funds) or
+    'pension' (NPS pension fund managers)."""
+    if df is None or df.empty:
+        return df
+    k = df['house_kind'].fillna('mf') if 'house_kind' in df else pd.Series('mf', index=df.index)
+    return df[k == kind]
 
 
 def months(stock: pd.DataFrame) -> list[str]:
@@ -84,8 +95,10 @@ def render():
     ctx = load()
     if not need_data(ctx):
         return
-    stock, cov, ch = store.table('mf_stock_month'), store.table('mf_coverage'), store.table('mf_changes')
-    ms = months(stock)
+    stock_all, cov, ch_all = store.table('mf_stock_month'), store.table('mf_coverage'), store.table('mf_changes')
+    stock, ch = by_kind(stock_all, 'mf'), by_kind(ch_all, 'mf')        # the page's lists: mutual funds
+    nps = by_kind(stock_all, 'pension')                                # NPS pension funds: a section of their own
+    ms = months(stock_all)
     _strip(ctx, ['fund houses\' month-end portfolios', 'active schemes; index funds and ETFs apart', 'PMS and AIFs file no holdings'])
     if not ms:
         ds.head('Funds', 'What did fund managers buy and sell this month?',
@@ -120,6 +133,18 @@ def render():
     ds.html(_table(COLS, _rows(v['started'], syms, names)) if len(v['started']) else '<p class="dt-empty">None this month.</p>')
     ds.section('Where are houses selling out?', 'A house that held it at the month end before and holds none now')
     ds.html(_table(COLS, _rows(v['left'], syms, names)) if len(v['left']) else '<p class="dt-empty">None this month.</p>')
+    if nps is not None and not nps.empty and (nps['month'] == month).any():
+        pv = month_view(nps, month, tot)
+        mgrs = int(ch_all.loc[(ch_all['month'] == month) & ch_all['house_kind'].eq('pension'), 'amc'].nunique()) \
+            if ch_all is not None and not ch_all.empty and 'house_kind' in ch_all else 0
+        ds.section('What did NPS pension funds add and cut?',
+                   f'{mgrs} NPS pension fund managers, every scheme (E, C, G, government, APY ...), month end to month end. '
+                   'PFRDA\'s investment rules keep NPS equity to large listed companies and the schemes largely follow '
+                   'the index: read this as where pension money went, not as stock picks. Not in the lists above.')
+        ds.html('<p><b>Added most</b></p>' + (_table(COLS, _rows(pv['bought'], syms, names)) if len(pv['bought']) else
+                '<p class="dt-empty">No stock added for ₹1 Cr or more.</p>'))
+        ds.html('<p><b>Cut most</b></p>' + (_table(COLS, _rows(pv['sold'], syms, names)) if len(pv['sold']) else
+                '<p class="dt-empty">No stock cut for ₹1 Cr or more.</p>'))
     ds.record(f'{v["small"]:,} stocks with net moves under ₹{MIN_NET_CR:.0f} Cr counted, not listed. Index funds and ETFs are left out '
               'of these lists: they buy what their index holds. PMS and AIFs file no holdings stock by stock; they show only in '
               'bulk and block deals and 5% crossings.')

@@ -154,4 +154,41 @@ HOUSES = [
 # declaring "I am NOT a US person/resident of Canada": the owner's call), Union (resets connections from outside India).
 ]
 
+
+def _lic_pages(month: str) -> list[str]:
+    """LIC Pension Fund lists one month at a time (year and month in the address), ten files a page."""
+    y, m = (int(x) for x in month.split('-'))
+    base = 'https://www.licpensionfund.in/index.php/public-disclosures/portfolio-disclosures'
+    return [f'{base}?year={y}&month={m}&page={p}' for p in (1, 2, 3)]
+
+
+# NPS pension fund managers (PFRDA): each files every scheme's portfolio as on the month end (Scheme E, C, G in Tier I
+# and II, central and state government, corporate CG, NPS Lite, APY ...), in the PFRDA form: Particulars, ISIN No.,
+# Industry, Quantity, Market Value (in rupees), % of Portfolio. Pages from NPS Trust's list
+# (npstrust.org.in/scheme-portfolio, read 19 Nov 2026), checked one by one against the October and September 2026 files.
+PENSION = [
+    House('nps_sbi', 'SBI Pension Funds', 'https://www.sbipensionfunds.co.in/disclosures/portfolio-details/',
+          api=apis.nps_sbi, must=r'portfolio details', kind='pension', value_unit='rupee'),
+    # The site sends an incomplete certificate chain that Python's TLS does not complete; the browser does.
+    House('nps_lic', 'LIC Pension Fund', 'https://www.licpensionfund.in/index.php/public-disclosures/portfolio-disclosures',
+          render=True, mode='all', must=r'/PageContentPdf/', pages=_lic_pages, browser_fetch=True, kind='pension',
+          value_unit='rupee'),
+    House('nps_icici', 'ICICI Pension Fund', 'https://www.icicipension.in/public_disclosure/portfolio_details',
+          api=apis.nps_icici, must=r'monthly report', kind='pension', value_unit='rupee'),
+    House('nps_absl', 'Aditya Birla Sun Life Pension Fund', 'https://pensionfund.adityabirlacapital.com/public-disclosure',
+          must=r'portfolio_abslpm', kind='pension', value_unit='rupee'),
+    House('nps_axis', 'Axis Pension Fund', 'https://www.axispensionfund.com/public-disclosures/portfolio-details',
+          api=apis.nps_axis, kind='pension', value_unit='rupee'),
+]
+# Not collected (19 Nov 2026), none worked around:
+#   UTI Retirement Solutions (utirsl.com) and Max Life Pension Fund (maxlifepensionfund.com): the sites' certificates
+#     have expired (a browser refuses them too: ERR_CERT_DATE_INVALID).
+#   HDFC Pension (hdfcpension.com/public-disclosures): the page lists 'Monthly Update: Oct 2026' workbooks, but the
+#     site's edge (Akamai) answers 403 Access Denied to any request that is not a full browser visit.
+#   Kotak Mahindra Pension Fund (kotakpensionfund.com/Kotak/Portfolio): the file list call is sent to a bot check
+#     (Radware, validate.perfdrive.com).
+#   Tata Pension (now tatapensionfund.com/public-disclosure-and-nav): the Portfolio tab's list never loads in a headless
+#     browser ('Loading documents...'; the list calls are encrypted) and its Download buttons carry no addresses.
+
+HOUSES = HOUSES + PENSION
 BY_KEY = {h.key: h for h in HOUSES}
