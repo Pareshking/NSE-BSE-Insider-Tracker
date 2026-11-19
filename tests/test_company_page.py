@@ -213,4 +213,5 @@ def test_glance_charts_draw_only_with_data():
     d = charts.delta_bars([('FPI', 0.43, ''), ('Retail', -0.35, '')])
     assert 'class="cg-dv num up">+0.43 pts' in d and 'class="cg-dv num down">-0.35 pts' in d
     assert charts.columns([{'label': 'Sep 26', 'value': None}]) == ''
-    assert '<polyline' in charts.spark([1, 2, 3], tone='up') and '<polyline' not in charts.spark([1])
+    sp = charts.spark([1, 2, 3], tone='up')   # HTML columns: st.html drops SVG
+    assert sp.startswith('<span class="cg-spark up"') and sp.count('<i class="q') == 3 and '<svg' not in sp

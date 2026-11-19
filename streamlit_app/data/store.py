@@ -39,6 +39,7 @@ TABLES += ('mf_scheme_month', 'mf_scheme_moves', 'mf_scheme_coverage')
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 TABLES += ('market_flows',)   # FPI, DII and mutual fund flows a day (scripts/market_flows.py): the flows line, screens/market_flows.py
 TABLES += ('industry',)   # four-level industry per ISIN, NSE else BSE else VR export (scripts/industry.py): industry_of, with_industry
+TABLES += ('fpi_sector_flows',)   # NSDL's fortnightly FPI net by sector (scripts/market_flows.py): the Dashboard
 
 
 def _local() -> Path | None:
