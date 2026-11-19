@@ -34,7 +34,6 @@ TABLES += ('encumbrances',)   # SAST Reg 31 (collectors/nse_events): the lender 
 TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
 TABLES += ('mf_stock_month', 'mf_changes', 'mf_coverage')   # fund houses' month-end portfolios (scripts/mf_portfolios.py)
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
-TABLES += ('industry',)   # four-level industry classification per ISIN (macro, sector, industry, basic industry): the Funds filters
 TABLES += ('market_flows',)   # FPI, DII and mutual fund flows a day (scripts/market_flows.py): the flows line, screens/market_flows.py
 TABLES += ('industry',)   # four-level industry per ISIN, NSE else BSE else VR export (scripts/industry.py): industry_of, with_industry
 
