@@ -523,6 +523,51 @@ for a model comes later. We keep no PDFs.
 | `pages`, `chars`, `notes` | pages (form feeds) and characters of the text; the extraction's notes |
 | `text` | the extracted text |
 
+## Market flows (`clean/current/market_flows.parquet`, from 19 Nov 2026)
+
+What foreign portfolio investors, domestic institutions and mutual funds bought and sold across the market, for a
+context line (`streamlit_app/screens/market_flows.py: flows_line`). `scripts/market_flows.py`, parsers in
+`insiders_clean/market_flows.py`. Official sources only (the exchange, the depository, the regulator; NSDL and SEBI
+asked for by the owner, 19 Nov 2026), each fetched and read on 19 Nov 2026 (fixtures in `tests/fixtures/market_flows/`).
+
+| Source (`source`) | Where | Segments | History | Lag |
+|---|---|---|---|---|
+| `nse` | `www.nseindia.in/api/fiidiiTradeReact` (NSE, BSE and MSEI) and `/api/fiidiiTradeNse` (NSE alone); the page `/reports/fii-dii` | `cash_nse_bse_msei`, `cash_nse`; categories `fpi` (NSE's "FII/FPI"), `dii` | **None**: the latest day only, date parameters ignored. Rows exist from the first nightly run | Same evening (T) |
+| `nsdl` | `fpi.nsdl.co.in/web/Reports/Archive.aspx` (form post, one month to the date asked) | per asset class (`equity`, `debt_general`, `debt_vrr`, `debt_far`, `hybrid`, `mutual_funds`, `aif`, their sub-total) and route (`{asset}_exchange`, `{asset}_primary`, `mutual_funds_{equity,debt,hybrid,solution_oriented,other}_schemes`), `total`; category `fpi` | Years (read from Oct 2025 on 19 Nov 2026: 273 reporting days, 01 Oct 2025 - 18 Nov 2026) | Reporting date T+1 (custodians' reports of the previous trading day(s)) |
+| `sebi` | `sebi.gov.in/sebiweb/other/OtherAction.do?doMfdTrendsSearch=yes` (form post `date=DD-MM-YYYY`, one month to the date) | `equity`, `debt`; category `mf` | Read from 01 Oct 2025 (270 dates); exchange holidays are printed as zero rows and kept | About two weeks: on 19 Nov 2026 the newest day was 04 Nov |
+
+| Column | Meaning |
+|---|---|
+| `date` | NSE and SEBI: the trading date. NSDL: the **reporting** date (`date_basis`) |
+| `source`, `segment`, `category` | As above |
+| `buy_cr`, `sell_cr`, `net_cr` | Gross purchases, gross sales and net in Rs crore, as printed (NSDL and SEBI print negatives in brackets). A row whose buy less sell is not its net (more than Rs 0.02 Cr) is dropped and noted |
+| `provisional` | True for NSE (the exchanges compile it from trading members' client categories on T day); False for NSDL and SEBI (custodians' reports) |
+| `date_basis` | `trade` or `reported` |
+
+Checks: each NSDL month's equity days against NSDL's own "Total for {month}" and each SEBI month against its Total
+(within Rs 1 Cr); a month that does not add up is named `short` in the report. Not kept: NSDL's net in USD and RBI
+rate, NSDL's and SEBI's derivative tables, NSDL's DII pages (`DIIGenerateReport.aspx`, not read yet).
+
+### fpi_sector_flows — NSDL fortnightly sector-wise FPI investment (`clean/current/fpi_sector_flows.parquet`)
+
+From `fpi.nsdl.co.in/web/StaticReports/Fortnightly_Sector_wise_FII_Investment_Data/FIIInvestSector_*.html` (listed
+on `FPI_Fortnightly_Selection.aspx` from 2012; file names are not regular, so the list is read, not guessed). One row
+per fortnight (15th and month-end) and BSE sector (24 and `Grand Total`), from 15 Oct 2025. Published a few days
+after the fortnight; the nightly reads the newest two not stored.
+
+| Column | Meaning |
+|---|---|
+| `fortnight_end`, `period_start` | The fortnight the net investment is for |
+| `sector` | NSDL's sector (BSE's industry classification; `Sovereign`, `Others`, `Grand Total`) |
+| `net_equity_cr`, `net_total_cr`, `net_equity_usd_mn`, `net_total_usd_mn` | Net FPI investment in the fortnight: equity, and all segments (debt, hybrid, mutual funds, AIF); whole crores / USD mn as printed |
+| `auc_equity_cr`, `auc_total_cr` | Assets under custody at the fortnight end |
+| `prev_net_equity_cr`, `prev_period_start`, `prev_period_end` | The previous fortnight's equity net as restated in this report |
+
+A report whose sectors do not add to its Grand Total (more than Rs 24 Cr, the rounding of 24 rows) is not kept.
+Archive: `archive/market_flows/{nse|nsdl|sebi|nsdl_sector}/year=YYYY.parquet` (the columns above and `fetched_at`; a
+later fetch of a key replaces it). Raw: `raw_v2/nse/fiidii_{all|nse}/`, `raw_v2/nsdl/{fpi_daily|fpi_sector_list|fpi_sectors}/`,
+`raw_v2/sebi/mf_trends/`. Report: `clean/reports/market_flows/{date}.json`.
+
 ## Not yet collected
 
 BSE-only companies have no Company page (it is keyed by NSE symbol).
