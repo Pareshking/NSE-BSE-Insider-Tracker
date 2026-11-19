@@ -8,11 +8,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit, lwchart
+from ui import dates, kit, lwchart
 from ui.kit import esc
 from ui.table import facts
 
-from insiders_clean import ideas, ownership, public_holders, signals
+from insiders_clean import ideas, ownership, participants, public_holders, signals
 from screens import buybacks
 from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.ctx import load, need_data, split_since, with_flags
@@ -98,6 +98,59 @@ def _row(date, what, who='', sub='', text='', value=None, pct=None, items=(), li
             'value': value, 'pct': pct, '_facts': list(items), '_links': list(links)}
 
 
+BLOCK_MIN_LEGS = 3   # one day, one price, this many named clients or more: one block, shown as one row
+
+
+def deal_blocks(d: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
+    """Deals that are one block (one day, one price, BLOCK_MIN_LEGS named clients or more) as one row each: who sold,
+    who bought, the buyers by type, every buyer with value. Owner 19 Nov 2026, IIFL Finance on 18 Nov: FIH Mauritius's
+    sale showed as one card and its ~50 buyers as 50 small cards among the rest, so the buy side read as unknown.
+    Returns (block rows, the deals not in a block)."""
+    if d is None or d.empty or not {'date', 'price', 'side'} <= set(d.columns):
+        return [], d
+    x = d.assign(_day=pd.to_datetime(d['date'], errors='coerce').dt.normalize(),
+                 _px=pd.to_numeric(d['price'], errors='coerce').round(1),
+                 _v=pd.to_numeric(d.get('value'), errors='coerce'),
+                 _q=pd.to_numeric(d.get('quantity'), errors='coerce'))
+    out, used = [], []
+    for (day, px), g in x.dropna(subset=['_day', '_px']).groupby(['_day', '_px'], sort=False):
+        if len(g) < BLOCK_MIN_LEGS:
+            continue
+        used.extend(g.index)
+        sell, buy = g[g['side'] == 'SELL'].sort_values('_v', ascending=False), g[g['side'] == 'BUY'].sort_values('_v', ascending=False)
+        lead = sell if len(sell) and sell['_v'].sum() >= buy['_v'].sum() else buy   # the side the block is about
+        def top(f, n=3):
+            return ', '.join(f'{c} {kit.rupees(v)}' for c, v in zip(f['client_name'].astype(str).head(n), f['_v'].head(n)))
+        if len(sell) and len(buy):
+            who = f'{", ".join(sell["client_name"].astype(str).head(2))}' + (f' +{len(sell) - 2}' if len(sell) > 2 else '') \
+                  + f' to {len(buy)} buyer{"s" * (len(buy) > 1)}'
+        elif len(sell):
+            who = f'{len(sell)} sellers'
+        else:
+            who = f'{len(buy)} buyers'
+        verb = 'sold' if lead is sell else 'bought'
+        text = f'{verb} {kit.shares(lead["_q"].sum())} shares at {kit.price(px)}' + (f' · bought by {top(buy)}' + (f' +{len(buy) - 3} more' if len(buy) > 3 else '')
+                                                                                     if lead is sell and len(buy) else '')
+        facts_ = []
+        if len(sell) and len(buy):
+            named = buy['_q'].sum() / sell['_q'].sum() if sell['_q'].sum() else None
+            facts_.append(('Buyers named', f'{len(buy)} buyers for {kit.shares(buy["_q"].sum())} of the {kit.shares(sell["_q"].sum())} shares sold'
+                           + (f' ({named:.0%})' if named is not None else '')))
+        for side_name, f in (('Buyers', buy), ('Sellers', sell)):
+            if f.empty:
+                continue
+            kinds = f.assign(_t=f['client_name'].map(lambda n: participants.TYPES.get(participants.classify(n)[0], 'Unknown')))
+            by = kinds.groupby('_t').agg(v=('_v', 'sum'), n=('_v', 'size')).sort_values('v', ascending=False)
+            facts_.append((f'{side_name} by type', ' · '.join(f'{t} {kit.rupees(r.v)} ({int(r.n)})' for t, r in by.iterrows())))
+            facts_ += [(f'{"Bought" if side_name == "Buyers" else "Sold"}: {c}', f'{kit.rupees(v)} · {kit.shares(q)} shares')
+                       for c, v, q in zip(f['client_name'].astype(str), f['_v'], f['_q'])]
+        first = lead.iloc[0].to_dict()
+        feed = str(first.get('feeds') or 'block').split(',')[0].strip().title() or 'Block'
+        out.append(_row(day, f'{feed} deal', who, f'{len(g)} clients at one price', text,
+                        lead['_v'].sum(), sum(v for v in (_signed(r) for r in lead.to_dict('records')) if v is not None) or None, facts_))
+    return out, d.drop(index=used)
+
+
 def _months(start, end) -> int | None:
     """Whole months from the year-to-date start to the period end (6 for Apr-Sep), None when not filed."""
     a, b = pd.to_datetime(start, errors='coerce'), pd.to_datetime(end, errors='coerce')
@@ -124,6 +177,8 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
         rows.append(_row(r.get('broadcast_date'), what, str(r.get('person_name') or ''), kit.role(r.get('person_role')),
                          f'{verb} {n} shares'.replace('  ', ' ') + (f' at {kit.price(r["price"])}' if market and kit._finite(r.get('price')) else ''),
                          r.get('value') if market else None, _signed(r) if market else None, _trade_facts(r), _link(r.get('source_url'))))
+    blocks, d = deal_blocks(d)
+    rows.extend(blocks)
     for r in (d.to_dict('records') if not d.empty else []):
         buy = r['side'] == 'BUY'
         rows.append(_row(r.get('date'), f'{str(r.get("feeds") or "bulk").title()} deal', str(r.get('client_name') or ''),
@@ -315,10 +370,11 @@ def render():
     prom = win[win['person_role'].isin(signals.PROMOTER_ROLES)]
     off = win[win['person_role'].isin(['director', 'kmp'])]
     d = mine(ctx.deals) if not ctx.deals.empty else pd.DataFrame()
+    d_all = d
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
+        d = d_all = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))   # every deal, for the history below
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]
-        d = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))
     shd = ctx.shareholding
     mine_sh = shd[(shd['symbol'].astype(str).str.upper() == sym) | ((shd['isin'] == isin) if isin and 'isin' in shd else False)] \
         if not shd.empty else pd.DataFrame()
@@ -419,10 +475,15 @@ def render():
     ds.html('<dl class="ds-w ds-checks">' + ''.join(f'<dt>{esc(k)}</dt><dd class="{"warn" if k in amber else ""}">{esc(v)}</dd>'
                                                    for k, v in checks.items() if v) + '</dl>')
 
-    # ---- Money decisions, 12 months: the dense tables of the topic pages (redesign 13 Nov 2026, R8) ----
+    # ---- Money decisions: the dense tables of the topic pages (redesign 13 Nov 2026, R8), over the page's date range
+    # (owner, 19 Nov 2026: "a date selector or a date range selector must be present"); the range also cuts "Every filing"
     from screens import proto
+    ds.section('History', 'Insider decisions, deals, stake changes and every filing below, over these dates')
     with ds.inside():
-        proto.company_tables(ctx, isin, sym)
+        rng = dates.range_picker('company', *dates.bounds(t['broadcast_date'] if 'broadcast_date' in t else None,
+                                                          d_all['date'] if not d_all.empty else None, hi=ctx.ref),
+                                 default='1y', caption=True)
+        proto.company_tables(ctx, isin, sym, rng=rng)
     if other:
         ds.section('Raises, pledges and big holders', '12 months')
         ds.stories(other)
@@ -484,8 +545,12 @@ def render():
     _public_holders(store.table('public_holders'), sym, isin, mine_sh)
 
     # ---- Every filing, the noise one tap away ----
-    tl = _timeline(ctx, sym, t, d, raises)
-    ds.section('Every filing', 'Newest first; a row opens to its facts and the filing. Staff trades, ESOPs, gifts and transfers are off until picked')
+    tl = _timeline(ctx, sym, t, d_all, raises)
+    if not tl.empty:   # inside the range; dates ahead of the data's date (meetings, ex-dates) with a range that runs to it
+        ahead = pd.to_datetime(tl['date'], errors='coerce').gt(pd.Timestamp(ctx.ref)) & (rng.end_ts >= pd.Timestamp(ctx.ref))
+        tl = tl[rng.mask(tl['date']) | ahead]
+    ds.section('Every filing', f'{dates.describe(rng)}, newest first; a row opens to its facts and the filing. Staff trades, ESOPs, '
+                               'gifts and transfers are off until picked')
     kinds = list(dict.fromkeys(tl['what'])) if not tl.empty else []
     kinds = [k for k in kinds if k in MONEY] + [k for k in kinds if k not in MONEY]
     counts = tl['what'].value_counts().to_dict() if not tl.empty else {}
@@ -497,5 +562,5 @@ def render():
         kit.table(shown, [
             kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
             kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],
-            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
+            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text=f'No filings for this company, {dates.describe(rng)}.',
             detail=lambda r: facts(r['_facts'], r['_links']))

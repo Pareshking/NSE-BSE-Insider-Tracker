@@ -323,7 +323,11 @@ NSE's and BSE's bhavcopy high and low include the block-deal window has not
 been verified, so a block price outside them might be normal.
 
 Deals (`insiders_clean/deals.py`): same execution in the bulk and block feed
-counted once; same client, security, day and side rolled up with a
+counted once; a client's bulk row that is the day's total of its block legs
+counted once (the larger of the two feeds' totals stands for that
+client-day-side on that exchange, the other's rows removed as
+`block_legs_inside_bulk_total`; IIFL Finance on BSE, 18 Nov 2026, showed a
+5.65 cr-share sale as 10.98 cr); same client, security, day and side rolled up with a
 volume-weighted price; counterparties listed; % of market cap on the deal's
 day, as for insider trades.
 
