@@ -42,7 +42,11 @@ from collectors.nse_events.client import BASE as NSE_BASE, Blocked as NSEBlocked
 from insiders_clean import industry as I  # noqa: E402
 from raw_capture import capture  # noqa: E402
 
-NSE_QUOTE = f'{NSE_BASE}/api/quote-equity'
+# The quote API sits behind NSE's quote page: the session first visits the home page and that page for its cookies,
+# and each call names the page as its Referer, as NSE's own page does. The host is a setting (NSE_QUOTE_HOST) because
+# the probe on 19 Nov 2026 found the client's www.nseindia.in refused (403) for this API from GitHub's runners.
+NSE_HOSTS = ('https://www.nseindia.com', NSE_BASE)
+NSE_HOST = os.environ.get('NSE_QUOTE_HOST', '').strip().rstrip('/') or NSE_HOSTS[0]
 BSE_HEADER = 'ComHeadernew/w'
 BSE_LIST = 'ListofScripData/w'
 BSE_LIST_PARAMS = {'Group': '', 'Scripcode': '', 'industry': '', 'segment': 'Equity', 'status': 'Active'}
@@ -74,9 +78,23 @@ def _save(rows: list, columns, path: Path | None):
         pd.DataFrame(rows, columns=columns).to_parquet(path, index=False)
 
 
+def nse_warm(nse: NSEClient, host: str, symbol: str | None):
+    """Cookies from the home page and one quote page (best effort; the answer to the API call is what counts)."""
+    nse._warm = True   # the client's own warm-up visits its default host, not this one
+    for url in (f'{host}/', f'{host}/get-quotes/equity?symbol={symbol}' if symbol else None):
+        if url:
+            try:
+                nse.s.get(url, timeout=30, headers={'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8'})
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def fetch_nse(symbols, report: dict, deadline: float, out: Path | None = None, nse: NSEClient | None = None,
-              echo: bool = False) -> pd.DataFrame:
+              echo: bool = False, host: str | None = None, key: str = 'nse') -> pd.DataFrame:
+    host = host or NSE_HOST
     nse = nse or NSEClient()
+    if symbols and not nse._warm:
+        nse_warm(nse, host, symbols[0])
     current = {}
 
     def hook(url, r):
@@ -85,14 +103,16 @@ def fetch_nse(symbols, report: dict, deadline: float, out: Path | None = None, n
         if echo:
             print(f'--- {url} ({len(r.content)} bytes)\n{r.text[:3000]}')
     nse.on_response = hook
-    rows, errors, rep = [], 0, report.setdefault('nse', {'asked': len(symbols)})
+    rows, errors, rep = [], 0, report.setdefault(key, {'asked': len(symbols)})
+    rep['host'] = host
     for n, sym in enumerate(symbols):
         if time.monotonic() > deadline:
             rep['stopped'] = f'time budget reached after {n} symbols'
             break
         current['symbol'] = sym
         try:
-            j = nse.get(f'{NSE_QUOTE}?symbol={sym}', timeout=30)
+            nse.s.headers['Referer'] = f'{host}/get-quotes/equity?symbol={sym}'
+            j = nse.get(f'{host}/api/quote-equity?symbol={sym}', timeout=30)
         except NSEBlocked as exc:
             rep['stopped'] = f'refused ({exc}) after {n} symbols'
             break
@@ -272,9 +292,10 @@ def probe(out: Path, symbols, codes, report: dict) -> dict:
     """No R2: fetch the given symbols and codes, print each answer and its parsed row, keep raw captures."""
     out.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + 15 * 60
-    if symbols:
-        df = fetch_nse(symbols, report, deadline, out / 'nse.parquet', echo=True)
-        print(df.to_string())
+    for n, host in enumerate(NSE_HOSTS if symbols else ()):
+        df = fetch_nse(symbols, report, deadline, out / f'nse_{n}.parquet', NSEClient(), echo=True, host=host,
+                       key=f'nse_{n}')
+        print(host); print(df.to_string())
     if codes:
         client = BSEClient(raw=RawCapture())
         try:
