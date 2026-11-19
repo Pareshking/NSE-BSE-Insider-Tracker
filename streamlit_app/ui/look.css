@@ -48,12 +48,51 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .dt-empty { background: transparent !important; border: 0 !important; padding: 6px 0 !important; }
 .tile, [class*="st-key-card_"] { background: transparent !important; border-top: 1px solid var(--rule-strong) !important; border-radius: 0 !important; }
 
-/* controls: quiet, outlined */
-[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] > div > div { border: 1px solid var(--line-strong) !important; border-radius: var(--radius-sm) !important; }
+/* controls: quiet, outlined, one height (owner 19 Nov 2026: the grey pill wrapping a label and its options looked old and
+   sat out of line with the dropdowns beside it). Every control: a 1px edge, the small radius, 40px tall; the label
+   above it in the same small grey; the chosen option tinted with the accent. */
+[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] > div > div, [data-testid="stMultiSelect"] > div > div,
+[data-testid="stDateInput"] > div > div { border: 1px solid var(--line-strong) !important; border-radius: var(--radius-sm) !important;
+  background: var(--surface) !important; min-height: 40px; }
+.stApp [data-testid="stWidgetLabel"] p { font-size: var(--fs-small) !important; color: var(--ink-3) !important; font-weight: var(--fw-medium) !important; }
+.stApp [data-testid="stButtonGroup"], .stApp [data-testid="stButtonGroup"]:has([data-variant="segmented_control"]) {
+  background: transparent !important; padding: 0 !important; border-radius: 0 !important; width: auto !important; }
+.stApp [data-testid="stButtonGroup"] [role="radiogroup"]:has([data-variant="segmented_control"]) {
+  display: inline-flex; gap: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface);
+  overflow: hidden; height: 40px; padding: 0 !important; align-items: stretch; }
+.stApp [data-variant="segmented_control"] { border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  border-left: 1px solid var(--line) !important; padding: 0 14px !important; min-height: 0 !important; height: 100%; margin: 0 !important;
+  color: var(--ink-2) !important; }
+.stApp [data-variant="segmented_control"]:first-child { border-left: 0 !important; }
+.stApp [data-variant="segmented_control"]:hover { background: var(--hover) !important; }
+.stApp [data-variant="segmented_control"] p { font-size: var(--fs-body) !important; font-weight: var(--fw-regular) !important; color: var(--ink-2) !important; }
+.stApp [data-variant="segmented_control"][aria-checked="true"] { background: var(--accent-tint) !important; }
+.stApp [data-variant="segmented_control"][aria-checked="true"] p { color: var(--accent-ink) !important; font-weight: var(--fw-strong) !important; }
+/* st.pills (choose several): chips with the same edge and radius, the chosen ones tinted (Streamlit 1.67 marks them
+   data-variant="pills" and aria-pressed; the older stBaseButton-pills test ids are kept for safety) */
+.stApp [data-variant="pills"], .stApp [data-testid="stBaseButton-pills"], .stApp [data-testid="stBaseButton-pillsActive"] {
+  border-radius: var(--radius-sm) !important; border: 1px solid var(--line-strong) !important; background: var(--surface) !important;
+  min-height: 34px; padding: 0 12px !important; color: var(--ink-2) !important; }
+.stApp [data-variant="pills"] p, .stApp [data-testid="stBaseButton-pills"] p { color: var(--ink-2) !important; font-size: var(--fs-body) !important; }
+.stApp [data-variant="pills"]:hover { background: var(--hover) !important; }
+.stApp [data-variant="pills"][aria-pressed="true"], .stApp [data-testid="stBaseButton-pillsActive"] {
+  background: var(--accent-tint) !important; border-color: var(--accent) !important; }
+.stApp [data-variant="pills"][aria-pressed="true"] p, .stApp [data-testid="stBaseButton-pillsActive"] p {
+  color: var(--accent-ink) !important; font-weight: var(--fw-strong) !important; }
+/* a row of controls lines up on their bottom edge, whatever each label's height */
+.stApp [data-testid="stHorizontalBlock"]:has([data-testid="stButtonGroup"], [data-testid="stSelectbox"]) { align-items: flex-end; }
 
+/* six KPI cards three to a row (Results): a hairline between the rows, none after the third */
+.ds-kpis.n3 .kpi:nth-child(3n) { border-right: 0; }
+.ds-kpis.n3 .kpi:nth-child(n+4) { border-top: 1px solid var(--line); }
+@media (max-width: 900px) { .ds-kpis.n3 .kpi:nth-child(3n) { border-right: 1px solid var(--line); } .ds-kpis.n3 .kpi:nth-child(2n) { border-right: 0; }
+  .ds-kpis.n3 .kpi:nth-child(n+3) { border-top: 1px solid var(--line); } }
 /* Phone: a long preset row (the date control's eight options) wraps instead of running off the page (19 Nov 2026) */
 @media (max-width: 640px) {
   .stApp [data-testid="stButtonGroup"] [role="radiogroup"] { flex-wrap: wrap; row-gap: 4px; }
+  .stApp [data-testid="stButtonGroup"] [role="radiogroup"]:has([data-variant="segmented_control"]) { display: flex; overflow: visible; height: auto; }
+  .stApp [data-variant="segmented_control"] { height: 38px; }
+  .stApp [data-variant="segmented_control"] { border-bottom: 1px solid var(--line) !important; }
 }
 
 /* Dashboard (19 Nov 2026, screens/dashboard.py): a grid of figure cards between thin rules, each with its change against
@@ -78,7 +117,7 @@ a.dash-card:hover .dash-l { color: var(--accent); }
 .dash-spark i.z { left: 0; right: 0; height: 0; border-top: 1px solid var(--line-strong); border-radius: 0; }
 .dash-spark i.p { background: var(--buy); opacity: .5; } .dash-spark i.n { background: var(--sell); opacity: .5; }
 .dash-spark i.q { background: var(--ink-4); } .dash-spark i.last { opacity: 1; } .dash-spark i.q.last { background: var(--ink-2); }
-.dash-ev { display: inline-block; padding: 2px 7px; border-radius: 3px; font: var(--fw-medium) 11px/1.4 var(--ui); white-space: nowrap;
+.dash-ev { display: inline-block; padding: 2px 7px; border-radius: var(--radius-pill); font: var(--fw-medium) 11px/1.4 var(--ui); white-space: nowrap;
   background: var(--subtle); color: var(--ink-2); vertical-align: middle; }
 .dash-ev.up { background: var(--buy-tint); color: var(--buy); } .dash-ev.dn { background: var(--sell-tint); color: var(--sell); }
 .dash-ev.wn { background: var(--warn-tint); color: var(--warn-ink); }

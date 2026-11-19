@@ -32,7 +32,8 @@ class Col:
 
 
 TAG_TONES = {'Spotlight': 'info', 'Float absorber': 'buy', 'Cluster': 'buy', 'Promoter selling': 'sell',
-             'High pledge': 'warn', 'Promoter': 'warn', 'Large': 'info', 'Token': 'mute', 'Late': 'warn'}
+             'High pledge': 'warn', 'Promoter': 'warn', 'Large': 'info', 'Token': 'mute', 'Late': 'warn',
+             'Back to profit': 'buy', 'Into loss': 'sell'}
 NA = '<span class="na">—</span>'
 RIGHT = ('money', 'smoney', 'pct', 'spct', 'bar', 'num', 'price', 'shares')
 NUMERIC_SORT = RIGHT + ('range', 'spark', 'date', 'tags')

@@ -388,17 +388,14 @@ def convergence(elig: pd.DataFrame | None, ref, stock: pd.DataFrame | None, sa: 
 # ---- 5. Funds by sector, 6. FPI sectors, 7. coming up ---------------------------------------------------------------
 
 def sector_map(industry: pd.DataFrame | None, securities: pd.DataFrame | None) -> tuple[dict, str]:
-    """ISIN -> sector, from the industry table where it has one (NSE's classification), else the security master's
-    sector; and which source was used."""
-    if industry is not None and not industry.empty and {'isin', 'sector'} <= set(industry.columns):
-        i = industry.dropna(subset=['isin', 'sector'])
-        if not i.empty:
-            return dict(zip(i['isin'], i['sector'])), 'industry'
-    if securities is not None and not securities.empty and {'isin', 'sector'} <= set(securities.columns):
-        s = securities.dropna(subset=['isin', 'sector'])
-        s = s[s['sector'].astype(str).str.strip().ne('')]
-        return dict(zip(s['isin'], s['sector'])), 'securities'
-    return {}, ''
+    """ISIN -> sector by the Funds page's rule (screens/funds_logic.industry_frame: the four-level industry table
+    where it has rows, else the security master), and which of the two was used."""
+    from screens import funds_logic
+    ind = funds_logic.industry_frame(industry, securities)
+    src = 'industry' if industry is not None and not industry.empty and 'isin' in industry else 'securities'
+    i = ind.dropna(subset=['sector'])
+    i = i[i['sector'].astype(str).str.strip().ne('')]
+    return (dict(zip(i['isin'], i['sector'])), src) if not i.empty else ({}, '')
 
 
 def mf_month_lists(stock: pd.DataFrame | None, month=None, n: int = 5) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -545,18 +542,10 @@ def flows_chart(months: pd.DataFrame):
     return _chart_base((bars + zero).properties(height=260))
 
 
-def hbar_chart(df: pd.DataFrame, label: str, value: str, title: str):
-    """Horizontal diverging bars: green for buying, red for selling, the value at the bar's end."""
-    import altair as alt
-    d = df.assign(_tone=df[value].ge(0).map({True: 'buy', False: 'sell'}), _txt=df[value].map(lambda v: crore(v)))
-    order = list(d[label])
-    base = alt.Chart(d).encode(y=alt.Y(f'{label}:N', sort=order, title=None, axis=alt.Axis(grid=False, labelLimit=170)))
-    bars = base.mark_bar(cornerRadius=2, height=13).encode(
-        x=alt.X(f'{value}:Q', title=None, axis=alt.Axis(format='~s', tickCount=4, labelExpr="'₹' + datum.label + ' Cr'")),
-        color=alt.Color('_tone:N', scale=alt.Scale(domain=['buy', 'sell'], range=[C['buy'], C['sell']]), legend=None),
-        tooltip=[alt.Tooltip(f'{label}:N', title='Sector'), alt.Tooltip(f'{value}:Q', title=title, format=',.0f')])
-    zero = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color=C['ink-4']).encode(x='x:Q')
-    return _chart_base((bars + zero).properties(height=max(120, 24 * len(d))))
+def hbar_chart(df: pd.DataFrame, label: str, value: str):
+    """Horizontal bars either side of zero, the Funds page's chart (ui/charts.diverging_bars), every row kept."""
+    from ui import charts
+    return charts.diverging_bars(df, label=label, value=value, unit='₹ Cr', limit=len(df))
 
 
 def _ev(label: str, tone: str = '') -> str:
@@ -849,7 +838,7 @@ def _funds_tile(ctx, stock, names):
         st.html('<p class="dash-sub-h">Bought most</p>' + (tbl(bought) if len(bought) else '<p class="dt-empty">None of ₹1 Cr or more.</p>'))
     with right:
         st.html('<p class="dash-sub-h">Sold most</p>' + (tbl(sold) if len(sold) else '<p class="dt-empty">None of ₹1 Cr or more.</p>'))
-    smap, source = sector_map(store.table('industry'), sec)
+    smap, source = sector_map(store.industry_table(), sec)
     g, unplaced = mf_by_sector(stock, smap, month)
     if g.empty:
         st.html('<p class="dt-empty">No sector to group the month\'s buying by: neither the industry table nor the security master has one.</p>')
@@ -857,7 +846,7 @@ def _funds_tile(ctx, stock, names):
         where = 'the official classification (NSE, else BSE, else Value Research)' if source == 'industry' else 'the security master'
         st.html(f'<p class="dash-sub-h">Net by sector <span>the 10 largest either way · sector from {where}'
                 + (f'; {unplaced * 100:.0f}% of the month\'s moves have no sector and are left out' if unplaced >= 0.01 else '') + '</span></p>')
-        st.altair_chart(hbar_chart(g, 'sector', 'net_cr', 'Net ₹ Cr'), width='stretch')
+        st.altair_chart(hbar_chart(g, 'sector', 'net_cr'), width='stretch')
     st.html(_foot('/funds', 'Funds: bought, sold, new positions and exits'))
 
 
@@ -881,7 +870,7 @@ def _fpi_sector_tile():
     top = fpi_top(x)
     if len(top) < len(x):
         st.html(f'<p class="dash-sub-h">The {len(top)} largest either way <span>of {len(x)} sectors</span></p>')
-    st.altair_chart(hbar_chart(top, 'sector', 'net_equity_cr', 'Net equity ₹ Cr'), width='stretch')
+    st.altair_chart(hbar_chart(top, 'sector', 'net_equity_cr'), width='stretch')
 
 
 def _coming_tile(ctx, ref):

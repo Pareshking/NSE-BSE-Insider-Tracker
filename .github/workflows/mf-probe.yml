@@ -1,0 +1,55 @@
+name: Fund house probe
+
+# By hand only: asks, from a GitHub runner, the fund-house addresses that refuse or challenge requests from the cloud
+# machine the collectors were written on (collectors/mf_portfolios/houses.py NOT_COLLECTED), with verbose curl output,
+# so we can see whether a runner gets the files. Nothing is stored and nothing is worked around: a CAPTCHA or bot check
+# in an answer means the house stays not collected.
+on:
+  workflow_dispatch:
+    inputs:
+      extra:
+        description: 'More addresses, space-separated (optional)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Probe
+        env:
+          EXTRA: ${{ inputs.extra }}
+        run: |
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+          urls="
+          https://www.icicipruamc.com/media-center/downloads?currentTabFilter=Disclosures&subCatTabFilter=MonthlyPortfolioDisclosures
+          https://apimf.icicipruamc.com/nms/v1/downloads/categories?userType=Investor
+          https://apimf.icicipruamc.com/header
+          https://archive.icicipruamc.com/
+          https://www.kotakmf.com/Information/forms-and-downloads
+          https://www.kotakmf.com/api/kotakapi/forms/user/getsubheaderList/417?option=51&pagination=1&pageSize=10&pageNumber=1
+          https://navi.com/mutual-fund/downloads/portfolio
+          https://www.unionmf.com/
+          https://www.unionmf.com/downloads/disclosures/portfolio-disclosure
+          https://www.alphagrepmf.ai/disclosures
+          $EXTRA"
+          echo '### Fund house probe' >> "$GITHUB_STEP_SUMMARY"
+          echo '| address | HTTP | bytes | type | ends at | error |' >> "$GITHUB_STEP_SUMMARY"
+          echo '|---|---|---|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+          for u in $urls; do
+            echo "::group::$u"
+            out=$(curl -sS -v -L --max-time 60 -A "$UA" -H 'Accept-Language: en-IN,en;q=0.9' -o body.bin \
+                  -w '%{http_code}|%{size_download}|%{content_type}|%{url_effective}' "$u" 2>curl.err) || true
+            grep -v '^[{}] ' curl.err | head -80
+            echo "result: $out"
+            head -c 1500 body.bin 2>/dev/null | tr -cd '[:print:]\n' ; echo
+            echo "::endgroup::"
+            err=$(grep -o 'curl: ([0-9]*) .*' curl.err | head -1)
+            IFS='|' read -r code size ctype final <<< "$out"
+            echo "| $u | ${code:-none} | ${size:-0} | ${ctype:-} | ${final:-} | $err |" >> "$GITHUB_STEP_SUMMARY"
+            rm -f body.bin curl.err
+          done

@@ -330,3 +330,60 @@ def bandhan(month: str) -> list[tuple[str, str]]:
         finally:
             ctx.close()
     return out
+
+
+# --- Mahindra Manulife: Mandatory Disclosures > Portfolio Disclosure > Monthly Portfolio Disclosure ------------------
+# The downloads list is shown only after the visitor declares "I am NOT a US person / resident of Canada" (the owner
+# made that declaration for this collector, 19 Nov 2026). The list arrives encrypted and the page decrypts it in the
+# browser, so the page is opened, the declaration clicked, and the list read as the page itself parses it. The files
+# (cms.mahindramanulife.com) need nothing more.
+MAHINDRA = 'https://www.mahindramanulife.com/downloads'
+_CAPTURE = """(() => { const parse = JSON.parse; window.__lists = [];
+  JSON.parse = function (t, r) { const v = parse.call(this, t, r);
+    try { if (typeof t === 'string' && t.includes('Downloads fetched')) window.__lists.push(t); } catch (e) {}
+    return v; }; })();"""
+
+
+def mahindra_links(listing: dict) -> list[tuple[str, str]]:
+    """(title, file) of every file under the 'Monthly Portfolio Disclosure' category of the downloads list."""
+    out = []
+
+    def walk(nodes, inside):
+        for c in nodes or []:
+            here = inside or (c.get('categoryName') or '').strip().lower() == 'monthly portfolio disclosure'
+            if here:
+                out.extend(((f.get('title') or '').strip(), f.get('fileUrl') or f.get('redirectUrl') or '')
+                           for f in c.get('files') or [] if f.get('fileUrl') or f.get('redirectUrl'))
+            walk(c.get('subcategories'), here)
+
+    walk(listing.get('data'), False)
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _mahindra_listing() -> str:
+    with _browser() as b:
+        ctx = b.new_context(user_agent=UA)
+        ctx.add_init_script(_CAPTURE)
+        page = ctx.new_page()
+        try:
+            try:
+                page.goto(MAHINDRA, wait_until='domcontentloaded', timeout=90000)
+            except Exception:  # noqa: BLE001 - a page that never finishes loading still shows the declaration
+                pass
+            page.wait_for_timeout(6000)
+            with contextlib.suppress(Exception):   # the welcome pop-up covers the page
+                page.locator('button[aria-label="Close welcome message"]').first.click(timeout=5000)
+            page.get_by_role('button', name=re.compile(r'I AM NOT A US PERSON', re.I)).first.click(timeout=20000)
+            for _ in range(30):
+                page.wait_for_timeout(1000)
+                lists = page.evaluate('() => window.__lists')
+                if lists:
+                    return lists[-1]
+        finally:
+            ctx.close()
+    raise ValueError('the downloads list did not arrive after the declaration')
+
+
+def mahindra(month: str) -> list[tuple[str, str]]:
+    return mahindra_links(json.loads(_mahindra_listing()))

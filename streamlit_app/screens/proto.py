@@ -910,96 +910,11 @@ def _events_run(ev: dict) -> None:
     st.html('<p class="dt-foot">' + ('<b>Notes:</b> ' + ' · '.join(esc(n) for n in notes[:12]) if notes else 'No failures or short listings noted.') + '</p>')
 
 
-# ---- Results: latest quarter per filing, with the comparisons done --------------------------------------------------
-
-def _pct_cell(v, colour=True):
-    if kit._finite(v) is None:
-        return '<span class="mute">–</span>'
-    cls = ('up' if v > 0 else 'dn' if v < 0 else '') if colour else ''
-    return f'<span class="{cls}">{v:+.1f}%</span>'
-
+# ---- Results: one financial-year quarter, filtered by size and industry (screens/results.py, 19 Nov 2026) ----------
 
 def results():
-    from screens import more_pages
-    ctx = load()
-    if not need_data(ctx):
-        return
-    days = _period('dt_results_period')
-    _, _, names = moves.lookups(ctx)
-    r = more_pages._latest_results(ctx, days)
-    _strip(ctx, [f'results filed in the last {days} days', 'NSE integrated filing XBRL', 'year-ago from our own history (from Apr 2025 filings)'])
-    n_up = int((r['rev_yoy'] > 0).sum()) if not r.empty else 0
-    n_dn = int((r['rev_yoy'] < 0).sum()) if not r.empty else 0
-    st.html(f'<div class="head ds-head dt-head"><h1>Results · last {days} days</h1>'
-            f'<div class="dt-kpis"><div><span>Filings</span><b>{len(r)}</b><em>quarterly results</em></div>'
-            f'<div><span>Revenue up YoY</span><b class="up">{n_up}</b><em>companies</em></div>'
-            f'<div><span>Revenue down YoY</span><b class="dn">{n_dn}</b><em>companies</em></div></div></div>')
-    if r.empty:
-        st.html(f'<p class="dt-empty">No results filed in the last {days} days.{_unconfirmed("results")}</p>')
-        return
-    # Rank by the size of the change only where the year-ago quarter is at least Rs 10 Cr: a tiny base makes +1,775%
-    # (Tarc, 12 Nov) and hides the companies that matter; smaller bases follow, then filings with no comparison.
-    # a half-year-only filing ranks by its half-year change on its half-year base (14 Nov 2026: they all sorted last,
-    # past the 120 rows shown)
-    hy = r['half_year'].astype('boolean').fillna(False) if 'half_year' in r else pd.Series(False, index=r.index)
-    chg = r['rev_yoy'].where(~hy, r['ytd_yoy'] if 'ytd_yoy' in r else float('nan'))
-    rev = r['quarter_revenue'].where(~hy, r['ytd_revenue'] if 'ytd_revenue' in r else float('nan'))
-    base = rev / (1 + chg / 100)
-    from insiders_clean.results import doubt_reason
-    doubt = [doubt_reason(x.get('ytd_revenue') if x.get('half_year') == True else x.get('quarter_revenue'),  # noqa: E712
-                          x.get('quarter_profit'), x.get('profit_year'), c) for x, c in zip(r.to_dict('records'), chg)]
-    r = r.assign(_abs=chg.abs(), _big=(base >= 1e8).fillna(False), _doubt=doubt)
-    held = r[r['_doubt'].ne('')]
-    r = r[r['_doubt'].eq('')].sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
-    big = r[r['_big']]
-    up = big[big['rev_yoy'].gt(0)].sort_values('rev_yoy', ascending=False)
-    pf, py = pd.to_numeric(r['quarter_profit'], errors='coerce'), pd.to_numeric(r['profit_year'], errors='coerce')
-    back = r[(py < 0) & (pf >= 0) & r['_big']]
-    into = r[(py >= 0) & (pf < 0) & r['_big']]
-    _qa('Whose revenue grew most on a real base?', _names_list([_nm(x, names) for x in up.head(3).to_dict('records')], 3) or 'None yet',
-        f'{len(big)} companies with a year-ago quarter of ₹10 Cr or more; {int(big["rev_yoy"].gt(0).sum())} grew, '
-        f'{int(big["rev_yoy"].lt(0).sum())} shrank.')
-    _qa('Who swung to profit, who into loss?', (f'Back to profit: {_names_list([_nm(x, names) for x in back.head(3).to_dict("records")], 3)}' if len(back) else 'None back to profit')
-        + (f'; into loss: {_names_list([_nm(x, names) for x in into.head(2).to_dict("records")])}' if len(into) else ''),
-        f'{len(back)} back to profit and {len(into)} into loss, on a year-ago quarter of ₹10 Cr or more.')
-    rows = []
-    for x in r.head(120).to_dict('records'):
-        prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
-        half = x.get('half_year') == True   # noqa: E712 -- more_pages._latest_results: half year with half year
-        if half:
-            prof, prev_y = x.get('ytd_profit'), x.get('ytd_profit_year')
-        turn = ''
-        if kit._finite(prof) is not None and kit._finite(prev_y) is not None:
-            if prev_y < 0 <= prof:
-                turn = _chip('Back to profit', 'up')
-            elif prev_y >= 0 > prof:
-                turn = _chip('Into loss', 'dn')
-        rows.append({'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')),
-                     'q': esc(kit.day(x['_end'], with_year=True)) if pd.notna(x['_end']) else '–',
-                     'basis': esc('Cons.' if x['_cons'] else 'Stand.'),
-                     'rev': (esc(kit.rupees(x.get('ytd_revenue'))) if half else
-                             esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–'),
-                     'yoy': _pct_cell(x.get('ytd_yoy') if half else x.get('rev_yoy')), 'qoq': _pct_cell(x.get('rev_qoq')),
-                     'prof': esc(kit.rupees(prof)) if kit._finite(prof) is not None else '–',
-                     'profy': esc(kit.rupees(prev_y)) if kit._finite(prev_y) is not None else '<span class="mute">–</span>',
-                     'turn': turn + (' ' + _chip('Derived', '') if x.get('quarter_derived') == True else '')   # noqa: E712 -- results.derive_quarters
-                             + (' ' + _chip('Half year', '') if half else ''),
-                     'filed': esc(kit.day(x['_at'], with_year=False)) if pd.notna(x['_at']) else '–'})
-    st.html(_table([('co', 'Company', 'l'), ('q', 'Quarter', 'r'), ('basis', 'Basis', 'l'), ('rev', 'Revenue', 'r'),
-                    ('yoy', 'YoY', 'r'), ('qoq', 'QoQ', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r'),
-                    ('turn', '', 'l'), ('filed', 'Filed', 'r')], rows))
-    st.html(f'<p class="dt-foot">Ranked by the size of the revenue change against the same quarter a year ago, where that quarter was ₹10 Cr or more; smaller bases after; '
-            f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history. '
-            '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before. "Half year": no quarter could be '
-            'derived, so the half year is compared with the half year a year earlier (revenue, YoY and profit are then for the half year).</p>')
-    if len(held):
-        st.html('<h2 class="dt-h2">Held back for a look <span>figures that cannot be right as filed or read</span></h2>'
-                + _table([('co', 'Company', 'l'), ('why', 'Why', 'l'), ('rev', 'Revenue', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r')],
-                         [{'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')), 'why': esc(x['_doubt']),
-                           'rev': esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–',
-                           'prof': esc(kit.rupees(x.get('quarter_profit'))) if kit._finite(x.get('quarter_profit')) is not None else '–',
-                           'profy': esc(kit.rupees(x.get('profit_year'))) if kit._finite(x.get('profit_year')) is not None else '–'}
-                          for x in held.head(30).to_dict('records')]))
+    from screens import results as results_page
+    results_page.render()
 
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------
