@@ -336,6 +336,12 @@ def insider_why(x: pd.DataFrame, px: dict, ctx, side: str) -> str:
     return out + '.'
 
 
+def day_multiple(value, adv) -> float | None:
+    """How many of the stock's usual trading days the value equals (value / average daily traded value, 20 sessions)."""
+    v, a = kit._finite(value), kit._finite(adv)
+    return v / a if v is not None and a is not None and a > 0 else None
+
+
 def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_company') -> str:
     # % of company first (the comparable size), then rupees
     d = d.sort_values(['side', sort], ascending=[True, False], kind='stable')
@@ -364,6 +370,9 @@ def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_comp
                                     if len(r['cross_with']) > 1 else ''), 'wn')) if isinstance(r.get('cross_with'), list) and r['cross_with'] else ''),
             'val': esc(kit.rupees(r['value'])),
             'pct': _num(r['pct_of_company'], '{:.2f}%'),
+            # the decision's value against the stock's usual day of trading (owner, 19 Nov 2026: how much of the market's
+            # liquidity the insider took); blank where the price summary has no traded value for the stock
+            'adv': _num(day_multiple(r['value'], p.get('adv_20d')), '{:.1f}×'),
             # the promoter group's stake is the base for a promoter decision, the person's own for a director (13 Nov)
             'own': _num(own, '{:+.1f}%') if buy else _num(-own if kit._finite(own) is not None else own, '{:+.1f}%'),
             'avg': _num(r['avg_price'], '₹{:,.1f}'),
@@ -378,7 +387,7 @@ def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_comp
         x['sig'] += x.pop('hist', '')
         x['who'] += x.pop('cross', '') + x.pop('place', '')
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
-            ('pct', '% of co.', 'r'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
+            ('pct', '% of co.', 'r'), ('adv', '× a day\'s trade', 'r ph'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
             ('days', 'Days', 'r ph'), ('when', 'Last trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Filings', 'l ph')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']

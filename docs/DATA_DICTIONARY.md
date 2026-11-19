@@ -565,6 +565,7 @@ Prices adjusted for splits and bonuses only.
 | `high_52w`, `low_52w`, `pct_off_high` | Range over the 365 days to the last stored session; `pct_off_high` = close / high - 1 |
 | `ret_90d`, `ret_180d` | Price change over 90 and 180 calendar days |
 | `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses seen in the price table |
+| `adv_20d`, `adv_sessions` | Average traded value (₹) per session over the stock's last 20 sessions with a print, NSE + BSE summed per day (`slim.average_daily_value`), and how many sessions it rests on. A decision's value over it is the "× a day's trade" column (19 Nov 2026) |
 | `market_cap`, `mcap_rank`, `mcap_bucket` | NSE market cap on the last stored day; bucket by rank (1-100 Large, 101-250 Mid, 251-500 Small, rest Micro), computed by us, not AMFI's list. BSE-only names have none |
 
 ## Company snapshot (derived, `artifacts/company_snapshot.parquet`)
