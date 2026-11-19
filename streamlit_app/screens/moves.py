@@ -48,7 +48,8 @@ WHY = {
 
 def lookups(ctx) -> tuple[dict, dict, dict]:
     """(prices by ISIN, latest shareholding by ISIN, display names by ISIN)."""
-    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket', 'low_52w', 'high_52w') if c in ctx.prices]
+    pcols = [c for c in ('isin', 'latest_close', 'market_cap', 'pct_off_high', 'mcap_bucket', 'low_52w', 'high_52w', 'adv_20d')
+             if c in ctx.prices]
     px = {i: r for i, r in zip(ctx.prices['isin'], ctx.prices[pcols].to_dict('records'))} if not ctx.prices.empty else {}
     hold = {}
     sh = ctx.shareholding

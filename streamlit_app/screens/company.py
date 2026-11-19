@@ -12,7 +12,7 @@ from ui import kit, lwchart
 from ui.kit import esc
 from ui.table import facts
 
-from insiders_clean import ideas, ownership, signals
+from insiders_clean import ideas, ownership, public_holders, signals
 from screens import buybacks
 from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.ctx import load, need_data, split_since, with_flags
@@ -224,6 +224,52 @@ def _ownership_html(table: pd.DataFrame, missing: list) -> str:
             f'<tbody>{body}</tbody></table></div>{note}')
 
 
+def holder_change(r: dict) -> str:
+    """One holder's change since the company's previous quarter, in words and points (public_holders.changes)."""
+    c = r.get('change')
+    if c == 'new':
+        return 'New: crossed 1%'
+    if c == 'exited':
+        return f'Left the list (was {kit.pct(r.get("prev_pct"), 2)}): under 1% or sold out'
+    if c in ('added', 'cut'):
+        pts = kit._finite(r.get('pct_change'))
+        return (f'{"Added" if c == "added" else "Cut"} {kit.shares(abs(kit._finite(r.get("shares_change")) or 0))} shares'
+                + (f', {pts:+.2f} pts' if pts is not None else ''))
+    if c == 'same':
+        return 'Unchanged'
+    return '—'
+
+
+def holder_rows(ch: pd.DataFrame) -> list[dict]:
+    """Rows of "Who holds over 1%?": name (linked to the holder's page), type, % now, the change. Exited holders last."""
+    return [{'h': f'<a href="{kit.entity_href(r.get("holder_key"))}" target="_self">{esc(str(r.get("holder_name") or ""))}</a>',
+             't': esc(public_holders.TYPE_LABELS.get(r.get('type'), str(r.get('type') or ''))),
+             'p': kit.pct(r.get('pct_of_company'), 2) if r.get('change') != 'exited' else '—',
+             'c': esc(holder_change(r))} for r in ch.to_dict('records')]
+
+
+def _public_holders(ph: pd.DataFrame, sym: str, isin, mine_sh: pd.DataFrame | None) -> None:
+    """Who holds over 1%? The public shareholders the latest filing names, and the change since the quarter before."""
+    if ph is None or ph.empty or 'symbol' not in ph:
+        return
+    mine = ph[(ph['symbol'].astype(str).str.upper() == sym) | ((ph['isin'] == isin) if isin else False)]
+    ds.section('Who holds over 1%?', 'Public shareholders the shareholding pattern names (over 1% of the company), '
+               'and what changed since the quarter before')
+    if mine.empty:
+        ds.empty('No public shareholder over 1% read for this company yet.')
+        return
+    ch = public_holders.changes(mine)
+    last, prev = ch['quarter_end'].max(), ch['prev_quarter_end'].max()
+    note = (f'vs {kit.day(prev)}' if pd.notna(prev) else 'no earlier quarter read, so no change shown')
+    filed_last = (pd.to_datetime(mine_sh['quarter_end'], errors='coerce').max()
+                  if mine_sh is not None and not mine_sh.empty and 'quarter_end' in mine_sh else pd.NaT)
+    if pd.notna(filed_last) and filed_last > last:   # the newer filing named no one, or is not read yet: said
+        note += f'; the {kit.day(filed_last)} filing names none here (not read yet, or no one over 1%)'
+    ds.html(ds.sub(f'At {kit.day(last)}', f'{kit.plural(int(ch["change"].ne("exited").sum()), "holder")}, largest first · {note}')
+            + ds.list_html(holder_rows(ch), [ds.Col('h', 'Holder'), ds.Col('t', 'Type', phone=False),
+                                             ds.Col('p', '% of company', True), ds.Col('c', 'Since last quarter')]))
+
+
 def render():
     """One company, redesign of 12 Nov 2026: the news, the numbers, then every money decision of the last 12 months as
     5W-2H stories (insiders, deals, raises, pledges, big holders), the checks before acting, the price with every
@@ -386,7 +432,10 @@ def render():
     with ds.inside():
         left, right = st.columns([3, 2], gap='large')
     with left:
-        marks = e.assign(role=e['person_role'].map(kit.role))
+        # decision-makers only (audit 19 Nov 2026: about 30 staff and relatives' sales drew red marks beside "Promoter
+        # sales: none"); their trades stay counted under "money by who"
+        dm = e[e['person_role'].isin(signals.DECISION_ROLES)] if 'person_role' in e else e
+        marks = dm.assign(role=dm['person_role'].map(kit.role))
         if not d.empty:
             big = d[~d['also_filed'] & pd.to_numeric(d['value'], errors='coerce').ge(DEAL_MARK_MIN)]
             marks = pd.concat([marks, big.assign(seen=big['date'], person_name=big['client_name'], role='bulk or block deal')[
@@ -431,6 +480,8 @@ def render():
                            + (f'; {len(pg) - 15} smaller not listed' if len(pg) > 15 else ''))
                     + ds.list_html(rows, [ds.Col('m', 'Member'), ds.Col('c', 'Category', phone=False), ds.Col('p', '% of company', True),
                                           ds.Col('pl', 'Pledged shares', True, phone=False)]))
+
+    _public_holders(store.table('public_holders'), sym, isin, mine_sh)
 
     # ---- Every filing, the noise one tap away ----
     tl = _timeline(ctx, sym, t, d, raises)

@@ -122,7 +122,7 @@ def main() -> int:
     if len(mc):
         mc['date'] = pd.to_datetime(mc['date'])
         mc = mc[mc['date'] == mc['date'].max()]
-    summary = slim.price_summary(close, meta, factors, mc if len(mc) else None)
+    summary = slim.price_summary(close, meta, factors, mc if len(mc) else None, adv=slim.average_daily_value(px))
     put(client, bucket, SUMMARY_KEY, summary)
     print(f'slim: isins {len(summary)}, with bucket {int(summary["mcap_bucket"].notna().sum())}, last session {close.index.max():%Y-%m-%d}')
     clean = {}

@@ -7,6 +7,8 @@ context number beside it, evidence on every row, a freshness strip on top, noise
 """
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import streamlit as st
 from data import store
@@ -69,8 +71,65 @@ def _more(path: str, text: str) -> str:
     return f'<p class="dt-foot"><a href="/{path}" target="_self">{esc(text)} →</a></p>'
 
 
+def _nm(r, names) -> str:
+    return str(names.get(r.get('isin')) or r.get('company') or r.get('nse_symbol') or '')
+
+
+def today_headline(d: pd.DataFrame, names: dict) -> tuple[str, str]:
+    """(headline, the line under it) for Today, in words, from the period's insider decisions (owner, 19 Nov 2026: "lacks
+    actionable information"; the page answers what happened before it lists rows)."""
+    if d is None or d.empty:
+        return 'No promoter or director decision past the bar this week', ''
+    b, s = d[d['side'] == 'BUY'], d[d['side'] == 'SELL']
+    vb, vs = float(b['value'].sum()), float(s['value'].sum())
+    head = f'Promoters and directors bought <b>{esc(kit.rupees(vb))}</b> and sold <b>{esc(kit.rupees(vs))}</b>'
+    sub = []
+    if not s.empty and vs > 0:
+        top = s.sort_values('value', ascending=False).iloc[0]
+        share = top['value'] / vs
+        if share >= 0.5:
+            head += f'; {"three quarters" if share >= 0.72 else "most"} of the selling is {esc(_nm(top, names))}'
+    if not b.empty:
+        bb = b.sort_values('pct_of_company', ascending=False).iloc[0]
+        sub.append(f'The largest bet against its company\'s size: {_nm(bb, names)}, {bb["pct_of_company"]:.2f}% of the company '
+                   f'({kit.rupees(bb["value"])}).')
+        big = b.sort_values('value', ascending=False).iloc[0]
+        if big['isin'] != bb['isin']:
+            sub.append(f'The largest in rupees: {_nm(big, names)}, {kit.rupees(big["value"])} ({big["pct_of_company"]:.2f}%).')
+    return head, ' '.join(sub)
+
+
+def _qa(question: str, answer: str, why: str = '', anchor: str = '') -> None:
+    st.html(f'<h2 class="dt-h2" id="{esc(anchor, quote=True)}">{esc(question)}</h2>'
+            f'<p class="qa-answer">{answer}</p>' + (f'<p class="qa-why">{esc(why)}</p>' if why else ''))
+
+
+def _names_list(rows: list[str], n: int = 2) -> str:
+    rows = [r for r in rows if r][:n]
+    return ', '.join(esc(r) for r in rows[:-1]) + (' and ' if len(rows) > 1 else '') + esc(rows[-1]) if rows else ''
+
+
+def _funds_answer() -> tuple[str, str]:
+    """(answer, why) from the fund houses' latest month-end, '' when not collected yet."""
+    try:
+        st_ = store.table('mf_stock_month')
+    except Exception:  # noqa: BLE001 -- the table is optional until the first collection
+        return '', ''
+    if st_ is None or st_.empty or 'month' not in st_:
+        return '', ''
+    m = st_['month'].max()
+    x = st_[st_['month'] == m]
+    up = x[x['active_net_cr'].gt(0)].sort_values('active_net_cr', ascending=False)['name'].head(3).tolist()
+    dn = x[x['active_net_cr'].lt(0)].sort_values('active_net_cr')['name'].head(2).tolist()
+    label = pd.Period(m, 'M').strftime('%B')
+    ans = (f'Bought most: {_names_list(up, 3)}' if up else 'No net buying') + (f'; sold most: {_names_list(dn, 2)}' if dn else '')
+    return ans, f'Active schemes\' month-end holdings, {label} against the month before (index funds and ETFs left out).'
+
+
 def today():
-    """The top of every page, last 7 days (synthesis, 12 Nov: Today shows each page's head, ranked by % of the company)."""
+    """Today as questions and answers (owner, 19 Nov 2026: "lacks actionable information", "make redesign rendering
+    first"; mock of 19 Nov): a headline sentence, then each question answered in one line before its rows. Same data
+    and the same bars as before; only the order and the words are new."""
     ctx = load()
     if not need_data(ctx):
         return
@@ -92,28 +151,82 @@ def today():
     if sa is not None and not sa.empty:
         srows, _, _ = _sast_rows(sa, names)
         srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
-    v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
-    v_sell = d.loc[d['side'] == 'SELL', 'value'].sum() if not d.empty else 0
     _strip(ctx, ['last 7 days', 'NSE + BSE copies merged', 'noise counted, not listed'])
-    st.html('<div class="head ds-head dt-head"><h1>Today</h1>'
-            f'<div class="dt-kpis"><div><span>Insider buying</span><b class="up">{esc(kit.rupees(v_buy))}</b><em>{int((d["side"] == "BUY").sum()) if not d.empty else 0} decisions</em></div>'
-            f'<div><span>Insider selling</span><b class="dn">{esc(kit.rupees(v_sell))}</b><em>{int((d["side"] == "SELL").sum()) if not d.empty else 0} decisions</em></div>'
-            f'<div><span>Deals</span><b>{len(drows)}</b><em>₹1 Cr and over</em></div>'
-            f'<div><span>Thresholds</span><b>{len(srows)}</b><em>SAST crossings</em></div></div></div>')
-    st.html('<h2 class="dt-h2">Insider decisions <span>largest first</span></h2>')
-    sort = _sort_by('dt_today_sort')
-    top = d.sort_values(sort, ascending=False).head(15) if not d.empty else d
-    st.html(_insider_table(ctx, top, px, names, sort=sort) if not top.empty else '<p class="dt-empty">No insider decision past the bar in 7 days.</p>')
+    head, sub = today_headline(d, names)
+    st.html(f'<div class="head ds-head"><div class="ds-kicker">Today · the 7 days to {ref:%d %b %Y}</div><h1>{head}</h1>'
+            + (f'<p class="ds-dek">{esc(sub)}</p>' if sub else '') + '</div>'
+            '<div class="qa-toc"><a href="#money-in">Who put real money in?</a><a href="#money-out">Who is getting out?</a>'
+            '<a href="#blocks">Where did big blocks change hands?</a><a href="#thresholds">Who crossed a threshold?</a>'
+            '<a href="#funds">What did fund managers do?</a><a href="#record">Has this worked before?</a></div>')
+    try:   # the market's direction, one line (market_flows: NSE provisional, NSDL, SEBI; each with its own date)
+        from screens.market_flows import flows_line
+        fl = flows_line(store.table('market_flows'))
+    except Exception:  # noqa: BLE001 -- optional until the first collection
+        fl = ''
+    if fl:
+        st.html(f'<p class="qa-why"><b>Market:</b> {esc(fl)}.</p>')
+    b = d[d['side'] == 'BUY'].sort_values('pct_of_company', ascending=False) if not d.empty else d
+    s_ = d[d['side'] == 'SELL'].sort_values('pct_of_company', ascending=False) if not d.empty else d
+    summary = store.artifact('artifacts/track_summary.parquet')
+
+    # 1. buying
+    if b.empty:
+        _qa('Who put real money in?', 'No buy past the bar', anchor='money-in')
+    else:
+        over = int(b['pct_of_company'].ge(0.5).sum())
+        big = b.sort_values('value', ascending=False).iloc[0]
+        why = (f'{len(b)} promoter or director buying {"decision" if len(b) == 1 else "decisions"} past the bar'
+               + (f'; {over} over 0.5% of their company' if over else '')
+               + f'. By rupees {_nm(big, names)} leads ({kit.rupees(big["value"])}, {big["pct_of_company"]:.2f}% of the company).')
+        _qa('Who put real money in?', _names_list([_nm(r, names) for r in b.head(3).to_dict('records')], 3), why, 'money-in')
+        st.html(_insider_table(ctx, b.head(10), px, names, sort='pct_of_company'))
     st.html(_more('insiders', f'All {len(d)} decisions, {clubbed} smaller clubbed'))
-    st.html('<h2 class="dt-h2">Bulk and block deals <span>largest first by % of the company</span></h2>')
+
+    # 2. selling
+    if s_.empty:
+        _qa('Who is getting out?', 'No sale past the bar', anchor='money-out')
+    else:
+        first = int(pd.to_numeric(s_['prior_months'], errors='coerce').eq(0).sum()) if 'prior_months' in s_ else 0
+        why = (f'{len(s_)} {"sale" if len(s_) == 1 else "sales"} past the bar, {kit.rupees(s_["value"].sum())} in all'
+               + (f'; {first} the first in 12 months' if first else '') + '.')
+        _qa('Who is getting out?', _names_list([_nm(r, names) for r in s_.head(2).to_dict('records')]), why, 'money-out')
+        st.html(_insider_table(ctx, s_.head(8), px, names, sort='pct_of_company'))
+
+    # 3. blocks
+    if drows:
+        t0 = drows[0]
+        nm0 = names.get(t0.get('isin')) or t0.get('company') or ''
+        _qa('Where did big blocks change hands?', f'{esc(str(nm0))}: {t0["pct"]:.2f}% of the company' if kit._finite(t0.get('pct')) is not None
+            else esc(str(nm0)),
+            f'{len(drows)} deals of ₹1 Cr and over in companies of ₹{TODAY_DEAL_MCAP / 1e7:,.0f} Cr and up, largest first by share of the company.',
+            'blocks')
+    else:
+        _qa('Where did big blocks change hands?', 'No deal of ₹1 Cr or more', anchor='blocks')
     st.html(_deal_table(drows, names, limit=10))
     st.html(_more('deals', f'All deals; here {churn} market-maker legs and {small} under ₹1 Cr clubbed, '
                            f'{n_tiny} companies under ₹{TODAY_DEAL_MCAP / 1e7:,.0f} Cr left to the Deals page'))
-    st.html('<h2 class="dt-h2">Holders crossing a threshold <span>SAST Reg 29 · 5, 10, 15, 20, 25, 50, 75%</span></h2>')
-    st.html(_table(SAST_COLS, srows[:10]) if srows else '<p class="dt-empty">No holder crossed a threshold in 7 days.</p>')
+
+    # 4. thresholds
     left = [f'{n_late} made public over {SAST_LATE_DAYS} days after the trade'] if n_late else []
     left += [f'{n_held} held back (a lender\'s trustee, a law firm filing, or a whole promoter stake out as "Others")'] if n_held else []
-    st.html(_more('stakes', 'All stake changes and pledges' + (f'; {" and ".join(left)} are there, not here' if left else '')))
+    _qa('Who crossed a threshold?', f'{len(srows)} {"holder" if len(srows) == 1 else "holders"} crossed 5, 10, 15, 20, 25, 50 or 75%'
+        if srows else 'No holder crossed a threshold', ('; '.join(left).capitalize() + ', on the Stakes page.') if left else '', 'thresholds')
+    if srows:
+        st.html(_table(SAST_COLS, srows[:10]))
+    st.html(_more('stakes', 'All stake changes and pledges'))
+
+    # 5. funds
+    fa, fw = _funds_answer()
+    _qa('What did fund managers do last month?', fa or 'Not collected yet',
+        fw or 'The fund houses\' month-end portfolios are being added; until then fund buying shows only in bulk and block deals.', 'funds')
+    st.html(_more('funds', 'Funds: bought, sold, new positions and exits'))
+
+    # 6. record
+    lines = [f'{k}: {moves.record(k, summary)[0]}' for k in ('Promoter buying', 'Director or KMP buying', 'Promoter selling')
+             if moves.record(k, summary)[0]]
+    _qa('Has this worked before?', 'Measured on our own filings since Oct 2025' if lines else 'Not measured yet',
+        ' · '.join(lines) or 'The record is built nightly from the filings and prices we hold.', 'record')
+    st.html(_more('track-record', 'Evidence: every signal, its cases and returns after costs'))
     st.html(_more('situations', 'Open offers, buybacks, rights and raises'))
 
 
@@ -190,12 +303,50 @@ def _insider_page(days: int, title: str):
     if d.empty:
         st.html(f'<p class="dt-empty">No open-market insider decisions above the bar in the last {days} days.</p>')
         return
-    st.html(_insider_table(ctx, d, px, names, sort=_sort_by('dt_ins_sort')))
+    sort = _sort_by('dt_ins_sort')
+    summary = store.artifact('artifacts/track_summary.parquet')
+    for side, q, rec in (('BUY', 'Who is putting money in?', 'Promoter buying'), ('SELL', 'Who is getting out?', 'Promoter selling')):
+        x = d[d['side'] == side].sort_values(sort, ascending=False)
+        if x.empty:
+            _qa(q, 'No buy past the bar' if side == 'BUY' else 'No sale past the bar')
+            continue
+        st.html(f'<h2 class="dt-h2">{esc(q)}</h2><p class="qa-answer">'
+                + _names_list([_nm(r, names) for r in x.head(3).to_dict('records')], 3) + '</p>'
+                + f'<p class="qa-why">{esc(insider_why(x, px, ctx, side))}</p>')
+        line = moves.record(rec, summary)[0]
+        if line:
+            st.html(f'<p class="qa-why">Measured on our filings: {esc(line)}.</p>')
+        st.html(_insider_table(ctx, x, px, names, sort=sort))
     st.html(f'<p class="dt-foot">Clubbed: <b>{clubbed}</b> smaller decisions under ₹{ideas.MIN_VALUE / 1e5:.0f} L or '
             f'{ideas.MIN_PCT:g}% of the company. Pledges, inter-se transfers, ESOP and gifts are not trades and are not counted here. '
             '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": no promoter-group entity (for a director or KMP, the same person) traded this company on this side in the 12 months before; "routine": in 6 or more of those months. An amber "to / from" names the other side when the trade '
             'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market; "placed with N buyers" when a promoter\'s sale went to several named buyers at one price that day. Holding Δ = shares traded against the promoter group\'s '
             'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
+
+
+def insider_why(x: pd.DataFrame, px: dict, ctx, side: str) -> str:
+    """One line under an Insiders answer: how many, how much, how many the first in 12 months or routine, and (buys)
+    how many trade below the price the insiders paid."""
+    n, v = len(x), kit.rupees(x['value'].sum())
+    pm = pd.to_numeric(x['prior_months'], errors='coerce') if 'prior_months' in x else pd.Series(dtype=float)
+    first, routine = int(pm.eq(0).sum()), int(pm.ge(ideas.ROUTINE_MONTHS).sum())
+    word = 'buy' if side == 'BUY' else 'sale'
+    out = f'{n} {word}{"s" if n != 1 else ""} past the bar, {v} in all'
+    out += f'; {first} the first in 12 months' if first else ''
+    out += f'; {routine} routine (traded in most of the 12 months before)' if routine else ''
+    if side == 'BUY':
+        below = 0
+        for r in x.to_dict('records'):
+            _, move = moves._paid_now(ctx, r['isin'], r['avg_price'], r['trade_to'], (px.get(r['isin']) or {}).get('latest_close'))
+            below += int(move is not None and move < 0)
+        out += f'; {below} now trade below what the insiders paid' if below else ''
+    return out + '.'
+
+
+def day_multiple(value, adv) -> float | None:
+    """How many of the stock's usual trading days the value equals (value / average daily traded value, 20 sessions)."""
+    v, a = kit._finite(value), kit._finite(adv)
+    return v / a if v is not None and a is not None and a > 0 else None
 
 
 def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_company') -> str:
@@ -226,6 +377,9 @@ def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_comp
                                     if len(r['cross_with']) > 1 else ''), 'wn')) if isinstance(r.get('cross_with'), list) and r['cross_with'] else ''),
             'val': esc(kit.rupees(r['value'])),
             'pct': _num(r['pct_of_company'], '{:.2f}%'),
+            # the decision's value against the stock's usual day of trading (owner, 19 Nov 2026: how much of the market's
+            # liquidity the insider took); blank where the price summary has no traded value for the stock
+            'adv': _num(day_multiple(r['value'], p.get('adv_20d')), '{:.1f}×'),
             # the promoter group's stake is the base for a promoter decision, the person's own for a director (13 Nov)
             'own': _num(own, '{:+.1f}%') if buy else _num(-own if kit._finite(own) is not None else own, '{:+.1f}%'),
             'avg': _num(r['avg_price'], '₹{:,.1f}'),
@@ -240,7 +394,7 @@ def _insider_table(ctx, d, px, names, company_col=True, sort: str = 'pct_of_comp
         x['sig'] += x.pop('hist', '')
         x['who'] += x.pop('cross', '') + x.pop('place', '')
     cols = [('co', 'Company', 'l'), ('sig', 'Signal', 'l'), ('who', 'Who', 'l ph'), ('val', '₹ value', 'r'),
-            ('pct', '% of co.', 'r'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
+            ('pct', '% of co.', 'r'), ('adv', '× a day\'s trade', 'r ph'), ('own', 'Holding Δ', 'r ph'), ('avg', 'Avg price', 'r ph'), ('since', 'Since', 'r'),
             ('days', 'Days', 'r ph'), ('when', 'Last trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Filings', 'l ph')]
     if not company_col:
         cols = [c for c in cols if c[0] != 'co']
@@ -404,10 +558,36 @@ def _deal_rows(d):
         net = (f' <span class="mute" title="the same client bought and sold this day; the line is the difference">· net of '
                f'{esc(kit.shares(gb))} bought, {esc(kit.shares(gs))} sold</span>') if gb is not None and gs is not None else ''
         rows.append(dict(_v=r['value'], date=r['date'], isin=r['isin'], company=r['company'], sym=r.get('nse_symbol') or r.get('symbol'),
+                         side=r['side'], client=str(r['client_name']), promoter=bool(r.get('client_is_promoter')),
                          kind=_chip('Buy' if buy else 'Sell', 'up' if buy else 'dn') + (' ' + _chip('Promoter', '') if r.get('client_is_promoter') else ''),
                          who=esc(str(r['client_name'])) + net + (f' <span class="mute">· other side: {esc(cp)}</span>' if cp else ''),
                          qty=r['quantity'], price=r['price'], pct=r.get('pct_of_mcap'), feed=r.get('feeds'), ex=r.get('exchange'), n=r.get('trades')))
     return rows, churn, clubbed_small
+
+
+BLOCK_MIN_LEGS = 3   # three or more clients on one side of one stock, one day and one price: one block, one line
+
+
+def club_blocks(rows: list[dict]) -> list[dict]:
+    """Many clients on one side of one stock at one price on one day are one block (audit 19 Nov 2026: IIFL Finance's
+    buyers at ₹617 took about 20 of the 80 rows): one line naming the largest three and counting the rest."""
+    groups: dict = {}
+    for i, r in enumerate(rows):
+        if r.get('side') and kit._finite(r.get('price')) is not None:
+            groups.setdefault((r['isin'], pd.Timestamp(r['date']).normalize(), r['side'], round(float(r['price']), 1)), []).append(i)
+    drop, out = set(), []
+    for (isin, day, side, price), idx in groups.items():
+        if len(idx) < BLOCK_MIN_LEGS:
+            continue
+        g = sorted((rows[i] for i in idx), key=lambda x: -(x['_v'] or 0))
+        drop.update(idx)
+        names_ = ', '.join(esc(x['client']) for x in g[:3]) + (f' <span class="mute">+{len(g) - 3} more</span>' if len(g) > 3 else '')
+        first = g[0]
+        out.append(dict(first, _v=sum(x['_v'] or 0 for x in g), qty=sum(kit._finite(x['qty']) or 0 for x in g),
+                        pct=sum(kit._finite(x['pct']) or 0 for x in g) or None, n=sum(kit._finite(x.get('n')) or 1 for x in g),
+                        kind=_chip(f'{len(g)} {"buyers" if side == "BUY" else "sellers"}', 'up' if side == 'BUY' else 'dn'),
+                        who=names_, client=g[0]['client']))
+    return [r for i, r in enumerate(rows) if i not in drop] + out
 
 
 def _deal_table(rows, names, limit=80, company_col=True, with_year=False) -> str:
@@ -435,12 +615,23 @@ def deals():
     d = ctx.deals
     d = d[(d['date'] > ref - pd.Timedelta(days=days)) & (d['date'] <= ref)] if not d.empty else d
     rows, churn, clubbed_small = _deal_rows(d)
+    rows = club_blocks(rows)
     rows.sort(key=lambda x: -(x['_v'] or 0))
     _strip(ctx, [f'bulk and block deals, last {days} days', 'NSE and BSE', 'market makers clubbed'])
     st.html(f'<div class="head ds-head dt-head"><h1>Bulk and block deals · last {days} days</h1>'
-            f'<div class="dt-kpis"><div><span>Deals shown</span><b>{len(rows)}</b><em>₹1 Cr and over</em></div>'
+            f'<div class="dt-kpis"><div><span>Deals</span><b>{len(rows)}</b><em>₹1 Cr and over{", 80 drawn" if len(rows) > 80 else ""}</em></div>'
             f'<div><span>Market makers</span><b>{churn}</b><em>legs clubbed</em></div>'
             f'<div><span>Small</span><b>{clubbed_small}</b><em>legs under ₹1 Cr</em></div></div></div>')
+    sells = [r for r in rows if r.get('side') == 'SELL']
+    prom = [r for r in rows if r.get('side') == 'SELL' and r.get('promoter')]
+    if sells:
+        t = sells[0]
+        _qa('Who sold the biggest blocks?', f'{esc(t["client"])} in {esc(str(names.get(t["isin"]) or t["company"]))}, {esc(kit.rupees(t["_v"]))}',
+            ', '.join(f'{x["client"]} in {names.get(x["isin"]) or x["company"]} ({kit.rupees(x["_v"])})' for x in sells[1:4]) + '.' if len(sells) > 1 else '')
+    _qa('Are promoters selling through deals?', (f'Yes: {_names_list([str(names.get(x["isin"]) or x["company"]) for x in prom[:3]], 3)}'
+                                                 if prom else 'No promoter sale in a bulk or block deal'),
+        f'{len(prom)} promoter {"sale" if len(prom) == 1 else "sales"} in deals, {kit.rupees(sum(x["_v"] or 0 for x in prom))} in all.' if prom else '')
+    st.html('<h2 class="dt-h2">Every deal <span>largest first</span></h2>')
     st.html(_deal_table(rows, names))
     note = '' if 'matched_pair' in ctx.deals else ' Matched pairs show as one line once the nightly clean has run with the new rule.'
     st.html(f'<p class="dt-foot">A group transfer is a matched buyer and seller who are both the company\'s promoters; a negotiated cross is '
@@ -450,7 +641,7 @@ def deals():
 # ---- Stakes: SAST crossings and pledges ---------------------------------------------------------------------------------
 
 THRESHOLDS = (5, 10, 15, 20, 25, 50, 75)
-SAST_COLS = [('co', 'Company', 'l'), ('who', 'Holder', 'l ph'), ('act', '', 'l ph'), ('moved', 'Moved', 'r'), ('stake', 'Stake', 'r'),
+SAST_COLS = [('co', 'Company', 'l'), ('who', 'Holder', 'l ph'), ('act', '', 'l'), ('moved', 'Moved', 'r'), ('stake', 'Stake', 'r'),
              ('cross', 'Threshold', 'l ph'), ('mode', 'Mode · Reg', 'l ph'), ('when', 'Trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Evidence', 'l ph')]
 
 
@@ -471,6 +662,23 @@ def _crossed(before, after) -> str:
     return ('crossed ' if after > before else 'fell below ') + span
 
 
+def sast_action(moved, action_type, mode) -> tuple[str, str]:
+    """(label, tone) of a SAST row: by the filed move when there is one, else by the filed action type; a preferential
+    or other allotment with no move filed is 'Allotted' (audit 19 Nov 2026: Granules and Vaswani preferential rows read
+    'Sold' because a blank move counted as not-up)."""
+    m = kit._finite(moved)
+    if m is not None and m != 0:
+        return ('Bought', 'up') if m > 0 else ('Sold', 'dn')
+    a, md = str(action_type or '').lower(), str(mode or '').lower()
+    if 'allot' in md or 'preferential' in md or 'public issue' in md:
+        return 'Allotted', ''
+    if a.startswith('acqui'):
+        return 'Bought', 'up'
+    if a.startswith('sale') or a.startswith('sold'):
+        return 'Sold', 'dn'
+    return 'Filed', ''
+
+
 def _sast_rows(sa, names, with_year=False):
     """SAST Reg 29 rows, newest first; inter-se transfers and moves under 0.1% counted, not listed. `sa` has _f (filed)."""
     rows = []
@@ -483,12 +691,11 @@ def _sast_rows(sa, names, with_year=False):
         before = after - moved if kit._finite(after) is not None and kit._finite(moved) is not None else None
         lag = (pd.Timestamp(r['_f']).normalize() - pd.to_datetime(r.get('trade_date_to'), errors='coerce')).days \
             if pd.notna(pd.to_datetime(r.get('trade_date_to'), errors='coerce')) else None
-        up = (moved or 0) > 0
         att = r.get('attachment')
         why = r.get('held_back_reason') if isinstance(r.get('held_back_reason'), str) else None
         act = (_chip('Encumbrance', '') if why in ('lender_or_trustee', 'encumbrance_mode')   # shares held as security
                else f'<span title="{esc(HELD_BACK_WHY.get(why, why), quote=True)}">{_chip("Held back", "wn")}</span>' if why
-               else _chip('Bought' if up else 'Sold', 'up' if up else 'dn'))
+               else _chip(*sast_action(moved, r.get('action_type'), r.get('mode'))))
         rows.append({'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), r.get('symbol')),
                      'who': '<span class="clip" style="max-width:220px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
                      'act': act,
@@ -694,7 +901,23 @@ def results():
     chg = r['rev_yoy'].where(~hy, r['ytd_yoy'] if 'ytd_yoy' in r else float('nan'))
     rev = r['quarter_revenue'].where(~hy, r['ytd_revenue'] if 'ytd_revenue' in r else float('nan'))
     base = rev / (1 + chg / 100)
-    r = r.assign(_abs=chg.abs(), _big=(base >= 1e8).fillna(False)).sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
+    from insiders_clean.results import doubt_reason
+    doubt = [doubt_reason(x.get('ytd_revenue') if x.get('half_year') == True else x.get('quarter_revenue'),  # noqa: E712
+                          x.get('quarter_profit'), x.get('profit_year'), c) for x, c in zip(r.to_dict('records'), chg)]
+    r = r.assign(_abs=chg.abs(), _big=(base >= 1e8).fillna(False), _doubt=doubt)
+    held = r[r['_doubt'].ne('')]
+    r = r[r['_doubt'].eq('')].sort_values(['_big', '_abs'], ascending=[False, False], na_position='last')
+    big = r[r['_big']]
+    up = big[big['rev_yoy'].gt(0)].sort_values('rev_yoy', ascending=False)
+    pf, py = pd.to_numeric(r['quarter_profit'], errors='coerce'), pd.to_numeric(r['profit_year'], errors='coerce')
+    back = r[(py < 0) & (pf >= 0) & r['_big']]
+    into = r[(py >= 0) & (pf < 0) & r['_big']]
+    _qa('Whose revenue grew most on a real base?', _names_list([_nm(x, names) for x in up.head(3).to_dict('records')], 3) or 'None yet',
+        f'{len(big)} companies with a year-ago quarter of ₹10 Cr or more; {int(big["rev_yoy"].gt(0).sum())} grew, '
+        f'{int(big["rev_yoy"].lt(0).sum())} shrank.')
+    _qa('Who swung to profit, who into loss?', (f'Back to profit: {_names_list([_nm(x, names) for x in back.head(3).to_dict("records")], 3)}' if len(back) else 'None back to profit')
+        + (f'; into loss: {_names_list([_nm(x, names) for x in into.head(2).to_dict("records")])}' if len(into) else ''),
+        f'{len(back)} back to profit and {len(into)} into loss, on a year-ago quarter of ₹10 Cr or more.')
     rows = []
     for x in r.head(120).to_dict('records'):
         prof, prev_y = x.get('quarter_profit'), x.get('profit_year')
@@ -725,6 +948,14 @@ def results():
             f'{max(0, len(r) - 120)} more filings not shown. A dash: the comparison quarter is not in our history. '
             '"Derived": the filing gives only its half year; the quarter is that less the June quarter filed before. "Half year": no quarter could be '
             'derived, so the half year is compared with the half year a year earlier (revenue, YoY and profit are then for the half year).</p>')
+    if len(held):
+        st.html('<h2 class="dt-h2">Held back for a look <span>figures that cannot be right as filed or read</span></h2>'
+                + _table([('co', 'Company', 'l'), ('why', 'Why', 'l'), ('rev', 'Revenue', 'r'), ('prof', 'Profit', 'r'), ('profy', 'Year ago', 'r')],
+                         [{'co': _company(names.get(x.get('isin')) or x.get('company'), x.get('symbol')), 'why': esc(x['_doubt']),
+                           'rev': esc(kit.rupees(x.get('quarter_revenue'))) if kit._finite(x.get('quarter_revenue')) is not None else '–',
+                           'prof': esc(kit.rupees(x.get('quarter_profit'))) if kit._finite(x.get('quarter_profit')) is not None else '–',
+                           'profy': esc(kit.rupees(x.get('profit_year'))) if kit._finite(x.get('profit_year')) is not None else '–'}
+                          for x in held.head(30).to_dict('records')]))
 
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------

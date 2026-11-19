@@ -20,6 +20,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/encumbrances.parquet` | One SAST Reg 31(1)/(2) disclosure: a promoter's pledge, non-disposal undertaking or other encumbrance created, released or invoked | NSE `/api/corporate-pledgedata-sast3132` (page *Regulation 31(1) and 31(2)*), raw kept in `raw_v2/nse/encumbrances/` | Daily (NSE Corporate Events, from 22 Oct 2026). Columns (no `isin`: NSE's feed carries the symbol only, so pages key it on the NSE symbol; corrected 12 Nov 2026): event_id, symbol, company, promoter_name, promoter_id, lender, event_type (Creation / Release / Invocation), encumbrance_type (Pledge / Non disposal undertaking / Others), event_from, event_to, shares and pct_of_company of the event, encumbered_shares / encumbered_pct (NSE `encumbHolding`/`encumbPerc`: the holder's encumbrance BEFORE the event), pre_event_holding / pre_event_holding_pct (the holder's shares) and post_event_holding / post_event_holding_pct (the encumbrance AFTER the event: before + created, or before − released; checked on NSE's rows 13 Nov 2026, Themis Medicare 4.89 + 2.71 = 7.60%), as filed, reporting_date, broadcast_date, attachment |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 | `clean/current/promoter_group.parquet` | One company x quarter x promoter-group member | The same shareholding XBRL (Table II) | Daily (NSE Corporate Events) |
+| `clean/current/public_holders.parquet` | One company x quarter x public shareholder named over 1% | The same shareholding XBRL (Tables III and IV) | Daily (NSE Corporate Events) |
 | `clean/current/tradability.parquet` | One ISIN (NSE equity series, or on an NSE surveillance list) | NSE `/api/reportASM`, `/api/reportGSM`, `/api/reportESM`, `sec_list.csv`, NSE bhavcopy | Nightly (R2 Storage Write; also Tradability flags) |
 | `clean/current/tenders.parquet` | One tender offer (buyback, takeover, delisting) | NSE `/api/liveTenderPast-issues` + `liveTenderActive-issues` | Daily |
 | `clean/current/daily_buybacks.parquet` | One daily buyback report | NSE `/api/corporates-daily-buyback` | Daily |
@@ -274,6 +275,50 @@ anyway) and no promoter/promoter-group split (NSE masks `TypeOfPromoterSharehold
 | `members_check` | The filing's members add up to its promoter total: `match` or `mismatch` |
 | `xbrl_sha256`, `parsed_on` | SHA-256 of the XBRL bytes NSE sent (the raw copy's `sha256_as_sent`); run date of the parse |
 
+### public_holders — public shareholders over 1% (19 Nov 2026)
+
+SEBI's form names every public shareholder holding more than 1% of the company under its sub-category (Table III
+institutions, Table IV non-institutions). From the same shareholding XBRL as `promoter_group`
+(`parsers.parse_shp_public_holders`, `insiders_clean/public_holders.py`). One row per holder named in one company's
+filing for one quarter; a revised filing replaces the original, a later parse of the same filing replaces the earlier.
+Parsed rows go first to `archive/nse_events/public_holders/batch=<run time>.parquet` (never rewritten); this table is
+rebuilt from all batches. No PAN (NSE masks it). Only NSE filings so far (not `bse_shareholding`).
+
+In the XBRL each holder is `D_<Section>_Context<n>` (`NameOfTheShareholder`) with `<Section>_Context<n>`
+(`NumberOfShares`). Sections read, each seen in real filings (123 of Sep 2026, 5 of Jun 2026): `MutualFundsOrUTI`,
+`AlternativeInvestmentFunds`, `InsuranceCompanies`, `ProvidentFundsOrPensionFunds`, `NBFCsRegisteredWithRBI`,
+`OverseasDepositories`, `OtherNonInstitutions`, and `DetailsOfSharesHeldBy` + `Banks`, `OtherFinancialInstitutions`,
+`OtherInstitutionsDomestic`, `ForeignDirectInvestment`, `InstitutionsForeignPortfolioInvestorOne` / `Two`,
+`OtherInstitutionsForeign`, `CentralGovernmentOrPresidentOfIndia`, `StateGovernmentsOrGovernors`,
+`ShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter`, `DirectorsAndDirectorsRelatives`,
+`KeyManagerialPersonnel`, `TrustsWhere...Trust`, `InvestorEducationAndProtectionFund`,
+`ResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh`, `NonResidentIndians`,
+`ForeignCompanies`, `BodiesCorporate`. Not seen in any filing, so not read (a name there is counted in the run
+report's `public_holders_unmapped` and a note, never typed): venture capital, asset reconstruction, sovereign wealth
+funds, foreign venture capital, associate companies, relatives of promoters, foreign nationals, individuals up to
+Rs 2 lakh. An "any other" row marked `WhetherACategoryOrMoreThan1PercentageOfShareholding` = `Category` is a
+sub-category total typed as a name ("Foreign Institutional Investors", "HUF"), not a holder: left out, counted.
+Table IV C (depository-receipt custodian, employee benefit trusts) is not public and not read.
+
+| Column | Meaning |
+|---|---|
+| `event_id`, `record_id`, `symbol`, `isin`, `company`, `quarter_end`, `submission_date`, `xbrl_url` | The filing (as in `shareholding`) |
+| `holder_no` | Order in the filing (domestic institutions, foreign, government, non-institutions) |
+| `holder_name_filed`, `holder_name` | Name as filed; display spelling |
+| `holder_key` | The name for joining across companies and quarters: lower case, punctuation out, `&` as `and`, Ltd / Limited / Pvt / Private and a leading "The" dropped, Co / Corp / Intl / Funds spelled one way; "A/c ..." kept (written `ac`), so each scheme account stays its own holder. Joined by `-`, so it is also an `/entity` id. Never by similarity |
+| `type` | The `{type}` of `shareholding` the section belongs to: `mf`, `insurance`, `banks_fi`, `aif`, `other_dii`, `fpi`, `other_foreign`, `govt`, `hni`, `corporate`, `other_public` |
+| `category`, `section`, `sub_category` | SEBI's sub-category context (as `parse_shp_categories` reads it), the XBRL section as filed, and the filed category of an "any other" row (`Clearing Members`, `Trusts`, `LLP`, ...) |
+| `shares`, `pct_of_company` | Shares as filed; % of `pct_base_shares` (total less depository-receipt shares), computed from the shares: taxonomy 2025-05-31 files the % as a percentage, 2025-10-31 as a fraction |
+| `holders_check` | `ok`; `unmapped` (the filing also names holders in a section not read); `over_category` (a category's named holders add up to more than its filed total; never seen in 128 real filings) |
+| `xbrl_sha256`, `parsed_on` | As in `promoter_group` |
+
+Change since the last quarter (`public_holders.changes`, computed on the page, not stored): per company and
+`holder_key`, its latest quarter in the table against the one before: `new` (named now, not before: crossed 1%),
+`exited` (named before, not now: under 1% or sold out; the filing does not say which), `added`, `cut`, `same`, or
+`no_previous` (only one quarter read: nothing compared); `shares_change` in shares, `pct_change` in points of the
+company. A quarter whose filing names nobody adds no rows, so the page says when the shareholding table has a newer
+quarter than the holder list.
+
 ### preferential and rights — NSE issue records, one row per stage record
 
 Two sources are stacked, newest copy per record winning: NSE's latest-100 lists kept as daily snapshots (`canonical/nse/{preferential,rights}_issue/`), and, from 12 Oct 2026, every filing NSE posted in a date window with its parsed XBRL (`archive/nse_events/issues/`, below). Records posted before 8 Oct 2025 are kept (counted in the report): their lock-ins run into the product window. An issue has two records, **In-Principle** (board date, amount, consideration; preferential also the allottee category) and **Listing Stage** (offer price, shares allotted, allotment, listing and trading-approval dates; rights also ratio, record date, issue open and close). They have separate `app_id`s and no shared key, so a listing record is linked to its approval by ISIN: the one In-Principle record filed in the 180 days before it, if there is exactly one.
@@ -523,6 +568,51 @@ for a model comes later. We keep no PDFs.
 | `pages`, `chars`, `notes` | pages (form feeds) and characters of the text; the extraction's notes |
 | `text` | the extracted text |
 
+## Market flows (`clean/current/market_flows.parquet`, from 19 Nov 2026)
+
+What foreign portfolio investors, domestic institutions and mutual funds bought and sold across the market, for a
+context line (`streamlit_app/screens/market_flows.py: flows_line`). `scripts/market_flows.py`, parsers in
+`insiders_clean/market_flows.py`. Official sources only (the exchange, the depository, the regulator; NSDL and SEBI
+asked for by the owner, 19 Nov 2026), each fetched and read on 19 Nov 2026 (fixtures in `tests/fixtures/market_flows/`).
+
+| Source (`source`) | Where | Segments | History | Lag |
+|---|---|---|---|---|
+| `nse` | `www.nseindia.in/api/fiidiiTradeReact` (NSE, BSE and MSEI) and `/api/fiidiiTradeNse` (NSE alone); the page `/reports/fii-dii` | `cash_nse_bse_msei`, `cash_nse`; categories `fpi` (NSE's "FII/FPI"), `dii` | **None**: the latest day only, date parameters ignored. Rows exist from the first nightly run | Same evening (T) |
+| `nsdl` | `fpi.nsdl.co.in/web/Reports/Archive.aspx` (form post, one month to the date asked) | per asset class (`equity`, `debt_general`, `debt_vrr`, `debt_far`, `hybrid`, `mutual_funds`, `aif`, their sub-total) and route (`{asset}_exchange`, `{asset}_primary`, `mutual_funds_{equity,debt,hybrid,solution_oriented,other}_schemes`), `total`; category `fpi` | Years (read from Oct 2025 on 19 Nov 2026: 273 reporting days, 01 Oct 2025 - 18 Nov 2026) | Reporting date T+1 (custodians' reports of the previous trading day(s)) |
+| `sebi` | `sebi.gov.in/sebiweb/other/OtherAction.do?doMfdTrendsSearch=yes` (form post `date=DD-MM-YYYY`, one month to the date) | `equity`, `debt`; category `mf` | Read from 01 Oct 2025 (270 dates); exchange holidays are printed as zero rows and kept | About two weeks: on 19 Nov 2026 the newest day was 04 Nov |
+
+| Column | Meaning |
+|---|---|
+| `date` | NSE and SEBI: the trading date. NSDL: the **reporting** date (`date_basis`) |
+| `source`, `segment`, `category` | As above |
+| `buy_cr`, `sell_cr`, `net_cr` | Gross purchases, gross sales and net in Rs crore, as printed (NSDL and SEBI print negatives in brackets). A row whose buy less sell is not its net (more than Rs 0.02 Cr) is dropped and noted |
+| `provisional` | True for NSE (the exchanges compile it from trading members' client categories on T day); False for NSDL and SEBI (custodians' reports) |
+| `date_basis` | `trade` or `reported` |
+
+Checks: each NSDL month's equity days against NSDL's own "Total for {month}" and each SEBI month against its Total
+(within Rs 1 Cr); a month that does not add up is named `short` in the report. Not kept: NSDL's net in USD and RBI
+rate, NSDL's and SEBI's derivative tables, NSDL's DII pages (`DIIGenerateReport.aspx`, not read yet).
+
+### fpi_sector_flows — NSDL fortnightly sector-wise FPI investment (`clean/current/fpi_sector_flows.parquet`)
+
+From `fpi.nsdl.co.in/web/StaticReports/Fortnightly_Sector_wise_FII_Investment_Data/FIIInvestSector_*.html` (listed
+on `FPI_Fortnightly_Selection.aspx` from 2012; file names are not regular, so the list is read, not guessed). One row
+per fortnight (15th and month-end) and BSE sector (24 and `Grand Total`), from 15 Oct 2025. Published a few days
+after the fortnight; the nightly reads the newest two not stored.
+
+| Column | Meaning |
+|---|---|
+| `fortnight_end`, `period_start` | The fortnight the net investment is for |
+| `sector` | NSDL's sector (BSE's industry classification; `Sovereign`, `Others`, `Grand Total`) |
+| `net_equity_cr`, `net_total_cr`, `net_equity_usd_mn`, `net_total_usd_mn` | Net FPI investment in the fortnight: equity, and all segments (debt, hybrid, mutual funds, AIF); whole crores / USD mn as printed |
+| `auc_equity_cr`, `auc_total_cr` | Assets under custody at the fortnight end |
+| `prev_net_equity_cr`, `prev_period_start`, `prev_period_end` | The previous fortnight's equity net as restated in this report |
+
+A report whose sectors do not add to its Grand Total (more than Rs 24 Cr, the rounding of 24 rows) is not kept.
+Archive: `archive/market_flows/{nse|nsdl|sebi|nsdl_sector}/year=YYYY.parquet` (the columns above and `fetched_at`; a
+later fetch of a key replaces it). Raw: `raw_v2/nse/fiidii_{all|nse}/`, `raw_v2/nsdl/{fpi_daily|fpi_sector_list|fpi_sectors}/`,
+`raw_v2/sebi/mf_trends/`. Report: `clean/reports/market_flows/{date}.json`.
+
 ## Not yet collected
 
 BSE-only companies have no Company page (it is keyed by NSE symbol).
@@ -565,6 +655,7 @@ Prices adjusted for splits and bonuses only.
 | `high_52w`, `low_52w`, `pct_off_high` | Range over the 365 days to the last stored session; `pct_off_high` = close / high - 1 |
 | `ret_90d`, `ret_180d` | Price change over 90 and 180 calendar days |
 | `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses seen in the price table |
+| `adv_20d`, `adv_sessions` | Average traded value (₹) per session over the stock's last 20 sessions with a print, NSE + BSE summed per day (`slim.average_daily_value`), and how many sessions it rests on. A decision's value over it is the "× a day's trade" column (19 Nov 2026) |
 | `market_cap`, `mcap_rank`, `mcap_bucket` | NSE market cap on the last stored day; bucket by rank (1-100 Large, 101-250 Mid, 251-500 Small, rest Micro), computed by us, not AMFI's list. BSE-only names have none |
 
 ## Company snapshot (derived, `artifacts/company_snapshot.parquet`)

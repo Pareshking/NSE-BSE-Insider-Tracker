@@ -4,6 +4,38 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Market flows, 19 Nov 2026 (branch `market-flows`, draft PR)
+
+A daily table of market-wide flows for a context line on Today ("FPIs sold Rs X Cr, DIIs bought Rs Y Cr on 18 Nov;
+mutual funds ... on 4 Nov"). Done: `scripts/market_flows.py` (nightly step at the end of R2 Storage Write, cannot fail
+it; `market-flows.yml` for a range), `clean/current/market_flows.parquet` and `fpi_sector_flows.parquet`
+(`docs/DATA_DICTIONARY.md`, Market flows), `screens/market_flows.flows_line` (tested; not on a page).
+Each source fetched from the container on 19 Nov: NSE `fiidiiTradeReact`/`fiidiiTradeNse` (latest day only, no
+history), NSDL daily trends (Oct 2025 - 18 Nov 2026 read in a dry run, every month adding to NSDL's total), NSDL
+fortnightly sectors (27 reports from 15 Oct 2025), SEBI mutual fund trends (newest day 04 Nov: about two weeks late).
+Note `docs/PRODUCT.md` says "Sources: NSE and BSE only" (07 Oct, about Screener.in); NSDL and SEBI were asked for by
+the owner on 19 Nov; the decision line is the owner's to update.
+**Next:** run Market flows backfill (from 2025-10-08) once merged; place `flows_line` on Today (another change);
+NSDL's DII pages (`DIIGenerateReport.aspx`) not read yet.
+## Public shareholders over 1%, 19 Nov 2026 (branch `public-holders`, draft PR)
+
+The shareholding XBRL we already fetch names every public holder over 1% (Tables III and IV). Now parsed
+(`parsers.parse_shp_public_holders`), into `clean/current/public_holders.parquet` (`docs/DATA_DICTIONARY.md`,
+public_holders) by the nightly path that writes `promoter_group`, with write-once batches in
+`archive/nse_events/public_holders/`. Checked on 128 real filings fetched from NSE today: in every one the named holders
+of a category add up to no more than its filed total. Company page: "Who holds over 1%?" with the change since the
+last quarter; person / fund page: "Holdings over 1%" when the id or name matches a `holder_key`, and holders are in its
+search. Production R2 was not read from here.
+- **Next (to fill the table):** run NSE Corporate Events with `dataset=shareholding`, `reparse_raw=1` once: every XBRL
+  kept in `raw_v2/nse/shareholding_xbrl/` (from 12 Oct 2026) is read again, no NSE call. Check the report's
+  `shareholding_reparse.public_holders_parse` (all `ok` expected), `public_holders.filings`/`holders`/`quarters`, and any
+  `public_holders: named holders in sections not read` note (a section to add after reading a filing). Filings with no
+  raw copy are not read until downloaded again; if a company's Jun 2026 quarter is missing, "since last quarter" shows
+  "no earlier quarter read" rather than calling everyone new.
+- Not done: BSE-only companies (`bse_shareholding` inline XBRL), and the Holders page. Found on the way: for taxonomy
+  2025-05-31 filings `promoter_group.pct_of_company` is 100 times too big (the filed % is a percentage there,
+  MOTILALOFS Jun 2025 shows 2122 for 21.22%); not changed in this branch.
+
 ## Today page data, 19 Nov 2026 (live data to 18 Nov; branch `fix-today-data-19nov`)
 
 Found from code reading; production tables were not read (R2 is in Actions only). Check after the next nightly with
