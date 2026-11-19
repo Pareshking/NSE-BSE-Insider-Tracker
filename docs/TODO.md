@@ -4,6 +4,29 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Today page data, 19 Nov 2026 (live data to 18 Nov; branch `fix-today-data-19nov`)
+
+Found from code reading; production tables were not read (R2 is in Actions only). Check after the next nightly with
+`clean_peek TRADES:544826` (now takes a BSE code) and the report counts named below.
+- **Same client on both sides of a deal** (Millworks 544826 LRSD Capital, SC Agrotech 526081 Pravinbhai Bharatbhai Gohil,
+  GRP Bellwether Capital, BSE bulk). Cause: the round-trip rule (writer and `deals.py`) fires only when bought and sold are
+  within 1%; an unequal two-way day kept both gross legs, and the client was listed as its own counterparty. The names on
+  the page are identical, so one `client_id`, not a spelling split. Fixed: the day is netted to the difference (reason
+  `same_day_both_sides_netted`, columns `two_way_bought`/`two_way_sold`; `docs/CLEAN_LAYER.md`).
+- **SAST holders that are not investors** (TBZ / AZB & Partners, promoter, 74.12% to 0%, Others; Medplus / Catalyst
+  Trusteeship as debenture trustee). Cause: the trustee pattern (`ideas.SECURITY_HOLDER`) was applied only by
+  `ideas.stake_events`, not by the Today and Stakes tables (`screens/proto._sast_rows`), and nothing caught a law firm.
+  Fixed: `insiders_clean/sast.py` writes `holder_kind` and `held_back_reason` on `sast` and `bse_sast` (rows kept, counted).
+  NSE's raw row has `acquisitionMode`, `promoterType`, `acqType` and `remarks`; no acquirer-type field.
+- **Late SAST on Today** (Info Edge / LIC 28 days late): the cut was 30 days; now 14, the same as the "late" chip
+  (`docs/DESIGN_V3.md`, Today's selection rules).
+- **Vectras Enprocon, two directors, same rupees and %**: not decidable from code. The duplicate check keys on the person,
+  so one trade filed under two names would stay two rows; two directors with equal stakes buying together is also
+  possible. The clean report now counts `tables.insider_trades.same_trade_two_names` (same exchange, ISIN, side, shares,
+  value, days and holdings before and after, different people; `same_filing` when they share one `app_id`). Nothing
+  merged. **Next:** read that count and the two rows' `app_id`/holdings (`clean_peek TRADES:<BSE code>`); remove only if it
+  is one filing.
+
 ## Site redesign, 12 Nov 2026 (PR #229, live)
 
 Done (owner's brief: redesign from blank, more pages, no mental arithmetic, club the noise, fewer clicks, no AI,

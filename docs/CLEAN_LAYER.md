@@ -194,6 +194,16 @@ across both exchanges and both feeds exclude every leg of that client-security-d
 Rs 3.96 Cr same-day buy and sell by one client (23 Jun 2026) showed on a company page. It runs after market-maker
 labelling, so labelling is unchanged. An NSE leg and a BSE leg in the same direction are still two executions (audit W8).
 
+**Unequal two-way days are netted (19 Nov 2026).** A client that bought and sold the same security on the same day in
+amounts more than 1% apart is not a round trip, so both legs used to stay: the larger led Today with the client named as
+its own other side (Millworks Technologies 544826, LRSD Capital Private Limited, "Sell 3.19% · other side: LRSD Capital
+Private Limited", BSE bulk; SC Agrotech 526081, Pravinbhai Bharatbhai Gohil; GRP, Bellwether Capital). The holding moved
+only by the difference, so `_net_two_way_days` keeps the larger side's legs at their price, scaled to the net quantity, and
+removes the smaller side's legs, counted as `same_day_both_sides_netted` (`tables.deals.two_way_days_netted` client-days);
+the kept leg lists the removed rows in `source_ids` and keeps the day's gross shares in `two_way_bought` / `two_way_sold`.
+Same client means the same `client_id` (spelling and company-suffix variants only, `entities.py`): two names that only
+look alike are never netted. Market makers keep their gross legs. Across exchanges and feeds, as the round-trip rule.
+
 ## Market cap of a company NSE does not list (23 Oct 2026)
 
 NSE's daily market-cap file covers NSE-listed names only, so a BSE-only company's % of market cap used today's market cap.

@@ -344,8 +344,59 @@ def test_a_client_who_bought_and_sold_unequal_amounts_or_on_different_days_is_ke
                                         _bse_cleanmax('DAY FUND', 'SELL', 100000, day='07/10/2026')])],   # another day
         ignore_index=True)
     out = clean_deals(raw, master, report, RUN_DATE)
-    assert len(out) == 4
+    # Not round trips. SWING FUND's unequal day is netted to the difference (19 Nov 2026, `_net_two_way_days`):
+    # one buy leg of 40,000 shares; DAY FUND's legs on two days stay as filed.
+    assert len(out) == 3
     assert 'intraday_round_trip_across_exchanges' not in report.data['tables']['deals']['removed']
+    swing = out[out['client_name'].str.upper().eq('SWING FUND')]
+    assert len(swing) == 1 and swing['side'].iloc[0] == 'BUY' and swing['quantity'].iloc[0] == pytest.approx(40000)
+    assert (out['client_name'].str.upper() == 'DAY FUND').sum() == 2
+
+
+def test_same_client_both_sides_unequal_on_one_exchange_is_netted_with_a_counted_reason(master, report):
+    """19 Nov 2026: Millworks Technologies (BSE bulk) led Today as "Sell 3.19%, LRSD Capital Private Limited · other
+    side: LRSD Capital Private Limited": the client bought and sold the same day in amounts more than 1% apart, so
+    the round-trip rule let both legs through. The day nets to the difference, the smaller leg is counted."""
+    raw = canonical('bse', 'bulk_deals', [_bse_cleanmax('LRSD CAPITAL PRIVATE LIMITED', 'BUY', 300000, price='100'),
+                                          _bse_cleanmax('LRSD CAPITAL PVT. LTD.', 'SELL', 319000, price='101'),
+                                          _bse_cleanmax('OTHER BUYER FUND', 'BUY', 19000, price='101')])
+    out = clean_deals(raw, master, report, RUN_DATE)
+    lrsd = out[out['client_id'].eq('lrsd-capital-private-limited')]
+    assert len(lrsd) == 1
+    leg = lrsd.iloc[0]
+    assert leg['side'] == 'SELL' and leg['quantity'] == pytest.approx(19000) and leg['price'] == pytest.approx(101)
+    assert leg['value'] == pytest.approx(19000 * 101) and leg['signed_value'] == pytest.approx(-19000 * 101)
+    assert (leg['two_way_bought'], leg['two_way_sold']) == (300000, 319000)
+    assert leg['trades'] == 2 and len(__import__('json').loads(leg['source_ids'])) == 2
+    assert 'LRSD' not in str(leg['counterparties']).upper()          # no longer its own "other side"
+    assert leg['counterparties'] == 'Other Buyer Fund'
+    rem = report.data['tables']['deals']['removed']
+    assert rem['same_day_both_sides_netted']['count'] == 1
+    assert report.data['tables']['deals']['two_way_days_netted'] == 1
+    other = out[out['client_id'].eq('other-buyer-fund')].iloc[0]
+    assert pd.isna(other['two_way_bought']) and other['quantity'] == 19000   # one-sided legs untouched
+
+
+def test_names_that_only_look_alike_are_never_netted(master, report):
+    """Two clients whose names differ by a word are two entities (entities.py): a buy by one and a sale by the other
+    are two legs, as filed, each naming the other as the other side."""
+    raw = canonical('bse', 'bulk_deals', [_bse_cleanmax('BELLWETHER CAPITAL', 'BUY', 300000, price='100'),
+                                          _bse_cleanmax('BELLWETHER CAPITAL PARTNERS', 'SELL', 250000, price='100')])
+    out = clean_deals(raw, master, report, RUN_DATE)
+    assert len(out) == 2 and out['two_way_bought'].isna().all()
+    assert 'same_day_both_sides_netted' not in report.data['tables']['deals']['removed']
+
+
+def test_market_makers_keep_their_gross_two_way_legs(master, report):
+    from insiders_clean import deals as deals_mod
+    rows = []
+    for d in range(1, 22):   # 42 legs in a quarter, balanced: a market maker
+        day = f'{d:02d}/10/2026'
+        rows += [_bse_cleanmax('DESK SECURITIES', 'BUY', 100000, day=day), _bse_cleanmax('DESK SECURITIES', 'SELL', 80000, day=day)]
+    out = clean_deals(canonical('bse', 'bulk_deals', rows), master, report, RUN_DATE)
+    assert len(out) == 42 and out['client_is_market_maker'].all()
+    assert 'same_day_both_sides_netted' not in report.data['tables']['deals']['removed']
+    assert deals_mod.MM_MIN_LEGS_PER_QUARTER <= 42
 
 
 # ---- a market cap on the trade's day for a company NSE does not list (BSE-only) ----------------------------------------
