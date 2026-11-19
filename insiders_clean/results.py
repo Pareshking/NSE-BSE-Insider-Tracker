@@ -280,3 +280,25 @@ def mark_superseded(df: pd.DataFrame) -> pd.DataFrame:
     latest = at.groupby(key).transform('max')
     df['superseded'] = (at < latest).fillna(False).astype(bool)
     return df
+
+
+PROFIT_OVER_REVENUE = 3.0   # a quarter's profit (or the year-ago one) over 3x its revenue is read as a unit or tagging error
+
+
+def doubt_reason(rev, profit, profit_year, rev_yoy) -> str:
+    """Why a results row's figures look wrong and are held back from rankings ('' when they look fine). Audit of
+    19 Nov 2026 on the Results page: revenue -Rs 27.71 Cr (VLS), a year-ago profit of Rs 6,306 Cr on Rs 29 Cr of revenue
+    (Supreme Infrastructure), profit Rs 1,092 Cr on Rs 50.59 Cr (Veranda) led the page. The row is shown under "held
+    back" with this reason, never altered."""
+    import math
+    f = lambda v: v if isinstance(v, (int, float)) and not (isinstance(v, float) and math.isnan(v)) else None  # noqa: E731
+    rev, profit, profit_year, rev_yoy = f(rev), f(profit), f(profit_year), f(rev_yoy)
+    if rev is not None and rev < 0:
+        return 'negative revenue'
+    if rev is not None and rev > 0:
+        for p_, what in ((profit, 'profit'), (profit_year, 'year-ago profit')):
+            if p_ is not None and abs(p_) > PROFIT_OVER_REVENUE * rev:
+                return f'{what} over {PROFIT_OVER_REVENUE:g}x revenue'
+    if rev_yoy is not None and rev_yoy <= -99.5:
+        return 'revenue fell to almost nothing'
+    return ''

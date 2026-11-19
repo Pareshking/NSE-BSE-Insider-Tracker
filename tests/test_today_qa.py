@@ -24,3 +24,32 @@ def test_headline_names_the_block_that_is_most_of_the_selling():
 def test_headline_with_nothing_past_the_bar():
     from screens.proto import today_headline
     assert today_headline(pd.DataFrame(), {})[0].startswith('No promoter or director decision')
+
+
+def test_results_rows_that_cannot_be_right_are_held_back():
+    from insiders_clean.results import doubt_reason
+    assert doubt_reason(-27.71e7, 1e7, 1e7, 5.0) == 'negative revenue'
+    assert doubt_reason(29e7, 1e7, 6306e7, 10.0) == 'year-ago profit over 3x revenue'
+    assert doubt_reason(50.59e7, 1092e7, 5e7, 10.0) == 'profit over 3x revenue'
+    assert doubt_reason(1.47e5, 0, 1e5, -100.0) == 'revenue fell to almost nothing'
+    assert doubt_reason(100e7, 10e7, 8e7, 12.0) == ''
+
+
+def test_sast_action_label():
+    from screens.proto import sast_action
+    assert sast_action(float('nan'), 'Acquisition', 'Preferential Allotment')[0] == 'Allotted'
+    assert sast_action(2.1, None, 'Open Market') == ('Bought', 'up')
+    assert sast_action(-1.0, None, 'Open Market') == ('Sold', 'dn')
+    assert sast_action(None, 'Sale', 'Others')[0] == 'Sold'
+
+
+def test_many_clients_at_one_price_are_one_block():
+    from screens.proto import club_blocks
+    base = dict(date=pd.Timestamp('2026-11-18'), isin='INE530B01024', company='IIFL', sym='IIFL', side='BUY', price=617.0,
+                pct=0.5, feed='block', ex='bse', n=1, kind='', who='')
+    rows = [dict(base, _v=v, qty=1, client=c) for c, v in (('SBI MF', 503e7), ('Rimco', 375e7), ('Nippon MF', 275e7), ('X', 1e7))]
+    rows.append(dict(base, _v=6776e7, side='SELL', client='Fih Mauritius', qty=1))
+    out = club_blocks(rows)
+    assert len(out) == 2
+    blk = next(r for r in out if r['side'] == 'BUY')
+    assert blk['_v'] == 1154e7 and 'SBI MF' in blk['who'] and '+1 more' in blk['who'] and '4 buyers' in blk['kind']
