@@ -69,6 +69,8 @@ def delta_html(now, before, fmt, label: str) -> str:
     if a is None or b is None:
         return '<div class="dash-delta">No earlier period in the data</div>'
     d = a - b
+    if not any(ch in '123456789' for ch in fmt(d)):   # a change that rounds to nothing is no change
+        return f'<div class="dash-delta">■ Unchanged {esc(label)}</div>'
     cls = 'dash-delta-up' if d > 0 else 'dash-delta-down' if d < 0 else ''
     arrow = '▲' if d > 0 else '▼' if d < 0 else '■'
     return f'<div class="dash-delta {cls}">{arrow} {esc(fmt(d))} {esc(label)}</div>'
@@ -681,7 +683,7 @@ def _kpis(ctx, ref, summary, flows, stock, ins, fpi, mf):
     sk = sast_kpi(ctx.sast, ref)
     if sk is not None:
         cards.append(_card('Holders crossing a threshold · 30 days', f'{sk["n"]:,}', '',
-                           esc(f'{sk["in"]} crossed up, {sk["out"]} fell below 5, 10, 25 or 50% (SAST)'),
+                           esc(f'{sk["in"]} crossed up, {sk["out"]} fell below a 5, 10, 15, 20, 25, 50 or 75% line (SAST)'),
                            delta_html(sk['n'], sk['before'], pct_word, 'vs the 30 days before'),
                            spark_svg(sk['spark'], bars=True), ('Not measured', ''), '/stakes'))
     else:
@@ -745,7 +747,7 @@ def _agree_tile(ctx, ref, stock, names):
         houses = _f(r.get('mf_houses'))
         out.append({'co': _company(r['name'], r.get('symbol')), 'who': chips, 'ins': esc(crore(r['insider_cr'], signed=False)),
                     'mf': (esc(crore(r['mf_cr'])) + (f' <span class="mute">· {int(houses)} houses</span>' if houses else ''))
-                          if _f(r.get('mf_cr')) is not None else '<span class="mute">–</span>'})
+                          if r.get('mf') else '<span class="mute">–</span>'})
     st.html(_table([('co', 'Company', 'l'), ('who', 'Who bought', 'l'), ('ins', 'Insiders, net', 'r'), ('mf', 'Mutual funds', 'r ph')], out))
     st.html(_foot('/insiders', 'Insiders: every decision past the bar') + _foot('/funds', 'Funds: the month-end lists'))
 

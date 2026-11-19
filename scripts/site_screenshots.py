@@ -28,6 +28,8 @@ PAGES = [('', 'dashboard'), ('today', 'today'), ('insiders', 'insiders'), ('deal
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
+# Long pages shot whole: the viewport is stretched to this height for them (and their text kept beside the picture).
+TALL = {'dashboard': {'desktop': 7600, 'phone': 15000}}
 # Streamlit marks the app "notRunning" once a script run has finished.
 RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
@@ -57,8 +59,14 @@ async def main(base: str, out: Path) -> int:
                 except Exception:  # noqa: BLE001
                     problems.append({'page': name, 'width': label, 'error': 'page still running after 90 s'})
                 timings.append({'page': name, 'width': label, 'seconds': round(time.monotonic() - t0, 1)})
+                if name in TALL:
+                    await page.set_viewport_size({'width': w, 'height': TALL[name][label]})
+                    await page.wait_for_timeout(1500)
                 await page.screenshot(path=str(out / f'{name}-{label}.png'), full_page=(label == 'desktop'))
                 text = await page.inner_text('body')
+                if name in TALL:
+                    (out / f'{name}-{label}.txt').write_text(text)
+                    await page.set_viewport_size({'width': w, 'height': h})
                 hit = next((m for m in ERROR_MARKERS if m in text), None)
                 if hit:
                     problems.append({'page': name, 'width': label, 'error': hit})
