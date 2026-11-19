@@ -386,7 +386,10 @@ def render():
     with ds.inside():
         left, right = st.columns([3, 2], gap='large')
     with left:
-        marks = e.assign(role=e['person_role'].map(kit.role))
+        # decision-makers only (audit 19 Nov 2026: about 30 staff and relatives' sales drew red marks beside "Promoter
+        # sales: none"); their trades stay counted under "money by who"
+        dm = e[e['person_role'].isin(signals.DECISION_ROLES)] if 'person_role' in e else e
+        marks = dm.assign(role=dm['person_role'].map(kit.role))
         if not d.empty:
             big = d[~d['also_filed'] & pd.to_numeric(d['value'], errors='coerce').ge(DEAL_MARK_MIN)]
             marks = pd.concat([marks, big.assign(seen=big['date'], person_name=big['client_name'], role='bulk or block deal')[
