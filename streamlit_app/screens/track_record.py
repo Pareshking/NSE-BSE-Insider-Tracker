@@ -61,6 +61,28 @@ def render():
         kit.Tile('History', f'{months} months', 'one market phase: an early read, not proof'),
         kit.Tile('Entry · costs', f'Next close · {track.COST_PCT:.2f} pts', 'first session after the day made public; round trip'),
     ])
+    # The answers first (audit 19 Nov 2026: the live record, -14% at one month, sat in a grey subtitle under a scorecard
+    # whose "ahead" tags read as a green light): what has worked in the history, and what the record kept since says.
+    ahead, behind = [], []
+    for sig, label in track.SIGNALS.items():
+        k = evidence.verdict(summ, sig)['kind']
+        (ahead if k == 'leaning_positive' else behind if k == 'drag' else []).append(label)
+    st.html('<h2 class="dt-h2">Which signals have worked so far?</h2><p class="qa-answer">'
+            + (esc('Ahead: ' + ', '.join(ahead)) if ahead else 'None is ahead yet') + '</p><p class="qa-why">'
+            + esc((f'Behind: {", ".join(behind)}. ' if behind else '')
+                  + f'3 and 6 months against Nifty 500 after costs, 30 cases or more, {months} months of history: an early read, not proof.')
+            + '</p>')
+    fw = store.artifact('artifacts/forward_outcomes.parquet')
+    if not fw.empty and 'excess_1M' in fw:
+        x1 = pd.to_numeric(fw['excess_1M'], errors='coerce').dropna()
+        x3 = pd.to_numeric(fw.get('excess_3M'), errors='coerce').dropna() if 'excess_3M' in fw else pd.Series(dtype=float)
+        if len(x1):
+            ans = f'1 month: {x1.median():+.1f}% median against Nifty 500 ({len(x1)} cases)' + (
+                f'; 3 months: {x3.median():+.1f}% ({len(x3)})' if len(x3) else '; no 3-month result yet')
+            st.html('<h2 class="dt-h2">Is it working since we started recording?</h2>'
+                    f'<p class="qa-answer">{esc(ans)}</p><p class="qa-why">The forward record: each signal stamped the night it fired '
+                    'and never edited. It is the test the history above has to pass; where the two disagree, trust this one more as '
+                    'it grows.</p>')
     bench = st.segmented_control('Benchmark', ['Nifty 500', 'Size-matched index'], default='Nifty 500', key='tr_bench',
                                  label_visibility='collapsed') or 'Nifty 500'
     sized = bench != 'Nifty 500'

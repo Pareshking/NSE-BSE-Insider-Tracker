@@ -423,11 +423,28 @@ def situations():
     if not t.empty:
         t = t.assign(_close=pd.to_datetime(t['offer_close'], errors='coerce'), _open=pd.to_datetime(t['offer_open'], errors='coerce'))
         t = t[(t['status'] == 'active') | (t['_close'] >= ref - pd.Timedelta(days=60))].sort_values(['_close'], ascending=False)
+    # a buyback's record date (buybacks table, matched to its corporate action): shares bought after it do not take part
+    # (audit 19 Nov 2026: "FDC buyback ₹500 vs ₹373.90 (+33.7%)" read as a gain open to anyone)
+    bb = store.table('buybacks')
+    rec = {}
+    if bb is not None and not bb.empty and {'symbol', 'record_date'} <= set(bb.columns):
+        for b in bb.dropna(subset=['record_date']).to_dict('records'):
+            rec.setdefault(str(b['symbol']).upper(), []).append(pd.Timestamp(b['record_date']))
     rows = []
     for r in t.to_dict('records') if not t.empty else []:
         p = px.get(r.get('isin')) or {}
         close = p.get('latest_close')
         offer = r.get('offer_price')
+        floor_only = False
+        if r.get('offer_type') == 'delisting':   # reverse book building: the filed price is the floor until a price is accepted
+            if kit._finite(r.get('accepted_price')) is not None:
+                offer = r.get('accepted_price')
+            else:
+                floor_only = True
+        rd = None
+        if r.get('offer_type') == 'buyback' and pd.notna(r['_open']):
+            cands = [d for d in rec.get(str(r.get('symbol') or '').upper(), []) if d <= r['_open'] and (r['_open'] - d).days <= 60]
+            rd = max(cands) if cands else None
         spread = (offer / close - 1) * 100 if kit._finite(offer) is not None and kit._finite(close) else None
         times = r.get('times_tendered')
         acc = min(1.0, 1 / times) * 100 if kit._finite(times) and times > 0 and r.get('offer_type') != 'delisting' else None
@@ -436,7 +453,8 @@ def situations():
         rows.append({
             'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), str(r.get('symbol') or '').upper()),
             'type': _chip(str(r.get('offer_type') or '').capitalize(), {'buyback': 'up', 'takeover': '', 'delisting': 'wn'}.get(r.get('offer_type'), '')),
-            'price': _num(offer, '₹{:,.2f}'),
+            'price': _num(offer, '₹{:,.2f}') + (' <span class="mute" title="reverse book building: the floor, not the price paid">floor</span>' if floor_only else ''),
+            'rec': (esc(kit.day(rd, with_year=False)) + (' ' + _chip('passed', 'wn') if rd < ref else '')) if rd is not None else '<span class="mute">–</span>',
             'close': _num(close, '₹{:,.2f}'),
             'spread': (f'<b class="{"up" if spread > 0 else "dn"}">{spread:+.1f}%</b>' if spread is not None else '<span class="mute">–</span>'),
             'size': esc(kit.shares(r.get('shares_sought'))) if kit._finite(r.get('shares_sought')) is not None else '–',
@@ -446,10 +464,13 @@ def situations():
             'left': _chip(f'{left} days left', 'up') if live else _chip('Closed', ''),
         })
     st.html('<h2 class="dt-h2">Tender offers <span>buybacks, open offers, delistings · open and closed in the last 60 days</span></h2>')
-    st.html(_table([('co', 'Company', 'l'), ('type', 'Type', 'l'), ('price', 'Offer', 'r'), ('close', 'Last close', 'r'),
-                    ('spread', 'Spread', 'r'), ('size', 'Shares sought', 'r'), ('times', 'Tendered', 'r'),
+    st.html(_table([('co', 'Company', 'l'), ('type', 'Type', 'l'), ('price', 'Offer', 'r'), ('rec', 'Record date', 'r'),
+                    ('close', 'Last close', 'r'), ('spread', 'Spread', 'r'), ('size', 'Shares sought', 'r'), ('times', 'Tendered', 'r'),
                     ('acc', 'Acceptance', 'r'), ('win', 'Window', 'r'), ('left', 'Status', 'l')], rows)
             if rows else f'<p class="dt-empty">No tender offers open or closed in the last 60 days (NSE tender list).{_unconfirmed("tenders")}</p>')
+    if rows:
+        st.html('<p class="dt-foot">A buyback takes shares held on its record date: once the date has passed, shares bought now do not '
+                'take part, and the spread is not open to a new buyer. A delisting shows its floor until a price is accepted.</p>')
 
     # Rights issues (listing stage, last 120 days): shares_listed is the pre-issue base (ratio checks: Ola 2:25, Century 3:8)
     rt = store.table('rights')
@@ -960,6 +981,12 @@ def results():
 
 # ---- Calendar: what is coming, day by day ------------------------------------------------------------------------------
 
+def _words(text, n: int = 160) -> str:
+    """Text cut at a word, with an ellipsis (audit 19 Nov 2026: details cut mid-word, "Debe", "of t")."""
+    t = str(text or '').strip()
+    return t if len(t) <= n else t[:n].rsplit(' ', 1)[0].rstrip(',;:') + ' …'
+
+
 def calendar():
     from screens import filings_all
     ctx = load()
@@ -972,19 +999,23 @@ def calendar():
             'lock-ins ending, and record dates for buybacks, bonuses, splits and rights.</p></div>')
     rows = []
     _, up = filings_all._upcoming(ctx, ctx.ref, filings_all._names(ctx))
+    small_locks = 0
     if up is not None and not up.empty:
         up = up.assign(_d=pd.to_datetime(up['made_public'], errors='coerce').dt.normalize())
         up = up[(up['_d'] >= ref) & (up['_d'] <= ref + pd.Timedelta(days=30))]
         lock = up['what'].astype(str).str.lower().str.contains('lock-in')
         for (d, sym, co), g in up[lock].groupby(['_d', 'nse_symbol', 'company'], dropna=False):
             n, val = len(g), pd.to_numeric(g['value'], errors='coerce').sum()
+            if not val >= 1e7:   # audit 19 Nov 2026: "Sepc · 0 shares", ₹12.76 L lock-ins; under ₹1 Cr of supply is counted, not listed
+                small_locks += 1
+                continue
             rows.append({'_d': d, 'co': _company(co, sym), 'what': 'Lock-in ends',
                          'detail': f'<span class="wrap">{n} allotment{"s" if n > 1 else ""} free to trade</span>' if n > 1 else
-                                   f'<span class="wrap">{esc(str(g["what_sub"].iloc[0] or "")[:120])}</span>',
+                                   f'<span class="wrap">{esc(_words(g["what_sub"].iloc[0]))}</span>',
                          'size': esc(kit.rupees(val)) if val > 0 else ''})
         for r in up[~lock].to_dict('records'):
             rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('nse_symbol')), 'what': esc(str(r.get('what') or '')),
-                         'detail': f'<span class="wrap">{esc(str(r.get("what_sub") or "")[:120])}</span>',
+                         'detail': f'<span class="wrap">{esc(_words(r.get("what_sub")))}</span>',
                          'size': esc(kit.rupees(r['value'])) if kit._finite(r.get('value')) is not None else ''})
     a = ctx.actions
     if a is not None and not a.empty and 'ex_date' in a:
@@ -1000,7 +1031,8 @@ def calendar():
     st.html(_table([('day', 'Date', 'l'), ('away', '', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'),
                     ('detail', 'Detail', 'l'), ('size', 'Size', 'r')], out[:150]) if out else
             '<p class="dt-empty">Nothing on the calendar in the next 30 days.</p>')
-    st.html('<p class="dt-foot">An ex-date is the first day a buyer no longer gets the benefit: buy before it. Dividends are left out.</p>')
+    st.html('<p class="dt-foot">An ex-date is the first day a buyer no longer gets the benefit: buy before it. Dividends are left out.'
+            + (f' {small_locks} lock-ins of under ₹1 Cr each counted, not listed.' if small_locks else '') + '</p>')
 
 
 # ---- Company: the same dense tables, one company, 12 months (R8) ------------------------------------------------------
@@ -1111,7 +1143,12 @@ def investors_directory():
         if x.empty:
             st.html('<p class="dt-empty">None in the period.</p>')
             continue
-        rows = [{'n': f'<a href="{esc(kit.entity_href(r["_g"]), quote=True)}" target="_self">{esc(str(r["name"]))}</a>',
+        from insiders_clean import fund_managers
+
+        def _mgr(nm):   # the manager the fund's own name names (fund_managers.csv): one family read at a glance, funds kept apart
+            m = fund_managers.manager_of(nm)[0]
+            return f' <span class="mute">· {esc(m)}</span>' if m and m.lower() not in str(nm).lower() else ''
+        rows = [{'n': f'<a href="{esc(kit.entity_href(r["_g"]), quote=True)}" target="_self">{esc(str(r["name"]))}</a>' + _mgr(r['name']),
                  'b': esc(kit.rupees(r['bought'])) if r['bought'] else '<span class="mute">–</span>',
                  's': esc(kit.rupees(r['sold'])) if r['sold'] else '<span class="mute">–</span>',
                  'net': f'<span class="{"up" if r["net"] > 0 else "dn" if r["net"] < 0 else ""}">{esc(kit.rupees(r["net"], signed=True))}</span>',
