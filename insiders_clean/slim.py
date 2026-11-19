@@ -14,7 +14,23 @@ from . import adjust
 
 BUCKETS = ('Large', 'Mid', 'Small', 'Micro')
 COLUMNS = ['isin', 'symbol', 'name', 'exchange', 'last_date', 'latest_close', 'high_52w', 'low_52w', 'pct_off_high',
-           'ret_90d', 'ret_180d', 'last_split_date', 'last_split_factor', 'n_splits', 'market_cap', 'mcap_rank', 'mcap_bucket']
+           'ret_90d', 'ret_180d', 'last_split_date', 'last_split_factor', 'n_splits', 'market_cap', 'mcap_rank', 'mcap_bucket',
+           'adv_20d', 'adv_sessions']
+ADV_SESSIONS = 20   # the stock's usual day: average traded value over its last 20 sessions with a print, NSE + BSE
+
+
+def average_daily_value(prices: pd.DataFrame, sessions: int = ADV_SESSIONS) -> pd.DataFrame:
+    """isin -> adv_20d (Rs, the mean of each session's traded value summed over NSE and BSE, over the last `sessions`
+    sessions with a print) and adv_sessions (how many sessions it rests on; fewer than `sessions` for a new or thinly
+    traded stock). A trade's size against it says how much of the market's usual day the insider took
+    (owner, 19 Nov 2026)."""
+    p = prices.dropna(subset=['isin', 'value'])
+    p = p[(p['isin'] != '') & (pd.to_numeric(p['value'], errors='coerce') > 0)]
+    if p.empty:
+        return pd.DataFrame(columns=['isin', 'adv_20d', 'adv_sessions'])
+    day = p.groupby(['isin', 'date'], as_index=False)['value'].sum().sort_values(['isin', 'date'])
+    tail = day.groupby('isin').tail(sessions)
+    return tail.groupby('isin').agg(adv_20d=('value', 'mean'), adv_sessions=('value', 'size')).reset_index()
 
 
 def price_panel(prices: pd.DataFrame, field: str) -> pd.DataFrame:
@@ -47,7 +63,8 @@ def bucket(rank: float) -> str | None:
     return 'Large' if rank <= 100 else 'Mid' if rank <= 250 else 'Small' if rank <= 500 else 'Micro'
 
 
-def price_summary(close: pd.DataFrame, meta: pd.DataFrame, factors: pd.DataFrame, mcap: pd.DataFrame | None) -> pd.DataFrame:
+def price_summary(close: pd.DataFrame, meta: pd.DataFrame, factors: pd.DataFrame, mcap: pd.DataFrame | None,
+                  adv: pd.DataFrame | None = None) -> pd.DataFrame:
     """`close`: adjusted date x ISIN panel. `meta`: isin, symbol, name, exchange. `factors`: implied factors with kind.
     `mcap`: symbol, market_cap for the latest day (or None)."""
     asof = close.index.max()
@@ -78,6 +95,8 @@ def price_summary(close: pd.DataFrame, meta: pd.DataFrame, factors: pd.DataFrame
         out['market_cap'] = out['symbol'].map(m['market_cap'])
         out['mcap_rank'] = out['symbol'].map(m['mcap_rank'])
     out['mcap_bucket'] = out['mcap_rank'].map(bucket)
+    if adv is not None and len(adv):
+        out = out.merge(adv, on='isin', how='left')
     return out.reindex(columns=COLUMNS)
 
 

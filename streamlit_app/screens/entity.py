@@ -4,10 +4,31 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
+from data import store
 from ui import kit
 
-from insiders_clean import fund_managers, investors, participants, signals
+from insiders_clean import fund_managers, investors, participants, public_holders, signals
 from screens.ctx import load, need_data, split_since, with_prices, with_sparks
+
+
+def holdings(ph: pd.DataFrame, eid: str, name, securities: pd.DataFrame | None = None) -> pd.DataFrame:
+    """The companies where this person or fund is named among the public shareholders over 1% at the company's latest
+    quarter (public_holders.holdings_of), matched on holder_key of the page's id or of its name: identity only, as
+    every other link on this page. With the company's display name and the change in words."""
+    keys = {public_holders.holder_key(str(eid).replace('-', ' ')), public_holders.holder_key(name)}
+    h = public_holders.holdings_of(ph, keys)
+    if h.empty:
+        return h
+    if securities is not None and not securities.empty and {'isin', 'display_name'} <= set(securities.columns):
+        h['company'] = h['isin'].map(securities.drop_duplicates('isin').set_index('isin')['display_name'])
+    else:
+        h['company'] = None
+    h['company'] = h['company'].fillna(h['symbol'])
+    h['nse_symbol'] = h['symbol']
+    from screens.company import holder_change
+    h['type_label'] = h['type'].map(public_holders.TYPE_LABELS).fillna(h['type'])
+    h['since'] = [holder_change(r) for r in h.to_dict('records')]
+    return h
 
 
 def render():
@@ -19,9 +40,14 @@ def render():
         kit.head('Person or fund', 'Open a person or fund from any table, or search below.')
         q = st.text_input('Search', placeholder='Name', key='en_q')
         if q:
+            ph = store.table('public_holders')
             people = pd.concat([ctx.trades[['person_id', 'person_name']].rename(columns={'person_id': 'id', 'person_name': 'name'}),
                                 ctx.deals[['client_id', 'client_name']].rename(columns={'client_id': 'id', 'client_name': 'name'})
-                                if not ctx.deals.empty else pd.DataFrame(columns=['id', 'name'])]).dropna().drop_duplicates('id')
+                                if not ctx.deals.empty else pd.DataFrame(columns=['id', 'name']),
+                                # public shareholders over 1% (shareholding pattern): their page lists their holdings
+                                ph[['holder_key', 'holder_name']].rename(columns={'holder_key': 'id', 'holder_name': 'name'})
+                                if not ph.empty and 'holder_key' in ph else pd.DataFrame(columns=['id', 'name'])
+                                ]).dropna().drop_duplicates('id')
             hits = people[people['name'].str.contains(q, case=False, na=False, regex=False)].head(30)
             st.html('<div class="q-list">' + ''.join(
                 f'<div class="q-row"><a href="{kit.entity_href(i)}" target="_self"><b>{kit.esc(str(n))}</b></a></div>'
@@ -32,7 +58,9 @@ def render():
     # An investor is every name of its investor group together (the same investor under different spellings).
     d, group_id = investors.profile_deals(ctx.deals, eid)
     shown = d['investor_group'].dropna().iloc[0] if len(d) and 'investor_group' in d and d['investor_group'].notna().any() else None
-    name = (t['person_name'].dropna().iloc[0] if len(t) else shown or d['client_name'].dropna().iloc[0] if len(d) else eid)
+    name = (t['person_name'].dropna().iloc[0] if len(t) else shown or d['client_name'].dropna().iloc[0] if len(d) else None)
+    held = holdings(store.table('public_holders'), eid, name, ctx.securities)
+    name = name or (held['holder_name'].iloc[0] if len(held) else eid)
     kit.head(str(name), 'Every filing and deal under this name, across companies.')
     if not d.empty and d['client_is_market_maker'].astype('boolean').fillna(False).any():
         st.html('<p class="evl">' + kit.tag('Market maker', 'mute') + ' buys and sells in near-equal amounts: '
@@ -91,6 +119,12 @@ def render():
                                               signed=True), f'{kit.count(len(t))} insider filings · {kit.count(len(d))} deals'),
         *([pnl] if pnl else []),
     ])
+    if len(held):
+        with kit.card('Holdings over 1%', 'en_ph', "named in each company's latest shareholding pattern"):
+            kit.table(held, [kit.Col('company', 'Company', 'co'), kit.Col('type_label', 'As', phone=False),
+                             kit.Col('pct_of_company', '% of company', 'pct'), kit.Col('shares', 'Shares', 'shares', phone=False),
+                             kit.Col('quarter_end', 'Quarter', 'date', phone=False), kit.Col('since', 'Since last quarter', wrap=True)],
+                      limit=100, key='en_ph_t')
     if len(t):
         with kit.card('Insider filings', 'en_it'):
             s = t.sort_values('broadcast_date', ascending=False)
