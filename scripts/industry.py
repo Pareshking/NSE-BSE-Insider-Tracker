@@ -11,8 +11,9 @@ raw_v2/bse/comheadernew/ and raw_v2/bse/scrip_list/), then parsed.
 `fetch` reads R2 only: the NSE symbols of clean/current/securities.parquet, BSE's list of active equity scrips (one
 call), and archive/industry/{nse,bse}.parquet to see what is due. Due = never fetched, then the oldest answers past
 their age (an `ok` after 30 days, anything else after 7), at most `--limit` per exchange and within `--minutes`.
-BSE is asked only for scrips NSE cannot cover (no NSE symbol for the ISIN, or NSE gave no classification), since NSE
-wins. NSE and BSE run side by side, each at its own client's pace (NSE 3-5 s a call, BSE 4-6 s); a refusal
+BSE is asked first for scrips NSE cannot cover (no NSE symbol for the ISIN, or NSE gave no classification), then for
+the rest: NSE refused its quote API from GitHub's runners on 19 Nov 2026 (HTTP 403 on www.nseindia.com and
+www.nseindia.in), so until it answers BSE's classification stands for every company. NSE wins whenever it has one. NSE and BSE run side by side, each at its own client's pace (NSE 3-5 s a call, BSE 4-6 s); a refusal
 (401/403/429) stops that exchange for the run. New answers go to DIR/{nse,bse}.parquet, rewritten every 25 answers
 so a stopped run keeps what it read.
 
@@ -201,7 +202,8 @@ def nse_due(sec, archive, now, limit) -> list[str]:
 
 
 def bse_due(scrips: pd.DataFrame, sec, nse_archive, bse_archive, now, limit) -> list[str]:
-    """Scrips NSE cannot classify: no NSE symbol for the ISIN, or NSE answered without a classification."""
+    """Scrips NSE cannot classify first (no NSE symbol for the ISIN, or NSE answered without a classification),
+    then the rest."""
     s = company_securities(sec).dropna(subset=['isin'])
     s = s[s['nse_symbol'].notna() & s['nse_symbol'].astype(str).str.strip().ne('')]
     isin_of = dict(zip(s['nse_symbol'].astype(str).str.strip().str.upper(), s['isin']))
@@ -214,8 +216,12 @@ def bse_due(scrips: pd.DataFrame, sec, nse_archive, bse_archive, now, limit) -> 
         failed = {i if isinstance(i, str) and i else isin_of.get(str(sym)) for sym, i in
                   zip(a.loc[~ok & a['status'].ne('error'), 'nse_symbol'], a.loc[~ok & a['status'].ne('error'), 'isin'])}
         on_nse = (on_nse - failed) | nse_ok
-    codes = scrips.loc[~scrips['isin'].isin(on_nse), 'bse_code'].astype(str).tolist()
-    return I.due(codes, bse_archive, 'bse_code', now, limit)
+    first = scrips.loc[~scrips['isin'].isin(on_nse), 'bse_code'].astype(str).tolist()
+    # then the scrips NSE should cover: NSE refused its quote API from GitHub's runners on 19 Nov 2026, so BSE's
+    # answer stands for them until NSE answers (NSE still wins in the clean table)
+    then = scrips.loc[scrips['isin'].isin(on_nse), 'bse_code'].astype(str).tolist()
+    todo = I.due(first, bse_archive, 'bse_code', now, None) + I.due(then, bse_archive, 'bse_code', now, None)
+    return todo if limit is None else todo[:max(0, int(limit))]
 
 
 # ---- runs -------------------------------------------------------------------------------------

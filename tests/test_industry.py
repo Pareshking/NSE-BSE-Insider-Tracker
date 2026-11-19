@@ -1,8 +1,10 @@
 """Industry classification (insiders_clean/industry.py, scripts/industry.py, the store helpers).
 
 BSE fixtures are real answers fetched on 19 Nov 2026 (tests/fixtures/industry/, ComHeadernew and a selection of
-rows from ListofScripData). NSE refused this repository's dev container (HTTP 403), so the NSE tests use answers
-built in code with only the keys the parser reads; replace with a saved answer from the workflow's probe job.
+rows from ListofScripData). NSE refused its quote API both to the dev container and to GitHub's runners (HTTP 403,
+19 Nov 2026, the workflow's probe job), so no real NSE answer exists yet: the NSE tests use answers built in code with
+only the keys the parser reads (`info.isin`, `industryInfo.{macro,sector,industry,basicIndustry}`). Replace them with a
+saved answer once NSE answers.
 """
 from __future__ import annotations
 
@@ -118,8 +120,9 @@ def test_bse_due_skips_what_nse_covers():
                         'nse_symbol': ['ABB', 'AEGISLOG', 'ARE&M'], 'bse_code': ['500002', '500003', '500008']})
     nse_arch = pd.DataFrame({'nse_symbol': ['ABB', 'AEGISLOG'], 'isin': ['INE117A01022', None],
                              'status': ['ok', 'not_found'], 'fetched_at': [NOW, NOW]})
-    # ABB and ARE&M are NSE's; AEGISLOG unknown to NSE and AMBALALSA not on NSE: BSE is asked
-    assert script.bse_due(scrips, sec, nse_arch, None, NOW, None) == ['500003', '500009']
+    # AEGISLOG unknown to NSE and AMBALALSA not on NSE come first; ABB and ARE&M (NSE's) after them
+    assert script.bse_due(scrips, sec, nse_arch, None, NOW, None) == ['500003', '500009', '500002', '500008']
+    assert script.bse_due(scrips, sec, nse_arch, None, NOW, 2) == ['500003', '500009']
 
 
 def test_store_helpers_merge_by_isin():
