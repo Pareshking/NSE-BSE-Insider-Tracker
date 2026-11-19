@@ -48,8 +48,39 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .dt-empty { background: transparent !important; border: 0 !important; padding: 6px 0 !important; }
 .tile, [class*="st-key-card_"] { background: transparent !important; border-top: 1px solid var(--rule-strong) !important; border-radius: 0 !important; }
 
-/* controls: quiet, outlined */
-[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] > div > div { border: 1px solid var(--line-strong) !important; border-radius: var(--radius-sm) !important; }
+/* controls: quiet, outlined, one height (owner 19 Nov 2026: the grey pill wrapping a label and its options looked old and
+   sat out of line with the dropdowns beside it). Every control: a 1px edge, the small radius, 40px tall; the label
+   above it in the same small grey; the chosen option tinted with the accent. */
+[data-testid="stTextInputRootElement"], [data-testid="stSelectbox"] > div > div, [data-testid="stMultiSelect"] > div > div,
+[data-testid="stDateInput"] > div > div { border: 1px solid var(--line-strong) !important; border-radius: var(--radius-sm) !important;
+  background: var(--surface) !important; min-height: 40px; }
+.stApp [data-testid="stWidgetLabel"] p { font-size: var(--fs-small) !important; color: var(--ink-3) !important; font-weight: var(--fw-medium) !important; }
+.stApp [data-testid="stButtonGroup"], .stApp [data-testid="stButtonGroup"]:has([data-variant="segmented_control"]) {
+  background: transparent !important; padding: 0 !important; border-radius: 0 !important; width: auto !important; }
+.stApp [data-testid="stButtonGroup"] [role="radiogroup"]:has([data-variant="segmented_control"]) {
+  display: inline-flex; gap: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface);
+  overflow: hidden; height: 40px; padding: 0 !important; align-items: stretch; }
+.stApp [data-variant="segmented_control"] { border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  border-left: 1px solid var(--line) !important; padding: 0 14px !important; min-height: 0 !important; height: 100%; margin: 0 !important;
+  color: var(--ink-2) !important; }
+.stApp [data-variant="segmented_control"]:first-child { border-left: 0 !important; }
+.stApp [data-variant="segmented_control"]:hover { background: var(--hover) !important; }
+.stApp [data-variant="segmented_control"] p { font-size: var(--fs-body) !important; font-weight: var(--fw-regular) !important; color: var(--ink-2) !important; }
+.stApp [data-variant="segmented_control"][aria-checked="true"] { background: var(--accent-tint) !important; }
+.stApp [data-variant="segmented_control"][aria-checked="true"] p { color: var(--accent-ink) !important; font-weight: var(--fw-strong) !important; }
+/* st.pills (choose several): chips with the same edge and radius, the chosen ones tinted (Streamlit 1.67 marks them
+   data-variant="pills" and aria-pressed; the older stBaseButton-pills test ids are kept for safety) */
+.stApp [data-variant="pills"], .stApp [data-testid="stBaseButton-pills"], .stApp [data-testid="stBaseButton-pillsActive"] {
+  border-radius: var(--radius-sm) !important; border: 1px solid var(--line-strong) !important; background: var(--surface) !important;
+  min-height: 34px; padding: 0 12px !important; color: var(--ink-2) !important; }
+.stApp [data-variant="pills"] p, .stApp [data-testid="stBaseButton-pills"] p { color: var(--ink-2) !important; font-size: var(--fs-body) !important; }
+.stApp [data-variant="pills"]:hover { background: var(--hover) !important; }
+.stApp [data-variant="pills"][aria-pressed="true"], .stApp [data-testid="stBaseButton-pillsActive"] {
+  background: var(--accent-tint) !important; border-color: var(--accent) !important; }
+.stApp [data-variant="pills"][aria-pressed="true"] p, .stApp [data-testid="stBaseButton-pillsActive"] p {
+  color: var(--accent-ink) !important; font-weight: var(--fw-strong) !important; }
+/* a row of controls lines up on their bottom edge, whatever each label's height */
+.stApp [data-testid="stHorizontalBlock"]:has([data-testid="stButtonGroup"], [data-testid="stSelectbox"]) { align-items: flex-end; }
 
 /* ---- Company page at a glance (19 Nov 2026; owner: "not glance-worthy to take even a decision"): the verdict band, the
    scorecard and the small charts of ui/charts.py. Tokens only. */
@@ -71,7 +102,7 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
   border-top: 4px solid var(--line-strong); margin-top: -1px; min-width: 0; }
 .cg-chip:last-child { border-right: 0; }
 .cg-chip .l { font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
-.cg-chip .l i { font-style: normal; font-size: 10px; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center;
+.cg-chip .l i { font-style: normal; font-size: 10px; width: 16px; height: 16px; border-radius: var(--radius-pill); display: inline-flex; align-items: center;
   justify-content: center; background: var(--subtle); color: var(--ink-3); flex: none; }
 .cg-chip b { font-family: var(--display); font-weight: var(--fw-regular); font-size: 24px; line-height: 1.15; color: var(--ink); }
 .cg-chip .n { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
@@ -99,7 +130,7 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cg-checks { border-top: 1px solid var(--rule-strong); }
 .cg-ck { display: grid; grid-template-columns: 24px 118px minmax(0, 1fr); gap: 8px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line);
   font-size: 13.5px; }
-.cg-ck i { font-style: normal; font-weight: var(--fw-strong); font-size: 11px; width: 20px; height: 20px; border-radius: 50%; display: inline-flex;
+.cg-ck i { font-style: normal; font-weight: var(--fw-strong); font-size: 11px; width: 20px; height: 20px; border-radius: var(--radius-pill); display: inline-flex;
   align-items: center; justify-content: center; background: var(--subtle); color: var(--ink-3); }
 .cg-ck.pass i { background: var(--buy-tint); color: var(--buy); }
 .cg-ck.warn i { background: var(--warn-tint); color: var(--warn-ink); }
@@ -112,12 +143,12 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 
 /* ownership: a 100% bar per quarter */
 .cg-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); margin: 2px 0 10px; }
-.cg-key { display: inline-flex; align-items: center; gap: 5px; } .cg-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.cg-key { display: inline-flex; align-items: center; gap: 5px; } .cg-key i { width: 10px; height: 10px; border-radius: var(--radius-pill); display: inline-block; }
 .cg-key b { font-weight: var(--fw-strong); color: var(--ink); }
 .cg-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--gap-4); }
 .cg-srow { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; align-items: center; }
 .cg-q { font-size: 12px; color: var(--ink-3); }
-.cg-sbar { display: flex; height: 22px; border-radius: 3px; overflow: hidden; }
+.cg-sbar { display: flex; height: 22px; border-radius: var(--radius-pill); overflow: hidden; }
 .cg-sbar i { font-style: normal; font-size: 11px; color: var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; }
 .cg-sbar i.dk { color: var(--on-accent); }
 
@@ -127,7 +158,7 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cg-dl { color: var(--ink-2); } .cg-dl em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink-3); }
 .cg-dtrack { position: relative; height: 12px; }
 .cg-dtrack::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-4); }
-.cg-dtrack i { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--ink-4); }
+.cg-dtrack i { position: absolute; top: 0; bottom: 0; border-radius: var(--radius-pill); background: var(--ink-4); }
 .cg-dtrack i.up { background: var(--buy); } .cg-dtrack i.down { background: var(--sell); }
 .cg-dv { text-align: right; font-weight: var(--fw-strong); white-space: nowrap; color: var(--ink-3); }
 
@@ -135,7 +166,7 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cg-split { margin: 10px 0 14px; max-width: 760px; }
 .cg-splab { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 4px; }
 .cg-splab b { font-weight: var(--fw-strong); }
-.cg-spbar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: var(--subtle); }
+.cg-spbar { display: flex; height: 12px; border-radius: var(--radius-pill); overflow: hidden; background: var(--subtle); }
 .cg-spbar i.up { background: var(--buy); } .cg-spbar i.down { background: var(--sell); }
 
 /* fund houses with their month-end trend */
@@ -155,8 +186,8 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cg-col { display: flex; flex-direction: column; align-items: stretch; min-width: 0; text-align: center; }
 .cg-cv { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
 .cg-cplot { position: relative; height: 92px; margin: 3px 0; }
-.cg-cplot i { position: absolute; left: 14%; right: 14%; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .85; }
-.cg-cplot i.pos { background: var(--buy); } .cg-cplot i.down { background: var(--sell); border-radius: 0 0 2px 2px; }
+.cg-cplot i { position: absolute; left: 14%; right: 14%; background: var(--accent); border-radius: var(--radius-pill) var(--radius-pill) 0 0; opacity: .85; }
+.cg-cplot i.pos { background: var(--buy); } .cg-cplot i.down { background: var(--sell); border-radius: 0 0 var(--radius-pill) var(--radius-pill); }
 .cg-col:last-child .cg-cplot i { opacity: 1; }
 .cg-cplot b { position: absolute; left: 0; right: 0; height: 1px; background: var(--line-strong); }
 .cg-cl { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
@@ -174,6 +205,9 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 /* Phone: a long preset row (the date control's eight options) wraps instead of running off the page (19 Nov 2026) */
 @media (max-width: 640px) {
   .stApp [data-testid="stButtonGroup"] [role="radiogroup"] { flex-wrap: wrap; row-gap: 4px; }
+  .stApp [data-testid="stButtonGroup"] [role="radiogroup"]:has([data-variant="segmented_control"]) { display: flex; overflow: visible; height: auto; }
+  .stApp [data-variant="segmented_control"] { height: 38px; }
+  .stApp [data-variant="segmented_control"] { border-bottom: 1px solid var(--line) !important; }
 }
 .cg-nospark { font-size: 11px; color: var(--ink-4); text-align: center; }
 @media (max-width: 640px) { .co-head h1.co-verdict { font-size: 26px !important; padding-left: 12px; border-left-width: 4px; } }

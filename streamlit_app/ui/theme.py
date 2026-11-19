@@ -66,7 +66,7 @@ TYPE = {
 
 # ---- Space and shape: flat (no shadows), small radius, a 4 px grid.
 SPACE = {
-    'radius': '18px', 'radius-sm': '10px', 'radius-pill': '999px', 'shadow': 'none',
+    'radius': '8px', 'radius-sm': '6px', 'radius-pill': '4px', 'shadow': 'none',
     'card-pad': '22px 24px', 'card-pad-phone': '18px',
     'gap-1': '4px', 'gap-2': '8px', 'gap-3': '12px', 'gap-4': '16px', 'gap-5': '24px', 'gap-6': '36px',
     'gutter': '40px', 'gutter-phone': '14px', 'row-h': '44px', 'page-max': '1280px',
