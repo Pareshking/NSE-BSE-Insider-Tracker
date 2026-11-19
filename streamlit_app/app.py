@@ -57,6 +57,7 @@ from screens import (
     data_status,
     entity,
     filings_all,
+    funds,
     investors,
     more_pages,
     pages,
@@ -84,6 +85,7 @@ SECTIONS = {
     '': [
         st.Page(proto.today, title='Today', icon=M('today'), url_path='today', default=True),
         st.Page(proto.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
+        st.Page(funds.render, title='Funds', icon=M('account_balance_wallet'), url_path='funds'),
         st.Page(proto.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
         st.Page(proto.stakes, title='Stakes', icon=M('pie_chart'), url_path='stakes'),
         st.Page(proto.situations, title='Situations', icon=M('local_offer'), url_path='situations'),
