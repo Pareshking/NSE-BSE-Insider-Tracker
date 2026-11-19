@@ -288,6 +288,39 @@ def build(r2, src: Path | None, day, report: dict, dry_run: bool = False) -> dic
     return report
 
 
+NSE_NEXT = 'https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi'
+
+
+def probe_nse_package(symbols, report: dict):
+    """The `nse` package's HTTP/2 session (as scripts/update_calendar.py uses on the runners): the old quote API and
+    NSE's newer quote API (NextApi getSymbolData / getMetaData), each answer printed and captured."""
+    import tempfile
+    rep = report.setdefault('nse_package', {})
+    try:
+        from nse import NSE
+        n = NSE(tempfile.mkdtemp(), server=True)
+    except Exception as exc:  # noqa: BLE001
+        rep['error'] = f'{type(exc).__name__}: {exc}'
+        return
+    for sym in symbols[:2]:
+        for name, url, params in (
+                ('quote_equity', f'{NSE_HOSTS[0]}/api/quote-equity', {'symbol': sym}),
+                ('next_symbol_data', NSE_NEXT, {'functionName': 'getSymbolData', 'marketType': 'N', 'series': 'EQ',
+                                                'symbol': sym}),
+                ('next_meta_data', NSE_NEXT, {'functionName': 'getMetaData', 'symbol': sym})):
+            time.sleep(3)
+            try:
+                r = n._session.get(url, params=params, timeout=30)
+            except Exception as exc:  # noqa: BLE001
+                rep[f'{sym} {name}'] = f'{type(exc).__name__}: {exc}'
+                continue
+            rep[f'{sym} {name}'] = f'HTTP {r.status_code}, {len(r.content)} bytes'
+            if r.status_code == 200:
+                capture('nse', name, r.content, url=url, params=params, status=r.status_code,
+                        content_type=r.headers.get('content-type'), covers={'symbol': sym})
+            print(f'--- {name} {sym} HTTP {r.status_code}\n{r.text[:6000]}')
+
+
 def probe(out: Path, symbols, codes, report: dict) -> dict:
     """No R2: fetch the given symbols and codes, print each answer and its parsed row, keep raw captures."""
     out.mkdir(parents=True, exist_ok=True)
@@ -296,6 +329,8 @@ def probe(out: Path, symbols, codes, report: dict) -> dict:
         df = fetch_nse(symbols, report, deadline, out / f'nse_{n}.parquet', NSEClient(), echo=True, host=host,
                        key=f'nse_{n}')
         print(host); print(df.to_string())
+    if symbols:
+        probe_nse_package(symbols, report)
     if codes:
         client = BSEClient(raw=RawCapture())
         try:
