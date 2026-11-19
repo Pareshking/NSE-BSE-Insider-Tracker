@@ -215,7 +215,7 @@ def raw_rows(r2, house, months: set) -> dict:
             except Exception as exc:  # noqa: BLE001 -- a file that does not parse is left out; add_up then says so
                 print(f'{house.key} {m}: raw {u[:100]} not parsed ({type(exc).__name__})')
         if frames:
-            out[m] = pd.concat(frames, ignore_index=True)
+            out[m] = pd.concat([f for f in frames if len(f)] or frames[:1], ignore_index=True)
     return out
 
 
@@ -259,8 +259,8 @@ def backfill_schemes(r2, houses, browser=None, fetch: bool = True) -> dict:
 
 
 def amfi_list(month: str, tries: int = 3) -> tuple[pd.DataFrame, dict]:
-    """AMFI's NAV report for the month-end's last working day (the weekday with the most NAV lines among the last
-    `tries` weekdays up to the month-end; AMFI lists only the houses that struck a NAV that day), parsed
+    """AMFI's NAV report for the month-end's last working day (the latest of the last
+    `tries` weekdays up to the month-end unless an earlier one lists over 1% more NAV lines), parsed
     (`mf_holdings.parse_amfi_nav`, `amfi_schemes`), and what was asked. Stored raw (raw_v2/amfi/nav_history/)."""
     import requests
     from raw_capture import capture
@@ -278,7 +278,9 @@ def amfi_list(month: str, tries: int = 3) -> tuple[pd.DataFrame, dict]:
                 covers={'date': str(d.date()), 'month': month})
         nav = mf_holdings.parse_amfi_nav(r.content.decode('utf-8', 'replace')) if r.status_code == 200 else pd.DataFrame()
         info['asked'].append({'day': str(d.date()), 'status': r.status_code, 'nav_lines': int(len(nav))})
-        if len(nav) and (best is None or len(nav) > len(best[1])):
+        # The latest day, unless an earlier one lists clearly more (a holiday or a half-filled day): 29 Oct 2026 had one
+        # NAV line more than the 30th, which is the month-end's last working day.
+        if len(nav) and (best is None or len(nav) > 1.01 * len(best[1])):
             best = (d, nav)
     if best is None:
         return pd.DataFrame(), info
