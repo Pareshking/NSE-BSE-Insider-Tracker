@@ -190,5 +190,17 @@ PENSION = [
 #   Tata Pension (now tatapensionfund.com/public-disclosure-and-nav): the Portfolio tab's list never loads in a headless
 #     browser ('Loading documents...'; the list calls are encrypted) and its Download buttons carry no addresses.
 
+# Mutual fund houses not collected, with the reason, for the Funds page's "is this complete?" line (the notes above in
+# short). ICICI Prudential and Kotak Mahindra, two of the largest houses, are not in HOUSES: no collector was written
+# for them yet, and no attempt is recorded.
+NOT_COLLECTED = [
+    ('ICICI Prudential Mutual Fund', 'not collected yet'),
+    ('Kotak Mahindra Mutual Fund', 'not collected yet'),
+    ('Navi Mutual Fund', 'its site answers a bot check'),
+    ('Mahindra Manulife Mutual Fund', 'downloads need a residency declaration'),
+    ('Union Mutual Fund', 'its site refuses connections from outside India'),
+    ('Monarch Mutual Fund', 'an overnight fund only: no equity'),
+]
+
 HOUSES = HOUSES + PENSION
 BY_KEY = {h.key: h for h in HOUSES}
