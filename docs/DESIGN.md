@@ -4,6 +4,13 @@
 everything there so in future one line change would work across the website." Every page is checked against this list
 before it merges.
 
+## Look of 19 Nov 2026 (owner: "why can't we have such beautiful site", after paresh.streamlit.app)
+- A white page; a section is a question set off by a strong rule (`rule-strong`), not a grey card; tables have no box,
+  a strong rule under the head and hairlines between rows; KPI figures sit in one ruled strip.
+- A serif (`display`, Source Serif 4) for the headline, the section questions and their one-line answers; Inter for
+  everything else; tabular figures for numbers. Muted blue for links, muted green and rust for buying and selling.
+- All in `ui/look.css`, loaded last, tokens only: no page code changed. Remove it from `CSS_FILES` to go back.
+
 ## One theme
 - Every colour, font, type size, radius and spacing is a token in `streamlit_app/ui/theme.py`. The stylesheets
   (`ui/insiders.css`, `ui/table.css`, `ui/ds.css`) use `var(--token)` only; the charts read `theme.C`.

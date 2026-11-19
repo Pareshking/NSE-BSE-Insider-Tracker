@@ -1,17 +1,17 @@
 [theme]
 # Written by scripts/sync_theme.py from streamlit_app/ui/theme.py: change the tokens there, not here.
 base = "light"
-primaryColor = "#4F5BD5"
-backgroundColor = "#F3F4F6"
+primaryColor = "#1F5FA8"
+backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#FFFFFF"
 textColor = "#111827"
-linkColor = "#3F49B8"
+linkColor = "#1F4F8A"
 linkUnderline = false
 borderColor = "#E3E6EA"
 showWidgetBorder = true
 baseRadius = "10px"
-greenColor = "#15803D"
-redColor = "#C2410C"
+greenColor = "#1F7A45"
+redColor = "#A8481F"
 orangeColor = "#B45309"
 dataframeHeaderBackgroundColor = "#F1F2F6"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
