@@ -12,7 +12,7 @@ from ui import dates, kit, lwchart
 from ui.kit import esc
 from ui.table import facts
 
-from insiders_clean import ideas, ownership, public_holders, signals
+from insiders_clean import ideas, ownership, participants, public_holders, signals
 from screens import buybacks
 from screens.capital_raises import issue_rows, qip_rows, rights_rows
 from screens.ctx import load, need_data, split_since, with_flags
@@ -98,6 +98,59 @@ def _row(date, what, who='', sub='', text='', value=None, pct=None, items=(), li
             'value': value, 'pct': pct, '_facts': list(items), '_links': list(links)}
 
 
+BLOCK_MIN_LEGS = 3   # one day, one price, this many named clients or more: one block, shown as one row
+
+
+def deal_blocks(d: pd.DataFrame) -> tuple[list[dict], pd.DataFrame]:
+    """Deals that are one block (one day, one price, BLOCK_MIN_LEGS named clients or more) as one row each: who sold,
+    who bought, the buyers by type, every buyer with value. Owner 19 Nov 2026, IIFL Finance on 18 Nov: FIH Mauritius's
+    sale showed as one card and its ~50 buyers as 50 small cards among the rest, so the buy side read as unknown.
+    Returns (block rows, the deals not in a block)."""
+    if d is None or d.empty or not {'date', 'price', 'side'} <= set(d.columns):
+        return [], d
+    x = d.assign(_day=pd.to_datetime(d['date'], errors='coerce').dt.normalize(),
+                 _px=pd.to_numeric(d['price'], errors='coerce').round(1),
+                 _v=pd.to_numeric(d.get('value'), errors='coerce'),
+                 _q=pd.to_numeric(d.get('quantity'), errors='coerce'))
+    out, used = [], []
+    for (day, px), g in x.dropna(subset=['_day', '_px']).groupby(['_day', '_px'], sort=False):
+        if len(g) < BLOCK_MIN_LEGS:
+            continue
+        used.extend(g.index)
+        sell, buy = g[g['side'] == 'SELL'].sort_values('_v', ascending=False), g[g['side'] == 'BUY'].sort_values('_v', ascending=False)
+        lead = sell if len(sell) and sell['_v'].sum() >= buy['_v'].sum() else buy   # the side the block is about
+        def top(f, n=3):
+            return ', '.join(f'{c} {kit.rupees(v)}' for c, v in zip(f['client_name'].astype(str).head(n), f['_v'].head(n)))
+        if len(sell) and len(buy):
+            who = f'{", ".join(sell["client_name"].astype(str).head(2))}' + (f' +{len(sell) - 2}' if len(sell) > 2 else '') \
+                  + f' to {len(buy)} buyer{"s" * (len(buy) > 1)}'
+        elif len(sell):
+            who = f'{len(sell)} sellers'
+        else:
+            who = f'{len(buy)} buyers'
+        verb = 'sold' if lead is sell else 'bought'
+        text = f'{verb} {kit.shares(lead["_q"].sum())} shares at {kit.price(px)}' + (f' · bought by {top(buy)}' + (f' +{len(buy) - 3} more' if len(buy) > 3 else '')
+                                                                                     if lead is sell and len(buy) else '')
+        facts_ = []
+        if len(sell) and len(buy):
+            named = buy['_q'].sum() / sell['_q'].sum() if sell['_q'].sum() else None
+            facts_.append(('Buyers named', f'{len(buy)} buyers for {kit.shares(buy["_q"].sum())} of the {kit.shares(sell["_q"].sum())} shares sold'
+                           + (f' ({named:.0%})' if named is not None else '')))
+        for side_name, f in (('Buyers', buy), ('Sellers', sell)):
+            if f.empty:
+                continue
+            kinds = f.assign(_t=f['client_name'].map(lambda n: participants.TYPES.get(participants.classify(n)[0], 'Unknown')))
+            by = kinds.groupby('_t').agg(v=('_v', 'sum'), n=('_v', 'size')).sort_values('v', ascending=False)
+            facts_.append((f'{side_name} by type', ' · '.join(f'{t} {kit.rupees(r.v)} ({int(r.n)})' for t, r in by.iterrows())))
+            facts_ += [(f'{"Bought" if side_name == "Buyers" else "Sold"}: {c}', f'{kit.rupees(v)} · {kit.shares(q)} shares')
+                       for c, v, q in zip(f['client_name'].astype(str), f['_v'], f['_q'])]
+        first = lead.iloc[0].to_dict()
+        feed = str(first.get('feeds') or 'block').split(',')[0].strip().title() or 'Block'
+        out.append(_row(day, f'{feed} deal', who, f'{len(g)} clients at one price', text,
+                        lead['_v'].sum(), sum(v for v in (_signed(r) for r in lead.to_dict('records')) if v is not None) or None, facts_))
+    return out, d.drop(index=used)
+
+
 def _months(start, end) -> int | None:
     """Whole months from the year-to-date start to the period end (6 for Apr-Sep), None when not filed."""
     a, b = pd.to_datetime(start, errors='coerce'), pd.to_datetime(end, errors='coerce')
@@ -124,6 +177,8 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
         rows.append(_row(r.get('broadcast_date'), what, str(r.get('person_name') or ''), kit.role(r.get('person_role')),
                          f'{verb} {n} shares'.replace('  ', ' ') + (f' at {kit.price(r["price"])}' if market and kit._finite(r.get('price')) else ''),
                          r.get('value') if market else None, _signed(r) if market else None, _trade_facts(r), _link(r.get('source_url'))))
+    blocks, d = deal_blocks(d)
+    rows.extend(blocks)
     for r in (d.to_dict('records') if not d.empty else []):
         buy = r['side'] == 'BUY'
         rows.append(_row(r.get('date'), f'{str(r.get("feeds") or "bulk").title()} deal', str(r.get('client_name') or ''),

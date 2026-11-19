@@ -198,6 +198,26 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
     report.removed('deals', 'same_trade_in_both_feeds', df.loc[dup, 'source_id'])
     df = df.assign(feeds=feeds)[~dup].copy()
 
+    # 1b. a bulk row that is the day's total of the client's block legs. The bulk feed gives a client's whole day,
+    # block-window trades included; the block feed gives each block trade (IIFL Finance on BSE, 18 Nov 2026: FIH
+    # Mauritius's one bulk SELL of 5,65,33,166 and its 34 block SELLs of 5,32,91,546, one per buyer, were added into
+    # 10.98 cr shares, 23.98% of the company, twice the 5.65 cr its buyers took). When one client-day-side on one
+    # exchange has rows from both feeds that step 1 could not pair, the feed with the larger total stands for the
+    # day and the other's rows are dropped, counted.
+    side_key = ['exchange', 'security_key', 'client_id', 'date', 'side']
+    has_bulk, has_block = df['feeds'].str.contains('bulk'), df['feeds'].str.contains('block')
+    only_bulk, only_block = has_bulk & ~has_block, has_block & ~has_bulk
+    q = df['quantity']
+    by = [df[k] for k in side_key]
+    bulk_total = q.where(has_bulk, 0).groupby(by, dropna=False).transform('sum')
+    block_total = q.where(has_block, 0).groupby(by, dropna=False).transform('sum')
+    n_only_bulk = only_bulk.groupby(by, dropna=False).transform('sum')
+    n_only_block = only_block.groupby(by, dropna=False).transform('sum')
+    mixed = (n_only_bulk > 0) & (n_only_block > 0)
+    inside = mixed & ((only_block & (bulk_total >= block_total)) | (only_bulk & (bulk_total < block_total)))
+    report.removed('deals', 'block_legs_inside_bulk_total', df.loc[inside, 'source_id'])
+    df = df.assign(feeds=df['feeds'].mask(mixed, 'block,bulk'))[~inside].copy()
+
     # 2. same-day roll-up per client, security, day, side
     df['value'] = df['quantity'] * df['price']
     leg_key = ['exchange', 'security_key', 'client_id', 'date', 'side']
