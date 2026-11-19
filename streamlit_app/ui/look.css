@@ -70,5 +70,5 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cr-c { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cr-c span.up, .cr-c span.down { font-weight: var(--fw-strong); }
 .cr-c em { font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-left: 4px; }
-@media (max-width: 640px) { .cr { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 8px; } .cr-c em { display: block; margin: 0; } }
+@media (max-width: 640px) { .cr { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 8px; } .cr-c em { display: block; margin: 0; } .cr-c em.u { display: none; } }
 .cr-s { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

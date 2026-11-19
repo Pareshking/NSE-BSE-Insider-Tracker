@@ -20,7 +20,7 @@ INK, INK2, INK3, INK4, LINE = C['ink'], C['ink-2'], C['ink-3'], C['ink-4'], C['l
 BUY, SELL, PRICE = C['buy'], C['sell'], C['accent']
 FONT = C['ui'].split(',')[0].strip("' ")
 ROW = 36           # px per row of a bar chart: a line of text over a thin bar
-LABEL_CHARS = 30   # a name cut to leave room for its value on a 390 px phone
+LABEL_CHARS = 26   # a name cut to leave room for its value on a 390 px phone
 
 
 def _finish(chart, height: int):
@@ -95,10 +95,10 @@ def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable
     tone = alt.Color('_tone:N', scale=alt.Scale(domain=['up', 'down'], range=[BUY, SELL]), legend=None)
     tip = [alt.Tooltip('_l:N', title='Name'), alt.Tooltip('_t:N', title='Change')]
     base = alt.Chart(d).encode(y=y)
-    bars = base.mark_bar(height=8, yOffset=8, cornerRadius=2).encode(x=x, x2=alt.datum(0), color=tone, tooltip=tip)
-    zero = base.mark_tick(color=INK4, thickness=1, size=14, yOffset=8).encode(x=alt.datum(0))
-    name = base.mark_text(align='left', baseline='middle', dy=-7, x=0, fontSize=12.5, color=INK).encode(text='_l:N', tooltip=tip)
-    val = base.mark_text(align='right', baseline='middle', dy=-7, x='width', fontSize=12.5, fontWeight=600).encode(
+    bars = base.mark_bar(height=8, yOffset=9, cornerRadius=2).encode(x=x, x2=alt.datum(0), color=tone, tooltip=tip)
+    zero = base.mark_tick(color=INK4, thickness=1, size=14, yOffset=9).encode(x=alt.datum(0))
+    name = base.mark_text(align='left', baseline='middle', dy=-8, x=0, fontSize=12.5, color=INK).encode(text='_l:N', tooltip=tip)
+    val = base.mark_text(align='right', baseline='middle', dy=-8, x='width', fontSize=12.5, fontWeight=600).encode(
         text='_t:N', color=tone)
     return _finish(alt.layer(bars, zero, name, val), ROW * len(d))
 
@@ -206,7 +206,7 @@ def change_rows(rows: pd.DataFrame | None, company: str = 'company', symbol: str
         elif st_ == 'exited':
             c = '<span class="down">− exited</span><em>under 1%</em>'
         elif chg is not None and chg != 0:
-            c = f'<span class="{"up" if chg > 0 else "down"}">{"▲" if chg > 0 else "▼"} {abs(chg):.2f}</span><em>pts</em>'
+            c = f'<span class="{"up" if chg > 0 else "down"}">{"▲" if chg > 0 else "▼"} {abs(chg):.2f}</span><em class="u">pts</em>'
         elif st_ in ('same', 'added', 'cut'):
             c = '<span class="na">unchanged</span>'
         else:

@@ -22,9 +22,11 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
          ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
          ('proto-today', 'old-proto-address'), ('entity?id=sbi-mutual-fund', 'entity-sbi-mf'), ('ownership', 'holders'),
-         ('investor-flows', 'investor-flows')]
+         ('investor-flows', 'investor-flows'), ('ownership', 'holders-90d')]
 # Long pages drawn taller at phone width, so the screenshot reaches their charts (the entity page's holdings).
-TALL = {'entity-sbi-mf': 7000}
+TALL = {'entity-sbi-mf': 7000, 'holders-90d': 4000}
+# A period button pressed before the screenshot, where the default period is often empty.
+CLICK = {'holders-90d': '90 days'}
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
@@ -57,6 +59,14 @@ async def main(base: str, out: Path) -> int:
                     await page.wait_for_timeout(1500)
                 except Exception:  # noqa: BLE001
                     problems.append({'page': name, 'width': label, 'error': 'page still running after 90 s'})
+                if name in CLICK:
+                    try:
+                        await page.get_by_role('button', name=CLICK[name], exact=True).first.click()
+                        await page.wait_for_timeout(1000)
+                        await page.wait_for_function(RUN_FINISHED, timeout=90_000)
+                        await page.wait_for_timeout(1500)
+                    except Exception as e:  # noqa: BLE001
+                        problems.append({'page': name, 'width': label, 'error': f'could not press {CLICK[name]!r}: {e}'})
                 timings.append({'page': name, 'width': label, 'seconds': round(time.monotonic() - t0, 1)})
                 await page.screenshot(path=str(out / f'{name}-{label}.png'), full_page=(label == 'desktop'))
                 text = await page.inner_text('body')
