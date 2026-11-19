@@ -16,7 +16,7 @@ from data import store
 from insiders_clean import ideas
 from screens import moves
 from screens.ctx import load, need_data
-from ui import kit
+from ui import dates, kit
 from ui.kit import esc
 
 DAYS = 7
@@ -109,14 +109,20 @@ def _names_list(rows: list[str], n: int = 2) -> str:
     return ', '.join(esc(r) for r in rows[:-1]) + (' and ' if len(rows) > 1 else '') + esc(rows[-1]) if rows else ''
 
 
-def _funds_answer() -> tuple[str, str]:
-    """(answer, why) from the fund houses' latest month-end, '' when not collected yet."""
+def _funds_answer(upto=None) -> tuple[str, str]:
+    """(answer, why) from the fund houses' latest month-end (the latest ended by `upto` when given), '' when not
+    collected yet."""
     try:
         st_ = store.table('mf_stock_month')
     except Exception:  # noqa: BLE001 -- the table is optional until the first collection
         return '', ''
     if st_ is None or st_.empty or 'month' not in st_:
         return '', ''
+    if upto is not None:   # a past day picked on Today: the month-ends that had ended by then
+        ends = st_['month'].map(lambda v: pd.Period(v, 'M').end_time.normalize() if pd.notna(v) else pd.NaT)
+        st_ = st_[ends <= pd.Timestamp(upto)]
+        if st_.empty:
+            return '', ''
     m = st_['month'].max()
     x = st_[st_['month'] == m]
     up = x[x['active_net_cr'].gt(0)].sort_values('active_net_cr', ascending=False)['name'].head(3).tolist()
@@ -133,9 +139,12 @@ def today():
     ctx = load()
     if not need_data(ctx):
         return
-    ref = pd.Timestamp(ctx.ref)
+    # a past day (owner, 19 Nov 2026: "a date selector ... must be present"): the page is then the 7 days to that day
+    lo, hi = dates.bounds(ctx.eligible['seen'], hi=ctx.ref)
+    ref = pd.Timestamp(dates.day_picker('today', lo, hi))
+    past = ref < pd.Timestamp(ctx.ref)
     px, _, names = moves.lookups(ctx)
-    d, clubbed = _decisions(ctx, DAYS)
+    d, clubbed = _decisions(ctx, DAYS, ref)
     dl = ctx.deals
     dl = dl[(dl['date'] > ref - pd.Timedelta(days=DAYS)) & (dl['date'] <= ref)] if not dl.empty else dl
     # Today ranks deals by % of the company, which puts small SME names on top (investor check 13 Nov 2026: three of
@@ -151,7 +160,8 @@ def today():
     if sa is not None and not sa.empty:
         srows, _, _ = _sast_rows(sa, names)
         srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
-    _strip(ctx, ['last 7 days', 'NSE + BSE copies merged', 'noise counted, not listed'])
+    _strip(ctx, [f'showing the 7 days to <b>{ref:%d %b %Y}</b>' + (' (a past day)' if past else ''),
+                 'NSE + BSE copies merged', 'noise counted, not listed'])
     head, sub = today_headline(d, names)
     st.html(f'<div class="head ds-head"><div class="ds-kicker">Today · the 7 days to {ref:%d %b %Y}</div><h1>{head}</h1>'
             + (f'<p class="ds-dek">{esc(sub)}</p>' if sub else '') + '</div>'
@@ -160,7 +170,10 @@ def today():
             '<a href="#funds">What did fund managers do?</a><a href="#record">Has this worked before?</a></div>')
     try:   # the market's direction, one line (market_flows: NSE provisional, NSDL, SEBI; each with its own date)
         from screens.market_flows import flows_line
-        fl = flows_line(store.table('market_flows'))
+        mf = store.table('market_flows')
+        if past and mf is not None and not mf.empty and 'date' in mf:   # nothing after the day shown
+            mf = mf[pd.to_datetime(mf['date'], errors='coerce') <= ref]
+        fl = flows_line(mf)
     except Exception:  # noqa: BLE001 -- optional until the first collection
         fl = ''
     if fl:
@@ -216,7 +229,7 @@ def today():
     st.html(_more('stakes', 'All stake changes and pledges'))
 
     # 5. funds
-    fa, fw = _funds_answer()
+    fa, fw = _funds_answer(ref if past else None)
     _qa('What did fund managers do last month?', fa or 'Not collected yet',
         fw or 'The fund houses\' month-end portfolios are being added; until then fund buying shows only in bulk and block deals.', 'funds')
     st.html(_more('funds', 'Funds: bought, sold, new positions and exits'))
@@ -247,10 +260,10 @@ def _today_sast(sa, ref):
     return sa[~late & ~held], int(late.sum()), int((held & ~late).sum())
 
 
-def _decisions(ctx, days: int):
-    """Insider decisions past the bar in the window (buys: ideas._qualifies; sells: promoters past it, others from
-    ideas.BIG_VALUE), and how many were clubbed below it."""
-    ref = ctx.ref
+def _decisions(ctx, days: int, end=None):
+    """Insider decisions past the bar in the `days` days to `end` (the as-of date when not given; buys:
+    ideas._qualifies; sells: promoters past it, others from ideas.BIG_VALUE), and how many were clubbed below it."""
+    ref = pd.Timestamp(end) if end is not None else ctx.ref
     frames, clubbed = [], 0
     for side in ('BUY', 'SELL'):
         d = ideas.decisions(ctx.eligible, ref, side, ctx.shareholding, days)
@@ -270,9 +283,17 @@ def _period(key: str, default: str = '7 days') -> int:
     return opts[pick]
 
 
+def _range(ctx, key: str, *cols, default: str = '1w') -> dates.Range:
+    """The shared date control (ui/dates.py) over these date columns, to the data's as-of date."""
+    return dates.range_picker(key, *dates.bounds(*cols, hi=ctx.ref), default=default)
+
+
 def insiders():
-    days = _period('dt_ins_period')
-    _insider_page(days, f'Insider trades · last {days} days')
+    ctx = load()
+    if not need_data(ctx):
+        return
+    r = _range(ctx, 'insiders', ctx.eligible['seen'])
+    _insider_page(r, f'Insider trades · {dates.describe(r)}')
 
 
 SORTS = {'% of company': 'pct_of_company', '₹ value': 'value'}
@@ -285,23 +306,21 @@ def _sort_by(key: str) -> str:
     return SORTS[pick]
 
 
-def _insider_page(days: int, title: str):
+def _insider_page(r: dates.Range, title: str):
     ctx = load()
-    if not need_data(ctx):
-        return
     px, hold, names = moves.lookups(ctx)
-    d, clubbed = _decisions(ctx, days)
+    d, clubbed = _decisions(ctx, r.days, r.end_ts)
     n_buy = int((d['side'] == 'BUY').sum()) if not d.empty else 0
     n_sell = int((d['side'] == 'SELL').sum()) if not d.empty else 0
     v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
     v_sell = d.loc[d['side'] == 'SELL', 'value'].sum() if not d.empty else 0
-    _strip(ctx, [f'insider filings, last {days} days', 'NSE + BSE copies merged', 'open-market trades only'])
+    _strip(ctx, [f'insider filings made public {esc(dates.label(r))}', 'NSE + BSE copies merged', 'open-market trades only'])
     st.html(f'<div class="head ds-head dt-head"><h1>{esc(title)}</h1>'
             f'<div class="dt-kpis"><div><span>Buying</span><b class="up">{esc(kit.rupees(v_buy))}</b><em>{n_buy} decisions</em></div>'
             f'<div><span>Selling</span><b class="dn">{esc(kit.rupees(v_sell))}</b><em>{n_sell} decisions</em></div>'
             f'<div><span>Clubbed</span><b>{clubbed}</b><em>below the size bar</em></div></div></div>')
     if d.empty:
-        st.html(f'<p class="dt-empty">No open-market insider decisions above the bar in the last {days} days.</p>')
+        st.html(f'<p class="dt-empty">No open-market insider decisions above the bar, {esc(dates.describe(r))}.</p>')
         return
     sort = _sort_by('dt_ins_sort')
     summary = store.artifact('artifacts/track_summary.parquet')
@@ -414,15 +433,21 @@ def situations():
         return
     ref = pd.Timestamp(ctx.ref)
     px, _, names = moves.lookups(ctx)
-    _strip(ctx, ['NSE tender offers', 'rights, QIP and preferential listings', 'prices: last close'])
+    t, rt, q, pf = store.table('tenders'), store.table('rights'), store.table('qip'), store.table('preferential')
+    # one range for every table (owner, 19 Nov 2026); before it, tenders and preferential 60 days, rights and QIPs 120
+    rg = _range(ctx, 'situations', *(f[c] for f, c in ((t, 'offer_close'), (rt, 'allotment_date'), (q, 'allotment_date'),
+                                                        (pf, 'allotment_date')) if f is not None and not f.empty and c in f),
+                default='3m')
+    rng = esc(dates.describe(rg))
+    _strip(ctx, [f'showing {esc(dates.label(rg))}', 'NSE tender offers', 'rights, QIP and preferential listings', 'prices: last close'])
     st.html('<div class="head ds-head dt-head"><h1>Situations</h1><p class="dt-dek">Offers you can tender into, and capital raised, '
             'with the arithmetic done. Spread = offer price against the last close.</p></div>')
 
-    # Tender offers: open, and closed in the last 60 days
-    t = store.table('tenders')
+    # Tender offers: open now (when the range runs to the data's date), and closing inside the range
     if not t.empty:
         t = t.assign(_close=pd.to_datetime(t['offer_close'], errors='coerce'), _open=pd.to_datetime(t['offer_open'], errors='coerce'))
-        t = t[(t['status'] == 'active') | (t['_close'] >= ref - pd.Timedelta(days=60))].sort_values(['_close'], ascending=False)
+        live_now = (t['status'] == 'active') & (rg.end_ts >= ref)
+        t = t[live_now | rg.mask(t['_close'])].sort_values(['_close'], ascending=False)
     # a buyback's record date (buybacks table, matched to its corporate action): shares bought after it do not take part
     # (audit 19 Nov 2026: "FDC buyback ₹500 vs ₹373.90 (+33.7%)" read as a gain open to anyone)
     bb = store.table('buybacks')
@@ -463,21 +488,20 @@ def situations():
             'win': esc(f'{kit.day(r["_open"], with_year=False)} – {kit.day(r["_close"], with_year=False)}') if pd.notna(r['_open']) else '–',
             'left': _chip(f'{left} days left', 'up') if live else _chip('Closed', ''),
         })
-    st.html('<h2 class="dt-h2">Tender offers <span>buybacks, open offers, delistings · open and closed in the last 60 days</span></h2>')
+    st.html(f'<h2 class="dt-h2">Tender offers <span>buybacks, open offers, delistings · open now, or closing {rng}</span></h2>')
     st.html(_table([('co', 'Company', 'l'), ('type', 'Type', 'l'), ('price', 'Offer', 'r'), ('rec', 'Record date', 'r'),
                     ('close', 'Last close', 'r'), ('spread', 'Spread', 'r'), ('size', 'Shares sought', 'r'), ('times', 'Tendered', 'r'),
                     ('acc', 'Acceptance', 'r'), ('win', 'Window', 'r'), ('left', 'Status', 'l')], rows)
-            if rows else f'<p class="dt-empty">No tender offers open or closed in the last 60 days (NSE tender list).{_unconfirmed("tenders")}</p>')
+            if rows else f'<p class="dt-empty">No tender offers open or closing {rng} (NSE tender list).{_unconfirmed("tenders")}</p>')
     if rows:
         st.html('<p class="dt-foot">A buyback takes shares held on its record date: once the date has passed, shares bought now do not '
                 'take part, and the spread is not open to a new buyer. A delisting shows its floor until a price is accepted.</p>')
 
-    # Rights issues (listing stage, last 120 days): shares_listed is the pre-issue base (ratio checks: Ola 2:25, Century 3:8)
-    rt = store.table('rights')
+    # Rights issues (listing stage, allotted in the range): shares_listed is the pre-issue base (ratio checks: Ola 2:25, Century 3:8)
     rrows = []
     if not rt.empty:
         rt = rt[(rt['stage'] == 'listing')].assign(_a=pd.to_datetime(rt['allotment_date'], errors='coerce'))
-        rt = rt[rt['_a'] >= ref - pd.Timedelta(days=120)].sort_values('_a', ascending=False)
+        rt = rt[rg.mask(rt['_a'])].sort_values('_a', ascending=False)
         for r in rt.to_dict('records'):
             p = px.get(r.get('isin')) or {}
             close, offer = p.get('latest_close'), r.get('offer_price')
@@ -498,17 +522,16 @@ def situations():
                           'amt': esc(kit.rupees(r.get('amount_raised'))) if kit._finite(r.get('amount_raised')) is not None else '–',
                           'rec': esc(kit.day(r.get('record_date'), with_year=False)) if r.get('record_date') else '–',
                           'allot': esc(kit.day(r['_a'], with_year=False))})
-    st.html('<h2 class="dt-h2">Rights issues <span>allotted in the last 120 days</span></h2>')
+    st.html(f'<h2 class="dt-h2">Rights issues <span>allotted {rng}</span></h2>')
     st.html(_table([('co', 'Company', 'l'), ('ratio', 'Ratio', 'r'), ('price', 'Issue price', 'r'), ('close', 'Last close', 'r'),
                     ('disc', 'vs close', 'r'), ('dil', 'Dilution', 'r'), ('amt', 'Raised', 'r'), ('rec', 'Record date', 'r'),
-                    ('allot', 'Allotted', 'r')], rrows) if rrows else '<p class="dt-empty">No rights issues allotted in the last 120 days.</p>')
+                    ('allot', 'Allotted', 'r')], rrows) if rrows else f'<p class="dt-empty">No rights issues allotted {rng}.</p>')
 
-    # QIPs (listing stage, last 120 days): issue price against the SEBI floor
-    q = store.table('qip')
+    # QIPs (listing stage, allotted in the range): issue price against the SEBI floor
     qrows = []
     if not q.empty:
         q = q[q['stage'] == 'listing'].assign(_a=pd.to_datetime(q['allotment_date'], errors='coerce'))
-        q = q[q['_a'] >= ref - pd.Timedelta(days=120)].sort_values('_a', ascending=False)
+        q = q[rg.mask(q['_a'])].sort_values('_a', ascending=False)
         for r in q.to_dict('records'):
             p = px.get(r.get('isin')) or {}
             close = p.get('latest_close')
@@ -519,17 +542,16 @@ def situations():
                           'since': (f'<span class="{"up" if since > 0 else "dn"}">{since:+.1f}%</span>' if since is not None else '–'),
                           'amt': esc(kit.rupees(r.get('amount_raised'))) if kit._finite(r.get('amount_raised')) is not None else '–',
                           'n': _num(r.get('allottees'), '{:,.0f}'), 'allot': esc(kit.day(r['_a'], with_year=False))})
-    st.html('<h2 class="dt-h2">QIPs <span>allotted in the last 120 days · issue price against the SEBI floor</span></h2>')
+    st.html(f'<h2 class="dt-h2">QIPs <span>allotted {rng} · issue price against the SEBI floor</span></h2>')
     st.html(_table([('co', 'Company', 'l'), ('floor', 'SEBI floor', 'r'), ('price', 'Issue price', 'r'), ('vs', 'vs floor', 'r'),
                     ('close', 'Last close', 'r'), ('since', 'Since issue', 'r'), ('amt', 'Raised', 'r'), ('n', 'Allottees', 'r'),
-                    ('allot', 'Allotted', 'r')], qrows) if qrows else '<p class="dt-empty">No QIPs allotted in the last 120 days.</p>')
+                    ('allot', 'Allotted', 'r')], qrows) if qrows else f'<p class="dt-empty">No QIPs allotted {rng}.</p>')
 
-    # Preferential (listing stage, last 60 days): price against the ICDR minimum where it is filed or computed
-    pf = store.table('preferential')
+    # Preferential (listing stage, allotted in the range): price against the ICDR minimum where it is filed or computed
     prows = []
     if not pf.empty:
         pf = pf[pf['stage'] == 'listing'].assign(_a=pd.to_datetime(pf['allotment_date'], errors='coerce'))
-        pf = pf[pf['_a'] >= ref - pd.Timedelta(days=60)].sort_values('_a', ascending=False)
+        pf = pf[rg.mask(pf['_a'])].sort_values('_a', ascending=False)
         for r in pf.to_dict('records'):
             p = px.get(r.get('isin')) or {}
             close = p.get('latest_close')
@@ -542,10 +564,10 @@ def situations():
                           'since': (f'<span class="{"up" if since > 0 else "dn"}">{since:+.1f}%</span>' if since is not None else '–'),
                           'amt': esc(kit.rupees(r.get('amount_raised'))) if kit._finite(r.get('amount_raised')) is not None else '–',
                           'allot': esc(kit.day(r['_a'], with_year=False))})
-    st.html('<h2 class="dt-h2">Preferential allotments <span>last 60 days · price against the SEBI (ICDR) minimum where known</span></h2>')
+    st.html(f'<h2 class="dt-h2">Preferential allotments <span>allotted {rng} · price against the SEBI (ICDR) minimum where known</span></h2>')
     st.html(_table([('co', 'Company', 'l'), ('to', 'Allotted to', 'l'), ('price', 'Issue price', 'r'), ('vs', 'vs ICDR min', 'r'),
                     ('close', 'Last close', 'r'), ('since', 'Since issue', 'r'), ('amt', 'Raised', 'r'), ('allot', 'Allotted', 'r')],
-                   prows[:40]) if prows else '<p class="dt-empty">No preferential allotments listed in the last 60 days.</p>')
+                   prows[:40]) if prows else f'<p class="dt-empty">No preferential allotments listed {rng}.</p>')
     if len(prows) > 40:
         st.html(f'<p class="dt-foot">{len(prows) - 40} more preferential allotments in the period.</p>')
 
@@ -630,16 +652,15 @@ def deals():
     ctx = load()
     if not need_data(ctx):
         return
-    days = _period('dt_deals_period')
-    ref = pd.Timestamp(ctx.ref)
+    r = _range(ctx, 'deals', ctx.deals['date'] if not ctx.deals.empty else None)
     _, _, names = moves.lookups(ctx)
     d = ctx.deals
-    d = d[(d['date'] > ref - pd.Timedelta(days=days)) & (d['date'] <= ref)] if not d.empty else d
+    d = d[r.mask(d['date'])] if not d.empty else d
     rows, churn, clubbed_small = _deal_rows(d)
     rows = club_blocks(rows)
     rows.sort(key=lambda x: -(x['_v'] or 0))
-    _strip(ctx, [f'bulk and block deals, last {days} days', 'NSE and BSE', 'market makers clubbed'])
-    st.html(f'<div class="head ds-head dt-head"><h1>Bulk and block deals · last {days} days</h1>'
+    _strip(ctx, [f'bulk and block deals {esc(dates.label(r))}', 'NSE and BSE', 'market makers clubbed'])
+    st.html(f'<div class="head ds-head dt-head"><h1>Bulk and block deals · {esc(dates.describe(r))}</h1>'
             f'<div class="dt-kpis"><div><span>Deals</span><b>{len(rows)}</b><em>₹1 Cr and over{", 80 drawn" if len(rows) > 80 else ""}</em></div>'
             f'<div><span>Market makers</span><b>{churn}</b><em>legs clubbed</em></div>'
             f'<div><span>Small</span><b>{clubbed_small}</b><em>legs under ₹1 Cr</em></div></div></div>')
@@ -733,17 +754,18 @@ def stakes():
     ctx = load()
     if not need_data(ctx):
         return
-    days = _period('dt_stakes_period', '30 days')
-    ref = pd.Timestamp(ctx.ref)
+    en = ctx.encumbrances
+    r = _range(ctx, 'stakes', ctx.sast['broadcast_ts'] if ctx.sast is not None and 'broadcast_ts' in ctx.sast else None,
+               en['broadcast_date'] if en is not None and 'broadcast_date' in en else None, default='1m')
     _, _, names = moves.lookups(ctx)
-    _strip(ctx, [f'SAST Reg 29 and Reg 31 filings, last {days} days', 'NSE and BSE'])
-    st.html(f'<div class="head ds-head dt-head"><h1>Stakes and pledges · last {days} days</h1>'
+    _strip(ctx, [f'SAST Reg 29 and Reg 31 filings made public {esc(dates.label(r))}', 'NSE and BSE'])
+    st.html(f'<div class="head ds-head dt-head"><h1>Stakes and pledges · {esc(dates.describe(r))}</h1>'
             '<p class="dt-dek">Holders crossing 5%, 10%, 25% or moving 2% or more, and promoter pledges netted per day.</p></div>')
     sa = ctx.sast
     rows, inter, tiny = [], 0, 0
     if sa is not None and not sa.empty:
         sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
-        sa = sa[(sa['_f'] > ref - pd.Timedelta(days=days)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
+        sa = sa[r.mask(sa['_f'])]
         rows, inter, tiny = _sast_rows(sa, names)
     st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · inter-se transfers and moves under 0.1% clubbed</span></h2>')
     st.html(_table(SAST_COLS, rows[:80]) if rows else f'<p class="dt-empty">No SAST Reg 29 filings in the period.{_unconfirmed("sast")}</p>')
@@ -751,7 +773,7 @@ def stakes():
             'Stake: the figure before the arrow is derived (after less the move); NSE files the stake after and the move.</p>')
 
     try:
-        _pledges(ctx, ref, days, names)
+        _pledges(ctx, r, names)
     except Exception as exc:   # say what failed instead of breaking the page; shown, not hidden
         st.html(f'<p class="dt-empty">Pledges could not be drawn: {esc(type(exc).__name__)}: {esc(str(exc)[:200])}</p>')
 
@@ -768,12 +790,12 @@ def _encumbered_after(g):
     return float(last.sum()) if last.notna().any() else None
 
 
-def _pledges(ctx, ref, days, names):
+def _pledges(ctx, r: dates.Range, names):
     en = ctx.encumbrances
     prow = []
     if en is not None and not en.empty:
         en = en.assign(_d=pd.to_datetime(en['broadcast_date'], errors='coerce'))
-        en = en[(en['_d'] > ref - pd.Timedelta(days=days)) & (en['_d'] <= ref)]
+        en = en[r.mask(en['_d'])]
         sign = en['event_type'].map({'Creation': 1, 'Release': -1, 'Invocation': -1}).fillna(0)
         en = en.assign(_net=pd.to_numeric(en['shares'], errors='coerce') * sign)
         key = 'isin' if 'isin' in en else 'symbol'   # the site's encumbrances table has no ISIN (DATA_DICTIONARY)
@@ -993,16 +1015,22 @@ def calendar():
     if not need_data(ctx):
         return
     ref = pd.Timestamp(ctx.ref).normalize()
-    _strip(ctx, ['board meetings on fund raising or buybacks', 'tender windows closing', 'lock-ins ending', 'record dates'])
-    st.html('<div class="head ds-head dt-head"><h1>Calendar · next 30 days</h1>'
+    _, up = filings_all._upcoming(ctx, ctx.ref, filings_all._names(ctx))
+    a = ctx.actions
+    # a forward range (owner, 19 Nov 2026): from the data's date to the furthest date the filings name
+    rg = dates.range_picker('calendar', *dates.bounds(up['made_public'] if up is not None and not up.empty else None,
+                                                     a['ex_date'] if a is not None and not a.empty and 'ex_date' in a else None,
+                                                     hi=ref, forward=True), default='1m', forward=True)
+    _strip(ctx, [f'showing {esc(dates.label(rg, forward=True))}', 'board meetings on fund raising or buybacks', 'tender windows closing',
+                 'lock-ins ending', 'record dates'])
+    st.html(f'<div class="head ds-head dt-head"><h1>Calendar · {esc(dates.describe(rg))}</h1>'
             '<p class="dt-dek">Events that can move a stock, from the filings: meetings on fund raising or a buyback, offers closing, '
             'lock-ins ending, and record dates for buybacks, bonuses, splits and rights.</p></div>')
     rows = []
-    _, up = filings_all._upcoming(ctx, ctx.ref, filings_all._names(ctx))
     small_locks = 0
     if up is not None and not up.empty:
         up = up.assign(_d=pd.to_datetime(up['made_public'], errors='coerce').dt.normalize())
-        up = up[(up['_d'] >= ref) & (up['_d'] <= ref + pd.Timedelta(days=30))]
+        up = up[rg.mask(up['_d'])]
         lock = up['what'].astype(str).str.lower().str.contains('lock-in')
         for (d, sym, co), g in up[lock].groupby(['_d', 'nse_symbol', 'company'], dropna=False):
             n, val = len(g), pd.to_numeric(g['value'], errors='coerce').sum()
@@ -1017,11 +1045,10 @@ def calendar():
             rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('nse_symbol')), 'what': esc(str(r.get('what') or '')),
                          'detail': f'<span class="wrap">{esc(_words(r.get("what_sub")))}</span>',
                          'size': esc(kit.rupees(r['value'])) if kit._finite(r.get('value')) is not None else ''})
-    a = ctx.actions
     if a is not None and not a.empty and 'ex_date' in a:
         a = a.assign(_d=pd.to_datetime(a['ex_date'], errors='coerce').dt.normalize())
         keep = a['purpose'].astype(str).str.lower().isin(['buyback', 'bonus', 'split', 'rights', 'consolidation'])
-        for r in a[keep & (a['_d'] >= ref) & (a['_d'] <= ref + pd.Timedelta(days=30))].to_dict('records'):
+        for r in a[keep & rg.mask(a['_d'])].to_dict('records'):
             rows.append({'_d': r['_d'], 'co': _company(r.get('company'), r.get('symbol')),
                          'what': esc(f'Ex-date: {str(r.get("purpose") or "").capitalize()}'),
                          'detail': f'<span class="wrap">{esc(str(r.get("subject") or "")[:120])}</span>', 'size': ''})
@@ -1030,18 +1057,22 @@ def calendar():
                 away=_chip('today', 'wn') if r['_d'] == ref else esc('tomorrow' if (r['_d'] - ref).days == 1 else f'in {(r["_d"] - ref).days} days')) for r in rows]
     st.html(_table([('day', 'Date', 'l'), ('away', '', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'),
                     ('detail', 'Detail', 'l'), ('size', 'Size', 'r')], out[:150]) if out else
-            '<p class="dt-empty">Nothing on the calendar in the next 30 days.</p>')
+            f'<p class="dt-empty">Nothing on the calendar, {esc(dates.describe(rg))}.</p>')
     st.html('<p class="dt-foot">An ex-date is the first day a buyer no longer gets the benefit: buy before it. Dividends are left out.'
             + (f' {small_locks} lock-ins of under ₹1 Cr each counted, not listed.' if small_locks else '') + '</p>')
 
 
 # ---- Company: the same dense tables, one company, 12 months (R8) ------------------------------------------------------
 
-def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
-    """Insider decisions, deals and SAST stake changes of one company, as on the topic pages. Every decision is listed
-    (no size bar: on its own page a company's small decisions are the story); market makers, inter-se transfers and
-    moves under 0.1% stay counted, not listed."""
+def company_tables(ctx, isin: str | None, sym: str, days: int = 365, rng: dates.Range | None = None) -> None:
+    """Insider decisions, deals and SAST stake changes of one company, as on the topic pages, over `rng` (the company
+    page's date control) or the `days` days to the as-of date. Every decision is listed (no size bar: on its own page a
+    company's small decisions are the story); market makers, inter-se transfers and moves under 0.1% stay counted."""
     ref = pd.Timestamp(ctx.ref)
+    if rng is not None:
+        ref, days = rng.end_ts, rng.days
+    span = esc(dates.describe(rng)) if rng is not None else '12 months'
+    rng = rng or dates.Range((ref - pd.Timedelta(days=days - 1)).date(), ref.date(), dates.CUSTOM)
     px, _, names = moves.lookups(ctx)
     frames = []
     elig = ctx.eligible[ctx.eligible['isin'] == isin] if isin and not ctx.eligible.empty else ctx.eligible.iloc[0:0]
@@ -1050,18 +1081,18 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
         if not d.empty:
             frames.append(d.assign(side=side))
     d = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    st.html('<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · 12 months · each decision added up</span></h2>')
+    st.html(f'<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · {span} · each decision added up</span></h2>')
     st.html(_insider_table(ctx, d, px, names, company_col=False) if not d.empty
-            else '<p class="dt-empty">No promoter, director or KMP traded on the market in 12 months.</p>')
+            else f'<p class="dt-empty">No promoter, director or KMP traded on the market, {span}.</p>')
 
     dl = ctx.deals[ctx.deals['isin'] == isin] if isin and not ctx.deals.empty else ctx.deals.iloc[0:0]
-    dl = dl[(dl['date'] > ref - pd.Timedelta(days=days)) & (dl['date'] <= ref)] if not dl.empty else dl
+    dl = dl[rng.mask(dl['date'])] if not dl.empty else dl
     rows, churn, small = _deal_rows(dl) if not dl.empty else ([], 0, 0)
     # one block's many buyers are one line naming the largest (IIFL Finance, 18 Nov 2026: ~50 buyer lines smallest first
     # under FIH Mauritius's sale buried SBI MF's ₹503 Cr); newest day first, largest first within a day
     rows = club_blocks(rows)
     rows.sort(key=lambda x: (pd.Timestamp(x['date']).normalize(), x['_v'] or 0), reverse=True)
-    st.html('<h2 class="dt-h2">Bulk and block deals <span>12 months · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>')
+    st.html(f'<h2 class="dt-h2">Bulk and block deals <span>{span} · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>')
     st.html(_deal_table(rows, names, limit=60, company_col=False, with_year=True))
     if churn or small or len(rows) > 60:
         st.html(f'<p class="dt-foot">Clubbed: <b>{churn}</b> market-maker legs, <b>{small}</b> legs under ₹1 Cr'
@@ -1072,12 +1103,12 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
     if sa is not None and not sa.empty and 'symbol' in sa:
         sa = sa[sa['symbol'].astype(str).str.upper() == sym]
         sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
-        sa = sa[(sa['_f'] > ref - pd.Timedelta(days=days)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
+        sa = sa[rng.mask(sa['_f'])]
         if not sa.empty:
             srows, inter, tiny = _sast_rows(sa, names, with_year=True)
-    st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · 12 months</span></h2>')
+    st.html(f'<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · {span}</span></h2>')
     st.html(_table([c for c in SAST_COLS if c[0] != 'co'], srows[:60]) if srows
-            else '<p class="dt-empty">No SAST Reg 29 filing for this company in 12 months.</p>')
+            else f'<p class="dt-empty">No SAST Reg 29 filing for this company, {span}.</p>')
     if inter or tiny:
         st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers, <b>{tiny}</b> moves under 0.1% of the company.</p>')
 
@@ -1094,7 +1125,6 @@ DIRECTORY = [   # (title, client types, rupee floor over the period)
     ('Large individuals', ('individual',), 10e7),
     ('Large companies and trusts', ('corporate', 'trust'), 10e7),
 ]
-DIRECTORY_PERIODS = {'90 days': 90, '12 months': 365, 'Since Oct 2025': 4000}
 
 
 def investors_directory():
@@ -1105,23 +1135,23 @@ def investors_directory():
     ctx = load()
     if not need_data(ctx):
         return
-    pick = st.segmented_control('Period', list(DIRECTORY_PERIODS), default='12 months', key='dt_dir_period',
-                                label_visibility='collapsed') or '12 months'
-    days = DIRECTORY_PERIODS[pick]
     d = ctx.deals
-    _strip(ctx, ['bulk and block deals, NSE and BSE', 'type read from the name', 'market makers and promoters left out'])
+    # the shared control (owner, 19 Nov 2026), to the last deal day held; it replaced 90 days / 12 months / since Oct 2025
+    rg = dates.range_picker('investors', *dates.bounds(d['date'] if d is not None and not d.empty and 'date' in d else None),
+                            default='1y')
+    _strip(ctx, [f'bulk and block deals {esc(dates.label(rg))}', 'NSE and BSE', 'type read from the name',
+                 'market makers and promoters left out'])
     st.html('<div class="head ds-head dt-head"><h1>Investors</h1><p class="dt-dek">Every mutual fund and large investor in the '
             'bulk and block deals, each name a link to everything it bought and sold.</p></div>')
     if d is None or d.empty or 'client_type' not in d:
         st.html('<p class="dt-empty">No deals with a client type yet.</p>')
         return
-    ref = pd.to_datetime(d['date'], errors='coerce').max()
-    w = d[(pd.to_datetime(d['date'], errors='coerce') > ref - pd.Timedelta(days=days))
+    w = d[rg.mask(d['date'])
           & d['is_primary'].astype('boolean').fillna(False)
           & ~d['client_is_market_maker'].astype('boolean').fillna(False)
           & ~d.get('client_is_promoter', pd.Series(False, index=d.index)).astype('boolean').fillna(False)]
     if w.empty:
-        st.html('<p class="dt-empty">No deals in the period.</p>')
+        st.html(f'<p class="dt-empty">No deals, {esc(dates.describe(rg))}.</p>')
         return
     gid = w['investor_group_id'].where(w['investor_group_id'].notna(), w['client_id']) if 'investor_group_id' in w else w['client_id']
     name = w['investor_group'].where(w['investor_group'].notna(), w['client_name']) if 'investor_group' in w else w['client_name']

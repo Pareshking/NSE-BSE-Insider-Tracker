@@ -8,7 +8,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit, lwchart
+from ui import dates, kit, lwchart
 from ui.kit import esc
 from ui.table import facts
 
@@ -370,10 +370,11 @@ def render():
     prom = win[win['person_role'].isin(signals.PROMOTER_ROLES)]
     off = win[win['person_role'].isin(['director', 'kmp'])]
     d = mine(ctx.deals) if not ctx.deals.empty else pd.DataFrame()
+    d_all = d
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
+        d = d_all = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))   # every deal, for the history below
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]
-        d = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))
     shd = ctx.shareholding
     mine_sh = shd[(shd['symbol'].astype(str).str.upper() == sym) | ((shd['isin'] == isin) if isin and 'isin' in shd else False)] \
         if not shd.empty else pd.DataFrame()
@@ -474,10 +475,15 @@ def render():
     ds.html('<dl class="ds-w ds-checks">' + ''.join(f'<dt>{esc(k)}</dt><dd class="{"warn" if k in amber else ""}">{esc(v)}</dd>'
                                                    for k, v in checks.items() if v) + '</dl>')
 
-    # ---- Money decisions, 12 months: the dense tables of the topic pages (redesign 13 Nov 2026, R8) ----
+    # ---- Money decisions: the dense tables of the topic pages (redesign 13 Nov 2026, R8), over the page's date range
+    # (owner, 19 Nov 2026: "a date selector or a date range selector must be present"); the range also cuts "Every filing"
     from screens import proto
+    ds.section('History', 'Insider decisions, deals, stake changes and every filing below, over these dates')
     with ds.inside():
-        proto.company_tables(ctx, isin, sym)
+        rng = dates.range_picker('company', *dates.bounds(t['broadcast_date'] if 'broadcast_date' in t else None,
+                                                          d_all['date'] if not d_all.empty else None, hi=ctx.ref),
+                                 default='1y', caption=True)
+        proto.company_tables(ctx, isin, sym, rng=rng)
     if other:
         ds.section('Raises, pledges and big holders', '12 months')
         ds.stories(other)
@@ -539,8 +545,12 @@ def render():
     _public_holders(store.table('public_holders'), sym, isin, mine_sh)
 
     # ---- Every filing, the noise one tap away ----
-    tl = _timeline(ctx, sym, t, d, raises)
-    ds.section('Every filing', 'Newest first; a row opens to its facts and the filing. Staff trades, ESOPs, gifts and transfers are off until picked')
+    tl = _timeline(ctx, sym, t, d_all, raises)
+    if not tl.empty:   # inside the range; dates ahead of the data's date (meetings, ex-dates) with a range that runs to it
+        ahead = pd.to_datetime(tl['date'], errors='coerce').gt(pd.Timestamp(ctx.ref)) & (rng.end_ts >= pd.Timestamp(ctx.ref))
+        tl = tl[rng.mask(tl['date']) | ahead]
+    ds.section('Every filing', f'{dates.describe(rng)}, newest first; a row opens to its facts and the filing. Staff trades, ESOPs, '
+                               'gifts and transfers are off until picked')
     kinds = list(dict.fromkeys(tl['what'])) if not tl.empty else []
     kinds = [k for k in kinds if k in MONEY] + [k for k in kinds if k not in MONEY]
     counts = tl['what'].value_counts().to_dict() if not tl.empty else {}
@@ -552,5 +562,5 @@ def render():
         kit.table(shown, [
             kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
             kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],
-            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
+            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text=f'No filings for this company, {dates.describe(rng)}.',
             detail=lambda r: facts(r['_facts'], r['_links']))
