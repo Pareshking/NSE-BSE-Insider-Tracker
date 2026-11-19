@@ -4,6 +4,25 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## ICICI Prudential and AlphaGrep, 19 Nov 2026 (branch `mf-icici`, draft PR)
+
+The Fund house probe now keeps every answer's body as the run's artifact and makes the sites' own list calls
+(`scripts/mf_probe_follow.py`). What the runner's "200"s were: ICICI's `apimf.icicipruamc.com` answers a call without
+a JSON Accept with an F5 bot-defence page ("Please enable JavaScript to view the page content. Your support ID is
+...", TSPD cookies), and a JSON call without the site's `env: api` header with "Original Status Code: 404" and the
+site's 404 page; with the headers the site's own request code sends it answers JSON (categories, then the Monthly
+Portfolio Disclosures files list: one zip a month, a workbook per scheme, at www.icicipruamc.com/blob). AlphaGrep's
+200 was the Angular page shell; its list is `cmsweb.alphagrepmf.ai/api/portfolios` (Flexi Cap, Multi Asset
+Allocation, a liquid fund of funds; monthly from July 2026). Both added (`icici`, `alphagrep`; `apis2.py`) and taken
+off `NOT_COLLECTED`; both answer only a GitHub runner, which is where the collector runs. Dispatched runs, 2026-09 /
+2026-10: ICICI 728 / 737 ISINs (Rs 7,12,110 / 7,11,748 Cr). The AlphaGrep run (44611798421) was cancelled
+while queued behind other R2 writers and not re-sent (it would have displaced a queued price backfill); its October
+files, fetched by the probe on a runner, parse to 177 ISINs, Rs 87 Cr (Flexi Cap; the fund of funds holds no
+shares). Kotak (Radware CAPTCHA), Navi (403) and Union (no
+connection) still not collected. BSE route for ICICI: none of ICICI Prudential's portfolio filings is among BSE's
+corporate announcements of 6-10 Nov 2026 (the feed the collectors read), so no PDF was assessed. **Next:** merge;
+dispatch `alphagrep` for 2026-07..2026-10 and `icici` for 2025-10..2026-08 when the R2 queue is free.
+
 ## Price jumps, 19 Nov 2026 (branch `price-jumps`, draft PR)
 
 IIFL Finance's line showed ~330 -> ~600 on 30 Jul 2026 ("Up 131.7% in a year"): NSE's block window series (BL,

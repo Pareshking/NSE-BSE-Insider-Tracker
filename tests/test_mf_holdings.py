@@ -240,6 +240,45 @@ def test_not_collected_names_houses_that_are_not_collected():
     assert 'Mahindra Manulife Mutual Fund' in names
 
 
+def test_icici_files_list_gives_the_month_zip():
+    """ICICI's files list as a GitHub runner got it (mf-probe, 19 Nov 2026), cut to three entries."""
+    from collectors.mf_portfolios import apis2
+    from collectors.mf_portfolios.houses import BY_KEY, NOT_COLLECTED
+    files = [{'title': {'text': f'Monthly Portfolio Disclosure {mn} 2026'},
+              'url': f'/downloads/Files/Monthly Portfolio Disclosures/2026/{ab}/Monthly-Portfolio-Disclosure-{mn}-2026.zip'}
+             for mn, ab in (('October', 'Oct'), ('September', 'Sep'), ('August', 'Aug'))]
+    links = apis2.icici_links(files)
+    oct_, sep = (find.candidates(links, mth, BY_KEY['icici']) for mth in ('2026-10', '2026-09'))
+    assert oct_ == ['https://www.icicipruamc.com/blob/downloads/Files/Monthly Portfolio Disclosures/2026/Oct/'
+                    'Monthly-Portfolio-Disclosure-October-2026.zip']
+    assert len(sep) == 1 and sep[0].endswith('September-2026.zip')
+    assert apis2._ist_day(1793422800000).isoformat() == '2026-10-31'   # applicableMonth: the month-end in IST
+    assert 'ICICI Prudential Mutual Fund' not in [n for n, _ in NOT_COLLECTED]
+
+
+def test_alphagrep_portfolios_list_gives_each_schemes_workbook():
+    """AlphaGrep's /api/portfolios entries as a GitHub runner got them (mf-probe, 19 Nov 2026), cut down."""
+    from collectors.mf_portfolios import apis2
+    from collectors.mf_portfolios.houses import BY_KEY
+
+    def e(scheme, title, name, url):
+        return {'title': title, 'accordian_name': {'Name': 'Monthly'}, 'scheme': {'Name': scheme},
+                'file': {'name': name, 'url': url}}
+    entries = [e('AlphaGrep Flexi Cap Fund', 'October Report', 'October_2026',
+                 '/uploads/Alpha_Grep_Flexi_Cap_Fund_Monthly_Portfolio_Report_Oct_2026_dedb94d139.xls'),
+               e('AlphaGrep Multi Asset Allocation Fund', 'October Report', 'October_2026.xls',
+                 '/uploads/October_2026_f0f15b88df.xls'),
+               e('AlphaGrep Flexi Cap Fund', 'September Report', 'September_2026.xls',
+                 '/uploads/September_2026_6166646f5d.xls'),
+               {'title': 'October Report', 'scheme': {'Name': 'X'}, 'file': {}}]   # no file: left out
+    links = apis2.alphagrep_links(entries)
+    assert len(links) == 3 and links[1][0] == ('AlphaGrep Multi Asset Allocation Fund Monthly portfolio '
+                                               'October Report October_2026.xls')
+    got = find.candidates(links, '2026-10', BY_KEY['alphagrep'])
+    assert sorted(got) == ['https://cmsweb.alphagrepmf.ai/uploads/Alpha_Grep_Flexi_Cap_Fund_Monthly_Portfolio_Report_'
+                           'Oct_2026_dedb94d139.xls', 'https://cmsweb.alphagrepmf.ai/uploads/October_2026_f0f15b88df.xls']
+
+
 # ---- Scheme by scheme (19 Nov 2026) -------------------------------------------------------------------------------
 
 def test_scheme_key_matches_one_scheme_across_spellings_and_sources():

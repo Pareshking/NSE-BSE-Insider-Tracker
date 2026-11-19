@@ -153,6 +153,11 @@ HOUSES = [
     # authorised that declaration for this collector (19 Nov 2026). One workbook for all schemes.
     House('mahindra', 'Mahindra Manulife Mutual Fund', apis2.MAHINDRA, must=r'monthly portfolio disclosure',
           api=apis2.mahindra),
+    # One zip a month (a workbook per scheme); the list service answers a GitHub runner, not a machine outside India.
+    House('icici', 'ICICI Prudential Mutual Fund', apis2.ICICI, must=r'monthly portfolio', api=apis2.icici),
+    # A workbook per scheme (Flexi Cap, Multi Asset Allocation, a liquid fund of funds), from its content service.
+    House('alphagrep', 'AlphaGrep Mutual Fund', apis2.ALPHAGREP, mode='all', must=r'monthly portfolio',
+          api=apis2.alphagrep),
     House('helios', 'Helios Mutual Fund', 'https://www.heliosmf.in/portfolio-disclosure', mode='all',
           must=r'month?t?ly[ -_]portfolio'),   # a workbook per scheme; some names are misspelt 'Monthtly'
 ]
@@ -198,12 +203,10 @@ PENSION = [
 # cloud machine; none is worked around (no CAPTCHA or bot check is solved). .github/workflows/mf-probe.yml asks the
 # blocked ones again from a GitHub runner.
 NOT_COLLECTED = [
-    ('ICICI Prudential Mutual Fund', "its file service (apimf.icicipruamc.com) resets connections from outside India"),
     ('Kotak Mahindra Mutual Fund', 'its file list is behind a CAPTCHA (Radware bot check)'),
     ('Navi Mutual Fund', 'its site answers a Cloudflare bot check'),
     ('Union Mutual Fund', 'its site refuses connections from outside India'),
     ('ASK Mutual Fund', 'a liquid fund only so far: no equity'),
-    ('AlphaGrep Mutual Fund', "its site's firewall blocks the request"),
     ('Monarch Mutual Fund', 'an overnight fund only: no equity'),
     ('Carnelian Mutual Fund', 'a liquid fund only so far: no equity'),
     ('IL&FS Mutual Fund (IDF)', 'an infrastructure debt fund: no equity'),
