@@ -726,7 +726,7 @@ def symbol_prices(r2, sym: str, start: str, end: str) -> int:
     return 0
 
 
-def price_jump_audit(r2) -> int:
+def price_jump_audit(r2, check=()) -> int:
     """PRICE_JUMPS: the price-jump audit (insiders_clean/price_jumps.py) on the whole price layer with this branch's
     code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only."""
     from insiders_clean import adjust, price_jumps, slim
@@ -758,6 +758,16 @@ def price_jump_audit(r2) -> int:
     uni = set(uni.loc[uni['in_universe'].astype(bool), 'isin']) if uni is not None and 'in_universe' in uni else None
     meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
             .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name']])
+    for sym in check:
+        for i in meta.loc[meta['symbol'].astype(str).str.upper() == sym, 'isin']:
+            line = close[i].dropna() if i in close else pd.Series(dtype=float)
+            if line.empty:
+                continue
+            yr = line.loc[line.index.max() - pd.Timedelta(days=365):]
+            ff = f[(f['isin'] == i) & (f['kind'] == 'split_bonus')]
+            print(f'--- {sym} {i}: last {line.iloc[-1]:.2f} on {line.index[-1]:%Y-%m-%d}; a year {yr.iloc[-1] / yr.iloc[0] - 1:+.1%} '
+                  f'(from {yr.iloc[0]:.2f} on {yr.index[0]:%Y-%m-%d}); 52w high {yr.max():.2f}, low {yr.min():.2f}; largest one-day '
+                  f'|move| {yr.pct_change().abs().max():.3f}; factors applied {ff[["exchange", "date", "factor", "kind_basis"]].to_dict("records")}')
     rows = price_jumps.jumps(raw, close, f, acts, start=PRODUCT_START, universe=uni, meta=meta)
     rep = price_jumps.report(rows, raw, start=PRODUCT_START, left_out=left_out)
     print({k: v for k, v in rep.items() if k != 'rows'})
@@ -805,8 +815,8 @@ def main() -> int:
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
         _, code, day = syms[0].split(':')
         return raw_deal_legs(r2, code, day)
-    if syms == ['PRICE_JUMPS']:   # every 40% one-day move on the site's lines, matched or unexplained (19 Nov)
-        return price_jump_audit(r2)
+    if syms and syms[0].split(':')[0] == 'PRICE_JUMPS':   # every 40% one-day move on the site's lines (19 Nov); PRICE_JUMPS:SYM,SYM2 also prints those lines
+        return price_jump_audit(r2, [syms[0].split(':', 1)[1]] + syms[1:] if ':' in syms[0] else [])
     if syms and syms[0].startswith('PRICES:'):  # one company's prints, factors, site line and actions (19 Nov)
         _, sym, start, end = syms[0].split(':')
         return symbol_prices(r2, sym, start, end)

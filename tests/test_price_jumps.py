@@ -151,6 +151,22 @@ def test_filed_bonus_after_a_gap_is_applied():
     assert abs(close['INE603D01017'].pct_change().iloc[-1]) < 0.05
 
 
+def test_bse_keeps_its_factor_on_a_day_nse_did_not_print():
+    # PANORAMA: BSE-only on its 5:2 bonus (05 Dec 2025), on NSE from Aug 2026. The BSE factor must stay.
+    i = 'INE258R01028'
+    rows = [_row('2025-12-04', 164.35, 170.00, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2025-12-05', 48.40, 164.35, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2026-08-17', 60.0, 59.0, isin=i, sym='PANORAMA'), _row('2026-08-17', 60.0, 59.0, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2026-08-18', 61.0, 60.0, isin=i, sym='PANORAMA'), _row('2026-08-18', 61.0, 60.0, ex='BSE', series='B', isin=i, sym='PANORAMA')]
+    acts = pd.DataFrame({'isin': [i], 'purpose': ['bonus'], 'ex_date': ['2025-12-05'], 'ratio': ['5:2']})
+    close, _, f = slim.adjusted_panels(pd.DataFrame(rows), actions=acts)
+    b = f[(f['exchange'] == 'BSE') & (f['date'] == '2025-12-05')].iloc[0]
+    assert b['kind'] == 'split_bonus' and np.isclose(b['factor'], 2 / 7)
+    assert abs(close[i].loc['2025-12-04':'2025-12-05'].pct_change().iloc[-1]) < 0.05
+    # Where NSE printed, BSE still takes NSE's factor.
+    assert f[(f['exchange'] == 'BSE') & (f['date'] == '2026-08-18')]['kind'].item() == 'none'
+
+
 def test_action_matched_by_symbol():
     raw = pd.DataFrame({'INE00000N012': [100.0, 10.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02']))
     raw = raw.rename_axis(index='date', columns='isin')

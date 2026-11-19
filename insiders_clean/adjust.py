@@ -307,9 +307,13 @@ def inherit_nse(factors: pd.DataFrame) -> pd.DataFrame:
     cols = ['factor', 'kind'] + (['kind_basis'] if 'kind_basis' in factors else [])
     ren = {c: f'n_{c}' for c in cols}
     nse = factors[factors['exchange'] == 'NSE'][['isin', 'date'] + cols].rename(columns=ren)
-    dual = set(nse['isin'])
+    nse['_on_nse'] = True
     out = factors.merge(nse, on=['isin', 'date'], how='left')
-    take = (out['exchange'] == 'BSE') & out['isin'].isin(dual)
+    # Only on a date NSE printed: a company that listed on NSE later, or a day NSE has no print, keeps BSE's own
+    # factor (audit 19 Nov 2026: KSE's split of 28 Oct 2025 and PANORAMA's 5:2 bonus of 05 Dec 2025, BSE-only then
+    # and on NSE from Aug 2026, took NSE's missing factor and were never adjusted).
+    take = (out['exchange'] == 'BSE') & out['_on_nse'].eq(True)
+    out = out.drop(columns=['_on_nse'])
     out.loc[take, 'factor'] = out.loc[take, 'n_factor']
     out.loc[take, 'kind'] = out.loc[take, 'n_kind'].fillna('unknown')
     if 'kind_basis' in factors:
