@@ -149,9 +149,12 @@ HOUSES = [
           mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
     House('bandhan', 'Bandhan Mutual Fund', apis2.BANDHAN, mode='all', api=apis2.bandhan),
     House('one360', '360 ONE Mutual Fund', apis2.ONE360, must=r'monthly_portfolio', exclude=r'overlap', api=apis2.one360),
-# Not collected: Navi (navi.com answers a Cloudflare challenge that a plain rendered browser does not pass; not
-# worked around), Monarch (only an overnight fund: no equity holdings), Mahindra Manulife (downloads show only after
-# declaring "I am NOT a US person/resident of Canada": the owner's call), Union (resets connections from outside India).
+    # The downloads list shows only after the visitor declares "I am NOT a US person / resident of Canada"; the owner
+    # authorised that declaration for this collector (19 Nov 2026). One workbook for all schemes.
+    House('mahindra', 'Mahindra Manulife Mutual Fund', apis2.MAHINDRA, must=r'monthly portfolio disclosure',
+          api=apis2.mahindra),
+    House('helios', 'Helios Mutual Fund', 'https://www.heliosmf.in/portfolio-disclosure', mode='all',
+          must=r'month?t?ly[ -_]portfolio'),   # a workbook per scheme; some names are misspelt 'Monthtly'
 ]
 
 
@@ -190,16 +193,20 @@ PENSION = [
 #   Tata Pension (now tatapensionfund.com/public-disclosure-and-nav): the Portfolio tab's list never loads in a headless
 #     browser ('Loading documents...'; the list calls are encrypted) and its Download buttons carry no addresses.
 
-# Mutual fund houses not collected, with the reason, for the Funds page's "is this complete?" line (the notes above in
-# short). ICICI Prudential and Kotak Mahindra, two of the largest houses, are not in HOUSES: no collector was written
-# for them yet, and no attempt is recorded.
+# Mutual fund houses on AMFI's list (www.amfiindia.com/online-center/portfolio-disclosure, read 19 Nov 2026) that are
+# not collected, with the reason, for the Funds page's "is this complete?" line. Each was tried on 19 Nov 2026 from a
+# cloud machine; none is worked around (no CAPTCHA or bot check is solved). .github/workflows/mf-probe.yml asks the
+# blocked ones again from a GitHub runner.
 NOT_COLLECTED = [
-    ('ICICI Prudential Mutual Fund', 'not collected yet'),
-    ('Kotak Mahindra Mutual Fund', 'not collected yet'),
-    ('Navi Mutual Fund', 'its site answers a bot check'),
-    ('Mahindra Manulife Mutual Fund', 'downloads need a residency declaration'),
+    ('ICICI Prudential Mutual Fund', "its file service (apimf.icicipruamc.com) resets connections from outside India"),
+    ('Kotak Mahindra Mutual Fund', 'its file list is behind a CAPTCHA (Radware bot check)'),
+    ('Navi Mutual Fund', 'its site answers a Cloudflare bot check'),
     ('Union Mutual Fund', 'its site refuses connections from outside India'),
+    ('ASK Mutual Fund', 'a liquid fund only so far: no equity'),
+    ('AlphaGrep Mutual Fund', "its site's firewall blocks the request"),
     ('Monarch Mutual Fund', 'an overnight fund only: no equity'),
+    ('Carnelian Mutual Fund', 'a liquid fund only so far: no equity'),
+    ('IL&FS Mutual Fund (IDF)', 'an infrastructure debt fund: no equity'),
 ]
 
 HOUSES = HOUSES + PENSION

@@ -51,7 +51,7 @@ funds.render()
     assert 'Where did houses open a new position?' in html
     assert 'This month so far: what did funds buy and sell in bulk and block deals?' in html
     assert 'How is each house positioning?' in html
-    assert 'Is this complete?' in html and 'ICICI Prudential Mutual Fund (not collected yet)' in html
+    assert 'Is this complete?' in html and 'ICICI Prudential Mutual Fund (its file service' in html
     assert '2 fund houses compared' in html
 
 
