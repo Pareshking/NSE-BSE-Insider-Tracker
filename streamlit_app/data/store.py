@@ -28,6 +28,7 @@ TABLES = ('insider_trades', 'deals', 'securities', 'sast', 'actions', 'meetings'
           'buybacks', 'bse_sast', 'bse_actions', 'bse_shareholding')
 TABLES += ('preferential_allottees', 'preferential_lockins', 'qip', 'qip_allottees')   # insiders_clean/issues.py
 TABLES += ('promoter_group',)   # members of each promoter group, from the shareholding XBRL
+TABLES += ('public_holders',)   # public shareholders over 1%, from the same XBRL (insiders_clean/public_holders.py)
 TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
 TABLES += ('encumbrances',)   # SAST Reg 31 (collectors/nse_events): the lender on a promoter's pledge row
 TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
@@ -65,7 +66,7 @@ def _read(key: str) -> bytes | None:
 PREFETCH = tuple(f'clean/current/{t}.parquet' for t in (
     'universe', 'insider_trades', 'deals', 'securities', 'sast', 'bse_sast', 'actions', 'bse_actions', 'meetings',
     'shareholding', 'bse_shareholding', 'preferential', 'rights', 'results', 'buybacks', 'tradability', 'qip', 'promoter_group',
-    'preferential_lockins', 'preferential_allottees', 'qip_allottees', 'encumbrances')) + tuple(f'artifacts/{a}' for a in (
+    'public_holders', 'preferential_lockins', 'preferential_allottees', 'qip_allottees', 'encumbrances')) + tuple(f'artifacts/{a}' for a in (
         'prices_summary_slim.parquet', 'price_history.parquet', 'track_summary.parquet',
         'track_events.parquet', 'forward_outcomes.parquet', 'basket_positions.parquet', 'basket_nav.parquet')) + (
     'clean/latest.json',)
@@ -114,12 +115,17 @@ ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_to
         'encumbrances': ('symbol', 'company', 'event_type', 'encumbrance_type', 'lender', 'shares', 'pct_of_company',
                          'post_event_holding_pct', 'promoter_id', 'broadcast_date', 'attachment'),
         'promoter_group': ('isin', 'symbol', 'quarter_end', 'member_name', 'sub_category', 'shares', 'pct_of_company',
-                           'pledged_shares')}   # the company page's card; the whole table was 76 MB in memory
+                           'pledged_shares'),   # the company page's card; the whole table was 76 MB in memory
+        # the company page's "Who holds over 1%?" and a holder's companies on the person / fund page
+        'public_holders': ('isin', 'symbol', 'quarter_end', 'type', 'holder_name', 'holder_key', 'shares',
+                           'pct_of_company')}
 
 # Rows pages never read: the company page shows each company's promoter group at its latest quarter only
 # (screens/company.py), so older quarters are not kept. A company whose quarters are all blank keeps its
 # rows, so the page reads exactly what it read before.
-LATEST = {'promoter_group': ('symbol', 'quarter_end')}
+LATEST = {'promoter_group': ('symbol', 'quarter_end'), 'public_holders': ('symbol', 'quarter_end')}
+# ...and for public holders the quarter before it too: the change since the last quarter is the point of the list.
+LATEST_N = {'public_holders': 2}
 
 FRESH = ('announcement_reads',)   # rewritten through the day as filings are read: kept for 3 minutes, not 10
 
@@ -158,15 +164,22 @@ def _parquet(name: str, cut: bool = True) -> pd.DataFrame:
     df = pd.read_parquet(io.BytesIO(body), columns=keep)
     uni = universe_isins() if cut and name != 'universe' and 'isin' in df else None
     df = df[df['isin'].isin(uni)].reset_index(drop=True) if uni is not None else df
-    return _latest_only(df, *LATEST[name]) if name in LATEST else df
+    return _latest_only(df, *LATEST[name], n=LATEST_N.get(name, 1)) if name in LATEST else df
 
 
-def _latest_only(df: pd.DataFrame, by: str, when: str) -> pd.DataFrame:
-    """The rows at each `by`'s latest `when` (`by` compared as the page compares it: as text, in capitals)."""
+def _latest_only(df: pd.DataFrame, by: str, when: str, n: int = 1) -> pd.DataFrame:
+    """The rows at each `by`'s latest `n` distinct `when`s (`by` compared as the page compares it: as text, in
+    capitals)."""
     if df.empty or by not in df or when not in df:
         return df
+    key = df[by].astype(str).str.upper()
     try:
-        last = df[when].groupby(df[by].astype(str).str.upper()).transform('max')
+        last = df[when].groupby(key).transform('max')
+        if n > 1:
+            rank = df[[when]].assign(_k=key).drop_duplicates().assign(
+                _r=lambda f: f.groupby('_k')[when].rank(method='dense', ascending=False))
+            r = df[[when]].assign(_k=key).merge(rank, on=['_k', when], how='left')['_r'].to_numpy()
+            return df[(r <= n) | last.isna().to_numpy()]
     except TypeError:   # dates that do not order (text mixed with blanks): kept whole, as before
         return df
     return df[df[when].eq(last) | last.isna()]
