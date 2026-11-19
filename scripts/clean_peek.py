@@ -715,6 +715,55 @@ def symbol_prices(r2, sym: str, start: str, end: str) -> int:
     summ = read_parquet(r2, 'artifacts/prices_summary_slim.parquet')
     if summ is not None:
         show('prices_summary_slim', summ[summ['isin'].isin(isins)], list(summ.columns))
+    from insiders_clean import slim
+    close, _, f3, raw = slim.adjusted_and_raw(mine, actions=mine_acts)
+    print('--- side-window rows of this company:', adjust.side_series_rows(mine))
+    for i in close.columns:
+        line = pd.DataFrame({'raw': raw[i], 'adjusted (this branch)': close[i]}).loc[lo:hi].dropna(how='all')
+        line['move'] = line['adjusted (this branch)'].pct_change()
+        print(f'--- {i}: line recomputed with this code, {len(line)} sessions; largest |move| {line["move"].abs().max():.3f}')
+        print(line[line['move'].abs() >= 0.03].to_string())
+    return 0
+
+
+def price_jump_audit(r2) -> int:
+    """PRICE_JUMPS: the price-jump audit (insiders_clean/price_jumps.py) on the whole price layer with this branch's
+    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only."""
+    from insiders_clean import adjust, price_jumps, slim
+    from insiders_clean.pipeline import PRODUCT_START
+    from price_coverage import load_prefix
+    from r2_writer import BUCKET
+    px = load_prefix(r2, BUCKET, 'prices/daily/')
+    px['date'] = pd.to_datetime(px['date'])
+    print(f'prices: {len(px)} rows, {px["date"].min().date()} to {px["date"].max().date()}')
+    print('rows by exchange and series (top 40):')
+    print(px.groupby(['exchange', 'series']).size().sort_values(ascending=False).head(40).to_string())
+    acts = [a for a in (read_parquet(r2, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions')) if a is not None and len(a)]
+    acts = pd.concat(acts, ignore_index=True) if acts else None
+    left_out = adjust.side_series_rows(px)
+    print('side-window rows left out:', left_out)
+    close, _, f, raw = slim.adjusted_and_raw(px, actions=acts)
+    print('adjust coverage:', adjust.coverage(f))
+    uni = read_parquet(r2, 'clean/current/universe.parquet')
+    uni = set(uni.loc[uni['in_universe'].astype(bool), 'isin']) if uni is not None and 'in_universe' in uni else None
+    meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
+            .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name']])
+    rows = price_jumps.jumps(raw, close, f, acts, start=PRODUCT_START, universe=uni, meta=meta)
+    rep = price_jumps.report(rows, raw, start=PRODUCT_START, left_out=left_out)
+    print({k: v for k, v in rep.items() if k != 'rows'})
+    cols = ['symbol', 'isin', 'date', 'prev_date', 'gap_days', 'prev_close', 'close', 'raw_move', 'adj_move', 'factor', 'kind',
+            'kind_basis', 'actions', 'in_universe']
+    for s in price_jumps.STATUSES:
+        x = rows[rows['status'] == s]
+        if 'in_universe' in x and x['in_universe'].notna().any():
+            xu = x[x['in_universe'].astype(bool)]
+            print(f'\n--- {s}: {len(x)} moves, {x["isin"].nunique()} companies; in the study universe {len(xu)} moves, '
+                  f'{xu["isin"].nunique()} companies')
+            x = pd.concat([xu, x[~x['in_universe'].astype(bool)]])
+        else:
+            print(f'\n--- {s}: {len(x)} moves, {x["isin"].nunique()} companies')
+        if len(x):
+            print(x[cols].head(40).to_string(index=False))
     return 0
 
 
@@ -746,7 +795,9 @@ def main() -> int:
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
         _, code, day = syms[0].split(':')
         return raw_deal_legs(r2, code, day)
-    if syms and syms[0].startswith('PRICES:'):   # one company's prints, factors, site line and actions (19 Nov)
+    if syms == ['PRICE_JUMPS']:   # every 40% one-day move on the site's lines, matched or unexplained (19 Nov)
+        return price_jump_audit(r2)
+    if syms and syms[0].startswith('PRICES:'):  # one company's prints, factors, site line and actions (19 Nov)
         _, sym, start, end = syms[0].split(':')
         return symbol_prices(r2, sym, start, end)
     if syms and syms[0].startswith('TRADES:'):  # a company's insider rows and deals as cleaned (14 Nov)

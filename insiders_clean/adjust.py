@@ -30,6 +30,13 @@ RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts
 KIND_ADJUSTED = ('split_bonus',)   # the only kind applied to prices (owner directive: splits and bonuses only)
 MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
 BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
+# Series printed beside a security's own market that are not its price: NSE's block deal window ('BL') and its T+0
+# settlement segment ('T0'). Audit 19 Nov 2026: IIFL Finance (INE530B01024) printed BL on 30 Jul 2026 at 590.00 with
+# a base price of 334.25 and more value (Rs 374 Cr) than EQ (Rs 235 Cr, close 607.85, base 595.10). The most traded
+# series won the session, 334.25 / 595.10 = 0.5617 sat within 1.1% of a 5:4 bonus (5/9) and was applied: the site's
+# line fell to ~330 before 30 Jul and showed "Up 131.7% in a year". These rows never make a session or a close;
+# `side_series_rows` counts them (reason `side_window_series`).
+SIDE_SERIES = {'NSE': frozenset({'BL', 'T0'})}
 
 
 # Bonus n:h (n new shares for every h held) moves the price by h/(h+n). Boards use small n and h, and h of 6 or 10
@@ -94,9 +101,42 @@ def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
     return out[cols]
 
 
+def is_side_series(prices: pd.DataFrame) -> pd.Series:
+    """True for a row of a side-window series (SIDE_SERIES): a block window or T+0 print, not the day's price."""
+    if prices is None or prices.empty or not {'exchange', 'series'} <= set(prices.columns):
+        return pd.Series(False, index=getattr(prices, 'index', None), dtype=bool)
+    ex = prices['exchange'].astype(str).str.upper()
+    se = prices['series'].astype(str).str.strip().str.upper()
+    out = pd.Series(False, index=prices.index)
+    for e, names in SIDE_SERIES.items():
+        out |= ex.eq(e) & se.isin(names)
+    return out
+
+
+def regular_series(prices: pd.DataFrame) -> pd.DataFrame:
+    """The rows that can be a security's price for the day: every series but the side windows (SIDE_SERIES)."""
+    if prices is None or prices.empty:
+        return prices
+    return prices[~is_side_series(prices)]
+
+
+def side_series_rows(prices: pd.DataFrame) -> dict:
+    """Counted reason `side_window_series`: rows left out of every session and close, by exchange and series, and
+    the sessions where such a row had more traded value than every regular series (where it used to be taken)."""
+    side = is_side_series(prices)
+    if not side.any():
+        return {'rows': 0, 'by_series': {}, 'would_have_won': 0}
+    p = prices.assign(_side=side, _v=prices['value'].fillna(0) if 'value' in prices else 0)
+    top = p.sort_values('_v', ascending=False).drop_duplicates(['exchange', 'isin', 'date'])
+    return {'rows': int(side.sum()),
+            'by_series': {f'{e}:{s}': int(n) for (e, s), n in p[side].groupby(['exchange', 'series']).size().items()},
+            'would_have_won': int(top['_side'].sum())}
+
+
 def session_frame(prices: pd.DataFrame) -> pd.DataFrame:
-    """One row per exchange, ISIN and date: the most traded series that day."""
-    p = prices.dropna(subset=['date', 'close']).copy()
+    """One row per exchange, ISIN and date: the most traded regular series that day (never a side window,
+    SIDE_SERIES)."""
+    p = regular_series(prices).dropna(subset=['date', 'close']).copy()
     p = p[p['isin'] != '']
     p['value'] = p['value'].fillna(0)
     p = p.sort_values(['exchange', 'isin', 'date', 'value'], ascending=[True, True, True, False])
@@ -174,6 +214,14 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     s['kind'] = np.select([big & clean, big, (dev > MINOR).to_numpy(), s['factor'].notna().to_numpy()],
                           ['split_bonus', 'other_large', 'minor', 'none'], 'unknown')
     s['kind_basis'] = np.where(big & clean, 'ratio', '')
+    # A guessed ratio (nothing filed) must show in the day's own prices too: when the exchange really resets the base
+    # price for a split or bonus, the close moves with it (close / previous close near the factor; a day's band is at
+    # most 20%). A base price that moved while the close did not is no split (counted, `ratio_price_disagrees`).
+    with np.errstate(invalid='ignore', divide='ignore'):
+        day_move = (s['close'] / s['last_close']).where(usable).to_numpy(dtype=float)
+        follows = np.abs(np.log(day_move / s['factor'].to_numpy(dtype=float))) <= np.log(MOVE_TOL)
+    lone = (s['kind_basis'] == 'ratio').to_numpy() & ~follows
+    s.loc[lone, 'kind'], s.loc[lone, 'kind_basis'] = 'other_large', 'ratio_price_disagrees'
     act = _action_on_session(s, expected_factors(actions))
     has, sb = act['has_action'].to_numpy(dtype=bool), act['split_bonus'].to_numpy(dtype=bool)
     with np.errstate(invalid='ignore', divide='ignore'):
