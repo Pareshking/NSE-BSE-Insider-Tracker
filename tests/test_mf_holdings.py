@@ -139,3 +139,63 @@ def test_an_isin_change_is_one_holding_not_an_exit_and_a_start():
     ch = m.changes(cur, prev)
     assert len(ch) == 1 and ch['kind'].iloc[0] == 'added' and ch['active_change'].iloc[0] == 20
     assert ch['isin_before'].iloc[0] == 'INEOLD001011'
+
+
+# The PFRDA form NPS pension fund managers file: a sheet per scheme, 'Name of the scheme' then its name in the next
+# cell (ICICI, Axis) or after a colon (SBI, LIC), 'Particulars' for the name, 'Isin No.' / 'ISIN No.', 'Quantity' or
+# 'No of Units', 'Mkt_Value' / 'Market Value' in rupees ("Amount in Rs."), '% of Portfolio' as a fraction.
+NPS_E1 = [['Name of the Pension Fund', 'Example Pension Fund Management Limited'], ['Name of the scheme', 'Scheme E - Tier I'],
+          ['Portfolio Statement as on', '30-10-2026'], [], ["(Amount in 'Rs.')"],
+          ['Particulars', 'ISIN No.', 'Industry', 'Quantity', 'Market Value', '% of Portfolio', 'Ratings'],
+          ['Equity Instruments'], ['Shares'],
+          ['HDFC Bank Limited.', 'INE040A01034', 'Banks', 28553145, 19781618856, 0.061],
+          ['ICICI Bank Limited.', 'INE090A01021', 'Banks', 14095124, 19704983352, 0.0607],
+          ['Subtotal', None, None, None, 39486602208, 0.1217]]
+NPS_E2 = [['Name of the Pension Fund', 'Example Pension Fund Management Limited'], ['Name of the scheme', 'Scheme E - Tier II'],
+          [], ['Particulars', 'ISIN No.', 'Industry', 'No of Units', 'Market Value', '% of Portfolio', 'Rating (if rated)'],
+          ['ICICI Bank Limited.', 'INE090A01021', 'Banks', 383838, 536605524, 0.064]]
+NPS_CG = [[], ['Pension Fund Manager Name : EXAMPLE PENSION FUNDS PVT.LTD.'],
+          ['Name Of Scheme : NPS TRUST- A/C EXAMPLE PENSION FUND SCHEME - CENTRAL GOVT'],
+          ['Portfolio Statements as on: 30-10-2026'], ['Equities and Related Investments'],
+          ['Name of Instruments', 'Isin No.', 'Industry', 'Quantity', 'Mkt_Value', '% of Portfolio'],
+          ['HDFC BANK LTD.', 'INE040A01034', 'Banks - Private Sector', 26016408, 18024167462.4, 1.4581],
+          ['7.30% GS 2053 (19.06.2053)', 'IN0020230051', 'GOVERNMENT SECURITIES', 336875000, 31531634750, 2.64]]
+
+
+def test_reads_the_nps_pension_form_with_values_in_rupees():
+    df, rep = m.parse_workbook(_book({'Scheme E - Tier I': NPS_E1, 'Scheme E - Tier II': NPS_E2, 'Scheme CG': NPS_CG}),
+                               'monthly-website-forms-oct-26.xlsx', value_unit='rupee')
+    assert rep['sheets_read'] == 3 and rep['equity_lines'] == 4 and rep['value_unit'] == 'rupee'
+    assert set(df['scheme']) == {'Scheme E - Tier I', 'Scheme E - Tier II',
+                                 'NPS TRUST- A/C EXAMPLE PENSION FUND SCHEME - CENTRAL GOVT'}
+    hdfc = df[(df['isin'] == 'INE040A01034') & (df['scheme'] == 'Scheme E - Tier I')].iloc[0]
+    assert hdfc['name'] == 'HDFC Bank Limited.' and hdfc['quantity'] == 28553145
+    assert abs(hdfc['value_lakh'] - 197816.18856) < 1e-6                  # Rs 19,781,618,856 = Rs 1,97,816 lakh
+    h = m.holdings(df, 'nps_x', '2026-10').set_index('isin')
+    assert h.loc['INE090A01021', 'shares'] == 14095124 + 383838 and h.loc['INE090A01021', 'schemes'] == 2
+    assert h.loc['INE040A01034', 'active_shares'] == 28553145 + 26016408   # no index funds among NPS schemes by name
+    assert 'IN0020230051' not in h.index
+
+
+def test_the_same_workbook_in_lakh_is_unchanged_by_default():
+    df, rep = m.parse_workbook(_book({'SLCF': SCHEME}), 'x.xlsx')
+    assert rep['value_unit'] == 'lakh' and df.loc[df['isin'] == 'INE090A01021', 'value_lakh'].iloc[0] == 43533.72
+
+
+def test_mutual_funds_and_pension_funds_are_counted_apart():
+    prev = pd.concat([_h('sbi', '2026-09', [('INE090A01021', 100, 100)]), _h('nps_sbi', '2026-09', [('INE090A01021', 50, 50)])])
+    cur = pd.concat([_h('sbi', '2026-10', [('INE090A01021', 150, 150)]), _h('nps_sbi', '2026-10', [('INE090A01021', 20, 20)])])
+    h = pd.concat([prev, cur]).assign(kind=lambda d: d['amc'].map({'sbi': 'mf', 'nps_sbi': 'pension'}))
+    ch = m.tag_house_kind(m.changes(cur, prev), h)
+    st = m.stock_months(ch).set_index('house_kind')
+    assert st.loc['mf', 'active_net'] == 50 and st.loc['mf', 'houses_adding'] == 1
+    assert st.loc['pension', 'active_net'] == -30 and st.loc['pension', 'houses_cutting'] == 1
+    assert m.tag_house_kind(ch.drop(columns='house_kind'), h.drop(columns='kind'))['house_kind'].eq('mf').all()
+
+
+def test_pension_houses_are_kept_apart_by_kind():
+    from collectors.mf_portfolios.houses import BY_KEY, HOUSES
+    pension = [h for h in HOUSES if h.kind == 'pension']
+    assert pension and all(h.key.startswith('nps_') and h.value_unit == 'rupee' for h in pension)
+    assert all(h.kind == 'mf' and h.value_unit == 'lakh' for h in HOUSES if not h.key.startswith('nps_'))
+    assert BY_KEY['sbi'].kind == 'mf' and BY_KEY['nps_sbi'].kind == 'pension'

@@ -613,6 +613,28 @@ Archive: `archive/market_flows/{nse|nsdl|sebi|nsdl_sector}/year=YYYY.parquet` (t
 later fetch of a key replaces it). Raw: `raw_v2/nse/fiidii_{all|nse}/`, `raw_v2/nsdl/{fpi_daily|fpi_sector_list|fpi_sectors}/`,
 `raw_v2/sebi/mf_trends/`. Report: `clean/reports/market_flows/{date}.json`.
 
+## Fund month-end portfolios (`archive/mf_holdings/month=YYYY-MM/{house}.parquet` and `clean/current/mf_*.parquet`)
+
+`scripts/mf_portfolios.py` (houses in `collectors/mf_portfolios/houses.py`, parser `insiders_clean/mf_holdings.py`).
+Two kinds of house, kept in the same tables and told apart by `kind` (holdings) and `house_kind` (changes, per stock):
+
+- `mf`: mutual fund houses (SEBI; AMFI's Portfolio Disclosure list), the SEBI-format workbook, value in Rs lakh.
+- `pension` (from 19 Nov 2026; keys `nps_...`): NPS pension fund managers (PFRDA; NPS Trust's list at
+  `npstrust.org.in/scheme-portfolio`), the PFRDA form (a sheet or file per scheme: E, C, G in Tier I and II, central
+  and state government, corporate CG, NPS Lite, APY, Vatsalya ...; Particulars, ISIN No., Quantity or No of Units,
+  Market Value **in rupees**, converted to lakh on reading). Collected: SBI, LIC, ICICI, Aditya Birla Sun Life, Axis.
+  Not collected (19 Nov 2026, reasons in `houses.py`): UTI and Max Life (expired site certificates), HDFC (Akamai
+  403 to scripted clients), Kotak (bot check), Tata (list never loads headless). PFRDA's rules keep NPS equity to large
+  listed companies and the schemes largely follow the index, so a pension fund "adding" is pension money flowing in,
+  not a stock pick; NPS scheme names match none of the index-fund words, so all their shares count as active.
+
+| Table | Columns |
+|---|---|
+| `mf_holdings` (one row per house, month, ISIN; equity shares only) | `amc` (house key), `month`, `isin`, `name`, `shares`, `active_shares` (held outside index funds and ETFs), `value_lakh`, `schemes`, `active_schemes`, `kind` (`mf` / `pension`; an archive month written before the column existed reads as `mf`) |
+| `mf_changes` (house, month, ISIN; houses present in both months) | the above plus `shares_before`, `active_before` (after any split or bonus `factor`), `change`, `active_change`, `kind` (`new` / `added` / `cut` / `exit` / `held` / `passive`), `isin_before` (an ISIN change bridged), `house_kind` (`mf` / `pension`) |
+| `mf_stock_month` (month, `house_kind`, ISIN: mutual funds and pension funds never summed together) | `houses_adding`, `houses_cutting`, `houses_new`, `houses_exit`, `active_net`, `all_net`, `active_shares`, `active_before`, `price` (filed value over shares), `active_net_cr`, `houses_holding`, `month`, `house_kind` |
+| `mf_coverage` (quarter-end months) | `month`, `houses`, `companies`, `median_ratio`, `weighted_ratio`: mutual fund houses only, against the mutual-fund shares companies filed |
+
 ## Not yet collected
 
 BSE-only companies have no Company page (it is keyed by NSE symbol).

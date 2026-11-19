@@ -12,11 +12,16 @@ raw_flush step), parse it (insiders_clean/mf_holdings.py) and keep
 A house or month that is not found or does not parse is reported with the reason and left out; nothing is filled in.
 Then the clean tables are rebuilt from every archived month:
 
-    clean/current/mf_holdings.parquet     house, month, ISIN, shares, value (Rs lakh), schemes
-    clean/current/mf_changes.parquet      house, month, ISIN, shares before and after, change, kind (new/added/cut/exit/held)
-    clean/current/mf_stock_month.parquet  month, ISIN: houses adding / cutting / new / exiting, net shares
-    clean/current/mf_coverage.parquet     quarter-end month: collected houses' shares / mutual-fund shares the companies filed
+    clean/current/mf_holdings.parquet     house, month, ISIN, shares, value (Rs lakh), schemes, kind (mf / pension)
+    clean/current/mf_changes.parquet      house, month, ISIN, shares before and after, change, kind (new/added/cut/exit/held),
+                                          house_kind (mf / pension)
+    clean/current/mf_stock_month.parquet  month, house_kind, ISIN: houses adding / cutting / new / exiting, net shares
+    clean/current/mf_coverage.parquet     quarter-end month: collected mutual fund houses' shares / mutual-fund shares the
+                                          companies filed (pension funds left out: the filing's figure is mutual funds')
     clean/reports/mf_portfolios/{run date}.json   per house and month: found, file, sheets read, lines, ISINs, why not
+
+The NPS pension fund managers (houses with kind='pension', keys nps_...) are collected the same way and kept in the
+same tables, marked by kind, so the Funds page can keep them apart from mutual funds.
 
 --dry-run fetches and parses and prints counts; it writes nothing to R2.
 """
@@ -81,7 +86,7 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
     from raw_capture import capture
     out = []
     links = []
-    if house.api is None:
+    if house.api is None and house.pages is None:
         try:
             links = find.links_rendered(house.page, browser, house.click) if house.render else find.links_plain(house.page)
         except Exception as exc:  # noqa: BLE001
@@ -95,6 +100,17 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
                 out.append({'house': house.key, 'month': month, 'found': False,
                             'why': f'list not read ({type(exc).__name__}: {exc})'[:300]})
                 continue
+        if house.pages is not None:   # a page per month: its links name no month, so the month is added to their text
+            label = pd.Period(month, 'M').strftime('%B %Y')
+            links = []
+            try:
+                for pg in house.pages(month):
+                    got = find.links_rendered(pg, browser, house.click) if house.render else find.links_plain(pg)
+                    links += [(f'{label} {t}', h) for t, h in got]
+            except Exception as exc:  # noqa: BLE001
+                out.append({'house': house.key, 'month': month, 'found': False,
+                            'why': f'page not read ({type(exc).__name__}: {exc})'[:300]})
+                continue
         urls = find.candidates(links, month, house)
         res = {'house': house.key, 'month': month, 'found': bool(urls), 'links_on_page': len(links), 'files': urls}
         if not urls:
@@ -104,7 +120,7 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
         frames, reports = [], []
         for u in urls:
             try:
-                body, ctype, status = _download(u)
+                body, ctype, status = find.fetch_rendered(u, browser) if house.browser_fetch else _download(u)
             except Exception as exc:  # noqa: BLE001
                 reports.append({'url': u, 'error': f'{type(exc).__name__}: {exc}'[:200]})
                 continue
@@ -114,7 +130,7 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
                 reports.append({'url': u, 'error': f'HTTP {status}'})
                 continue
             try:
-                df, rep = mf_holdings.parse_workbook(body, u.split('?')[0].rsplit('/', 1)[-1])
+                df, rep = mf_holdings.parse_workbook(body, u.split('?')[0].rsplit('/', 1)[-1], house.value_unit)
             except Exception as exc:  # noqa: BLE001
                 reports.append({'url': u, 'error': f'not parsed ({type(exc).__name__}: {exc})'[:200]})
                 continue
@@ -140,6 +156,7 @@ def rebuild(r2) -> dict:
     h = pd.concat([f for f in frames if f is not None and len(f)], ignore_index=True) if frames else pd.DataFrame()
     if h.empty:
         return {'months': 0}
+    h['kind'] = h['kind'].fillna('mf') if 'kind' in h else 'mf'   # months archived before pension funds were added
     put_parquet(r2, CLEAN['holdings'], h)
     months = sorted(h['month'].unique())
     acts = [read_parquet(r2, k) for k in ('clean/current/actions.parquet', 'clean/current/bse_actions.parquet')]
@@ -151,21 +168,21 @@ def rebuild(r2) -> dict:
         ch.append(mf_holdings.changes(h[h['month'] == cur], h[h['month'] == prev], factors=f))
     chg = pd.concat(ch, ignore_index=True) if ch else pd.DataFrame()
     if len(chg):
+        chg = mf_holdings.tag_house_kind(chg, h)
         put_parquet(r2, CLEAN['changes'], chg)
-        stock = pd.concat([mf_holdings.by_stock(chg[chg['month'] == m]).assign(month=m) for m in chg['month'].unique()],
-                          ignore_index=True)
-        put_parquet(r2, CLEAN['stock'], stock)
+        put_parquet(r2, CLEAN['stock'], mf_holdings.stock_months(chg))
     # How much of the industry the collected houses are: at each quarter-end month, their shares against the mutual-fund
     # shares each company filed in its shareholding pattern for that quarter end (never claimed, measured).
     sh = read_parquet(r2, 'clean/current/shareholding.parquet')
     cov = []
     if sh is not None and len(sh) and {'isin', 'quarter_end', 'mf_shares'} <= set(sh.columns):
         sh = sh.assign(_q=pd.to_datetime(sh['quarter_end'], errors='coerce').dt.to_period('M').astype(str))
+        hm = h[h['kind'] == 'mf']   # mutual funds only: the filed figure is the mutual-fund holding, not pension funds'
         for mth in months:
             filed = sh[sh['_q'] == mth][['isin', 'mf_shares']]
-            if len(filed):
-                c = mf_holdings.coverage(h[h['month'] == mth], filed)
-                cov.append({'month': mth, 'houses': int(h.loc[h['month'] == mth, 'amc'].nunique()), **c})
+            if len(filed) and (hm['month'] == mth).any():
+                c = mf_holdings.coverage(hm[hm['month'] == mth], filed)
+                cov.append({'month': mth, 'houses': int(hm.loc[hm['month'] == mth, 'amc'].nunique()), **c})
     if cov:
         put_parquet(r2, CLEAN['coverage'], pd.DataFrame(cov))
     return {'months': months, 'houses_by_month': h.groupby('month')['amc'].nunique().to_dict(), 'change_rows': int(len(chg)),
@@ -212,7 +229,7 @@ def main(argv=None) -> int:
             for res in collect_house(h, todo, browser):
                 rows = res.pop('rows', None)
                 if rows is not None:
-                    hold = mf_holdings.holdings(rows, h.key, res['month'])
+                    hold = mf_holdings.holdings(rows, h.key, res['month']).assign(kind=h.kind)
                     res['isins'] = int(len(hold))
                     res['value_cr'] = round(float(hold['value_lakh'].sum()) / 100, 1)
                     if r2 is not None:
