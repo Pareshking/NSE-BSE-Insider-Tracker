@@ -212,6 +212,14 @@ def test_data_page_shows_the_checks(real_nse_rows, master, calendar, report, tmp
     (tmp_path / 'clean').mkdir()
     (tmp_path / 'clean' / 'report_local.json').write_text(json.dumps(rep, default=str))
     (tmp_path / 'clean' / 'latest.json').write_text(json.dumps({'date': RUN_DATE, 'report': 'local'}))
+    (tmp_path / 'clean' / 'reports').mkdir()
+    zero = {'moves': 0, 'companies': 0}
+    (tmp_path / 'clean' / 'reports' / 'price_jumps.json').write_text(json.dumps({
+        'start': '2025-10-08', 'by_status': {'unexplained': {'moves': 3, 'companies': 2}},
+        'in_universe': {'made_by_adjustment': zero, 'unexplained': {'moves': 2, 'companies': 1},
+                        'adjusted': {'moves': 5, 'companies': 5}},
+        'rows': [{'symbol': 'ZZJUMP', 'isin': 'INE000Z01011', 'date': '2026-03-02', 'adj_move': -0.55,
+                  'status': 'unexplained', 'in_universe': True}]}))
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(tmp_path))
     import streamlit as st
     st.cache_data.clear()   # the site's readers cache by table name; never leak this folder to other tests
@@ -229,6 +237,8 @@ data_status.render()
     html = ' '.join(str(getattr(e, 'body', '')) for e in at.get('html'))
     assert 'Implied price inside the day' in html and '1 off by a power of ten' in html
     assert 'Holding-only disclosures' in html
+    assert 'one-day moves of 40% or more' in html and 'ZZJUMP' in html and '-55%' in html
+    assert 'split or bonus, adjusted' in html and 'made by our adjustment' not in html
 
 
 def test_value_filed_as_price_and_face_value_are_named(real_nse_rows, master, calendar, report):

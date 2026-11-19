@@ -367,6 +367,37 @@ issue or demerger for a bonus; bonus ratios with 7, 8 or 9 held are left to
 the filed actions, since with them almost any reset matches. Counts:
 `adjust.coverage(...)['by_basis']`, printed by Precompute slim assets.
 
+**Price jumps audit (19 Nov 2026).** IIFL Finance's line on the site fell from about ₹600 to about ₹330 before
+30 Jul 2026 ("Up 131.7% in a year"). Not a corporate action: that day NSE printed IIFL in its block deal window
+(series `BL`, close 590.00, base price 334.25, Rs 374 Cr) beside EQ (close 607.85, base 595.10, Rs 235 Cr). The
+session took the most traded series, so BL won; 334.25 / 595.10 = 0.5617 is within 1.1% of a 5:4 bonus (5/9) and
+was applied to every earlier close. Fixes, in `adjust.py` and `slim.py`:
+
+- NSE's side windows (`BL` block window, `T0` T+0 segment; `adjust.SIDE_SERIES`) are never a session or a close
+  (reason `side_window_series`, counted by `adjust.side_series_rows`: 982 rows to 18 Nov 2026, 303 of them the
+  day's most traded).
+- A guessed ratio (nothing filed) applies only when the close moves with it (`ratio_price_disagrees` otherwise).
+- No factor across a session the layer lacks: an exchange-date where at least half of 100 or more base prices
+  differ from our previous close (`previous_session_missing`). The price backfill fetched weekdays only, so the
+  Saturday and Sunday sessions of 1 Feb 2025, 1 Feb 2026 (Budget) and 8 Nov 2026 (Muhurat) are not in
+  `prices/daily/`; their next sessions looked like resets (IIFL 2 Feb 2026: 0.8998, a 10:11 'bonus', applied).
+  `price_backfill.py` now also fetches the weekend days `reference/nse_calendar.json` lists as traded, and keeps a
+  file only when its trade date is that day.
+- A filed bonus or split is priced from the close when the base price is missing (a split's new ISIN on its first
+  day) or after a gap of up to 31 days, and a split filed under the ISIN it replaces follows the bridge.
+- `inherit_nse` gives a BSE row NSE's factor only on a date NSE printed: KSE's split (28 Oct 2025) and PANORAMA's
+  5:2 bonus (05 Dec 2025), BSE-only then and on NSE from Aug 2026, had taken NSE's missing factor.
+
+`insiders_clean/price_jumps.py` (written by Precompute slim assets to `clean/reports/price_jumps.json`, counted on
+the Data page) lists every one-day close move of 40% or more since 8 Oct 2025 on the line the site draws, as printed
+and as adjusted, each `adjusted`, `made_by_adjustment` (an applied factor that is wrong; should be zero),
+`action_not_adjusted` (a filed action by ISIN or NSE symbol: rights, dividend, or a bonus or split not applied),
+`missing_session`, `exchange_reset_not_adjusted`, `after_gap` (over 10 days without a print) or `unexplained`.
+Nothing is corrected by it. The unexplained in the study universe are mostly splits or bonuses with no action in
+our tables and no reset of the base price (BHAGYANGR 8 Oct 2026, -91%, the day it moved from EQ to BE) and
+demergers (NSE's action feed as parsed drops schemes: VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV 14 Oct 2025);
+they stay unadjusted (owner directive: splits and bonuses only) and named in the report.
+
 Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
 and BSE's list win on identity; the 01 Sep Value Research export only
 supplies sector and industry.
