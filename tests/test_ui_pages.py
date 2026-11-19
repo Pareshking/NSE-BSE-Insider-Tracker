@@ -253,7 +253,7 @@ def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, m
     for screen in ('filings_all', 'capital_raises'):
         at = AppTest.from_string(APP_PATHS + f"""
 import streamlit as st
-st.session_state.setdefault('fa_days', max(__import__('screens.filings_all', fromlist=['x']).PERIODS))   # the fixture's trades are older than 30 days
+st.session_state.setdefault('filings_preset', 'all')   # the fixture's trades are older than a month
 from ui import theme
 theme.inject()
 from screens import {screen}
