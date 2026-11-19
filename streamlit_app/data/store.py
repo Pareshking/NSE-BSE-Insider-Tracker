@@ -31,6 +31,7 @@ TABLES += ('promoter_group',)   # members of each promoter group, from the share
 TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py): the last full year behind a card's size
 TABLES += ('encumbrances',)   # SAST Reg 31 (collectors/nse_events): the lender on a promoter's pledge row
 TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
+TABLES += ('mf_stock_month', 'mf_changes', 'mf_coverage')   # fund houses' month-end portfolios (scripts/mf_portfolios.py)
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 
 

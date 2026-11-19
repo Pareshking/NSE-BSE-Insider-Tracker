@@ -1,0 +1,65 @@
+name: Mutual fund portfolios
+
+# Fund houses' month-end portfolios (scripts/mf_portfolios.py): found on each house's own disclosure page, stored
+# byte for byte in raw_v2/amc/, parsed into archive/mf_holdings/month=YYYY-MM/{house}.parquet, and the clean tables
+# (mf_holdings, mf_changes, mf_stock_month, mf_coverage) rebuilt from every archived month.
+# SEBI: a house publishes by the 10th of the next month, so the schedule runs daily from the 11th to the 16th (a
+# house late by a day or two is picked up; a month already archived is fetched again only for houses missing it).
+# By hand: any months, e.g. 2025-10..2026-10 for the one-year history.
+on:
+  schedule:
+    - cron: '17 4 11-16 * *'     # 09:47 IST
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'Months, space-separated (2026-09 2026-10) or a range (2025-10..2026-10); blank = the last 2 published'
+        required: false
+        default: ''
+      houses:
+        description: 'House keys, space-separated; blank = all'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  portfolios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - name: Portfolios
+        env:
+          MONTHS: ${{ inputs.months }}
+          HOUSES: ${{ inputs.houses }}
+        run: |
+          args=""
+          if [ -z "$MONTHS" ]; then args="--latest 2"; else
+            for m in $(python scripts/mf_portfolios.py --expand "$MONTHS"); do args="$args --month $m"; done
+          fi
+          for h in $HOUSES; do args="$args --house $h"; done
+          python -u scripts/mf_portfolios.py $args | tee mf.log
+      - name: Store raw responses (write-once)
+        if: always()
+        run: python scripts/raw_flush.py
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Mutual fund portfolios' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' mf.log >> "$GITHUB_STEP_SUMMARY" || true

@@ -15,6 +15,7 @@ Then the clean tables are rebuilt from every archived month:
     clean/current/mf_holdings.parquet     house, month, ISIN, shares, value (Rs lakh), schemes
     clean/current/mf_changes.parquet      house, month, ISIN, shares before and after, change, kind (new/added/cut/exit/held)
     clean/current/mf_stock_month.parquet  month, ISIN: houses adding / cutting / new / exiting, net shares
+    clean/current/mf_coverage.parquet     quarter-end month: collected houses' shares / mutual-fund shares the companies filed
     clean/reports/mf_portfolios/{run date}.json   per house and month: found, file, sheets read, lines, ISINs, why not
 
 --dry-run fetches and parses and prints counts; it writes nothing to R2.
@@ -39,7 +40,7 @@ from insiders_clean import mf_holdings  # noqa: E402
 
 ARCHIVE = 'archive/mf_holdings/'
 CLEAN = {'holdings': 'clean/current/mf_holdings.parquet', 'changes': 'clean/current/mf_changes.parquet',
-         'stock': 'clean/current/mf_stock_month.parquet'}
+         'stock': 'clean/current/mf_stock_month.parquet', 'coverage': 'clean/current/mf_coverage.parquet'}
 IST = timezone(timedelta(hours=5, minutes=30))
 PUBLISH_DAY = 10   # SEBI: a month-end portfolio is on the house's site by the 10th of the next month
 
@@ -55,6 +56,18 @@ def latest_months(n: int, today: date) -> list[str]:
         out.append(f'{y}-{m:02d}')
         m -= 1
     return out
+
+
+def expand(spec: str) -> list[str]:
+    """'2025-10..2026-01' or '2026-09 2026-10' -> the months, in order."""
+    out = []
+    for part in spec.split():
+        if '..' in part:
+            a, b = part.split('..')
+            out += [str(p) for p in pd.period_range(a, b, freq='M')]
+        else:
+            out.append(str(pd.Period(part, 'M')))
+    return sorted(set(out))
 
 
 def _download(url: str, timeout: int = 180) -> tuple[bytes, str | None, int]:
@@ -120,16 +133,34 @@ def rebuild(r2) -> dict:
         return {'months': 0}
     put_parquet(r2, CLEAN['holdings'], h)
     months = sorted(h['month'].unique())
+    acts = [read_parquet(r2, k) for k in ('clean/current/actions.parquet', 'clean/current/bse_actions.parquet')]
+    acts = pd.concat([a for a in acts if a is not None and len(a)], ignore_index=True) if any(
+        a is not None and len(a) for a in acts) else None
     ch = []
     for prev, cur in zip(months, months[1:]):
-        ch.append(mf_holdings.changes(h[h['month'] == cur], h[h['month'] == prev], factors=None))
+        f = mf_holdings.share_factors(acts, prev, cur)
+        ch.append(mf_holdings.changes(h[h['month'] == cur], h[h['month'] == prev], factors=f))
     chg = pd.concat(ch, ignore_index=True) if ch else pd.DataFrame()
     if len(chg):
         put_parquet(r2, CLEAN['changes'], chg)
         stock = pd.concat([mf_holdings.by_stock(chg[chg['month'] == m]).assign(month=m) for m in chg['month'].unique()],
                           ignore_index=True)
         put_parquet(r2, CLEAN['stock'], stock)
-    return {'months': months, 'houses_by_month': h.groupby('month')['amc'].nunique().to_dict(), 'change_rows': int(len(chg))}
+    # How much of the industry the collected houses are: at each quarter-end month, their shares against the mutual-fund
+    # shares each company filed in its shareholding pattern for that quarter end (never claimed, measured).
+    sh = read_parquet(r2, 'clean/current/shareholding.parquet')
+    cov = []
+    if sh is not None and len(sh) and {'isin', 'quarter_end', 'mf_shares'} <= set(sh.columns):
+        sh = sh.assign(_q=pd.to_datetime(sh['quarter_end'], errors='coerce').dt.to_period('M').astype(str))
+        for mth in months:
+            filed = sh[sh['_q'] == mth][['isin', 'mf_shares']]
+            if len(filed):
+                c = mf_holdings.coverage(h[h['month'] == mth], filed)
+                cov.append({'month': mth, 'houses': int(h.loc[h['month'] == mth, 'amc'].nunique()), **c})
+    if cov:
+        put_parquet(r2, CLEAN['coverage'], pd.DataFrame(cov))
+    return {'months': months, 'houses_by_month': h.groupby('month')['amc'].nunique().to_dict(), 'change_rows': int(len(chg)),
+            'coverage': cov}
 
 
 def main(argv=None) -> int:
@@ -138,7 +169,12 @@ def main(argv=None) -> int:
     ap.add_argument('--latest', type=int, default=0, help='the last N published month-ends')
     ap.add_argument('--house', action='append', default=[], help='house key, repeatable (default: all)')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--refetch', action='store_true', help='fetch a house-month again even when it is archived')
+    ap.add_argument('--expand', help='print the months of a range spec and exit')
     a = ap.parse_args(argv)
+    if a.expand is not None:
+        print(' '.join(expand(a.expand)))
+        return 0
     months = sorted(set(a.month) | set(latest_months(a.latest, datetime.now(IST).date()) if a.latest else set()))
     if not months:
         ap.error('give --month or --latest')
@@ -155,9 +191,16 @@ def main(argv=None) -> int:
         exe = os.environ.get('CHROMIUM_PATH')   # a browser installed apart from the Python package (local runs)
         browser = pw.chromium.launch(**({'executable_path': exe, 'args': ['--no-sandbox']} if exe else {}))
     report = {'run_date': datetime.now(IST).date().isoformat(), 'months': months, 'houses': {}}
+    have = set()
+    if r2 is not None and not a.refetch:
+        from clean_writer import list_keys
+        have = {k[len(ARCHIVE):] for k in list_keys(r2, ARCHIVE)}
     try:
         for h in houses:
-            for res in collect_house(h, months, browser):
+            todo = [mth for mth in months if f'month={mth}/{h.key}.parquet' not in have]
+            if not todo:
+                continue
+            for res in collect_house(h, todo, browser):
                 rows = res.pop('rows', None)
                 if rows is not None:
                     hold = mf_holdings.holdings(rows, h.key, res['month'])

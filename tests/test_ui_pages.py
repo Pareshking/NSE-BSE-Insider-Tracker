@@ -97,7 +97,7 @@ def data_dir(tmp_path_factory, real_nse_rows):
 
 PAGES = [('pages:today', {}), ('pages:insiders', {}), ('pages:deals', {}), ('pages:raises', {}), ('pages:risks', {}),
          ('pages:ownership', {}), ('pages:calendar', {}), ('more_pages:watchlist', {}), ('more_pages:watchlist', {'watch': 'HCLTECH,ZEEL,NOPE'}),
-         ('more_pages:screener', {}), ('more_pages:sectors', {}), ('more_pages:results', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
+         ('more_pages:screener', {}), ('more_pages:sectors', {}), ('more_pages:results', {}), ('filings_all', {}), ('funds', {}), ('investors', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
          ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
 

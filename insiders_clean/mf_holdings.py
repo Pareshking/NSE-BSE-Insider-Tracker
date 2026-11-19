@@ -179,6 +179,35 @@ def holdings(rows: pd.DataFrame, amc: str, month: str) -> pd.DataFrame:
     return out
 
 
+def _key(name) -> str:
+    n = re.sub(r'[^a-z0-9 ]', ' ', str(name or '').lower())
+    n = re.sub(r'\b(limited|ltd|the|co|company|corporation|corp|india|inc)\b', ' ', n)
+    return re.sub(r'\s+', ' ', n).strip()
+
+
+def bridge_isins(cur: pd.DataFrame, prev: pd.DataFrame) -> dict:
+    """{old ISIN: new ISIN} where one company's ISIN changed between the two month-ends (a merger into a renamed
+    company, a split with a new ISIN): within one house an ISIN held before and not now, and an ISIN held now and not
+    before, under the same company name. Only a one-to-one match counts; anything ambiguous is left as an exit and a
+    new holding. (Oct 2026: JSW Dulux read as two houses starting it and two selling out.)"""
+    out: dict = {}
+    for amc in set(cur['amc']) & set(prev['amc']):
+        c, p = cur[cur['amc'] == amc], prev[prev['amc'] == amc]
+        gone = p[~p['isin'].isin(c['isin'])]
+        new = c[~c['isin'].isin(p['isin'])]
+        if gone.empty or new.empty:
+            continue
+        gk = gone.assign(_k=gone['name'].map(_key)).query('_k != ""')
+        nk = new.assign(_k=new['name'].map(_key)).query('_k != ""')
+        gk = gk[~gk['_k'].duplicated(keep=False)]
+        nk = nk[~nk['_k'].duplicated(keep=False)]
+        for k, old in zip(gk['_k'], gk['isin']):
+            hit = nk.loc[nk['_k'] == k, 'isin']
+            if len(hit) == 1 and out.get(old, hit.iloc[0]) == hit.iloc[0]:
+                out[old] = hit.iloc[0]
+    return out
+
+
 def changes(cur: pd.DataFrame, prev: pd.DataFrame, factors: pd.DataFrame | None = None) -> pd.DataFrame:
     """Shares added or cut between two month-ends, per fund house and ISIN, for all schemes (`change`) and for active
     schemes only (`active_change`, what `kind` reads). `factors` (isin, factor): a split or bonus between the two dates
@@ -186,6 +215,11 @@ def changes(cur: pd.DataFrame, prev: pd.DataFrame, factors: pd.DataFrame | None 
     both months are compared (a house collected for one month only says nothing). `kind`: new, added, cut, exit, held,
     or passive (held only by index funds and ETFs in both months)."""
     both = set(cur['amc']) & set(prev['amc'])
+    bridge = bridge_isins(cur, prev)
+    if bridge:
+        prev = prev.assign(isin=prev['isin'].replace(bridge))
+        prev = prev.groupby(['amc', 'isin'], as_index=False).agg(name=('name', 'first'), shares=('shares', 'sum'),
+                                                                 active_shares=('active_shares', 'sum'))
     c = cur[cur['amc'].isin(both)][['amc', 'month', 'isin', 'name', 'shares', 'active_shares', 'value_lakh']]
     p = prev[prev['amc'].isin(both)][['amc', 'isin', 'name', 'shares', 'active_shares']].rename(
         columns={'shares': 'shares_before', 'active_shares': 'active_before', 'name': '_name_before'})
@@ -210,6 +244,7 @@ def changes(cur: pd.DataFrame, prev: pd.DataFrame, factors: pd.DataFrame | None 
     m.loc[a.gt(0) & b.gt(0) & m['active_change'].gt(0), 'kind'] = 'added'
     m.loc[a.gt(0) & b.gt(0) & m['active_change'].lt(0), 'kind'] = 'cut'
     m.loc[a.eq(0) & b.eq(0), 'kind'] = 'passive'
+    m['isin_before'] = m['isin'].map({v: k for k, v in bridge.items()})
     return m
 
 
@@ -217,15 +252,41 @@ def by_stock(ch: pd.DataFrame) -> pd.DataFrame:
     """Per ISIN (active schemes): houses adding (incl. new), cutting (incl. exits), starting, exiting, net shares
     bought by active schemes, by all schemes, and active shares held at the two month-ends."""
     cols = ['isin', 'name', 'houses_adding', 'houses_cutting', 'houses_new', 'houses_exit', 'active_net', 'all_net',
-            'active_shares', 'active_before']
+            'active_shares', 'active_before', 'price', 'active_net_cr', 'houses_holding']
     if ch.empty:
         return pd.DataFrame(columns=cols)
+    held = ch['shares'].gt(0)
     g = ch.assign(_add=ch['kind'].isin(['added', 'new']), _cut=ch['kind'].isin(['cut', 'exit']),
-                  _new=ch['kind'].eq('new'), _exit=ch['kind'].eq('exit')).groupby('isin', sort=False)
-    return g.agg(name=('name', 'first'), houses_adding=('_add', 'sum'), houses_cutting=('_cut', 'sum'),
-                 houses_new=('_new', 'sum'), houses_exit=('_exit', 'sum'), active_net=('active_change', 'sum'),
-                 all_net=('change', 'sum'), active_shares=('active_shares', 'sum'),
-                 active_before=('active_before', 'sum')).reset_index()[cols]
+                  _new=ch['kind'].eq('new'), _exit=ch['kind'].eq('exit'), _hold=ch['active_shares'].gt(0),
+                  _v=ch['value_lakh'].where(held), _s=ch['shares'].where(held)).groupby('isin', sort=False)
+    out = g.agg(name=('name', 'first'), houses_adding=('_add', 'sum'), houses_cutting=('_cut', 'sum'),
+                houses_new=('_new', 'sum'), houses_exit=('_exit', 'sum'), active_net=('active_change', 'sum'),
+                all_net=('change', 'sum'), active_shares=('active_shares', 'sum'),
+                active_before=('active_before', 'sum'), houses_holding=('_hold', 'sum'), _v=('_v', 'sum'), _s=('_s', 'sum')).reset_index()
+    # The month-end price the houses valued it at (their filed market value over their shares); blank when no
+    # collected house still holds it (an exit by all), never filled from elsewhere.
+    out['price'] = (out['_v'] * 1e5 / out['_s']).where(out['_s'].gt(0))
+    out['active_net_cr'] = out['active_net'] * out['price'] / 1e7
+    return out[cols]
+
+
+def month_end(month: str) -> pd.Timestamp:
+    return (pd.Period(month, 'M').end_time).normalize()
+
+
+def share_factors(actions: pd.DataFrame | None, prev_month: str, cur_month: str) -> pd.DataFrame:
+    """(isin, factor) for bonuses and splits with an ex-date after the earlier month-end and on or before the later
+    one: shares held before are multiplied by `factor` (a 1:1 bonus or a split of 10 into 5 doubles them). Built from
+    the filed actions (`adjust.expected_factors`, a price factor: shares move by its inverse). A split that comes with
+    a new ISIN shows as an exit from the old ISIN and a new holding of the new one; it is not bridged here."""
+    from insiders_clean.adjust import expected_factors
+    e = expected_factors(actions)
+    if e.empty:
+        return pd.DataFrame(columns=['isin', 'factor'])
+    e = e[e['split_bonus'] & e['expected'].gt(0) & (e['ex_date'] > month_end(prev_month)) & (e['ex_date'] <= month_end(cur_month))]
+    if e.empty:
+        return pd.DataFrame(columns=['isin', 'factor'])
+    return (1 / e.groupby('isin')['expected'].prod()).rename('factor').reset_index()
 
 
 def coverage(month_holdings: pd.DataFrame, filed: pd.DataFrame) -> dict:
