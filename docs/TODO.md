@@ -22,6 +22,15 @@ Open from it:
 | D2 | `/today` typed by hand shows Streamlit's "Page not found" (the default page lives at `/`; Streamlit refuses a second page at `/today`) | a Streamlit option or an upstream fix; links all use `/` |
 | D3 | Forward record of the Worth-a-look shortlist itself (started 12 Nov) | three months of picks measured |
 
+## Filings by day, 19 Nov 2026
+
+Owner could not find a day's insider buys (a broker's "Daily insider buying, 17 Nov" list) on the site. Checked on the
+live site: most of its rows were there, but only on `/filings-all`, which had no menu link, listed newest first and
+stopped at 200 rows (481 insider filings in 7 days), so 17 Nov fell past the cut. Insiders shows decisions, not
+filings, by design (staff, trusts and small buys counted, not listed).
+Done: Filings in the menu (More); a one-day picker (only what was made public that day, up to 2,000 rows); "Show every
+row" in Filters & sort; a line above the table when rows are cut. Companies under Rs 100 Cr stay off (universe).
+
 ## Where things stand (09 Oct 2026)
 
 - Data in R2: one year of NSE insider filings and bulk/block deals (from

@@ -276,3 +276,65 @@ filings_all.render()
     at.run()
     assert not at.exception, at.exception[0].value
     assert 'filings left out' in ' '.join(e.proto.body for e in at.get('html'))
+
+
+def _paths():
+    import pathlib
+    import sys
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'streamlit_app'))
+
+
+def test_one_day_and_row_limit_helpers():
+    _paths()
+    from screens import filings_all as f
+    ref = pd.Timestamp('2026-11-18')
+    assert f.days_for(ref, None) is None
+    assert f.days_for(ref, pd.Timestamp('2026-11-17').date()) == 2       # 17 and 18 Nov
+    assert f.days_for(ref, ref.date()) == 1
+    assert f.days_for(ref, pd.Timestamp('2026-11-19').date()) is None    # after the as-of date
+    rows = pd.DataFrame({'made_public': pd.to_datetime(['2026-11-18', '2026-11-17', '2026-11-17', '2026-11-16'])})
+    assert len(f.on_day(rows, pd.Timestamp('2026-11-17').date())) == 2
+    assert len(f.on_day(rows, None)) == 4
+    assert f.row_limit(481, False, None) == f.LIMIT
+    assert f.row_limit(481, True, None) == 481
+    assert f.row_limit(50, False, pd.Timestamp('2026-11-17').date()) == 50
+    assert f.row_limit(9_999, True, None) == f.ALL_ROWS
+
+
+def test_a_picked_day_shows_only_that_day(site, monkeypatch):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(site))
+    probe = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from screens import filings_all as f
+from screens.ctx import load
+ctx = load()
+rows, _ = f.build(ctx, 365)
+past = rows[~f.in_kind(rows, 'Upcoming') & (rows['made_public'] <= ctx.ref)]   # a day the picker offers
+day = past['made_public'].value_counts().idxmax()
+st.write(day.strftime('%Y-%m-%d') + '|' + str(int(past['made_public'].eq(day).sum())))
+""", default_timeout=90)
+    probe.run()
+    assert not probe.exception, probe.exception[0].value
+    day, n = probe.markdown[0].value.split('|')
+    day = pd.Timestamp(day)
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from ui import theme
+theme.inject()
+from screens import filings_all
+filings_all.render()
+""", default_timeout=90)
+    at.session_state['fa_day'] = day.date()
+    at.run()
+    assert not at.exception, at.exception[0].value
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    text = html + ' '.join(m.value for m in at.markdown) + ' '.join(c.value for c in at.caption)
+    assert f'Made public on {day.strftime("%d %b %Y")}' in text, text[:500]
+
+
+def test_filings_is_in_the_menu():
+    src = (__import__('pathlib').Path(__file__).resolve().parents[1] / 'streamlit_app' / 'app.py').read_text()
+    more = src.split("'More': [", 1)[1].split('],', 1)[0]
+    assert "url_path='filings-all'" in more
