@@ -180,13 +180,16 @@ def flow_months(days: pd.DataFrame) -> pd.DataFrame:
 
 
 def fpi_kpi(df: pd.DataFrame | None) -> dict | None:
-    """FPIs' equity net: NSDL's month to date (settled; reporting dates) against last month, the latest
-    exchange-provisional day from NSE beside it. None when neither source has rows."""
-    nsdl = flow_days(df, 'nsdl', 'fpi', ('equity',))
+    """FPIs' equity net from NSDL (settled; reporting dates), month to date against last month. `mtd` is the
+    secondary market (NSDL's "Stock Exchange" route: the sentiment figure) when NSDL's routes are held, with the
+    primary market and others (IPOs, QIPs, preferential allotments) and the equity total beside it; `secondary` says
+    which. The latest exchange-provisional day from NSE beside it. None when neither source has rows."""
+    nsdl = flow_days(df, 'nsdl', 'fpi', ('equity_exchange', 'equity'))
     nse = flow_days(df, 'nse', 'fpi', NSE_SEGMENTS)
     if nsdl.empty and nse.empty:
         return None
-    out = {'nse_day': None, 'nse_net': None, 'mtd': None, 'month': None, 'prev': None, 'mtd_days': 0, 'last': None, 'spark': []}
+    out = {'nse_day': None, 'nse_net': None, 'mtd': None, 'month': None, 'prev': None, 'mtd_days': 0, 'last': None, 'spark': [],
+           'secondary': False, 'primary': None, 'total': None}
     if not nse.empty:
         out['nse_day'], out['nse_net'] = nse['date'].iloc[-1], float(nse['net_cr'].iloc[-1])
     if not nsdl.empty:
@@ -194,7 +197,12 @@ def fpi_kpi(df: pd.DataFrame | None) -> dict | None:
         cur = mo.iloc[-1]
         out.update(mtd=float(cur['net_cr']), month=cur['month'], mtd_days=int(cur['days']), last=cur['last'],
                    prev=float(mo.iloc[-2]['net_cr']) if len(mo) > 1 else None, prev_month=mo.iloc[-2]['month'] if len(mo) > 1 else None,
-                   spark=nsdl['net_cr'].tail(20).tolist())
+                   spark=nsdl['net_cr'].tail(20).tolist(), secondary=nsdl['segment'].iloc[0] == 'equity_exchange')
+        if out['secondary']:
+            for key, seg in (('primary', 'equity_primary'), ('total', 'equity')):
+                m = flow_months(flow_days(df, 'nsdl', 'fpi', (seg,)))
+                m = m[m['month'] == cur['month']]
+                out[key] = float(m['net_cr'].iloc[0]) if len(m) else None
     return out
 
 
@@ -507,7 +515,8 @@ def headline(ins: dict | None, fpi: dict | None, mf: dict | None, span: str = 'i
         parts.append(f'Insiders were net {"buyers" if n >= 0 else "sellers"} of <b>{esc(kit.rupees(abs(n)))}</b> {span}')
     if fpi and fpi.get('mtd') is not None:
         word = 'bought' if fpi['mtd'] >= 0 else 'sold'
-        parts.append(f'FPIs have {word} <b>{esc(crore(abs(fpi["mtd"]), signed=False))}</b> this month')
+        where = ' in the market' if fpi.get('secondary') else ''
+        parts.append(f'FPIs have {word} <b>{esc(crore(abs(fpi["mtd"]), signed=False))}</b>{where} this month')
     if mf:
         word = 'added' if mf['net'] >= 0 else 'cut'
         parts.append(f'mutual funds {word} <b>{esc(crore(abs(mf["net"]), signed=False))}</b> in {pd.Period(mf["month"], "M").strftime("%B")}')
@@ -659,9 +668,12 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
     if fpi:
         if fpi['mtd'] is not None:
             sub = f'{_month(fpi["month"])} to date, {fpi["mtd_days"]} NSDL reports to {kit.day(fpi["last"], with_year=False)}'
+            if fpi['secondary'] and fpi['primary'] is not None:
+                sub += (f' · plus {crore(fpi["primary"])} in the primary market (IPOs, QIPs, allotments): '
+                        f'{crore(fpi["total"])} in all')
             if fpi['nse_net'] is not None:
                 sub += f' · NSE {kit.day(fpi["nse_day"], with_year=False)}: {crore(fpi["nse_net"])} provisional'
-            cards.append(_card('FPI net, equity', esc(crore(fpi['mtd'])), _tone(fpi['mtd']), esc(sub),
+            cards.append(_card('FPI net, secondary market' if fpi['secondary'] else 'FPI net, equity', esc(crore(fpi['mtd'])), _tone(fpi['mtd']), esc(sub),
                                delta_html(fpi['mtd'], fpi['prev'], crore, f'vs all of {_month(fpi.get("prev_month")).split(" ")[0]}' if fpi['prev'] is not None else ''),
                                spark(fpi['spark']), ('Context, not a stock signal', ''), '#flows'))
         else:
@@ -719,7 +731,8 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
 
 def _flows_tile(flows):
     import streamlit as st
-    fpi_d = flow_days(flows, 'nsdl', 'fpi', ('equity',))
+    fpi_d = flow_days(flows, 'nsdl', 'fpi', ('equity_exchange', 'equity'))   # the secondary market where NSDL's routes are held
+    secondary = not fpi_d.empty and fpi_d['segment'].iloc[0] == 'equity_exchange'
     mf_d = flow_days(flows, 'sebi', 'mf', ('equity',))
     dii_d = flow_days(flows, 'nse', 'dii', NSE_SEGMENTS)
     parts = []
@@ -736,8 +749,9 @@ def _flows_tile(flows):
     m = m[m['month'].isin(months)].assign(label=lambda f: f['month'].map(lambda x: pd.Period(x, 'M').strftime('%b %y')))
     last = m[m['month'] == months[-1]].set_index('series')['net_cr']
     ans = ' · '.join(f'{s.split(" (")[0]} {crore(v)}' for s, v in last.items())
-    why = (f'Net equity buying a month, ₹ crore. {_month(months[-1])} is to date. FPIs from NSDL\'s custodian reports (reporting dates); '
-           'mutual funds from SEBI (about two weeks behind); ')
+    why = (f'Net equity buying a month, ₹ crore. {_month(months[-1])} is to date. FPIs from NSDL\'s custodian reports (reporting dates)'
+           + (', bought and sold on the exchanges (IPOs, QIPs and other primary allotments left out); ' if secondary else '; ')
+           + 'mutual funds from SEBI (about two weeks behind); ')
     why += ('DIIs from NSE\'s provisional figures, which give only the latest day, so their bars hold only the days kept since the nightly began.'
             if not dii_d.empty else 'DIIs: NSE gives the latest day only and none is kept yet.')
     st.html(_q('Is foreign or domestic money coming in?', esc(ans) + f' <span class="dash-when">in {pd.Period(months[-1], "M").strftime("%B")} so far</span>',

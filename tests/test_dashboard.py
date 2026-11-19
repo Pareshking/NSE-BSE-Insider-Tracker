@@ -62,6 +62,19 @@ def test_fpi_month_to_date_from_nsdl_equity_and_the_latest_nse_day():
     assert k['nse_net'] == pytest.approx(200.0) and k['nse_day'] == pd.Timestamp('2026-11-19')
 
 
+def test_fpi_leads_with_the_secondary_market_and_names_the_primary_part():
+    # NSDL's November 2026 to the 18th as published: Stock Exchange 1,00,365.32, primary market & others 5,863.52, equity 1,06,228.84
+    rows = [{'date': '2026-10-31', 'source': 'nsdl', 'category': 'fpi', 'segment': s, 'net_cr': v}
+            for s, v in (('equity', -34843.0), ('equity_exchange', -48082.0), ('equity_primary', 13239.0))]
+    rows += [{'date': '2026-11-18', 'source': 'nsdl', 'category': 'fpi', 'segment': s, 'net_cr': v}
+             for s, v in (('equity', 106228.84), ('equity_exchange', 100365.32), ('equity_primary', 5863.52))]
+    k = D.fpi_kpi(pd.DataFrame(rows))
+    assert k['secondary'] and k['mtd'] == pytest.approx(100365.32) and k['prev'] == pytest.approx(-48082.0)
+    assert k['primary'] == pytest.approx(5863.52) and k['total'] == pytest.approx(106228.84)
+    assert 'in the market this month' in D.headline(None, k, None)
+    assert not D.fpi_kpi(flows())['secondary']   # no routes held: the equity total, as before
+
+
 def test_dii_is_the_latest_nse_day_on_all_exchanges_and_says_how_many_days_are_kept():
     k = D.dii_kpi(flows())
     assert k['net'] == pytest.approx(-100.0) and k['before'] == pytest.approx(300.0)
