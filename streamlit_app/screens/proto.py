@@ -1037,10 +1037,12 @@ def calendar():
 
 # ---- Company: the same dense tables, one company, 12 months (R8) ------------------------------------------------------
 
-def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
+def company_tables(ctx, isin: str | None, sym: str, days: int = 365, bars: dict | None = None) -> None:
     """Insider decisions, deals and SAST stake changes of one company, as on the topic pages. Every decision is listed
     (no size bar: on its own page a company's small decisions are the story); market makers, inter-se transfers and
-    moves under 0.1% stay counted, not listed."""
+    moves under 0.1% stay counted, not listed. `bars`: HTML drawn under the insider and deal headings (the Company page's
+    bought-against-sold bars, 19 Nov 2026)."""
+    bars = bars or {}
     ref = pd.Timestamp(ctx.ref)
     px, _, names = moves.lookups(ctx)
     frames = []
@@ -1050,7 +1052,7 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
         if not d.empty:
             frames.append(d.assign(side=side))
     d = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    st.html('<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · 12 months · each decision added up</span></h2>')
+    st.html('<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · 12 months · each decision added up</span></h2>' + bars.get('insiders', ''))
     st.html(_insider_table(ctx, d, px, names, company_col=False) if not d.empty
             else '<p class="dt-empty">No promoter, director or KMP traded on the market in 12 months.</p>')
 
@@ -1061,7 +1063,7 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
     # under FIH Mauritius's sale buried SBI MF's ₹503 Cr); newest day first, largest first within a day
     rows = club_blocks(rows)
     rows.sort(key=lambda x: (pd.Timestamp(x['date']).normalize(), x['_v'] or 0), reverse=True)
-    st.html('<h2 class="dt-h2">Bulk and block deals <span>12 months · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>')
+    st.html('<h2 class="dt-h2">Bulk and block deals <span>12 months · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>' + bars.get('deals', ''))
     st.html(_deal_table(rows, names, limit=60, company_col=False, with_year=True))
     if churn or small or len(rows) > 60:
         st.html(f'<p class="dt-foot">Clubbed: <b>{churn}</b> market-maker legs, <b>{small}</b> legs under ₹1 Cr'

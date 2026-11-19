@@ -35,6 +35,13 @@ JS = """
       crosshair: { horzLine: { visible: false, labelVisible: false }, vertLine: { color: '__LINE2__', width: 1, style: 2 } },
       handleScroll: false, handleScale: false,
     });
+    if (spec.bands && spec.bands.length) {
+      // results days as a tinted band behind the line (added first, so drawn under it), on a hidden scale of its own
+      const b = chart.addHistogramSeries({ priceScaleId: 'bands', color: spec.band, priceLineVisible: false, lastValueVisible: false,
+                                           priceFormat: { type: 'custom', formatter: () => '' } });
+      chart.priceScale('bands').applyOptions({ visible: false, scaleMargins: { top: 0, bottom: 0 } });
+      b.setData(spec.bands.map(t => ({ time: t, value: 1 })));
+    }
     const s = chart.addAreaSeries({ lineColor: spec.color, topColor: spec.color + '2E', bottomColor: spec.color + '05',
                                      lineWidth: 2, priceLineVisible: false, lastValueVisible: true,
                                      priceFormat: { type: 'price', precision: 2, minMove: 0.01 } });
@@ -51,7 +58,7 @@ JS = """
       el.querySelectorAll('.lw-range button').forEach(x => x.classList.toggle('on', x === b));
       fit(parseInt(b.dataset.d, 10));
     }));
-    fit(365);
+    fit(spec.start === undefined ? 365 : spec.start);
     chart.subscribeCrosshairMove(p => {
       if (!p || !p.time || !p.point) { tip.hidden = true; return; }
       const v = p.seriesData.get(s); if (!v) { tip.hidden = true; return; }
@@ -75,9 +82,30 @@ JS = """
 JS = JS.replace('__INK3__', C['ink-3']).replace('__LINE2__', C['line-strong']).replace('__LINE__', C['line'])   # ui/theme.py
 
 
-def price_chart(dates, closes, trades: pd.DataFrame | None, height: int = 320, key: str = '') -> str | None:
+def _sessions(days: pd.Series, px: pd.DataFrame) -> pd.Series:
+    """Each date on the session it falls on, or the next one; dates outside the price line are dropped."""
+    d = pd.DataFrame({'day': pd.to_datetime(days, errors='coerce')}).reset_index()
+    d['day'] = d['day'].dt.normalize()
+    d = d.dropna(subset=['day'])
+    d = d[(d['day'] >= px['date'].min()) & (d['day'] <= px['date'].max())].sort_values('day')
+    if d.empty:
+        return pd.Series(dtype=object)
+    m = pd.merge_asof(d, px[['date', 'time']].rename(columns={'date': 'day'}), on='day', direction='forward')
+    return m.set_index('index')['time'].dropna()
+
+
+EVENT_LOOK = {   # kind -> (shape, position, colour): insiders are arrows, deals squares, SAST crossings circles
+    'deal_buy': ('square', 'belowBar', BUY), 'deal_sell': ('square', 'aboveBar', SELL), 'sast': ('circle', 'aboveBar', C['mark-sast']),
+}
+
+
+def price_chart(dates, closes, trades: pd.DataFrame | None, height: int = 320, key: str = '',
+                events: pd.DataFrame | None = None, bands: pd.DataFrame | None = None, start: int = 365) -> str | None:
     """HTML for st.html(..., unsafe_allow_javascript=True). `trades`: seen (day made public), side (BUY/SELL),
-    value (rupees), person_name, role. None when there are fewer than five closes."""
+    value (rupees), person_name, role. `events` (Company page, 19 Nov 2026): day, kind ('deal_buy', 'deal_sell',
+    'sast'), text; drawn as squares (deals) and circles (SAST crossings), each line in the hover box. `bands`: day,
+    text; a tinted band on each results day. `start`: the range shown first, in days (0 for all). None when there are
+    fewer than five closes."""
     px = pd.DataFrame({'date': pd.to_datetime(dates, errors='coerce'), 'close': pd.to_numeric(closes, errors='coerce')})
     px = px.dropna().sort_values('date').drop_duplicates('date', keep='last')
     if len(px) < 5:
@@ -105,10 +133,25 @@ def price_chart(dates, closes, trades: pd.DataFrame | None, height: int = 320, k
                     role = str(r.get('role') or '')
                     tips.append({'time': day, 'side': 'b' if buy else 's',
                                  'text': f'{"Bought" if buy else "Sold"} ₹{r["cr"]:,.2f} Cr · {who}' + (f' ({role})' if role else '')})
-    spec = {'lib': LIB, 'height': height, 'color': PRICE, 'data': data, 'marks': marks, 'trades': tips}
-    cid = 'lw_' + hashlib.sha1(f'{key}|{len(data)}|{data[-1]["time"]}'.encode()).hexdigest()[:10]
+    if events is not None and not events.empty and {'day', 'kind', 'text'} <= set(events.columns):
+        ev = events[events['kind'].isin(list(EVENT_LOOK))].copy()
+        ev['time'] = _sessions(ev['day'], px)
+        for (day, kind), g in ev.dropna(subset=['time']).groupby(['time', 'kind'], sort=True):
+            shape, pos, colour = EVENT_LOOK[kind]
+            marks.append({'time': day, 'position': pos, 'shape': shape, 'color': colour, 'size': 1})
+            tips += [{'time': day, 'side': {'deal_buy': 'b', 'deal_sell': 's'}.get(kind, 'e'), 'text': str(x)} for x in g['text']]
+    marks.sort(key=lambda m: m['time'])
+    band = []
+    if bands is not None and not bands.empty and 'day' in bands:
+        bd = bands.assign(time=_sessions(bands['day'], px)).dropna(subset=['time'])
+        band = sorted(set(bd['time']))
+        texts = bd['text'] if 'text' in bd else pd.Series('Results', index=bd.index)
+        tips += [{'time': t, 'side': 'r', 'text': str(x)} for t, x in zip(bd['time'], texts)]
+    spec = {'lib': LIB, 'height': height, 'color': PRICE, 'data': data, 'marks': marks, 'trades': tips, 'bands': band,
+            'band': C['band'], 'start': start}
+    cid = 'lw_' + hashlib.sha1(f'{key}|{len(data)}|{data[-1]["time"]}|{len(marks)}|{len(band)}'.encode()).hexdigest()[:10]
     on = ' class="on"'   # no backslash inside an f-string: the site runs Python 3.11
-    ranges = ''.join(f'<button data-d="{d}"{on if d == 365 else ""}>{label}</button>'
+    ranges = ''.join(f'<button data-d="{d}"{on if d == start else ""}>{label}</button>'
                      for d, label in ((91, '3M'), (182, '6M'), (365, '1Y'), (0, 'All')))
     return (f'<div class="lw" id="{cid}"><div class="lw-range">{ranges}</div>'
             f'<div class="lw-plot" style="height:{height}px"></div><div class="lw-tip" hidden></div></div>'

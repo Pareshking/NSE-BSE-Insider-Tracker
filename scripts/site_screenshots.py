@@ -27,6 +27,12 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
 # Streamlit marks the app "notRunning" once a script run has finished.
 RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
+# Scroll Streamlit's own scrolling container down by one screen; false when it is already at the bottom.
+SCROLL_ON = """(h) => {
+  const el = [...document.querySelectorAll('[data-testid="stMain"], [data-testid="stAppViewContainer"], section.main')]
+    .find(e => e.scrollHeight > e.clientHeight + 4) || document.scrollingElement;
+  const before = el.scrollTop; el.scrollTop = before + h - 120; return el.scrollTop > before;
+}"""
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
 
 
@@ -55,6 +61,13 @@ async def main(base: str, out: Path) -> int:
                     problems.append({'page': name, 'width': label, 'error': 'page still running after 90 s'})
                 timings.append({'page': name, 'width': label, 'seconds': round(time.monotonic() - t0, 1)})
                 await page.screenshot(path=str(out / f'{name}-{label}.png'), full_page=(label == 'desktop'))
+                if name.startswith('company-'):   # the Company page runs past one screen: the rest, a screen at a time
+                    for part in range(2, 5):
+                        moved = await page.evaluate(SCROLL_ON, h)
+                        if not moved:
+                            break
+                        await page.wait_for_timeout(800)
+                        await page.screenshot(path=str(out / f'{name}-{label}-{part}.png'))
                 text = await page.inner_text('body')
                 hit = next((m for m in ERROR_MARKERS if m in text), None)
                 if hit:
