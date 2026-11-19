@@ -199,3 +199,42 @@ def test_pension_houses_are_kept_apart_by_kind():
     assert pension and all(h.key.startswith('nps_') and h.value_unit == 'rupee' for h in pension)
     assert all(h.kind == 'mf' and h.value_unit == 'lakh' for h in HOUSES if not h.key.startswith('nps_'))
     assert BY_KEY['sbi'].kind == 'mf' and BY_KEY['nps_sbi'].kind == 'pension'
+
+
+def test_mahindra_reads_only_the_monthly_portfolio_category():
+    from collectors.mf_portfolios.apis2 import mahindra_links
+    from collectors.mf_portfolios.houses import BY_KEY
+    listing = {'status': 1, 'message': 'Downloads fetched successfully', 'data': [
+        {'categoryName': 'MANDATORY DISCLOSURES', 'files': [], 'subcategories': [
+            {'categoryName': 'Portfolio Disclosure', 'files': [], 'subcategories': [
+                {'categoryName': 'Fortnightly Debt Portfolio Disclosures', 'subcategories': [], 'files': [
+                    {'title': 'Debt portfolio disclosure for the fortnight ended October 31, 2026',
+                     'fileUrl': 'https://cms.example/f.xlsx'}]},
+                {'categoryName': 'Monthly Portfolio Disclosure', 'files': [], 'subcategories': [
+                    {'categoryName': '2026', 'subcategories': [], 'files': [
+                        {'title': 'Monthly Portfolio Disclosure - October, 2026', 'fileUrl': 'https://cms.example/oct.xlsx'},
+                        {'title': 'Monthly Portfolio Disclosure - September, 2026', 'fileUrl': 'https://cms.example/sep.xlsx'},
+                        {'title': 'No file yet', 'fileUrl': None}]}]}]}]}]}
+    links = mahindra_links(listing)
+    assert links == [('Monthly Portfolio Disclosure - October, 2026', 'https://cms.example/oct.xlsx'),
+                     ('Monthly Portfolio Disclosure - September, 2026', 'https://cms.example/sep.xlsx')]
+    assert find.candidates(links, '2026-10', BY_KEY['mahindra']) == ['https://cms.example/oct.xlsx']
+
+
+def test_helios_takes_every_scheme_and_its_misspelt_names_but_no_fortnightly_file():
+    from collectors.mf_portfolios.houses import BY_KEY
+    base = 'https://www.heliosmf.in/wp-content/uploads/2026/11/'
+    links = [('October 2026', base + 'helios-flexi-cap-fund-monthly-portfolio-as-on-31st-october-2026.xlsx'),
+             ('October 2026', base + 'helios-arbitrage-fund-monthly-portfolio-as-on-31-october-2026.xlsx'),
+             ('October 2026', base + 'Helios-Overnight-Fund-Monthtly-Portfolio-as-on-31st-October-2026.xls'),
+             ('', base + 'helios-overnight-fund-fortnightly-portfolio-as-on-31st-october-2026.xls'),
+             ('', base + 'helios-flexi-cap-fund-monthly-portfolio-as-on-30th-september-2026.xlsx')]
+    got = find.candidates(links, '2026-10', BY_KEY['helios'])
+    assert len(got) == 3 and not any('fortnightly' in u or 'september' in u for u in got)
+
+
+def test_not_collected_names_houses_that_are_not_collected():
+    from collectors.mf_portfolios.houses import HOUSES, NOT_COLLECTED
+    names = {h.name for h in HOUSES}
+    assert NOT_COLLECTED and all(n not in names and why for n, why in NOT_COLLECTED)
+    assert 'Mahindra Manulife Mutual Fund' in names
