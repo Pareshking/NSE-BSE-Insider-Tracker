@@ -1057,8 +1057,11 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365) -> None:
     dl = ctx.deals[ctx.deals['isin'] == isin] if isin and not ctx.deals.empty else ctx.deals.iloc[0:0]
     dl = dl[(dl['date'] > ref - pd.Timedelta(days=days)) & (dl['date'] <= ref)] if not dl.empty else dl
     rows, churn, small = _deal_rows(dl) if not dl.empty else ([], 0, 0)
-    rows.sort(key=lambda x: x['date'], reverse=True)
-    st.html('<h2 class="dt-h2">Bulk and block deals <span>12 months · matched buyer and seller on one line</span></h2>')
+    # one block's many buyers are one line naming the largest (IIFL Finance, 18 Nov 2026: ~50 buyer lines smallest first
+    # under FIH Mauritius's sale buried SBI MF's ₹503 Cr); newest day first, largest first within a day
+    rows = club_blocks(rows)
+    rows.sort(key=lambda x: (pd.Timestamp(x['date']).normalize(), x['_v'] or 0), reverse=True)
+    st.html('<h2 class="dt-h2">Bulk and block deals <span>12 months · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>')
     st.html(_deal_table(rows, names, limit=60, company_col=False, with_year=True))
     if churn or small or len(rows) > 60:
         st.html(f'<p class="dt-foot">Clubbed: <b>{churn}</b> market-maker legs, <b>{small}</b> legs under ₹1 Cr'
