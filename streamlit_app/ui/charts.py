@@ -1,5 +1,13 @@
-"""The model basket against the index (Altair, which ships with Streamlit). The company price chart is
-ui/lwchart.py (TradingView Lightweight Charts, 22 Oct). The Company page's small charts are HTML, below."""
+"""Small charts, drawn with the theme's colours only (ui/theme.py). The company price chart is ui/lwchart.py (TradingView
+Lightweight Charts, 22 Oct); the model basket against the index and the Funds page's sector bars and heatmap are Altair
+(which ships with Streamlit); the Company page's at-a-glance charts are HTML (ownership_stack, delta_bars,
+split_bar, spark, columns), so they follow a 390 px phone's width with no horizontal scroll.
+
+Bought or sold at a glance (owner, 19 Nov 2026, on the People & funds page on a phone: "Not even pages have visualization to
+understand bought or sold"): diverging_bar and buy_sell_split take a page's table and draw it with delta_bars and split_bar;
+holding_trend, count_strip and change_rows add the quarter trend, the counts and a dense change list. Each returns a chart
+or HTML for good data and None or '' for nothing to draw, so a section waits for its data.
+"""
 from __future__ import annotations
 
 from typing import Callable
@@ -7,11 +15,31 @@ from typing import Callable
 import altair as alt
 import pandas as pd
 
-from ui.kit import _finite, esc, rupees
+from ui.kit import _finite, company_href, esc, pct, rupees
 from ui.theme import C
 
-INK, INK3, LINE = C['ink'], C['ink-3'], C['line']   # ui/theme.py
+INK, INK2, INK3, INK4, LINE = C['ink'], C['ink-2'], C['ink-3'], C['ink-4'], C['line']   # ui/theme.py
 BUY, SELL, PRICE = C['buy'], C['sell'], C['accent']
+FONT = C['ui'].split(',')[0].strip("' ")
+LABEL_CHARS = 26   # a name cut to leave room for its value on a 390 px phone
+
+
+def _finish(chart, height: int):
+    """One look for every chart here: the site's font, no frame, transparent on the page."""
+    return (chart.properties(height=height, width='container')
+            .configure(font=FONT, background='transparent')
+            .configure_view(strokeWidth=0)
+            .configure_axis(labelColor=INK3, labelFontSize=12, domain=False, ticks=False, grid=False, title=None))
+
+
+def _short(s, n: int = LABEL_CHARS) -> str:
+    s = ' '.join(str(s).split())
+    return s if len(s) <= n else s[:n - 1].rstrip() + '…'
+
+
+def pts(v) -> str:
+    """A change in points of the company: +0.42 pts, -1.09 pts."""
+    return f'{v:+.2f} pts'
 
 
 def basket_vs_index(nav: pd.DataFrame) -> alt.Chart | None:
@@ -29,6 +57,124 @@ def basket_vs_index(nav: pd.DataFrame) -> alt.Chart | None:
         tooltip=[alt.Tooltip('date:T', title='Date', format='%d %b %Y'), 'line:N', alt.Tooltip('value:Q', format=',.1f')],
     ).properties(height=220)
 
+
+def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable[[float], str] = pts,
+                  tag: str | None = None, limit: int = 15) -> str:
+    """A page's table as delta_bars: added (green, right of zero) against cut (red, left of zero), largest added at the
+    top and largest cut at the bottom, each value written at the end. `fmt` writes the value (points by default; pass
+    lambda v: rupees(v, signed=True) for rupees); `tag` names a column whose text goes under the name ("new: crossed 1%",
+    "MF"). Rows with no value or a zero change are left out (nothing to draw); the `limit` largest either way are kept.
+    HTML for st.html; '' when there is nothing to draw."""
+    if df is None or df.empty or label not in df or value not in df:
+        return ''
+    d = pd.DataFrame({'_l': df[label].astype(str), '_v': pd.to_numeric(df[value], errors='coerce'),
+                      '_g': df[tag].fillna('').astype(str) if tag and tag in df else ''})
+    d = d[d['_v'].notna() & d['_v'].ne(0)]
+    if d.empty:
+        return ''
+    d = d.loc[d['_v'].abs().sort_values(ascending=False, kind='stable').index[:limit]]
+    d = d.sort_values('_v', ascending=False, kind='stable')
+    html = delta_bars([(_short(lab), v, g) for lab, v, g in zip(d['_l'], d['_v'], d['_g'])], fmt=fmt)
+    # 'wide': on a phone the name and value share a line and the bar runs the full width under them (ui/look.css)
+    return html.replace('<div class="cg-delta">', '<div class="cg-delta wide">', 1)
+
+
+def buy_sell_split(buy, sell, fmt: Callable[[float], str] = rupees) -> str:
+    """Bought against sold as one bar with both totals and shares (split_bar). '' when neither side has a value."""
+    return split_bar(buy, sell, fmt=fmt)
+
+
+def holding_trend(df: pd.DataFrame | None, label: str = 'company', when: str = 'quarter_end', value: str = 'pct_of_company',
+                  columns: int = 2, limit: int = 8) -> alt.Chart | None:
+    """% of the company held at each quarter we have, one small panel per company (`label`), each point written with its
+    value; the line green when the holding rose from the first quarter shown to the last, red when it fell. A quarter
+    with no point is one where the holder was not named (under 1%) or the company's list is not in. One company: one
+    panel, 320 px. None when there is nothing to draw."""
+    if df is None or df.empty or not {label, when, value} <= set(df.columns):
+        return None
+    d = pd.DataFrame({'_l': df[label].astype(str), '_d': pd.to_datetime(df[when], errors='coerce'),
+                      '_v': pd.to_numeric(df[value], errors='coerce')}).dropna()
+    if d.empty:
+        return None
+    d = d.groupby(['_l', '_d'], as_index=False)['_v'].sum().sort_values(['_l', '_d'])
+    order = d.sort_values('_d').groupby('_l')['_v'].last().sort_values(ascending=False).index[:limit]
+    d = d[d['_l'].isin(order)].copy()
+    first, last = d.groupby('_l')['_v'].transform('first'), d.groupby('_l')['_v'].transform('last')
+    d['_tone'] = ['up' if b > a else 'down' if b < a else 'flat' for a, b in zip(first, last)]
+    d['_q'] = d['_d'].dt.strftime('%b %y')
+    d['_t'] = [pct(v, 2) for v in d['_v']]
+    d['_s'] = [_short(x, 30) for x in d['_l']]
+    quarters = list(dict.fromkeys(d.sort_values('_d')['_q']))
+    names = list(dict.fromkeys(_short(x, 30) for x in order))
+    color = alt.Color('_tone:N', scale=alt.Scale(domain=['up', 'down', 'flat'], range=[BUY, SELL, INK3]), legend=None)
+    x = alt.X('_q:O', sort=quarters, axis=alt.Axis(labelAngle=0, labelColor=INK3, labelPadding=4))
+    y = alt.Y('_v:Q', scale=alt.Scale(zero=False, padding=16), axis=None)
+    base = alt.Chart().encode(x=x, y=y)
+    layer = alt.layer(base.mark_line(strokeWidth=2).encode(color=color),
+                      base.mark_point(filled=True, size=40).encode(color=color,
+                                                                     tooltip=[alt.Tooltip('_s:N', title='Company'),
+                                                                              alt.Tooltip('_q:N', title='Quarter'),
+                                                                              alt.Tooltip('_t:N', title='Held')]),
+                      base.mark_text(dy=-11, fontSize=11.5, color=INK).encode(text='_t:N'), data=d)
+    if len(names) == 1:
+        return (_finish(layer.properties(title=alt.TitleParams(names[0], anchor='start', fontSize=12.5, color=INK, fontWeight=600)), 110)
+                .properties(width=320))   # a fixed width: the page draws trends at their own size (width='content')
+    w = 150
+    chart = (layer.properties(width=w, height=86)
+             .facet(facet=alt.Facet('_s:N', sort=names, title=None,
+                                    header=alt.Header(labelColor=INK, labelFontSize=12.5, labelFontWeight=600,
+                                                      labelAnchor='start', labelLimit=w, labelPadding=2)),
+                    columns=columns, spacing={'row': 14, 'column': 18})
+             .resolve_scale(y='independent'))
+    return (chart.configure(font=FONT, background='transparent').configure_view(strokeWidth=0)
+            .configure_axis(labelColor=INK3, labelFontSize=11.5, domain=False, ticks=False, grid=False, title=None))
+
+
+def count_strip(added=None, cut=None, new=None, exited=None) -> str:
+    """A compact line of counts: ▲ added, ▼ cut, new (crossed 1%), exited (dropped below 1%). HTML for st.html; '' when
+    no count is known. A count of zero is shown: it is a fact."""
+    cells = [(added, '▲', 'added', 'up'), (cut, '▼', 'cut', 'down'), (new, '+', 'new, crossed 1%', 'up'),
+             (exited, '−', 'exited, under 1%', 'down')]
+    cells = [(int(n), m, w, t) for n, m, w, t in cells if _finite(n) is not None]
+    if not cells:
+        return ''
+    return '<div class="cstrip">' + ''.join(
+        f'<span class="cs {t if n else "zero"}"><b>{m} {n:,}</b> {esc(w)}</span>' for n, m, w, t in cells) + '</div>'
+
+
+def change_rows(rows: pd.DataFrame | None, company: str = 'company', symbol: str = 'symbol', now: str = 'pct_of_company',
+                change: str = 'pct_change', status: str = 'change', sub: str = '', limit: int = 100) -> str:
+    """A dense list instead of tall cards on a phone: one line per company (name linked to its page, symbol under it), the
+    % of the company held now (`sub`: a muted note after the symbol), and the change in points with a coloured ▲ / ▼; "new" when it crossed 1%, "exited" when it
+    left the list. HTML for st.html; '' when there are no rows."""
+    if rows is None or rows.empty:
+        return ''
+    out = []
+    for r in rows.head(limit).to_dict('records'):
+        sym = str(r.get(symbol) or '')
+        note = r.get(sub) if sub else None
+        note = f' · {esc(str(note))}' if isinstance(note, str) and note else ''
+        name = str(r.get(company) or sym)
+        st_ = r.get(status)
+        held = _finite(r.get(now))
+        chg = _finite(r.get(change))
+        if st_ == 'new':
+            c = f'<span class="up">+ new</span><em>crossed 1%</em>'
+        elif st_ == 'exited':
+            c = '<span class="down">− exited</span><em>under 1%</em>'
+        elif chg is not None and chg != 0:
+            c = f'<span class="{"up" if chg > 0 else "down"}">{"▲" if chg > 0 else "▼"} {abs(chg):.2f}</span><em class="u">pts</em>'
+        elif st_ in ('same', 'added', 'cut'):
+            c = '<span class="na">unchanged</span>'
+        else:
+            c = '<span class="na">—</span><em>one quarter</em>'
+        out.append(f'<div class="cr"><div class="cr-n"><a href="{esc(company_href(sym), quote=True)}" target="_self">{esc(name)}</a>'
+                   f'<span class="cr-s"><span class="sym">{esc(sym)}</span>{note}</span></div>'
+                   f'<div class="cr-p num">{pct(held, 2) if held is not None and st_ != "exited" else "—"}</div>'
+                   f'<div class="cr-c num">{c}</div></div>')
+    more = len(rows) - min(len(rows), limit)
+    head = '<div class="cr cr-h"><div>Company</div><div>% held</div><div>Change, pts</div></div>'
+    return '<div class="crows">' + head + ''.join(out) + '</div>' + (f'<p class="tbl-cap">Top {limit:,} of {len(rows):,}</p>' if more else '')
 
 # ---- Company page, at a glance (owner, 19 Nov 2026: "not glance-worthy to take even a decision"). Small charts drawn as
 # HTML and inline SVG, not Altair: they follow the column's width on a 390 px phone with no horizontal scroll, use the
@@ -92,20 +238,41 @@ def split_bar(buy, sell, fmt: Callable[[float], str] = rupees, what: tuple[str, 
             f'<div class="cg-spbar"><i class="up" style="width:{pb:.2f}%"></i><i class="down" style="width:{100 - pb:.2f}%"></i></div></div>')
 
 
-def spark(values: list, w: int = 120, h: int = 34, tone: str = 'flat') -> str:
-    """A small line of `values` (oldest first) with a dot on the last value."""
-    v = [float(x) for x in values if _finite(x) is not None]
-    if not v:
+def spark(values: list, w: int = 120, h: int = 34, tone: str = 'flat', signed: bool = False) -> str:
+    """A small run of `values` (oldest first) as HTML columns, the last one strong: plain HTML, so it draws in st.html
+    (whose sanitiser drops SVG) as well as in st.markdown. Plain: columns from the bottom, scaled from the lowest value
+    to the highest (the lowest still shows), the last in `tone` ('up', 'down', 'flat'). `signed`: columns above and
+    below a zero line, green for a positive value and red for a negative one (a flow). A missing value keeps its slot
+    empty. '' with no value. Colours are in ui/look.css; only positions are written here."""
+    vals = [_finite(x) for x in values]
+    real = [x for x in vals if x is not None]
+    if not real:
         return ''
-    lo, hi = min(v), max(v)
+    n = len(vals)
+    wd = 100 / n
+    if signed:
+        lo, hi = min(real + [0.0]), max(real + [0.0])
+        zero = hi / ((hi - lo) or 1.0) * 100   # % from the top
+    else:
+        lo, hi = min(real), max(real)
     span = (hi - lo) or 1.0
-    n = len(v)
-    xs = [w / 2] if n == 1 else [3 + i * (w - 6) / (n - 1) for i in range(n)]
-    ys = [h / 2 if hi == lo else h - 4 - (x - lo) / span * (h - 8) for x in v]
-    line = ' '.join(f'{x:.1f},{y:.1f}' for x, y in zip(xs, ys))
-    return (f'<svg class="cg-spark {tone}" viewBox="0 0 {w} {h}" width="{w}" height="{h}" aria-hidden="true">'
-            + (f'<polyline points="{line}" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' if n > 1 else '')
-            + f'<circle cx="{xs[-1]:.1f}" cy="{ys[-1]:.1f}" r="2.6"/></svg>')
+    cols = []
+    for i, v in enumerate(vals):
+        if v is None:
+            continue
+        if signed:
+            ht = max(abs(v) / span * 100, 3.0)
+            top = max(zero - ht if v >= 0 else zero, 0.0)
+            cls = 'p' if v >= 0 else 'n'
+        else:
+            ht = 100.0 if hi == lo else 15 + (v - lo) / span * 85
+            top = 100 - ht
+            cls = 'q'
+        cols.append(f'<i class="{cls}{" last" if i == n - 1 else ""}" style="left:{i * wd + wd * 0.15:.2f}%;width:{wd * 0.7:.2f}%;'
+                    f'top:{top:.2f}%;height:{ht:.2f}%"></i>')
+    axis = f'<i class="z" style="top:{zero:.2f}%"></i>' if signed else ''
+    return (f'<span class="cg-spark {tone}{" signed" if signed else ""}" style="--w:{w}px;--h:{h}px" aria-hidden="true">'
+            f'{axis}{"".join(cols)}</span>')
 
 
 def columns(items: list[dict], fmt: Callable[[float], str] = rupees) -> str:

@@ -176,9 +176,12 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cg-fh .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cg-fh .v { text-align: right; font-weight: var(--fw-strong); } .cg-fh .v em { display: block; font-style: normal; font-weight: var(--fw-regular); font-size: 11px; color: var(--ink-3); }
 .cg-fh .c { text-align: right; font-size: 12.5px; color: var(--ink-3); }
-.cg-spark polyline { stroke: var(--ink-3); } .cg-spark circle { fill: var(--ink-3); }
-.cg-spark.up polyline { stroke: var(--buy); } .cg-spark.up circle { fill: var(--buy); }
-.cg-spark.down polyline { stroke: var(--sell); } .cg-spark.down circle { fill: var(--sell); }
+/* charts.spark: HTML columns (st.html drops SVG); positions inline, colours here */
+.cg-spark { position: relative; display: inline-block; flex: none; vertical-align: middle; width: var(--w, 120px); height: var(--h, 34px); }
+.cg-spark i { position: absolute; display: block; border-radius: 1px; background: var(--ink-4); }
+.cg-spark i.z { left: 0; right: 0; height: 0; background: none; border-top: 1px solid var(--line-strong); border-radius: 0; }
+.cg-spark i.q.last { background: var(--ink-2); } .cg-spark.up i.q.last { background: var(--buy); } .cg-spark.down i.q.last { background: var(--sell); }
+.cg-spark i.p { background: var(--buy); opacity: .5; } .cg-spark i.n { background: var(--sell); opacity: .5; } .cg-spark i.p.last, .cg-spark i.n.last { opacity: 1; }
 @media (max-width: 640px) { .cg-fh { grid-template-columns: minmax(0, 1fr) 64px 72px 70px; gap: 6px; } .cg-fh .cg-spark { width: 64px; } }
 
 /* revenue and profit columns */
@@ -209,7 +212,6 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
   .stApp [data-variant="segmented_control"] { height: 38px; }
   .stApp [data-variant="segmented_control"] { border-bottom: 1px solid var(--line) !important; }
 }
-<<<<<<< HEAD
 
 /* Dashboard (19 Nov 2026, screens/dashboard.py): a grid of figure cards between thin rules, each with its change against
    the period before, a sparkline and its evidence tag; four across, two on a tablet, one on a phone. Tokens only. */
@@ -228,12 +230,6 @@ a.dash-card:hover .dash-l { color: var(--accent); }
 .dash-delta { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .dash-delta-up { color: var(--buy); } .dash-delta-down { color: var(--sell); }
 .dash-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--gap-2); margin-top: auto; padding-top: 6px; }
-/* sparklines are HTML columns (st.html strips SVG): positions inline, colours here */
-.dash-spark { position: relative; display: block; width: 120px; height: 30px; flex: none; }
-.dash-spark i { position: absolute; display: block; border-radius: 1px; }
-.dash-spark i.z { left: 0; right: 0; height: 0; border-top: 1px solid var(--line-strong); border-radius: 0; }
-.dash-spark i.p { background: var(--buy); opacity: .5; } .dash-spark i.n { background: var(--sell); opacity: .5; }
-.dash-spark i.q { background: var(--ink-4); } .dash-spark i.last { opacity: 1; } .dash-spark i.q.last { background: var(--ink-2); }
 .dash-ev { display: inline-block; padding: 2px 7px; border-radius: var(--radius-pill); font: var(--fw-medium) 11px/1.4 var(--ui); white-space: nowrap;
   background: var(--subtle); color: var(--ink-2); vertical-align: middle; }
 .dash-ev.up { background: var(--buy-tint); color: var(--buy); } .dash-ev.dn { background: var(--sell-tint); color: var(--sell); }
@@ -245,7 +241,37 @@ a.dash-card:hover .dash-l { color: var(--accent); }
 @media (max-width: 1100px) { .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .dash-grid { grid-template-columns: minmax(0, 1fr); } .dash-card { margin-right: 0; padding-right: 0; }
   .dash-l, .dash-sub { min-height: 0; } .dash-v { font-size: 30px; } }
-=======
 .cg-nospark { font-size: 11px; color: var(--ink-4); text-align: center; }
 @media (max-width: 640px) { .co-head h1.co-verdict { font-size: 26px !important; padding-left: 12px; border-left-width: 4px; } }
->>>>>>> origin/main
+
+/* Bought vs sold at a glance (19 Nov 2026, ui/charts.py): a line of counts, and a dense change list in place of tall cards */
+.cstrip { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: var(--gap-2) 0 var(--gap-3); font-size: 14px; color: var(--ink-3); }
+.cstrip .cs b { font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
+.cstrip .cs.up b { color: var(--buy); } .cstrip .cs.down b { color: var(--sell); } .cstrip .cs.zero b { color: var(--ink-4); }
+.chart-cap { font-size: var(--fs-small); color: var(--ink-3); margin: 2px 0 var(--gap-3); line-height: 1.45; }
+.crows { display: flex; flex-direction: column; font-size: 14px; }
+.cr { display: grid; grid-template-columns: minmax(0, 1fr) 76px 104px; gap: 10px; align-items: center; padding: 8px 0;
+  border-bottom: 1px solid var(--line); }
+.cr:last-child { border-bottom: 0; }
+.cr-h { font-size: 12.5px; color: var(--ink-3); border-bottom: 1px solid var(--rule-strong); padding: 4px 0 6px; }
+.cr-h div:not(:first-child), .cr-p, .cr-c { text-align: right; }
+.cr-n { min-width: 0; display: flex; flex-direction: column; }
+.cr-n a { color: var(--ink); font-weight: var(--fw-strong); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-n a:hover { color: var(--accent-ink); text-decoration: underline; }
+
+.cr-p { font-variant-numeric: tabular-nums; color: var(--ink); }
+.cr-c { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cr-c span.up, .cr-c span.down { font-weight: var(--fw-strong); }
+.cr-c em { font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-left: 4px; }
+@media (max-width: 640px) { .cr { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 8px; } .cr-c em { display: block; margin: 0; } .cr-c em.u { display: none; } }
+.cr-s { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* diverging_bar on a phone (ui/charts.py): a name and its value on one line, the bar the full width under them, so long
+   company names neither wrap onto three lines nor shrink the bars to a few pixels */
+@media (max-width: 640px) {
+  .cg-delta.wide { gap: 10px; }
+  .cg-delta.wide .cg-drow { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
+  .cg-delta.wide .cg-dl { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .cg-delta.wide .cg-dl em { display: inline; margin-left: 6px; }
+  .cg-delta.wide .cg-dv { grid-column: 2; grid-row: 1; }
+  .cg-delta.wide .cg-dtrack { grid-column: 1 / -1; grid-row: 2; height: 8px; }
+}

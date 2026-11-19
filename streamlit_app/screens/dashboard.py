@@ -41,31 +41,6 @@ def crore(v_cr, signed: bool = True) -> str:
     return '—' if v is None else kit.rupees(v * 1e7, signed=signed)
 
 
-def spark(values, bars: bool = True) -> str:
-    """A sparkline as plain HTML (st.html allows no SVG): one column per value about a zero line, `p` for a positive
-    value and `n` for a negative one (`q`, neutral, when `bars` is False: a count or a share). A missing value keeps its
-    slot empty. '' with fewer than two values. Colours come from look.css; only positions are written here."""
-    vals = [_f(v) for v in values]
-    real = [v for v in vals if v is not None]
-    if len(real) < 2:
-        return ''
-    lo, hi = min(real + [0.0]), max(real + [0.0])
-    span = (hi - lo) or 1.0
-    zero = hi / span * 100          # the zero line, % from the top
-    wd = 100 / len(vals)
-    cols = []
-    for i, v in enumerate(vals):
-        if v is None:
-            continue
-        ht = max(abs(v) / span * 100, 3.0)
-        top = zero - ht if v >= 0 else zero
-        cls = ('p' if v >= 0 else 'n') if bars else 'q'
-        last = ' last' if i == len(vals) - 1 else ''
-        cols.append(f'<i class="{cls}{last}" style="left:{i * wd + wd * 0.15:.2f}%;width:{wd * 0.7:.2f}%;'
-                    f'top:{max(top, 0.0):.2f}%;height:{ht:.2f}%"></i>')
-    return f'<span class="dash-spark" aria-hidden="true"><i class="z" style="top:{zero:.2f}%"></i>{"".join(cols)}</span>'
-
-
 def delta_html(now, before, fmt, label: str) -> str:
     """'▲ +₹12 Cr vs the 30 days before' in the up or down class; a plain line when there is no earlier figure."""
     a, b = _f(now), _f(before)
@@ -551,10 +526,11 @@ def flows_chart(months: pd.DataFrame):
     return _chart_base((bars + zero).properties(height=260))
 
 
-def hbar_chart(df: pd.DataFrame, label: str, value: str):
-    """Horizontal bars either side of zero, the Funds page's chart (ui/charts.diverging_bars), every row kept."""
+def hbar_chart(df: pd.DataFrame, label: str, value: str) -> str:
+    """Bars either side of zero with each value written (ui/charts.diverging_bar: HTML, so a phone keeps the names
+    readable), every row kept; '' with nothing to draw."""
     from ui import charts
-    return charts.diverging_bars(df, label=label, value=value, unit='₹ Cr', limit=len(df))
+    return charts.diverging_bar(df, label=label, value=value, fmt=crore, limit=max(len(df), 1))
 
 
 def _ev(label: str, tone: str = '') -> str:
@@ -657,11 +633,11 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Insider net buying · {w.short}', esc(kit.rupees(ins['net'], signed=True)), _tone(ins['net']),
                            charts.split_bar(ins['buy'], ins['sell']) or 'No buying or selling in the window',
                            delta_html(ins['net'], ins['net_before'], lambda d: kit.rupees(d, signed=True), w.before),
-                           spark(ins['spark']), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
+                           charts.spark(ins['spark'], 120, 30, signed=True), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
         cards.append(_card('Companies with a promoter buying', f'{ins["promoter_companies"]:,}', '',
                            f'of {ins["buy_companies"]:,} with any insider buying, {w.short}',
                            delta_html(ins['promoter_companies'], ins['promoter_companies_before'], pct_word, w.before),
-                           spark(ins['spark_promoter'], bars=False), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
+                           charts.spark(ins['spark_promoter'], 120, 30), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
     else:
         cards += [_missing_card(f'Insider net buying · {w.short}', 'No open-market insider filings in the data yet.'),
                   _missing_card('Companies with a promoter buying', 'No open-market insider filings in the data yet.')]
@@ -675,7 +651,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                 sub += f' · NSE {kit.day(fpi["nse_day"], with_year=False)}: {crore(fpi["nse_net"])} provisional'
             cards.append(_card('FPI net, secondary market' if fpi['secondary'] else 'FPI net, equity', esc(crore(fpi['mtd'])), _tone(fpi['mtd']), esc(sub),
                                delta_html(fpi['mtd'], fpi['prev'], crore, f'vs all of {_month(fpi.get("prev_month")).split(" ")[0]}' if fpi['prev'] is not None else ''),
-                               spark(fpi['spark']), ('Context, not a stock signal', ''), '#flows'))
+                               charts.spark(fpi['spark'], 120, 30, signed=True), ('Context, not a stock signal', ''), '#flows'))
         else:
             cards.append(_card('FPI net, cash market', esc(crore(fpi['nse_net'])), _tone(fpi['nse_net']),
                                esc(f'NSE provisional, {kit.day(fpi["nse_day"], with_year=False)}; NSDL month to date not collected'),
@@ -689,7 +665,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card('DII net, cash market · latest day', esc(crore(dii['net'])), _tone(dii['net']), esc(note),
                            delta_html(dii['net'], dii['before'], crore, f'vs {kit.day(dii["before_day"], with_year=False)}') if dii['before'] is not None
                            else '<div class="dash-delta">No earlier day kept yet</div>',
-                           spark(dii['spark']), ('Context, not a stock signal', ''), '#flows'))
+                           charts.spark(dii['spark'], 120, 30, signed=True), ('Context, not a stock signal', ''), '#flows'))
     else:
         cards.append(_missing_card('DII net, cash market', 'NSE\'s FII/DII figures are not collected yet.'))
     if mf:
@@ -697,7 +673,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                            esc(f'{_month(mf["month"])} month-end · {mf["bought"]} stocks bought, {mf["sold"]} sold (₹1 Cr+)'),
                            delta_html(mf['net'], mf['before'], crore, f'vs {_month(mf.get("prev_month")).split(" ")[0]}') if mf['before'] is not None
                            else '<div class="dash-delta">First month collected</div>',
-                           spark(mf['spark']), ('Not measured', ''), '/funds'))
+                           charts.spark(mf['spark'], 120, 30, signed=True), ('Not measured', ''), '/funds'))
     else:
         cards.append(_missing_card('Mutual funds, net active buying', 'Fund houses\' month-end portfolios are not collected yet.'))
     dk = deals_kpi(ctx.deals, w.end, w.days)
@@ -706,7 +682,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Bulk and block deals · {w.short}', esc(kit.rupees(dk['value'])), '',
                            esc(f'bought by real buyers in {dk["companies"]:,} companies{share}; market makers out'),
                            delta_html(dk['value'], dk['before'], lambda d: kit.rupees(d, signed=True), w.before),
-                           spark(dk['spark'], bars=False), evidence_tag(summary, 'fund_deal_buy', 'Studies: weak'), '/deals'))
+                           charts.spark(dk['spark'], 120, 30), evidence_tag(summary, 'fund_deal_buy', 'Studies: weak'), '/deals'))
     else:
         cards.append(_missing_card(f'Bulk and block deals · {w.short}', 'No deals in the data yet.'))
     rk = results_kpi(more_pages._latest_results(ctx, RESULTS_DAYS + SEASON_GAP + 7) if ctx.results is not None else None, ref)
@@ -715,7 +691,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                            esc(f'{rk["up"]:,} of {rk["n"]:,} companies with a year-ago quarter, filed in the last {RESULTS_DAYS} days'),
                            delta_html(rk['share'], rk['before'], lambda d: f'{d:+.0f} pts', 'vs the season before') if rk['before'] is not None
                            else f'<div class="dash-delta">The season before: {rk["before_n"]} comparable filings, too few</div>',
-                           spark(rk['spark'], bars=False), ('Filed figures', ''), '/results'))
+                           charts.spark(rk['spark'], 120, 30), ('Filed figures', ''), '/results'))
     else:
         cards.append(_missing_card('Results: profit up year on year', 'No results with a year-ago quarter in the last six weeks.'))
     sk = sast_kpi(ctx.sast, w.end, w.days)
@@ -723,7 +699,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Holders crossing a threshold · {w.short}', f'{sk["n"]:,}', '',
                            esc(f'{sk["in"]} crossed up, {sk["out"]} fell below a 5, 10, 15, 20, 25, 50 or 75% line (SAST)'),
                            delta_html(sk['n'], sk['before'], pct_word, w.before),
-                           spark(sk['spark'], bars=False), ('Not measured', ''), '/stakes'))
+                           charts.spark(sk['spark'], 120, 30), ('Not measured', ''), '/stakes'))
     else:
         cards.append(_missing_card('Holders crossing a threshold', 'No SAST filings in the data yet.'))
     st.html('<div class="dash-grid">' + ''.join(cards) + '</div>')
@@ -861,7 +837,7 @@ def _funds_tile(ctx, stock, names):
         where = 'the official classification (NSE, else BSE, else Value Research)' if source == 'industry' else 'the security master'
         st.html(f'<p class="dash-sub-h">Net by sector <span>the 10 largest either way · sector from {where}'
                 + (f'; {unplaced * 100:.0f}% of the month\'s moves have no sector and are left out' if unplaced >= 0.01 else '') + '</span></p>')
-        st.altair_chart(hbar_chart(g, 'sector', 'net_cr'), width='stretch')
+        st.html(hbar_chart(g, 'sector', 'net_cr'))
     st.html(_foot('/funds', 'Funds: bought, sold, new positions and exits'))
 
 
@@ -885,7 +861,7 @@ def _fpi_sector_tile():
     top = fpi_top(x)
     if len(top) < len(x):
         st.html(f'<p class="dash-sub-h">The {len(top)} largest either way <span>of {len(x)} sectors</span></p>')
-    st.altair_chart(hbar_chart(top, 'sector', 'net_equity_cr'), width='stretch')
+    st.html(hbar_chart(top, 'sector', 'net_equity_cr'))
 
 
 def _coming_tile(ctx, ref):
