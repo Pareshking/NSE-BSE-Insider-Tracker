@@ -4,6 +4,18 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Fund houses set E, 19 Nov 2026 (branch `mf-houses-e`, draft PR)
+
+Added: Mahindra Manulife (`mahindra`: the downloads list shows after the "I am NOT a US person / resident of Canada"
+declaration, which the owner authorised; read in a browser as the page decrypts it) and Helios (`helios`, a workbook
+per scheme). Dry run 2026-09 and 2026-10: Mahindra 299 / 298 ISINs (Rs 32,257 / 32,038 Cr), Helios 173 / 177
+(Rs 14,770 / 15,168 Cr). `houses.NOT_COLLECTED` (the same list as draft PR #293, reasons now as tried) names the rest:
+ICICI Prudential (its file service resets connections from this machine), Kotak (CAPTCHA on every list and file
+call; not solved), Navi (Cloudflare challenge), Union (connection reset), AlphaGrep (site firewall), and four with no
+equity (Monarch, Carnelian and ASK: liquid or overnight only; IL&FS IDF: debt). **Next:** merge, then dispatch
+Fund house probe (`mf-probe.yml`) to see whether a GitHub runner reaches ICICI, Kotak, Navi, Union and AlphaGrep;
+add whichever answers.
+
 ## NPS pension fund portfolios, 19 Nov 2026 (branch `nps-portfolios`, draft PR)
 
 The 10 NPS pension fund managers' month-end scheme portfolios (NPS Trust's list, `npstrust.org.in/scheme-portfolio`),
