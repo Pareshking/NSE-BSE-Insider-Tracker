@@ -62,7 +62,7 @@ a.kpi:hover { background: var(--hover); }
 .ds-rows { display: grid; }
 .ds-row, .ds-ev { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
 .ds-rows > :first-child { border-top: 0; }
-.ds-row .av { width: 38px; height: 38px; border-radius: 12px; background: var(--subtle); display: grid; place-items: center;
+.ds-row .av { width: 38px; height: 38px; border-radius: var(--radius-sm); background: var(--subtle); display: grid; place-items: center;
   font-weight: var(--fw-strong); font-size: 12.5px; color: var(--ink-2); flex: none; }
 .ds-row .who, .ds-ev .who { flex: 1; min-width: 0; }
 .ds-row .nm { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
@@ -79,7 +79,7 @@ a.kpi:hover { background: var(--hover); }
   font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chip.up { background: var(--buy-tint); color: var(--buy); } .chip.dn { background: var(--sell-tint); color: var(--sell); }
 .chip.mut { background: var(--subtle); color: var(--ink-2); } .chip.wn { background: var(--warn-tint); color: var(--warn); }
-.ds-ev .day { width: 44px; text-align: center; border-radius: 12px; background: var(--subtle); padding: 5px 0; flex: none; }
+.ds-ev .day { width: 44px; text-align: center; border-radius: var(--radius-sm); background: var(--subtle); padding: 5px 0; flex: none; }
 .ds-ev .day b { display: block; font-size: 16px; line-height: 1.2; } .ds-ev .day span { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; }
 .ds-ev .who a, .ds-ev .who b { display: block; font-size: 14.5px; font-weight: var(--fw-strong); color: var(--ink); text-decoration: none; }
 .ds-ev .who span { display: block; font-size: 13px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
