@@ -35,6 +35,35 @@ def test_run_counts_sessions_and_holidays(monkeypatch):
     assert t['NSE']['sessions'] == 1 and t['NSE']['no_file'] == 1 and t['NSE']['rows'] == 1
 
 
+def test_weekend_sessions_are_fetched_and_a_file_of_another_day_is_not_kept(monkeypatch):
+    # 1 Feb 2026 was a Sunday session (Budget day) the weekday loop never fetched (audit 19 Nov 2026).
+    sunday = '2026-02-01,2026-02-01,CM,NSE,STK,1,INE000A01010,ABC,EQ,,,,,ABC LTD,10.0,12.0,9.5,11.0,11.0,10.0,,11.0,,,1000,11000.00,5,F1,1,,,,,'
+    asked = []
+
+    def resp(url):
+        asked.append(url)
+        if '20260201' in url:
+            return Resp(200, _csv(sunday))
+        if '20260131' in url:
+            return Resp(200, _csv(ROW))   # a file dated 8 Oct 2026 served for 31 Jan: not stored under 31 Jan
+        return Resp(404, b'x')
+    monkeypatch.setattr(pb.requests, 'Session', lambda: type('S', (), {'headers': {}, 'get': lambda self, u, timeout=0: resp(u)})())
+    t = pb.run(date(2026, 1, 30), date(2026, 2, 2), ['NSE'], sleep=lambda s: None, extra={date(2026, 2, 1), date(2026, 1, 31)})
+    assert any('20260201' in u for u in asked) and t['NSE']['sessions'] == 1 and t['NSE']['wrong_day'] == 1
+    assert [d.day for _, days in pb.months(date(2026, 1, 30), date(2026, 2, 2), {date(2026, 2, 1)}) for d in days] == [30, 1, 2]
+
+
+def test_weekend_sessions_from_the_calendar():
+    import json
+
+    class C:
+        def get_object(self, Bucket, Key):
+            assert Key == pb.CALENDAR_KEY
+            body = json.dumps({'traded': ['2026-01-30', '2026-02-01', '2026-02-02'], 'special_sessions': ['2025-10-21', '2026-11-08']})
+            return {'Body': type('B', (), {'read': lambda self: body.encode()})()}
+    assert pb.weekend_sessions(C(), 'b') == {date(2026, 2, 1), date(2026, 11, 8)}
+
+
 def test_block_stops_run(monkeypatch):
     monkeypatch.setattr(pb.requests, 'Session', lambda: type('S', (), {'headers': {}, 'get': lambda self, u, timeout=0: Resp(403, b'x')})())
     try:

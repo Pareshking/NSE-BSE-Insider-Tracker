@@ -744,6 +744,16 @@ def price_jump_audit(r2) -> int:
     print('side-window rows left out:', left_out)
     close, _, f, raw = slim.adjusted_and_raw(px, actions=acts)
     print('adjust coverage:', adjust.coverage(f))
+    lost = f[f['kind_basis'] == 'previous_session_missing']
+    print('sessions after one the layer lacks (exchange, date: rows):',
+          {f'{e} {d:%Y-%m-%d}': int(n) for (e, d), n in lost.groupby(['exchange', 'date']).size().items()})
+    import json
+    from clean_writer import get
+    cal = json.loads(get(r2, 'reference/nse_calendar.json') or b'{}')
+    wk = sorted(d for d in cal.get('traded', []) if pd.Timestamp(d).weekday() >= 5)
+    print('calendar: weekend days traded:', wk[-10:], '; special sessions:', cal.get('special_sessions', [])[-10:])
+    held = {e: sorted({f'{d:%Y-%m-%d}' for d in pd.to_datetime(px.loc[px['exchange'] == e, 'date'].unique()) if d.weekday() >= 5}) for e in ('NSE', 'BSE')}
+    print('price layer: weekend days held:', held)
     uni = read_parquet(r2, 'clean/current/universe.parquet')
     uni = set(uni.loc[uni['in_universe'].astype(bool), 'isin']) if uni is not None and 'in_universe' in uni else None
     meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])

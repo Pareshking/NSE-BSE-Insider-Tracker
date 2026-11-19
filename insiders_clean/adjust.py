@@ -37,6 +37,9 @@ BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within t
 # line fell to ~330 before 30 Jul and showed "Up 131.7% in a year". These rows never make a session or a close;
 # `side_series_rows` counts them (reason `side_window_series`).
 SIDE_SERIES = {'NSE': frozenset({'BL', 'T0'})}
+ACTION_GAP_DAYS = 31    # a filed bonus or split is priced from the close across a gap of up to this many days
+MISSING_SHARE = 0.5     # an exchange-date where this share of base prices disagree with our previous close ...
+MISSING_MIN_ROWS = 100  # ... of at least this many securities follows a session the layer does not hold
 
 
 # Bonus n:h (n new shares for every h held) moves the price by h/(h+n). Boards use small n and h, and h of 6 or 10
@@ -238,16 +241,39 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     # Thyrocare 1,475.10 then 495.70 on its 1:2 bonus of 28 Nov 2025). So where the base price was not reset, a
     # filed bonus or split is applied at its filed factor when the day's own move agrees with it (close over the
     # previous close within MOVE_TOL of the factor: a day's band is at most 20%); basis `action_price`.
+    # Audit 19 Nov 2026: a split's new ISIN prints its first session with no base price (KSE 28 Oct 2025, KDGREEN,
+    # INDTONER, SUNRAKSHAK), and an illiquid stock may not print for more than `max_gap_days` around a bonus (VEGA,
+    # 12 days): those filed actions left no factor and the lines fell 80-90% on the site. A filed bonus or split is
+    # therefore priced from the close alone whenever the base price is missing or not reset, within ACTION_GAP_DAYS.
     exp = act['expected'].to_numpy(dtype=float)
+    movable = s['last_close'].notna() & (s['last_close'] > 0) & (gap <= ACTION_GAP_DAYS)
     with np.errstate(invalid='ignore', divide='ignore'):
-        move = (s['close'] / s['last_close']).where(usable).to_numpy(dtype=float)
+        move = (s['close'] / s['last_close']).where(movable).to_numpy(dtype=float)
         agrees = np.abs(np.log(move / exp)) <= np.log(MOVE_TOL)
-    not_reset = (dev <= MINOR).to_numpy() & usable.to_numpy()
+        base = (s['prev_close'] / s['last_close']).where(movable & (s['prev_close'] > 0))
+    not_reset = (base.isna() | ((base - 1).abs() <= MINOR)).to_numpy() & movable.to_numpy()
     priced = has & sb & ~near & not_reset & agrees & np.isfinite(exp)
     s.loc[priced, 'factor'] = exp[priced]
     s.loc[priced, 'kind'], s.loc[priced, 'kind_basis'] = 'split_bonus', 'action_price'
+    # A session whose base price differs from our previous close for most securities on the exchange means the
+    # layer lacks the session before it (audit 19 Nov 2026: the Sunday sessions of 1 Feb 2026, Budget day, and of
+    # 8 Nov 2026, Muhurat; 2 Feb and 9 Nov then showed 20% 'resets', the upper circuit of the missing day, and IIFL a
+    # 10:11 'bonus' of 0.8998). No factor is measured across it: `previous_session_missing`.
+    lost = missing_previous_session(s)
+    s.loc[lost, 'factor'], s.loc[lost, 'kind'], s.loc[lost, 'kind_basis'] = np.nan, 'unknown', 'previous_session_missing'
     return s[['exchange', 'isin', 'symbol', 'date', 'close', 'prev_close', 'last_close', 'factor', 'kind',
               'kind_basis']]
+
+
+def missing_previous_session(s: pd.DataFrame) -> np.ndarray:
+    """Per session row of `implied_factors`: True on an exchange-date where at least MISSING_SHARE of at least
+    MISSING_MIN_ROWS measurable rows have a base price off our previous close by more than MINOR (a cash dividend
+    resets a few percent of securities on a normal day; a session missing from the layer resets nearly all)."""
+    with np.errstate(invalid='ignore', divide='ignore'):
+        base = (s['prev_close'] / s['last_close']).where(s['last_close'] > 0)
+    d = pd.DataFrame({'exchange': s['exchange'], 'date': s['date'], 'n': base.notna(), 'off': (base - 1).abs() > MINOR})
+    g = d.groupby(['exchange', 'date'])[['n', 'off']].transform('sum')
+    return ((g['n'] >= MISSING_MIN_ROWS) & (g['off'] >= MISSING_SHARE * g['n'])).to_numpy()
 
 
 def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=KIND_ADJUSTED) -> pd.DataFrame:

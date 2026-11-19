@@ -55,7 +55,11 @@ def adjusted_panels(px: pd.DataFrame, actions: pd.DataFrame | None = None):
 def adjusted_and_raw(px: pd.DataFrame, actions: pd.DataFrame | None = None):
     """adjusted_panels plus the unadjusted close panel of the same bridged prints (the price-jump audit compares
     the two: insiders_clean/price_jumps.py)."""
-    px, _ = adjust.bridge_isins(px)
+    px, links = adjust.bridge_isins(px)
+    if links and actions is not None and len(actions) and 'isin' in actions:
+        # A split filed under the ISIN it replaces applies to the new ISIN's line, which now carries the old prints.
+        moved = actions[actions['isin'].isin(set(links))]
+        actions = pd.concat([actions, moved.assign(isin=moved['isin'].map(links))], ignore_index=True)
     px = adjust.regular_series(px)
     raw = price_panel(px, 'close')
     f = adjust.inherit_nse(adjust.implied_factors(px, actions=actions))

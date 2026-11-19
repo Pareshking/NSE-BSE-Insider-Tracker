@@ -77,6 +77,35 @@ def _checks(it: dict, layer: dict) -> None:
         st.html(f'<table class="dq-t"><tbody>{"".join(cells)}</tbody></table>')
 
 
+JUMP_STATUS = {'made_by_adjustment': 'made by our adjustment', 'unexplained': 'unexplained',
+               'exchange_reset_not_adjusted': 'exchange reset its base price, no action filed, not adjusted',
+               'action_not_adjusted': 'a corporate action filed, not adjusted',
+               'missing_session': 'across a session our price layer lacks', 'after_gap': 'after a gap in trading',
+               'adjusted': 'split or bonus, adjusted'}
+
+
+def _price_jumps(pj: dict) -> None:
+    """Counts from clean/reports/price_jumps.json: every one-day move of 40% or more on the price lines."""
+    if not pj:
+        return
+    by = pj.get('in_universe') or pj.get('by_status') or {}
+    scope = 'companies shown on the site' if pj.get('in_universe') else 'all securities'
+    items = [(JUMP_STATUS.get(s, s), v.get('moves', 0), 'warn' if s in ('made_by_adjustment', 'unexplained') else '')
+             for s, v in by.items() if v.get('moves')]
+    with kit.card('Price lines: one-day moves of 40% or more', 'price-jumps',
+                  f"since {kit.day(pj.get('start'))}, {scope}"):
+        if not items:
+            st.html('<div class="q-row">None.</div>')
+            return
+        st.html(kit.bar_list(items))
+        for r in pj.get('top') or []:
+            move = r.get('adj_move')
+            st.html(f"<div class=\"q-row\">{kit.esc(r.get('symbol') or r.get('isin'))} · {kit.day(r.get('date'))} · "
+                    f"{(move or 0) * 100:+.0f}% · {kit.esc(JUMP_STATUS.get(r.get('status'), r.get('status')))}</div>")
+        kit.caption('Measured between consecutive prints of the line the site draws (NSE, BSE filling the gaps), '
+                    'as printed and as adjusted for splits and bonuses. Nothing is corrected here.')
+
+
 def render():
     ctx = load()
     rep = store.report()
@@ -118,6 +147,7 @@ def render():
             if items:
                 st.html(f'<div class="bl-h">{kit.esc(TABLES.get(table, table))}</div>' + kit.bar_list(items))
     _checks(it, rep.get('price_layer') or {})
+    _price_jumps(store.price_jumps())
     if rep.get('notes'):
         with kit.card('Notes from the run', 'notes'):
             for n in rep['notes']:

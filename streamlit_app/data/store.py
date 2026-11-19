@@ -316,6 +316,20 @@ def events_report() -> dict:
         return {}
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def price_jumps() -> dict:
+    """clean/reports/price_jumps.json (Precompute slim assets, insiders_clean/price_jumps.py): the counts of one-day
+    close moves of 40% or more on the price lines, by status. Empty before the first run that writes it."""
+    body = _read('clean/reports/price_jumps.json')
+    try:
+        rep = json.loads(body) if body else {}
+    except ValueError:
+        return {}
+    # The site draws study-universe companies only, so those are the ones a reader can meet on a page.
+    top = [r for r in rep.get('rows', []) if r.get('status') in ('made_by_adjustment', 'unexplained') and r.get('in_universe')]
+    return {k: v for k, v in rep.items() if k != 'rows'} | {'top': top[:8]}
+
+
 def report() -> dict:
     info = latest()
     key = info.get('report')

@@ -100,3 +100,61 @@ def test_start_cuts_the_window():
     raw = raw.rename_axis(index='date', columns='isin')
     assert price_jumps.jumps(raw, raw, start='2025-10-08').empty
     assert len(price_jumps.jumps(raw, raw)) == 1
+
+
+def test_session_missing_from_the_layer_measures_no_factor():
+    # 1 Feb 2026 (a Sunday session) is not in the layer: on 2 Feb every base price is that day's close, not 30 Jan's.
+    # IIFL's 528.70 -> 475.75 looked like a 10:11 bonus (0.8998) and moved its whole line before February.
+    rows = [_row('2026-01-30', 528.70, 530.0), _row('2026-02-02', 495.15, 475.75)]
+    for k in range(150):
+        isin, last = f'INE{k:03d}X01011', 100.0 + k
+        rows += [_row('2026-01-30', last, last, isin=isin, sym=f'S{k}'),
+                 _row('2026-02-02', last * 0.97, last * 0.98, isin=isin, sym=f'S{k}')]
+    f = adjust.implied_factors(pd.DataFrame(rows))
+    day = f[f['date'] == '2026-02-02']
+    assert (day['kind_basis'] == 'previous_session_missing').all() and day['factor'].isna().all()
+    close, _, _ = slim.adjusted_panels(pd.DataFrame(rows))
+    assert close.loc['2026-01-30', 'INE530B01024'] == 528.70
+
+
+def test_a_normal_day_of_dividends_is_not_a_missing_session():
+    rows = []
+    for k in range(150):
+        isin, last = f'INE{k:03d}X01011', 100.0 + k
+        base = last * 0.98 if k < 10 else last   # ten of 150 go ex-dividend
+        rows += [_row('2026-03-02', last, last, isin=isin, sym=f'S{k}'), _row('2026-03-03', last, base, isin=isin, sym=f'S{k}')]
+    f = adjust.implied_factors(pd.DataFrame(rows))
+    assert not (f['kind_basis'] == 'previous_session_missing').any()
+
+
+def test_filed_split_on_a_new_isin_with_no_base_price_is_applied():
+    # KSE, 28 Oct 2025: the split's new ISIN prints with no base price; the old ISIN's prints are bridged under it,
+    # and the split is filed under the old ISIN.
+    rows = [_row('2025-10-24', 2700.0, 2690.0, isin='INE953E01014', sym='KSE'),
+            _row('2025-10-27', 2698.35, 2700.0, isin='INE953E01014', sym='KSE'),
+            _row('2025-10-28', 262.20, np.nan, isin='INE953E01022', sym='KSE')]
+    acts = pd.DataFrame({'isin': ['INE953E01014'], 'purpose': ['split'], 'ex_date': ['2025-10-28'],
+                         'face_value_from': [10.0], 'face_value_to': [1.0]})
+    close, _, f, raw = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
+    line = close['INE953E01022'].dropna()
+    assert abs(line.pct_change().iloc[-1]) < 0.05
+    out = price_jumps.jumps(raw, close, f, acts)
+    assert out['isin'].tolist() == ['INE953E01022'] and out['status'].tolist() == ['adjusted']
+
+
+def test_filed_bonus_after_a_gap_is_applied():
+    # VEGA: no print for 12 days around its bonus; here a 4:1 bonus (factor 0.2).
+    rows = [_row('2026-04-16', 312.25, 310.0, isin='INE603D01017', sym='VEGA'),
+            _row('2026-04-28', 61.95, 312.25, isin='INE603D01017', sym='VEGA')]
+    acts = pd.DataFrame({'isin': ['INE603D01017'], 'purpose': ['bonus'], 'ex_date': ['2026-04-24'], 'ratio': ['4:1']})
+    close, _, f = slim.adjusted_panels(pd.DataFrame(rows), actions=acts)
+    assert abs(close['INE603D01017'].pct_change().iloc[-1]) < 0.05
+
+
+def test_action_matched_by_symbol():
+    raw = pd.DataFrame({'INE00000N012': [100.0, 10.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02']))
+    raw = raw.rename_axis(index='date', columns='isin')
+    meta = pd.DataFrame({'isin': ['INE00000N012'], 'symbol': ['NEWCO'], 'name': ['New Co']})
+    acts = pd.DataFrame({'isin': ['INE00000N011'], 'symbol': ['newco'], 'purpose': ['split'], 'ex_date': ['2026-01-02']})
+    out = price_jumps.jumps(raw, raw, None, acts, meta=meta)
+    assert out['status'].item() == 'action_not_adjusted' and out['actions'].item() == 'split'

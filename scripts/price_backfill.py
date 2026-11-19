@@ -86,10 +86,35 @@ def fetch(session, store, exchange, day):
     return parse(r.content)
 
 
-def months(start: date, end: date):
-    """Weekdays grouped by calendar month, oldest first."""
+CALENDAR_KEY = 'reference/nse_calendar.json'
+
+
+def weekend_sessions(client, bucket) -> set[date]:
+    """Weekend days NSE traded (reference/nse_calendar.json, kept by update_calendar.py, which probes every day):
+    the Sunday sessions of a Budget day or Muhurat trading. Weekdays alone left them out of the layer (audit 19 Nov
+    2026: 1 Feb and 8 Nov 2026), and the next session's base prices then read as resets (insiders_clean/adjust.py)."""
+    import json
+    try:
+        st = json.loads(client.get_object(Bucket=bucket, Key=CALENDAR_KEY)['Body'].read())
+    except Exception as e:  # noqa: BLE001 -- no calendar: weekdays only, as before
+        print(f'calendar not read ({type(e).__name__}); weekdays only')
+        return set()
+    days = set()
+    for x in list(st.get('traded', [])) + list(st.get('special_sessions', [])):
+        try:
+            d = date.fromisoformat(str(x)[:10])
+        except ValueError:
+            continue
+        if d.weekday() >= 5:
+            days.add(d)
+    return days
+
+
+def months(start: date, end: date, extra=()):
+    """Weekdays, and the `extra` days (weekend sessions) between start and end, grouped by calendar month, oldest
+    first."""
     cur, out = None, []
-    for d in weekdays(start, end):
+    for d in sorted(set(weekdays(start, end)) | {x for x in extra if start <= x <= end}):
         m = f'{d:%Y-%m}'
         if m != cur and out:
             yield cur, out
@@ -100,15 +125,16 @@ def months(start: date, end: date):
         yield cur, out
 
 
-def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep):
+def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep, extra=()):
     """One month at a time: fetch, then write that month's parquet and print progress right away,
-    so an interrupted run keeps what it finished and the log shows where it is."""
+    so an interrupted run keeps what it finished and the log shows where it is. `extra`: weekend sessions to fetch
+    too (weekend_sessions)."""
     s = requests.Session()
     s.headers.update({'User-Agent': UA, 'Accept': '*/*'})
     totals = {}
     for ex in exchanges:
         t = {'sessions': 0, 'no_file': 0, 'rows': 0, 'already': 0, 'errors': 0, 'problems': {}}
-        for month, days in months(start, end):
+        for month, days in months(start, end, extra):
             old = load_month(client, bucket, ex, month) if client is not None else None
             frames = []
             for day in days:
@@ -126,6 +152,12 @@ def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, 
                 sleep(PAUSE)
                 if df is None:
                     t['no_file'] += 1
+                    continue
+                dated = pd.to_datetime(df['date'], errors='coerce').dropna() if 'date' in df else pd.Series(dtype='datetime64[ns]')
+                if len(dated) and not (dated == pd.Timestamp(day)).any():
+                    # A file for another day (never seen; guards the weekend fetches): not stored under this one.
+                    t['wrong_day'] = t.get('wrong_day', 0) + 1
+                    print(f'  {ex} {day}: file dated otherwise, not kept', flush=True)
                     continue
                 t['sessions'] += 1
                 t['rows'] += len(df)
@@ -164,7 +196,9 @@ def main(argv=None) -> int:
     except Exception as e:  # noqa: BLE001
         print(f'no R2: {type(e).__name__}: {e}')
     try:
-        run(start, end, [x.strip().upper() for x in a.exchange.split(',')], client, bucket, store, a.dry_run)
+        extra = weekend_sessions(client, bucket) if client is not None else set()
+        print(f'weekend sessions in range: {sorted(d.isoformat() for d in extra if start <= d <= end)}')
+        run(start, end, [x.strip().upper() for x in a.exchange.split(',')], client, bucket, store, a.dry_run, extra=extra)
     except Stop as e:
         print(f'STOPPED: {e}')
         return 1
