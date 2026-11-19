@@ -33,6 +33,9 @@ TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py)
 TABLES += ('encumbrances',)   # SAST Reg 31 (collectors/nse_events): the lender on a promoter's pledge row
 TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
 TABLES += ('mf_stock_month', 'mf_changes', 'mf_coverage')   # fund houses' month-end portfolios (scripts/mf_portfolios.py)
+# ...scheme by scheme: per scheme-month totals, the slim moves (active schemes, rows that moved, 12 months; the full
+# clean/current/mf_scheme_changes.parquet, every scheme and row, is too large for the site's memory) and the count check
+TABLES += ('mf_scheme_month', 'mf_scheme_moves', 'mf_scheme_coverage')
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 TABLES += ('market_flows',)   # FPI, DII and mutual fund flows a day (scripts/market_flows.py): the flows line, screens/market_flows.py
 TABLES += ('industry',)   # four-level industry per ISIN, NSE else BSE else VR export (scripts/industry.py): industry_of, with_industry

@@ -18,6 +18,11 @@ deals (portfolios arrive ten days after the month); lists by rupees, by share of
 and exits; sectors; how each house is positioning; one house; NPS pension funds apart; and whether it is complete.
 
 PMS and AIFs file no holdings stock by stock; they appear only where they file a bulk or block deal or cross 5%.
+
+Owner, 19 Nov 2026: "Each fund house has multiple equity schemes; are we covering buying and selling of all schemes or
+only a few?" Scheme by scheme (mf_scheme_moves, mf_scheme_month): which schemes bought and sold, a scheme picker in the
+one-house view, scheme counts next to house counts; and on "Is this complete?" the schemes read per house against AMFI's
+open-ended equity schemes for it (mf_scheme_coverage).
 """
 from __future__ import annotations
 
@@ -26,6 +31,7 @@ import streamlit as st
 from data import store
 
 from insiders_clean import participants
+from insiders_clean.mf_holdings import SHORT_SHARE
 from screens import funds_logic as fl
 from screens import moves
 from screens.ctx import load, need_data
@@ -56,6 +62,22 @@ POS_COLS = [('house', 'Fund house', 'l'), ('net', 'Net bought', 'r'), ('flow', '
             ('trim', 'Trimmed', 'r'), ('flag', '', 'l'), ('mix', 'Size mix', 'l'), ('sec', 'Largest sector shifts', 'l'),
             ('top', 'Top 10 weight', 'r')]
 BUCKET_COLS = [('b', 'Size', 'l'), ('net', 'Net, ₹', 'r'), ('n', 'Stocks bought · sold', 'r')]
+SCHEME_COLS = [('scheme', 'Scheme', 'l'), ('house', 'Fund house', 'l'), ('val', 'Net, ₹', 'r'), ('bs', 'Bought · sold, ₹', 'r'),
+               ('moves', 'Stocks', 'l')]
+SCHEME_STOCK_COLS = [('co', 'Company', 'l'), ('val', 'Net, ₹', 'r'), ('st', 'Position', 'l'), ('pct', '% of company', 'r'),
+                     ('sh', 'Shares held at the end', 'r'), ('size', 'Size', 'l')]
+CHECK_COLS = [('house', 'Fund house', 'l'), ('read', 'Schemes read', 'r'), ('eq', 'Holding equity · active', 'r'),
+              ('amfi', 'AMFI open equity schemes', 'r'), ('match', 'Matched by name', 'r'), ('flag', '', 'l')]
+
+
+def _houses_cell(r: dict, sc: dict | None) -> str:
+    """'2 adding · 0 cutting', or with scheme counts '17 houses · 41 schemes adding · 3 houses · 5 schemes cutting'."""
+    ha, hc = int(r['houses_adding']), int(r['houses_cutting'])
+    s = (sc or {}).get(r['isin'])
+    if not s:
+        return f'{ha} adding · {hc} cutting'
+    return (f'{ha} {"house" if ha == 1 else "houses"} · {int(s[0])} {"scheme" if int(s[0]) == 1 else "schemes"} adding · '
+            f'{hc} {"house" if hc == 1 else "houses"} · {int(s[1])} {"scheme" if int(s[1]) == 1 else "schemes"} cutting')
 
 
 def _house_names() -> tuple[dict, list]:
@@ -102,7 +124,8 @@ def _empty(text: str) -> str:
     return f'<p class="dt-empty">{esc(text)}</p>'
 
 
-def _rows(df: pd.DataFrame, syms: dict, names: dict, size: dict, kind: str = 'net', first: set | None = None) -> list[dict]:
+def _rows(df: pd.DataFrame, syms: dict, names: dict, size: dict, kind: str = 'net', first: set | None = None,
+          sc: dict | None = None) -> list[dict]:
     out = []
     for r in df.head(TOP).to_dict('records'):
         isin = r['isin']
@@ -115,7 +138,7 @@ def _rows(df: pd.DataFrame, syms: dict, names: dict, size: dict, kind: str = 'ne
             'val': f'<b>{esc(_cr(val))}</b>' if kit._finite(val) is not None else _num(None),
             'net': esc(_cr(r['net_cr'])) if kit._finite(r.get('net_cr')) is not None else _num(None),
             'pct': _num(r.get('pct_of_company'), '{:+.2f}%'),
-            'houses': f'{int(r["houses_adding"])} adding · {int(r["houses_cutting"])} cutting',
+            'houses': _houses_cell(r, sc),
             'new': f'{int(r["houses_new"])} new',
             'exit': f'{int(r["houses_exit"])} sold out',
             'held': f'{int(r["houses_holding"])}',
@@ -262,6 +285,114 @@ def _positioning_section(ch, stock, win, month, hname, size, sector, mf_ms) -> N
             st.altair_chart(chart, width='stretch')
 
 
+def _scheme_label(amc: str, key: str, snames: dict) -> str:
+    return str(snames.get((amc, key)) or key)
+
+
+def _scheme_table(st_: pd.DataFrame, snames: dict, hname) -> str:
+    rows = []
+    for r in st_.head(TOP).to_dict('records'):
+        chip = ' <span class="dt-chip">not at both month-ends</span>' if r['one_end'] else ''
+        rows.append({'scheme': esc(_scheme_label(r['amc'], r['scheme_key'], snames)) + chip, 'house': esc(hname(r['amc'])),
+                     'val': f'<b>{esc(_cr(r["net_cr"]))}</b>' if kit._finite(r.get('net_cr')) is not None else _num(None),
+                     'bs': f'{esc(_cr(r["bought_cr"], False))} · {esc(_cr(-r["sold_cr"], False))}',
+                     'moves': f'+{r["adding"]} · −{r["cutting"]} · {r["new"]} new · {r["exits"]} out'})
+    return _table(SCHEME_COLS, rows)
+
+
+def _schemes_section(sr: pd.DataFrame, snames: dict, hname, period: str, n_houses: int) -> None:
+    """Which schemes bought and sold: active schemes ranked by net rupees over the period, house and scheme named."""
+    why = ('Active schemes one by one (index funds, ETFs and funds of funds left out), each scheme\'s shares at the end less '
+           'at the start, at each month-end\'s filed price, the filters above applied. A house\'s figures above net its '
+           'schemes against each other; here one scheme\'s buying and another\'s selling both show. "Not at both month-ends": '
+           'the scheme is in the house\'s file at one month-end only (a new scheme, a merger, or a name changed), so every '
+           'stock reads as new or sold out.')
+    if sr is None or sr.empty:
+        _qa('Which schemes bought and sold?', 'Not read scheme by scheme yet',
+            'The scheme table (mf_scheme_moves) has no rows for this period: it is written by the "Mutual fund portfolios" '
+            'run, and month-ends collected before it existed are added by its schemes option.', 'schemes')
+        return
+    tt = fl.scheme_totals(sr)
+    n_read = tt['amc'].nunique()
+    up = tt[tt['net_cr'].gt(0)]
+    dn = tt[tt['net_cr'].lt(0)].sort_values('net_cr')
+    lead = (f'Bought most: <b>{esc(_scheme_label(up.iloc[0]["amc"], up.iloc[0]["scheme_key"], snames))}</b> '
+            f'({esc(hname(up.iloc[0]["amc"]))}, {esc(_cr(up.iloc[0]["net_cr"]))})' if len(up) else 'No scheme bought')
+    if len(dn):
+        lead += (f'; sold most: <b>{esc(_scheme_label(dn.iloc[0]["amc"], dn.iloc[0]["scheme_key"], snames))}</b> '
+                 f'({esc(hname(dn.iloc[0]["amc"]))}, {esc(_cr(dn.iloc[0]["net_cr"]))})')
+    _qa('Which schemes bought and sold?', lead,
+        f'{len(tt):,} active schemes of {n_read} houses moved in {period}'
+        + (f' ({n_houses - n_read} of the {n_houses} houses compared are not read scheme by scheme for it)' if n_read < n_houses else '')
+        + f'. {why}', 'schemes')
+    st.html('<p><b>Net buyers</b></p>' + (_scheme_table(up, snames, hname) if len(up) else _empty('No scheme bought.')))
+    st.html('<p><b>Net sellers</b></p>' + (_scheme_table(dn, snames, hname) if len(dn) else _empty('No scheme sold.')))
+
+
+def _house_schemes(sr: pd.DataFrame, one: str, snames: dict, syms, names, size, tot) -> None:
+    """The one-house view's scheme picker: that scheme's adds and cuts in the period."""
+    h = sr[sr['amc'] == one] if sr is not None and not sr.empty else pd.DataFrame()
+    if h.empty:
+        st.html(_empty('This house is not read scheme by scheme for the period.'))
+        return
+    tt = fl.scheme_totals(h)
+    tt = tt.reindex(tt['net_cr'].abs().sort_values(ascending=False).index)
+    keys = tt['scheme_key'].tolist()
+    lab = {r['scheme_key']: f'{_scheme_label(one, r["scheme_key"], snames)} · {_cr(r["net_cr"])}' for r in tt.to_dict('records')}
+    if st.session_state.get('fd_scheme') not in keys:
+        st.session_state.pop('fd_scheme', None)
+    pick = st.selectbox(f'Scheme ({len(keys)} that moved)', keys, format_func=lambda k: lab.get(k, k), key='fd_scheme', width=420)
+    x = h[(h['scheme_key'] == pick) & h['net'].ne(0)]
+    xb = x[x['net'].gt(0)].sort_values('net_cr', ascending=False, na_position='last')
+    xs = x[x['net'].lt(0)].sort_values('net_cr', na_position='last')
+
+    def table(df):
+        rows = []
+        for r in df.head(TOP).to_dict('records'):
+            t = pd.to_numeric(tot.get(r['isin']), errors='coerce')
+            rows.append({'co': _company(_nm(r, names), syms.get(r['isin'])),
+                         'val': f'<b>{esc(_cr(r["net_cr"]))}</b>' if kit._finite(r.get('net_cr')) is not None else _num(None),
+                         'st': esc(fl.STATUS_WORD.get(r['status'], r['status'])),
+                         'pct': _num(r['net'] / t * 100 if t and t > 0 else None, '{:+.3f}%'),
+                         'sh': esc(kit.shares(r['end'])) if r['end'] > 0 else _num(None),
+                         'size': esc(size.get(r['isin']) or '') or _num(None)})
+        return _table(SCHEME_STOCK_COLS, rows)
+    st.html(f'<p class="qa-why"><b>{esc(_scheme_label(one, pick, snames))}</b>: added to {len(xb):,} stocks for '
+            f'{esc(_cr(xb["net_cr"].sum()))}, cut {len(xs):,} for {esc(_cr(xs["net_cr"].sum()))}; '
+            f'{int(x["status"].eq("new").sum())} new, {int(x["status"].eq("exit").sum())} sold out.</p>')
+    st.html('<p><b>Added</b></p>' + (table(xb) if len(xb) else _empty('Nothing added.')))
+    st.html('<p><b>Cut</b></p>' + (table(xs) if len(xs) else _empty('Nothing cut.')))
+
+
+def _scheme_check(month: str, hname) -> str:
+    """'Is this complete?': schemes read per house against AMFI's open-ended equity schemes for the house that month-end."""
+    c = fl.scheme_coverage_at(store.table('mf_scheme_coverage'), month)
+    if c.empty:
+        return ('<p class="qa-why"><b>Schemes read:</b> the scheme count check (mf_scheme_coverage) is not written yet for '
+                f'{esc(_label(month))}.</p>')
+    has_amfi = 'amfi_equity' in c and pd.to_numeric(c['amfi_equity'], errors='coerce').notna().any()
+    rows = []
+    for r in c.to_dict('records'):
+        a = kit._finite(r.get('amfi_equity'))
+        read = kit._finite(r.get('schemes_read'))
+        rows.append({'house': esc(hname(r['amc'])),
+                     'read': f'{int(read):,}' if read is not None else _num(None),
+                     'eq': (f'{int(r["equity_schemes_read"]):,} · {int(r["active_equity_read"]):,}'
+                            if kit._finite(r.get('equity_schemes_read')) is not None else _num(None)),
+                     'amfi': f'{int(a):,}' if a is not None else _num(None),
+                     'match': f'{int(r["amfi_matched"]):,} of {int(a):,}' if a is not None and kit._finite(r.get('amfi_matched')) is not None else _num(None),
+                     'flag': f'<span class="dt-chip dn">{esc(r["flag"])}</span>' if r.get('flag') else ''})
+    flagged = c[c['flag'].fillna('').astype(str).ne('')]
+    src = ('AMFI\'s NAV report for the month-end\'s last working day lists each house\'s open-ended equity schemes (one line '
+           'per plan; index funds, ETFs, hybrids and funds of funds apart); "active" counts our schemes holding equity that '
+           'are not index funds or ETFs, hybrids included, so a house read in full shows at least AMFI\'s count. "Matched '
+           'by name" pairs AMFI\'s names with the file\'s after plan words are taken off; a miss there can be spelling. '
+           f'A house is flagged when we read under {SHORT_SHARE:.0%} of AMFI\'s count.' if has_amfi else
+           'AMFI\'s scheme list for this month-end is not read yet, so only what we read is shown; no count is compared.')
+    return (f'<p class="qa-why"><b>Schemes read, {esc(_label(month))}:</b> {len(c)} houses; '
+            f'{len(flagged)} flagged. {esc(src)}</p>' + _table(CHECK_COLS, rows))
+
+
 def render():
     ctx = load()
     if not need_data(ctx):
@@ -303,7 +434,9 @@ def render():
     sec = ctx.securities
     syms = dict(zip(sec['isin'], sec['nse_symbol'])) if sec is not None and not sec.empty and 'nse_symbol' in sec else {}
     listed = set(sec['isin'].dropna()) if sec is not None and not sec.empty and 'isin' in sec else None
-    tot = {i: r.get('total_shares') for i, r in hold.items()}
+    # The company's shares on the window's last month-end basis (a split or bonus since its last filing applied in the
+    # clean table): JSW Dulux's 10-for-1 split in Oct 2026 read as 3.16% of the company bought against the old count.
+    tot = fl.month_total_shares(stock, win[-1], {i: r.get('total_shares') for i, r in hold.items()})
     size = {i: p.get('mcap_bucket') for i, p in px.items() if isinstance(p.get('mcap_bucket'), str)}
     ind = fl.industry_frame(store.table('industry'), sec)
     lv0 = 'sector' if 'sector' in fl.levels_with_data(ind) else (fl.levels_with_data(ind) or [None])[0]
@@ -319,6 +452,13 @@ def render():
 
     hr_all = fl.house_rows(ch, stock, win, houses or None, passive)
     hr = fl.apply_isins(hr_all, listed, *keep)            # listed equity in the security master only
+    # Scheme by scheme (active schemes): the rows, the scheme counts next to the house counts (not for 'Every scheme':
+    # the site's scheme table holds active schemes only), the scheme names
+    smoves = fl.by_kind(store.table('mf_scheme_moves'), 'mf')
+    snames = fl.scheme_names(store.table('mf_scheme_month'))
+    sr = fl.apply_isins(fl.scheme_rows(smoves, win, houses or None), listed, *keep)
+    scc = {} if passive else {r['isin']: (r['schemes_adding'], r['schemes_cutting'])
+                              for r in fl.scheme_counts(sr).to_dict('records')}
     unlisted = int(hr_all.loc[~hr_all['isin'].isin(listed), 'isin'].nunique()) if listed is not None and not hr_all.empty else 0
     sw = fl.stock_window(hr, tot)
     first = fl.first_held(stock, win)
@@ -350,7 +490,7 @@ def render():
               ('Most sold', _nm(ts, names) if ts else '—', _cr(ts['net_cr']) if ts else 'none', 'down' if ts else ''),
               ('First held by any house', f'{len(new_listed):,}', _cr(new_listed['net_cr'].sum()) + ' (new listings and first buys)')])
     st.html('<div class="qa-toc"><a href="#deals">This month so far</a><a href="#bought">Bought most</a><a href="#sold">Sold most</a>'
-            '<a href="#pct">By share of the company</a><a href="#size">By size</a><a href="#new">New entries</a>'
+            '<a href="#schemes">Schemes</a><a href="#pct">By share of the company</a><a href="#size">By size</a><a href="#new">New entries</a>'
             '<a href="#exits">Complete exits</a><a href="#sectors">By sector</a><a href="#positioning">Each house</a>'
             '<a href="#house">One house</a>'
             + ('<a href="#nps">NPS pension funds</a>' if nps_ch is not None and not nps_ch.empty and nps_ch['month'].isin(win).any() else '')
@@ -367,17 +507,18 @@ def render():
         f'{len(b):,} stocks bought for ₹{MIN_NET_CR:.0f} Cr or more, {_cr(b["net_cr"].sum())} in all. {how}. '
         'Stocks no house held before are apart, below.', 'bought')
     if len(b):
-        st.html(_table(COLS, _rows(b, syms, names, size)))
+        st.html(_table(COLS, _rows(b, syms, names, size, sc=scc)))
     _qa('What did they sell most?', _names(s_, names, 3) if len(s_) else f'No stock sold for ₹{MIN_NET_CR:.0f} Cr or more',
         f'{len(s_):,} stocks sold for ₹{MIN_NET_CR:.0f} Cr or more, {_cr(s_["net_cr"].sum())} in all.', 'sold')
     if len(s_):
-        st.html(_table(COLS, _rows(s_, syms, names, size)))
+        st.html(_table(COLS, _rows(s_, syms, names, size, sc=scc)))
+    _schemes_section(sr, snames, hname, period, len(houses) if houses else n_by.get(month, 0))
     if len(new_listed):
         _qa('What did houses take that no house held before?', _names(new_listed, names, 3),
             f'{len(new_listed):,} stocks no collected house held at any earlier month-end, {_cr(new_listed["net_cr"].sum())} '
             'in all: a new listing (shares allotted in its IPO, to anchor or other investors) or a first purchase of a stock '
             'listed earlier. Kept out of the lists and figures above, which are trading in listed stocks.', 'ipo')
-        st.html(_table(COLS, _rows(new_listed, syms, names, size, first=first)))
+        st.html(_table(COLS, _rows(new_listed, syms, names, size, first=first, sc=scc)))
 
     # By share of the company: where small and mid caps show
     pb, ps = fl.by_pct(sw, 'buy'), fl.by_pct(sw, 'sell')
@@ -385,9 +526,9 @@ def render():
         'Net shares bought as a % of the company\'s shares (its latest shareholding filing), then houses adding, then rupees. '
         'Rupees always put the largest companies first; this puts the bets that are large for the company first.', 'pct')
     if len(pb):
-        st.html(_table(PCT_COLS, _rows(pb, syms, names, size, first=first)))
+        st.html(_table(PCT_COLS, _rows(pb, syms, names, size, first=first, sc=scc)))
     if len(ps):
-        st.html('<p><b>Sold the largest share of the company</b></p>' + _table(PCT_COLS, _rows(ps, syms, names, size, first=first)))
+        st.html('<p><b>Sold the largest share of the company</b></p>' + _table(PCT_COLS, _rows(ps, syms, names, size, first=first, sc=scc)))
 
     # By size
     br = fl.bucket_rollup(sw, size)
@@ -405,9 +546,9 @@ def render():
             with t:
                 sub = sw[sw['isin'].map(size).eq(bucket)]
                 tb_, ts_ = fl.by_pct(sub, 'buy'), fl.by_pct(sub, 'sell')
-                st.html('<p><b>Bought</b></p>' + (_table(PCT_COLS, _rows(tb_, syms, names, size, first=first)) if len(tb_)
+                st.html('<p><b>Bought</b></p>' + (_table(PCT_COLS, _rows(tb_, syms, names, size, first=first, sc=scc)) if len(tb_)
                         else _empty(f'No {bucket.lower()} cap bought.')))
-                st.html('<p><b>Sold</b></p>' + (_table(PCT_COLS, _rows(ts_, syms, names, size, first=first)) if len(ts_)
+                st.html('<p><b>Sold</b></p>' + (_table(PCT_COLS, _rows(ts_, syms, names, size, first=first, sc=scc)) if len(ts_)
                         else _empty(f'No {bucket.lower()} cap sold.')))
 
     nw, ex = v['new'], v['exits']
@@ -415,12 +556,12 @@ def render():
         f'{int(hr["status"].eq("new").sum()):,} new positions in {len(nw):,} stocks: a house that held none at the start'
         f'{" of the period" if len(win) > 1 else " (the month-end before)"} and holds some now. Most houses first.', 'new')
     if len(nw):
-        st.html(_table(NEW_COLS, _rows(nw, syms, names, size, 'new', first=first)))
+        st.html(_table(NEW_COLS, _rows(nw, syms, names, size, 'new', first=first, sc=scc)))
     _qa('Where did houses sell out completely?', _names(ex, names, 3) if len(ex) else 'None in this period',
         f'{k["exit_positions"]:,} positions closed in {len(ex):,} stocks: a house that held it at the start and holds none now. '
         'Most houses first.', 'exits')
     if len(ex):
-        st.html(_table(EXIT_COLS, _rows(ex, syms, names, size, 'exit')))
+        st.html(_table(EXIT_COLS, _rows(ex, syms, names, size, 'exit', sc=scc)))
 
     # Industry roll-up
     lvl = fl.next_level(ind, picks)
@@ -460,6 +601,8 @@ def render():
                 f'{int(h1["status"].eq("new").sum())} new positions, {int(h1["status"].eq("exit").sum())} sold out.</p>')
         st.html('<p><b>Bought</b></p>' + (_house_table(hb, syms, names, size, tot) if len(hb) else _empty('Nothing bought.')))
         st.html('<p><b>Sold</b></p>' + (_house_table(hs, syms, names, size, tot) if len(hs) else _empty('Nothing sold.')))
+        st.html('<p><b>Scheme by scheme</b> (active schemes): pick one to see what it added and cut.</p>')
+        _house_schemes(fl.apply_isins(fl.scheme_rows(smoves, win, [one]), listed, *keep), one, snames, syms, names, size, tot)
 
     # NPS pension funds, apart
     nps_win = [m for m in win if nps_ch is not None and not nps_ch.empty and (nps_ch['month'] == m).any()]
@@ -502,5 +645,6 @@ def render():
     lines.append(f'{v["small"]:,} stocks with net moves under ₹{MIN_NET_CR:.0f} Cr counted, not listed. PMS and AIFs file no '
                  'holdings stock by stock; they show only in bulk and block deals and 5% crossings.')
     st.html(''.join(f'<p class="qa-why">{x}</p>' for x in lines))
+    st.html(_scheme_check(month, hname))
     st.html(_more('investor-flows', 'Fund trades in bulk and block deals'))
     st.html(_more('ownership', 'Quarterly fund holdings, every fund (shareholding filings)'))
