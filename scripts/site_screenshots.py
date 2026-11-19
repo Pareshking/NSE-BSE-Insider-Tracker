@@ -21,7 +21,10 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
          ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('company?symbol=IIFL', 'company-iifl'), ('data-health', 'data-health'),
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
          ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
-         ('proto-today', 'old-proto-address')]
+         ('proto-today', 'old-proto-address'),
+         # the shared date control (ui/dates.py): a preset, a Custom range and a past day, each from the address
+         ('insiders?range=1m', 'insiders-1m'), ('deals?from=2026-10-01&to=2026-10-31', 'deals-custom'),
+         ('today?day=2026-11-10', 'today-past-day'), ('calendar?range=3m', 'calendar-3m')]
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}

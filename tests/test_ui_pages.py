@@ -255,7 +255,7 @@ def test_window_open_buy_is_marked_and_buybacks_show_price_and_route(data_dir, m
     for screen in ('filings_all', 'capital_raises'):
         at = AppTest.from_string(APP_PATHS + f"""
 import streamlit as st
-st.session_state.setdefault('fa_days', max(__import__('screens.filings_all', fromlist=['x']).PERIODS))   # the fixture's trades are older than 30 days
+st.session_state.setdefault('filings_preset', 'all')   # the fixture's trades are older than a month
 from ui import theme
 theme.inject()
 from screens import {screen}
@@ -476,6 +476,35 @@ def test_results_year_on_year_and_quarter_before_only_where_held():
     out = more_pages._latest_results(SimpleNamespace(results=res, ref=pd.Timestamp('2026-11-11')), 30).set_index('isin')
     assert round(out.loc['A', 'rev_yoy'], 1) == 20.0 and round(out.loc['A', 'rev_qoq'], 2) == 9.09
     assert pd.isna(out.loc['B', 'rev_yoy']) and pd.isna(out.loc['B', 'rev_qoq'])     # no history: a dash, never a guess
+
+
+def test_results_compare_like_with_like_basis():
+    """19 Nov 2026: a consolidated quarter was set against last year's standalone one. Now each basis is compared with
+    itself, and the basis shown is the one with a year-ago comparison (consolidated where both have one)."""
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0, str(ROOT / 'streamlit_app'))
+    import pandas as pd
+    from screens import more_pages
+    rows = [  # A: standalone only last year; both this year -> standalone vs standalone, not consolidated vs standalone
+        ('A', '2025-09-30', '2025-11-05T10:00:00+05:30', 'Non-Consolidated', 100.0),
+        ('A', '2026-09-30', '2026-11-05T10:00:00+05:30', 'Non-Consolidated', 110.0),
+        ('A', '2026-09-30', '2026-11-05T10:00:00+05:30', 'Consolidated', 300.0),
+        # B: both bases both years -> consolidated vs consolidated
+        ('B', '2025-09-30', '2025-11-05T10:00:00+05:30', 'Non-Consolidated', 50.0),
+        ('B', '2025-09-30', '2025-11-05T10:00:00+05:30', 'Consolidated', 200.0),
+        ('B', '2026-09-30', '2026-11-05T10:00:00+05:30', 'Non-Consolidated', 55.0),
+        ('B', '2026-09-30', '2026-11-05T10:00:00+05:30', 'Consolidated', 250.0),
+        # C: consolidated now, standalone a year ago only, and no standalone now -> no comparison, a dash
+        ('C', '2025-09-30', '2025-11-05T10:00:00+05:30', 'Non-Consolidated', 10.0),
+        ('C', '2026-09-30', '2026-11-05T10:00:00+05:30', 'Consolidated', 90.0)]
+    res = pd.DataFrame(rows, columns=['isin', 'period_end', 'broadcast_at', 'consolidated', 'quarter_revenue'])
+    res = res.assign(symbol=res['isin'], company=res['isin'], quarter_profit=1.0)
+    out = more_pages._latest_results(SimpleNamespace(results=res, ref=pd.Timestamp('2026-11-11')), 30).set_index('isin')
+    assert len(out) == 3
+    assert round(out.loc['A', 'rev_yoy'], 1) == 10.0 and not out.loc['A', '_cons']
+    assert round(out.loc['B', 'rev_yoy'], 1) == 25.0 and out.loc['B', '_cons']
+    assert pd.isna(out.loc['C', 'rev_yoy'])   # 90 vs 10 would read +800%: never across bases
 
 
 def test_site_loads_the_columns_the_dense_pages_read():

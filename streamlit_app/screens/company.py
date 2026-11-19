@@ -13,7 +13,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit, lwchart
+from ui import dates, kit, lwchart
 from ui.kit import esc
 from ui.table import facts
 
@@ -377,14 +377,14 @@ def _year_move(hist) -> str:
     """'Down 12.3% in a year' from the adjusted closes, over the longest span up to a year we hold."""
     if not hist or len(hist[1]) < 5:
         return ''
-    dates = pd.to_datetime(pd.Series(hist[0]))
-    last = dates.iloc[-1]
-    i = int((dates >= last - pd.Timedelta(days=365)).to_numpy().argmax())
+    days_ = pd.to_datetime(pd.Series(hist[0]))
+    last = days_.iloc[-1]
+    i = int((days_ >= last - pd.Timedelta(days=365)).to_numpy().argmax())
     a, b = float(hist[1][i]), float(hist[1][-1])
     if not a:
         return ''
     ch = (b / a - 1) * 100
-    span = 'a year' if (last - dates.iloc[i]).days >= 350 else f'{(last - dates.iloc[i]).days // 30} months'
+    span = 'a year' if (last - days_.iloc[i]).days >= 350 else f'{(last - days_.iloc[i]).days // 30} months'
     return f'{"Up" if ch > 0 else "Down" if ch < 0 else "Flat"} {abs(ch):.1f}% in {span}'
 
 
@@ -609,10 +609,11 @@ def render():
     prom = win[win['person_role'].isin(signals.PROMOTER_ROLES)]
     off = win[win['person_role'].isin(['director', 'kmp'])]
     d = mine(ctx.deals) if not ctx.deals.empty else pd.DataFrame()
+    d_all = d
     if not d.empty:
         d = d[~d['client_is_market_maker'].astype('boolean').fillna(False) & d['is_primary'].astype('boolean').fillna(False)]
+        d = d_all = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))   # every deal, for the history below
         d = d[d['date'] > ctx.deals['date'].max() - pd.Timedelta(days=365)]
-        d = d.assign(also_filed=signals.deals_also_filed(d, ctx.trades))
     shd = ctx.shareholding
     mine_sh = shd[(shd['symbol'].astype(str).str.upper() == sym) | ((shd['isin'] == isin) if isin and 'isin' in shd else False)] \
         if not shd.empty else pd.DataFrame()
@@ -762,11 +763,21 @@ def render():
 
     # ---- 4. Every decision in detail: insiders, deals, stake changes (the topic pages' dense tables), then stories ----
     st.html('<div id="co-detail"></div>')
-    dmw = win[win['person_role'].isin(signals.DECISION_ROLES)]
-    bars = {'insiders': cg_charts.split_bar(dmw.loc[dmw['side'] == 'BUY', 'value'].sum(), dmw.loc[dmw['side'] == 'SELL', 'value'].sum()),
-            'deals': cg_charts.split_bar(d_real.loc[d_real['side'] == 'BUY', 'value'].sum(), d_real.loc[d_real['side'] == 'SELL', 'value'].sum())
-            if not d_real.empty else ''}
-    proto.company_tables(ctx, isin, sym, bars=bars)
+    # over the page's date range (owner, 19 Nov 2026: "a date selector or a date range selector must be present", PR 291);
+    # the range also cuts "Every filing". The glance above keeps its own fixed windows, named on each chip.
+    ds.section('Every decision in detail', 'Insider decisions, deals, stake changes and every filing below, over these dates')
+    with ds.inside():
+        rng = dates.range_picker('company', *dates.bounds(t['broadcast_date'] if 'broadcast_date' in t else None,
+                                                          d_all['date'] if not d_all.empty else None, hi=ctx.ref),
+                                 default='1y', caption=True)
+        # bought against sold over the same dates: decision-makers' open-market trades, and deals by real buyers and sellers
+        dmw = e[e['person_role'].isin(signals.DECISION_ROLES) & rng.mask(e['seen'])] if not e.empty else e
+        dlr = d_all[rng.mask(d_all['date']) & ~d_all['also_filed'].astype(bool)] if not d_all.empty else d_all
+        bars = {'insiders': cg_charts.split_bar(dmw.loc[dmw['side'] == 'BUY', 'value'].sum(), dmw.loc[dmw['side'] == 'SELL', 'value'].sum())
+                if not dmw.empty else '',
+                'deals': cg_charts.split_bar(dlr.loc[dlr['side'] == 'BUY', 'value'].sum(), dlr.loc[dlr['side'] == 'SELL', 'value'].sum())
+                if not dlr.empty else ''}
+        proto.company_tables(ctx, isin, sym, rng=rng, bars=bars)
     if other:
         ds.section('Raises, pledges and big holders', '12 months')
         ds.stories(other)
@@ -790,8 +801,12 @@ def render():
     _public_holders(store.table('public_holders'), sym, isin, mine_sh)
 
     # ---- Every filing, the noise one tap away ----
-    tl = _timeline(ctx, sym, t, d, raises)
-    ds.section('Every filing', 'Newest first; a row opens to its facts and the filing. Staff trades, ESOPs, gifts and transfers are off until picked')
+    tl = _timeline(ctx, sym, t, d_all, raises)
+    if not tl.empty:   # inside the range; dates ahead of the data's date (meetings, ex-dates) with a range that runs to it
+        ahead = pd.to_datetime(tl['date'], errors='coerce').gt(pd.Timestamp(ctx.ref)) & (rng.end_ts >= pd.Timestamp(ctx.ref))
+        tl = tl[rng.mask(tl['date']) | ahead]
+    ds.section('Every filing', f'{dates.describe(rng)}, newest first; a row opens to its facts and the filing. Staff trades, ESOPs, '
+                               'gifts and transfers are off until picked')
     kinds = list(dict.fromkeys(tl['what'])) if not tl.empty else []
     kinds = [k for k in kinds if k in MONEY] + [k for k in kinds if k not in MONEY]
     counts = tl['what'].value_counts().to_dict() if not tl.empty else {}
@@ -803,5 +818,5 @@ def render():
         kit.table(shown, [
             kit.Col('date', 'Date', 'date'), kit.Col('what', 'Filing'), kit.Col('who', 'Who', sub='sub'),
             kit.Col('text', 'What'), kit.Col('value', 'Value', 'money'), kit.Col('pct', '% of mcap', 'spct')],
-            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text='No filings for this company in our data.',
+            limit=200, height=2800, key=f'co_tlt_{sym}', empty_text=f'No filings for this company, {dates.describe(rng)}.',
             detail=lambda r: facts(r['_facts'], r['_links']))

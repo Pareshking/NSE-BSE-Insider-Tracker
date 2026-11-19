@@ -29,6 +29,7 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D8q | QIPs | in-principle: board and shareholder approval dates, amount; listing: bid dates, relevant date, floor and issue price, discount, shares, allottee count, amount; XBRL: each allottee with category and % of the issue | NSE filings by date window (`corporate-further-issues-qip`, confirmed 12 Oct 2026) | Clean (12 Oct, `issues.clean_qip`) |
 | D9 | Market cap | per symbol, daily | NSE PR file + BSE list | In |
 | D10 | Securities | ISIN, NSE symbol, BSE code, name, sector, industry, size bucket | NSE/BSE lists nightly + VR export | In |
+| D10i | Industry classification | four official levels (macro, sector, industry, basic industry) per ISIN, with the source (NSE, else BSE, else the VR export) | NSE quote API and BSE quote header, one symbol a call, about 400 per exchange a night (`scripts/industry.py`, from 19 Nov 2026) | Coded 19 Nov; waits on the first full run |
 | D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In; not yet shown on pages (TODO G) |
 | D12 | Trading calendar | NSE sessions, special sessions | from 30 Sep 2024, extends nightly | In |
 | D13 | Measured outcomes | returns after each signal from broadcast time, after costs, with case counts | from D1h + D2h + D11 | Pending (TODO 7) |

@@ -43,7 +43,7 @@ def site(data_dir, tmp_path_factory):  # noqa: F811
     return root
 
 
-def _run(site, monkeypatch, kind: str | None = None, days: int = 365) -> tuple[AppTest, str]:
+def _run(site, monkeypatch, kind: str | None = None, days: str = 'all') -> tuple[AppTest, str]:
     monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(site))
     at = AppTest.from_string(APP_PATHS + """
 import streamlit as st
@@ -53,7 +53,7 @@ theme.inject()
 from screens import filings_all
 filings_all.render()
 """, default_timeout=90)
-    at.session_state['fa_days'] = days
+    at.session_state['filings_preset'] = days
     if kind:
         at.session_state['fa_kind'] = kind
     at.run()
@@ -271,7 +271,7 @@ theme.inject()
 from screens import filings_all
 filings_all.render()
 """, default_timeout=90)
-    at.session_state['fa_days'] = 365
+    at.session_state['filings_preset'] = 'all'
     at.session_state['fa_money'] = True
     at.run()
     assert not at.exception, at.exception[0].value
@@ -326,7 +326,8 @@ theme.inject()
 from screens import filings_all
 filings_all.render()
 """, default_timeout=90)
-    at.session_state['fa_day'] = day.date()
+    at.session_state['filings_preset'] = 'custom'
+    at.session_state['filings_range'] = (day.date(), day.date())
     at.run()
     assert not at.exception, at.exception[0].value
     html = ' '.join(e.proto.body for e in at.get('html'))

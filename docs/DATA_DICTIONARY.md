@@ -635,6 +635,37 @@ Two kinds of house, kept in the same tables and told apart by `kind` (holdings) 
 | `mf_stock_month` (month, `house_kind`, ISIN: mutual funds and pension funds never summed together) | `houses_adding`, `houses_cutting`, `houses_new`, `houses_exit`, `active_net`, `all_net`, `active_shares`, `active_before`, `price` (filed value over shares), `active_net_cr`, `houses_holding`, `month`, `house_kind` |
 | `mf_coverage` (quarter-end months) | `month`, `houses`, `companies`, `median_ratio`, `weighted_ratio`: mutual fund houses only, against the mutual-fund shares companies filed |
 
+## Industry classification (`clean/current/industry.parquet`, from 19 Nov 2026)
+
+The official four-level classification (macro-economic sector > sector > industry > basic industry), one row per
+ISIN, so pages can filter by industry. `scripts/industry.py`, parsers in `insiders_clean/industry.py`, workflow
+`.github/workflows/industry.yml` (nightly 08:13 IST, about 400 symbols per exchange; Run workflow with `full`
+ticked for the first run). Raw answers in `raw_v2/nse/quote_equity/`, `raw_v2/bse/comheadernew/`,
+`raw_v2/bse/scrip_list/`; the latest answer per symbol in `archive/industry/{nse,bse}.parquet` (with `status`:
+`ok`, `no_industry`, `not_found`, `error`, and `fetched_at`). An answer is fetched again after 30 days (`ok`) or 7
+(anything else); a symbol never fetched comes first.
+
+| Source (`source`) | Where | Levels |
+|---|---|---|
+| `nse` | `www.nseindia.in/api/quote-equity?symbol=SYM`, key `industryInfo` (one call per symbol of `securities` with an INE ISIN). **Not answering yet**: HTTP 403 from the dev container and from GitHub's runners on both `www.nseindia.com` and `www.nseindia.in` (19 Nov 2026, the workflow's probe job); the collector keeps asking and stops NSE for the night on a refusal | `macro`, `sector`, `industry`, `basicIndustry` |
+| `bse` | `api.bseindia.com/BseIndiaAPI/api/ComHeadernew/w?quotetype=EQ&scripcode=CODE&seriesid=` (the quote page header), for BSE's active equity scrips (`ListofScripData/w`, 4,849 with an INE ISIN), those NSE cannot cover first, then the rest (so every company has BSE's words while NSE refuses). Plain requests answer from GitHub's runners. Fetched 19 Nov 2026 (`tests/fixtures/industry/`) | `Sector`, `IndustryNew`, `IGroup`, `ISubGroup`: the same scheme and words as NSE's (ABB: Industrials / Capital Goods / Electrical Equipment / Heavy Electrical Equipment on both) |
+| `vr_master` | The Value Research export (`reference_data/security_master_20260901.csv`), placed by NSE symbol or BSE code as in `securities`; only where neither exchange classifies the ISIN | Its own two levels, in `sector` and `industry`; `macro` and `basic_industry` empty. Its words are not the exchanges' ("Financial", not "Financial Services") |
+
+BSE's scrip master (`ListofScripData/w` and its CSV `LitsOfScripCSVDownload/w`) answered with every industry field
+empty for all 5,141 active scrips on 19 Nov 2026, so it gives the list of scrips only.
+
+| Column | Meaning |
+|---|---|
+| `isin` | The company's ISIN (INE...; fund units and partly paid lines are left out). One row each |
+| `nse_symbol`, `bse_code` | From `securities` where it knows the ISIN, else from the answer (or the VR export) |
+| `macro`, `sector`, `industry`, `basic_industry` | The four levels as the source printed them; a level left blank is empty, never filled from another level or source |
+| `source` | `nse` (wins when both exchanges classify the ISIN), `bse`, or `vr_master` |
+| `as_of` | The day the answer was fetched (UTC date); for `vr_master` the export's date (2026-09-01) |
+
+A company no source classifies has no row; `clean/reports/industry/{date}.json` counts them
+(`securities_without_class`). Site: `store.industry_of(isin)` and `store.with_industry(df)` (joins the four levels
+and `industry_source` by ISIN; `prefix='ind_'` beside a table that already has `sector`, such as `securities`).
+
 ## Not yet collected
 
 BSE-only companies have no Company page (it is keyed by NSE symbol).
