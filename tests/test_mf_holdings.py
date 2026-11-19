@@ -254,3 +254,26 @@ def test_icici_files_list_gives_the_month_zip():
     assert len(sep) == 1 and sep[0].endswith('September-2026.zip')
     assert apis2._ist_day(1793422800000).isoformat() == '2026-10-31'   # applicableMonth: the month-end in IST
     assert 'ICICI Prudential Mutual Fund' not in [n for n, _ in NOT_COLLECTED]
+
+
+def test_alphagrep_portfolios_list_gives_each_schemes_workbook():
+    """AlphaGrep's /api/portfolios entries as a GitHub runner got them (mf-probe, 19 Nov 2026), cut down."""
+    from collectors.mf_portfolios import apis2
+    from collectors.mf_portfolios.houses import BY_KEY
+
+    def e(scheme, title, name, url):
+        return {'title': title, 'accordian_name': {'Name': 'Monthly'}, 'scheme': {'Name': scheme},
+                'file': {'name': name, 'url': url}}
+    entries = [e('AlphaGrep Flexi Cap Fund', 'October Report', 'October_2026',
+                 '/uploads/Alpha_Grep_Flexi_Cap_Fund_Monthly_Portfolio_Report_Oct_2026_dedb94d139.xls'),
+               e('AlphaGrep Multi Asset Allocation Fund', 'October Report', 'October_2026.xls',
+                 '/uploads/October_2026_f0f15b88df.xls'),
+               e('AlphaGrep Flexi Cap Fund', 'September Report', 'September_2026.xls',
+                 '/uploads/September_2026_6166646f5d.xls'),
+               {'title': 'October Report', 'scheme': {'Name': 'X'}, 'file': {}}]   # no file: left out
+    links = apis2.alphagrep_links(entries)
+    assert len(links) == 3 and links[1][0] == ('AlphaGrep Multi Asset Allocation Fund Monthly portfolio '
+                                               'October Report October_2026.xls')
+    got = find.candidates(links, '2026-10', BY_KEY['alphagrep'])
+    assert sorted(got) == ['https://cmsweb.alphagrepmf.ai/uploads/Alpha_Grep_Flexi_Cap_Fund_Monthly_Portfolio_Report_'
+                           'Oct_2026_dedb94d139.xls', 'https://cmsweb.alphagrepmf.ai/uploads/October_2026_f0f15b88df.xls']

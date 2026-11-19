@@ -446,3 +446,41 @@ def icici(month: str, max_pages: int = 10) -> list[tuple[str, str]]:
         if not data.get('isNext') or not files or (oldest and _ist_day(oldest) < date(y, m, 1)):
             break
     return out
+
+
+# --- AlphaGrep: Disclosures > Portfolio Disclosure, drawn from its content service (Strapi) ------------------------
+# www.alphagrepmf.ai is an Angular page; its script reads cmsweb.alphagrepmf.ai/api/portfolios (each entry: a scheme,
+# the accordion it sits in - Monthly - a title such as 'October Report', and the workbook). A workbook per scheme.
+# The site and the service are behind the CAMS firewall, which blocks machines outside India; a GitHub runner is
+# answered (mf-probe, 19 Nov 2026).
+ALPHAGREP = 'https://www.alphagrepmf.ai/disclosures'
+ALPHAGREP_CMS = 'https://cmsweb.alphagrepmf.ai'
+
+
+def alphagrep_links(entries: list[dict]) -> list[tuple[str, str]]:
+    """(scheme, accordion, title and file name; address) for each entry of /api/portfolios."""
+    out = []
+    for e in entries:
+        f = e.get('file') or {}
+        if not f.get('url'):
+            continue
+        acc = (e.get('accordian_name') or {}).get('Name') or ''
+        text = f"{(e.get('scheme') or {}).get('Name') or ''} {acc} portfolio {e.get('title') or ''} {f.get('name') or ''}"
+        out.append((' '.join(text.split()), urljoin(ALPHAGREP_CMS, f['url'])))
+    return out
+
+
+def alphagrep(month: str) -> list[tuple[str, str]]:
+    s = _session()
+    s.headers.update({'Accept': 'application/json, text/plain, */*', 'Origin': 'https://www.alphagrepmf.ai',
+                      'Referer': 'https://www.alphagrepmf.ai/'})
+    entries: list[dict] = []
+    for pg in range(1, 20):
+        r = s.get(f'{ALPHAGREP_CMS}/api/portfolios', timeout=TIMEOUT,
+                  params={'populate': '*', 'pagination[pageSize]': 100, 'pagination[page]': pg})
+        r.raise_for_status()
+        d = r.json()
+        entries += d.get('data') or []
+        if pg >= (((d.get('meta') or {}).get('pagination') or {}).get('pageCount') or 1):
+            break
+    return alphagrep_links(entries)
