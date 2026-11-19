@@ -105,7 +105,8 @@ def _qa(question: str, answer: str, why: str = '', anchor: str = '') -> None:
 
 
 def _names_list(rows: list[str], n: int = 2) -> str:
-    rows = [r for r in rows if r][:n]
+    # each name once ("Happy Forgings and Happy Forgings": two promoter sales of one company, 19 Nov 2026)
+    rows = list(dict.fromkeys(r for r in rows if r))[:n]
     return ', '.join(esc(r) for r in rows[:-1]) + (' and ' if len(rows) > 1 else '') + esc(rows[-1]) if rows else ''
 
 
@@ -670,7 +671,7 @@ def deals():
         t = sells[0]
         _qa('Who sold the biggest blocks?', f'{esc(t["client"])} in {esc(str(names.get(t["isin"]) or t["company"]))}, {esc(kit.rupees(t["_v"]))}',
             ', '.join(f'{x["client"]} in {names.get(x["isin"]) or x["company"]} ({kit.rupees(x["_v"])})' for x in sells[1:4]) + '.' if len(sells) > 1 else '')
-    _qa('Are promoters selling through deals?', (f'Yes: {_names_list([str(names.get(x["isin"]) or x["company"]) for x in prom[:3]], 3)}'
+    _qa('Are promoters selling through deals?', (f'Yes: {_names_list([str(names.get(x["isin"]) or x["company"]) for x in prom], 3)}'
                                                  if prom else 'No promoter sale in a bulk or block deal'),
         f'{len(prom)} promoter {"sale" if len(prom) == 1 else "sales"} in deals, {kit.rupees(sum(x["_v"] or 0 for x in prom))} in all.' if prom else '')
     st.html('<h2 class="dt-h2">Every deal <span>largest first</span></h2>')

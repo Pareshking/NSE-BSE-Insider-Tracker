@@ -53,3 +53,8 @@ def test_many_clients_at_one_price_are_one_block():
     assert len(out) == 2
     blk = next(r for r in out if r['side'] == 'BUY')
     assert blk['_v'] == 1154e7 and 'SBI MF' in blk['who'] and '+1 more' in blk['who'] and '4 buyers' in blk['kind']
+
+
+def test_names_list_says_each_name_once():
+    from screens.proto import _names_list
+    assert _names_list(['Happy Forgings', 'Happy Forgings', 'Azad Engineering'], 3) == 'Happy Forgings and Azad Engineering'
