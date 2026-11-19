@@ -5,6 +5,8 @@ Bought vs sold at a glance (owner, 19 Nov 2026, on the People & funds page on a 
 understand bought or sold"). Each builder returns a chart (or, for the counts, a line of HTML) for good data and None (or '')
 for nothing to draw, so a page draws a section only when its data is in. Sized for a 390 px phone: values written on the
 marks, no legend, no axis where the labels already say it, no grid.
+
+The Funds page's builders (diverging_bars by sector, heatmap of house x month; the Funds explorer PR) are at the end.
 """
 from __future__ import annotations
 
@@ -218,3 +220,45 @@ def change_rows(rows: pd.DataFrame | None, company: str = 'company', symbol: str
     more = len(rows) - min(len(rows), limit)
     head = '<div class="cr cr-h"><div>Company</div><div>% held</div><div>Change, pts</div></div>'
     return '<div class="crows">' + head + ''.join(out) + '</div>' + (f'<p class="tbl-cap">Top {limit:,} of {len(rows):,}</p>' if more else '')
+
+
+def diverging_bars(df: pd.DataFrame, label: str = 'label', value: str = 'net_cr', unit: str = '₹ Cr',
+                   limit: int = 24) -> alt.Chart | None:
+    """Horizontal bars either side of zero, buying (green) right and selling (red) left, most bought on top: the Funds
+    page's net rupees by sector. At most `limit` rows, the largest either way."""
+    if df is None or df.empty:
+        return None
+    d = df.assign(_abs=df[value].abs()).sort_values('_abs', ascending=False).head(limit).sort_values(value, ascending=False)
+    d = d.assign(side=d[value].ge(0).map({True: 'Bought', False: 'Sold'})).drop(columns='_abs')
+    tips = [alt.Tooltip(f'{label}:N', title='Group'), alt.Tooltip(f'{value}:Q', title=f'Net, {unit}', format=',.1f')]
+    if 'stocks' in d:
+        tips.append(alt.Tooltip('stocks:Q', title='Stocks'))
+    bars = alt.Chart(d).mark_bar(cornerRadius=2).encode(
+        y=alt.Y(f'{label}:N', sort=d[label].tolist(), title=None,
+                axis=alt.Axis(labelColor=INK, labelLimit=200, ticks=False, domain=False)),
+        x=alt.X(f'{value}:Q', title=unit, axis=alt.Axis(format=',.0f', gridColor=LINE, labelColor=INK3, titleColor=INK3,
+                                                         domain=False, tickCount=5)),
+        color=alt.Color('side:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=[BUY, SELL]), legend=None),
+        tooltip=tips)
+    zero = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color=INK3, strokeWidth=1).encode(x='x:Q')
+    return (bars + zero).properties(height=max(120, 24 * len(d))).configure_view(stroke=None)
+
+
+def heatmap(df: pd.DataFrame, x: str = 'month_label', y: str = 'house', value: str = 'flow_pct', cap: float = 5.0,
+            x_order: list | None = None) -> alt.Chart | None:
+    """A grid of one value per row and column, selling red through a neutral grey to buying green, clipped at ±`cap`
+    (the tooltip keeps the true value): the Funds page's house × month net buying as a % of the house's equity."""
+    if df is None or df.empty:
+        return None
+    d = df.dropna(subset=[value])
+    if d.empty:
+        return None
+    rows = d[y].nunique()
+    return alt.Chart(d).mark_rect(cornerRadius=2).encode(
+        x=alt.X(f'{x}:O', title=None, sort=x_order, axis=alt.Axis(labelColor=INK3, labelAngle=0, ticks=False, domain=False)),
+        y=alt.Y(f'{y}:N', title=None, sort='ascending', axis=alt.Axis(labelColor=INK, labelLimit=220, ticks=False, domain=False)),
+        color=alt.Color(f'{value}:Q', scale=alt.Scale(domain=[-cap, 0, cap], range=[SELL, C['range-mid'], BUY], clamp=True),
+                        legend=alt.Legend(title='% of equity', orient='top', labelColor=INK3, titleColor=INK3)),
+        tooltip=[alt.Tooltip(f'{y}:N', title='House'), alt.Tooltip(f'{x}:O', title='Month'),
+                 alt.Tooltip(f'{value}:Q', title='Net bought, % of equity', format='+.2f')],
+    ).properties(height=max(120, 20 * rows)).configure_view(stroke=None)
