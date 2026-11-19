@@ -40,7 +40,7 @@ def test_diverging_bar_in_rupees_keeps_the_largest_and_repeats_no_label():
                        'net': [5e8, -3e8, 1e7] + [1e6 * (i + 1) for i in range(20)]})
     spec = _spec(charts.diverging_bar(df, 'company', 'net', fmt=lambda v: charts.rupees(v, signed=True), limit=5))
     rows = next(iter(spec['datasets'].values()))
-    assert len(rows) == 5 and rows[0]['_l'] == 'A' and rows[-1]['_l'] == 'A (2)'
+    assert len(rows) == 5 and rows[0]['_l'] == rows[-1]['_l'] == 'A' and rows[-1]['_k'] == 'A (2)'
     assert rows[0]['_t'].startswith('+₹') and rows[-1]['_t'].startswith('−₹')
 
 

@@ -39,7 +39,7 @@ def _short(s, n: int = LABEL_CHARS) -> str:
 
 
 def _unique(labels: list[str]) -> list[str]:
-    """A label seen twice (two holders in one company) gets a counter, so each bar keeps its own row."""
+    """A label seen twice (two filings in one company) gets a counter, a hidden key that keeps each bar on its own row."""
     seen: dict[str, int] = {}
     out = []
     for x in labels:
@@ -84,7 +84,8 @@ def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable
         return None
     d = d.loc[d['_v'].abs().sort_values(ascending=False, kind='stable').index[:limit]]
     d = d.sort_values('_v', ascending=False, kind='stable').reset_index(drop=True)
-    d['_l'] = _unique([_short(x) for x in d['_l']])
+    d['_l'] = [_short(x) for x in d['_l']]
+    d['_k'] = _unique(list(d['_l']))   # each bar its own row; the name is written as it is (two filings, two bars)
     d['_t'] = [fmt(v) + (f' {g}' if g else '') for v, g in zip(d['_v'], d['_g'])]
     d['_tone'] = d['_v'].map(lambda v: 'up' if v > 0 else 'down')
     lo, hi = min(d['_v'].min(), 0.0), max(d['_v'].max(), 0.0)
@@ -93,7 +94,7 @@ def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable
     # Each row: the name on the left and the value on the right, on one line, the bar under them from the zero line. The
     # bars have the full width and no text sits beside them, so nothing collides on a 390 px phone.
     x = alt.X('_v:Q', scale=alt.Scale(domain=dom, nice=False), axis=None)
-    y = alt.Y('_l:N', sort=list(d['_l']), axis=None, scale=alt.Scale(paddingInner=0, paddingOuter=0))
+    y = alt.Y('_k:N', sort=list(d['_k']), axis=None, scale=alt.Scale(paddingInner=0, paddingOuter=0))
     tone = alt.Color('_tone:N', scale=alt.Scale(domain=['up', 'down'], range=[BUY, SELL]), legend=None)
     tip = [alt.Tooltip('_l:N', title='Name'), alt.Tooltip('_t:N', title='Change')]
     base = alt.Chart(d).encode(y=y)
