@@ -82,3 +82,47 @@ def _before(title: str, y: int, m: int) -> bool:
     names = {n.lower(): i for i, n in enumerate(calendar.month_name) if n}
     hit = re.search(r'(' + '|'.join(names) + r')\s*,?\s*(\d{4})', title.lower())
     return bool(hit) and (int(hit.group(2)), names[hit.group(1)]) < (y, m)
+
+
+# NPS pension fund managers (their portfolio pages, as NPS Trust lists them at npstrust.org.in/scheme-portfolio).
+
+def nps_sbi(month: str) -> list[tuple[str, str]]:
+    """www.sbipensionfunds.co.in/disclosures/portfolio-details: the list is the page's own data file (Gatsby
+    page-data.json), each entry a name ('Portfolio Details October 2026') and the workbook's upload address."""
+    s = _session('https://www.sbipensionfunds.co.in/disclosures/portfolio-details/')
+    r = s.get('https://www.sbipensionfunds.co.in/page-data/disclosures/portfolio-details/page-data.json', timeout=60)
+    r.raise_for_status()
+    return [(name, 'https://www.sbipensionfunds.co.in' + url) for name, url in re.findall(
+        r'"name":"(Portfolio Details[^"]*)"[^{}]*?"pdf":\{"data":\{"id":\d+,"attributes":\{[^{}]*?"url":"(/uploads/[^"]+)"', r.text)]
+
+
+def nps_icici(month: str) -> list[tuple[str, str]]:
+    """www.icicipension.in/public_disclosure/portfolio_details: the page asks api.icicipension.in for the month
+    ('oct', 2026) and gets one workbook (a signed download address, good for 15 minutes)."""
+    y, m = _ym(month)
+    s = _session('https://www.icicipension.in/public_disclosure/portfolio_details')
+    r = s.get(f'https://api.icicipension.in/get_check/portfolio/{calendar.month_abbr[m].lower()}/{y}', timeout=60)
+    r.raise_for_status()
+    out = []
+    for d in r.json().get('data') or []:
+        a = d.get('attributes') or {}
+        f = ((a.get('Scheme_Details') or {}).get('data') or {}).get('attributes') or {}
+        if f.get('url'):
+            out.append((f"{a.get('internal_identifier') or ''} {f.get('name') or ''}", f['url']))
+    return out
+
+
+def nps_axis(month: str) -> list[tuple[str, str]]:
+    """www.axispensionfund.com/public-disclosures/portfolio-details: the page asks the site's WordPress list for the
+    month and year; each entry's acf.pdf_report is the month's workbook."""
+    y, m = _ym(month)
+    s = _session('https://www.axispensionfund.com/public-disclosures/portfolio-details')
+    r = s.get('https://www.axispensionfund.com/wordpress/wp-json/wp/v2/portfolio_reports/', params={'month': m, 'year': y},
+              timeout=60)
+    r.raise_for_status()
+    out = []
+    for d in r.json() or []:
+        a = d.get('acf') or {}
+        if str(a.get('year')) == str(y) and str(a.get('month')).lstrip('0') == str(m) and a.get('pdf_report'):
+            out.append((f'{calendar.month_name[m]} {y} portfolio', a['pdf_report']))
+    return out
