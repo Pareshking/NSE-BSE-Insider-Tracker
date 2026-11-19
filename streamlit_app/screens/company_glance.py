@@ -403,10 +403,10 @@ def chips(ins: dict, fm: dict | None, delta: pd.DataFrame | None, deals: dict, f
     if deals['n'] and gross and abs(deals['net']) < 0.1 * gross:
         # a matched block: one side sold what the other bought, so the net says nothing; the size and who does
         pct = _num(deals.get('sell_pct')) or _num(deals.get('buy_pct'))
-        who = ' · '.join(x for x in (f'sold by {_short(deals["top_seller"])}' if deals['top_seller'] else '',
-                                     f'bought most by {_short(deals["top_buyer"])}' if deals['top_buyer'] else '') if x)
+        # the seller only: a block's buyers are many, and every one is in the deals table below
+        who = f'sold by {_short(deals["top_seller"])}' if deals['top_seller'] else f'bought most by {_short(deals["top_buyer"])}'
         out.append(Chip('deals', f'Bulk and block, {deals["days"]} days', f'{_cr(gross)} traded',
-                        (f'{pct:.1f}% of the company changed hands · ' if pct and pct >= 0.05 else 'changed hands · ') + who, 'flat',
+                        (f'{pct:.1f}% of the company · ' if pct and pct >= 0.05 else '') + who, 'flat',
                         'Studies: weak (copying bulk deals)', 0))
     elif deals['n']:
         out.append(Chip('deals', f'Bulk and block, {deals["days"]} days', signed_cr(deals['net']) if deals['net'] else '₹0 net',

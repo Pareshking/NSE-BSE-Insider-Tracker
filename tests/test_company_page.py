@@ -177,7 +177,7 @@ def test_a_matched_block_is_its_size_and_its_seller_not_a_nil_net():
     cs = cg.chips(ins, None, pd.DataFrame(), deals, fl, ins_year=year)
     by = {c.key: c for c in cs}
     assert by['deals'].value == '₹3,488 Cr traded' and by['deals'].moving == 0
-    assert by['deals'].note == '12.3% of the company changed hands · sold by FIH Mauritius Investments LTD · bought most by SBI Mutual Fund'
+    assert by['deals'].note == '12.3% of the company · sold by FIH Mauritius Investments LTD'
     assert by['insiders'].note == 'none in 90 days; 12 months: net +₹65.8 Cr'
     s, lean = cg.verdict(cs, fl, deals)
     assert s == 'No clear move by insiders or funds; 12.3% of the company changed hands in deals; no red flags' and lean == 'quiet'
