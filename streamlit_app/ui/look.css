@@ -211,3 +211,35 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 }
 .cg-nospark { font-size: 11px; color: var(--ink-4); text-align: center; }
 @media (max-width: 640px) { .co-head h1.co-verdict { font-size: 26px !important; padding-left: 12px; border-left-width: 4px; } }
+
+/* Bought vs sold at a glance (19 Nov 2026, ui/charts.py): a line of counts, and a dense change list in place of tall cards */
+.cstrip { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: var(--gap-2) 0 var(--gap-3); font-size: 14px; color: var(--ink-3); }
+.cstrip .cs b { font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
+.cstrip .cs.up b { color: var(--buy); } .cstrip .cs.down b { color: var(--sell); } .cstrip .cs.zero b { color: var(--ink-4); }
+.chart-cap { font-size: var(--fs-small); color: var(--ink-3); margin: 2px 0 var(--gap-3); line-height: 1.45; }
+.crows { display: flex; flex-direction: column; font-size: 14px; }
+.cr { display: grid; grid-template-columns: minmax(0, 1fr) 76px 104px; gap: 10px; align-items: center; padding: 8px 0;
+  border-bottom: 1px solid var(--line); }
+.cr:last-child { border-bottom: 0; }
+.cr-h { font-size: 12.5px; color: var(--ink-3); border-bottom: 1px solid var(--rule-strong); padding: 4px 0 6px; }
+.cr-h div:not(:first-child), .cr-p, .cr-c { text-align: right; }
+.cr-n { min-width: 0; display: flex; flex-direction: column; }
+.cr-n a { color: var(--ink); font-weight: var(--fw-strong); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-n a:hover { color: var(--accent-ink); text-decoration: underline; }
+
+.cr-p { font-variant-numeric: tabular-nums; color: var(--ink); }
+.cr-c { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cr-c span.up, .cr-c span.down { font-weight: var(--fw-strong); }
+.cr-c em { font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-left: 4px; }
+@media (max-width: 640px) { .cr { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 8px; } .cr-c em { display: block; margin: 0; } .cr-c em.u { display: none; } }
+.cr-s { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* diverging_bar on a phone (ui/charts.py): a name and its value on one line, the bar the full width under them, so long
+   company names neither wrap onto three lines nor shrink the bars to a few pixels */
+@media (max-width: 640px) {
+  .cg-delta.wide { gap: 10px; }
+  .cg-delta.wide .cg-drow { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
+  .cg-delta.wide .cg-dl { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .cg-delta.wide .cg-dl em { display: inline; margin-left: 6px; }
+  .cg-delta.wide .cg-dv { grid-column: 2; grid-row: 1; }
+  .cg-delta.wide .cg-dtrack { grid-column: 1 / -1; grid-row: 2; height: 8px; }
+}
