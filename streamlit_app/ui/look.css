@@ -55,3 +55,37 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 @media (max-width: 640px) {
   .stApp [data-testid="stButtonGroup"] [role="radiogroup"] { flex-wrap: wrap; row-gap: 4px; }
 }
+
+/* Dashboard (19 Nov 2026, screens/dashboard.py): a grid of figure cards between thin rules, each with its change against
+   the period before, a sparkline and its evidence tag; four across, two on a tablet, one on a phone. Tokens only. */
+.dash-head { margin-bottom: var(--gap-3); }
+.dash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: var(--gap-4) 0 var(--gap-6);
+  border-top: 1px solid var(--rule-strong); }
+.dash-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px 20px 16px 0; margin-right: 20px;
+  border-bottom: 1px solid var(--line-strong); color: var(--ink) !important; text-decoration: none !important; }
+a.dash-card:hover .dash-l { color: var(--accent); }
+.dash-l { font-size: 13px; color: var(--ink-3); line-height: 1.3; min-height: 34px; }
+.dash-v { font-family: var(--display); font-weight: var(--fw-regular); font-size: 34px; line-height: 1.1; letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.dash-v.up { color: var(--buy); } .dash-v.down { color: var(--sell); }
+.dash-sub { font-size: 12.5px; line-height: 1.4; color: var(--ink-2); min-height: 35px; }
+.dash-delta { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.dash-delta-up { color: var(--buy); } .dash-delta-down { color: var(--sell); }
+.dash-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--gap-2); margin-top: auto; padding-top: 6px; }
+.dash-spark { width: 120px; height: 30px; flex: none; color: var(--ink-3); overflow: visible; }
+.dash-kpi.up .dash-spark { color: var(--buy); } .dash-kpi.down .dash-spark { color: var(--sell); }
+.dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.dash-spark circle { fill: currentColor; }
+.dash-spark line { stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.dash-spark.bars rect.p { fill: var(--buy); } .dash-spark.bars rect.n { fill: var(--sell); }
+.dash-ev { display: inline-block; padding: 2px 7px; border-radius: 3px; font: var(--fw-medium) 11px/1.4 var(--ui); white-space: nowrap;
+  background: var(--subtle); color: var(--ink-2); vertical-align: middle; }
+.dash-ev.up { background: var(--buy-tint); color: var(--buy); } .dash-ev.dn { background: var(--sell-tint); color: var(--sell); }
+.dash-ev.wn { background: var(--warn-tint); color: var(--warn-ink); }
+.dash-missing .dash-v { color: var(--ink-4); }
+.dash-when { font-family: var(--ui); font-size: 14px; color: var(--ink-3); }
+.dash-sub-h { font-size: 14px; font-weight: var(--fw-strong); color: var(--ink); margin: var(--gap-4) 0 var(--gap-2); }
+.dash-sub-h span { font-weight: var(--fw-regular); color: var(--ink-3); font-size: 12.5px; margin-left: 6px; }
+@media (max-width: 1100px) { .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .dash-grid { grid-template-columns: minmax(0, 1fr); } .dash-card { margin-right: 0; padding-right: 0; }
+  .dash-l, .dash-sub { min-height: 0; } .dash-v { font-size: 30px; } }

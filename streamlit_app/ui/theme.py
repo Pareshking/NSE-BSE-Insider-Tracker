@@ -41,6 +41,8 @@ COLORS = {
     'nse': '#5B4A8B',     'bse': '#2F6F7E',        # exchange marks
     'on-accent': '#FFFFFF',     # text on a filled accent chip
     'range-lo': '#F6DCD2', 'range-mid': '#E9EBEF', 'range-hi': '#CFEBDA',   # the 52-week bar, low to high
+    # Dashboard charts (19 Nov 2026): one hue per flow series, the bars' sign shows buying or selling
+    'series-fpi': '#1F5FA8', 'series-mf': '#8A6D3B', 'series-dii': '#5B4A8B',
 }
 
 FONTS = {

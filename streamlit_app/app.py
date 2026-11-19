@@ -54,6 +54,7 @@ from ui import nav as inapp  # noqa: E402
 from screens import (
     coming,
     company,
+    dashboard,
     data_status,
     entity,
     filings_all,
@@ -83,7 +84,9 @@ M = lambda name: f':material/{name}:'  # noqa: E731 -- Material icon shortcode
 # exchange data): the menu holds the 9 pages; the earlier pages stay reachable by their addresses.
 SECTIONS = {
     '': [
-        st.Page(proto.today, title='Today', icon=M('today'), url_path='today', default=True),
+        # Dashboard first and the default (owner, 19 Nov 2026: "Why don't we have a beautiful dashboard?"); Today stays as it is
+        st.Page(dashboard.render, title='Dashboard', icon=M('dashboard'), url_path='dashboard', default=True),
+        st.Page(proto.today, title='Today', icon=M('today'), url_path='today'),
         st.Page(proto.insiders, title='Insiders', icon=M('person'), url_path='insiders'),
         st.Page(funds.render, title='Funds', icon=M('account_balance_wallet'), url_path='funds'),
         st.Page(proto.deals, title='Deals', icon=M('swap_horiz'), url_path='deals'),
