@@ -49,6 +49,24 @@ def test_same_trade_in_bulk_and_block_feeds_is_one_row(master, report):
     assert report.data['tables']['deals']['removed']['same_trade_in_both_feeds']['count'] == 2
 
 
+
+def test_bulk_total_of_block_legs_counts_once(master, report):
+    # IIFL Finance on BSE, 18 Nov 2026: the seller's one bulk row is its whole day; its block rows (one per buyer)
+    # are inside it. Added together they doubled the sale.
+    bulk = [bse_deal('544717', 'CLEANMAX', 'AUGMENT INDIA I HOLDINGS LLC', 'SELL', 1000, 1015.5),
+            bse_deal('544717', 'CLEANMAX', 'BIG BUYER FUND', 'BUY', 600, 1015.5)]
+    block = [bse_deal('544717', 'CLEANMAX', 'AUGMENT INDIA I HOLDINGS LLC', 'SELL', 600, 1015.5),
+             bse_deal('544717', 'CLEANMAX', 'AUGMENT INDIA I HOLDINGS LLC', 'SELL', 300, 1015.5),
+             bse_deal('544717', 'CLEANMAX', 'BIG BUYER FUND', 'BUY', 600, 1015.5),
+             bse_deal('544717', 'CLEANMAX', 'SMALL BUYER FUND', 'BUY', 300, 1015.5)]
+    raw = pd.concat([canonical('bse', 'bulk_deals', bulk), canonical('bse', 'block_deals', block)])
+    out = clean_deals(raw, master, report, RUN_DATE)
+    sell = out[out['side'] == 'SELL']
+    assert len(sell) == 1 and sell['quantity'].iloc[0] == 1000   # the bulk day total, not 1000 + 900
+    assert out.loc[out['side'] == 'BUY', 'quantity'].sum() == 900
+    assert report.data['tables']['deals']['removed']['block_legs_inside_bulk_total']['count'] == 2
+
+
 # --- 5. Clean Max: BSE's cut-off name resolves to the one master record --------
 
 def test_bse_short_name_resolves_by_code(master, report):

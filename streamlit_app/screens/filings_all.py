@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit
+from ui import dates, kit
 from ui.table import facts
 
 from insiders_clean import participants, signals
@@ -36,7 +36,6 @@ KINDS = ['All', 'Insider trades', 'Deals', 'Stake changes', 'Preferential', 'Rig
 UPCOMING_DAYS = 60
 MEETING_WORDS = {'fund_raising': 'fund raising', 'buyback': 'a buyback', 'preferential': 'a preferential issue',
                  'rights': 'a rights issue'}
-PERIODS = {7: '7 days', 30: '30 days', 90: '90 days', 365: '1 year'}
 ROLES = ['Promoter', 'Director/KMP', 'Others']
 MIN_VALUE = {0: 'Any value', 1e6: '₹10 L+', 1e7: '₹1 Cr+', 1e8: '₹10 Cr+', 1e9: '₹100 Cr+'}
 LIMIT = 200
@@ -377,6 +376,16 @@ def on_day(rows: pd.DataFrame, day) -> pd.DataFrame:
     if rows.empty or day is None:
         return rows
     return rows[pd.to_datetime(rows['made_public'], errors='coerce').dt.normalize().eq(pd.Timestamp(day).normalize())]
+
+
+def in_range(rows: pd.DataFrame, rng, ref) -> pd.DataFrame:
+    """The rows made public inside a date range (ui/dates.Range); dates ahead of the as-of date (meetings, record
+    dates) too when the range runs to it, as the period did before."""
+    if rows.empty:
+        return rows
+    when = pd.to_datetime(rows['made_public'], errors='coerce')
+    ahead = when.dt.normalize().gt(pd.Timestamp(ref).normalize()) & (pd.Timestamp(rng.end) >= pd.Timestamp(ref).normalize())
+    return rows[rng.mask(when) | ahead]
 
 
 def row_limit(n: int, show_all: bool, day) -> int:
@@ -875,12 +884,11 @@ def render():
     with st.container(key='fa_filters', horizontal=True, vertical_alignment='center', gap='small'):
         q = st.text_input('Search', placeholder='Company, symbol or name', key='fa_q', type='search',
                           label_visibility='collapsed', width=260)
-        days = st.segmented_control('Period', list(PERIODS), default=30, format_func=PERIODS.get, required=True,
-                                    key='fa_days', label_visibility='collapsed') or 30
-        ref_day = pd.Timestamp(ctx.ref).normalize()
-        day = st.date_input('One day', value=None, min_value=(ref_day - pd.Timedelta(days=max(PERIODS) - 1)).date(),
-                            max_value=ref_day.date(), format='DD/MM/YYYY', key='fa_day', label_visibility='collapsed',
-                            width=150, help='Only what was made public on this day; the period is then ignored. Clear it to go back.')
+        # the shared date control (owner, 19 Nov 2026); it replaced the 7 / 30 / 90 days / 1 year choice and the one-day
+        # box: "Latest day", or a Custom range of one day, is one day; dates ahead are listed with any range to today
+        rng = dates.range_picker('filings', *dates.bounds(ctx.trades['broadcast_date'],
+                                                          ctx.deals['date'] if not ctx.deals.empty else None, hi=ctx.ref),
+                                 default='1m')
         with st.popover('Filters & sort', icon=':material/tune:', width='content'):
             side = st.segmented_control('Side', ['Buy and sell', 'Buy', 'Sell'], default='Buy and sell', required=True,
                                         key='fa_side') or 'Buy and sell'
@@ -896,11 +904,9 @@ def render():
             show_all = st.toggle('Show every row', value=False, key='fa_all',
                                  help=f'The table draws the first {LIMIT} rows, newest first; on, up to {ALL_ROWS:,}')
 
-    day_days = days_for(ctx.ref, day)
-    if day_days is None:
-        day = None
-    rows, sources = build(ctx, day_days or int(days))
-    rows = on_day(rows, day)
+    day = rng.start if rng.start == rng.end else None
+    rows, sources = build(ctx, days_for(ctx.ref, rng.start) or 1)
+    rows = on_day(rows, day) if day is not None else in_range(rows, rng, ctx.ref)
     if not rows.empty:
         if not mm:
             rows = rows[~rows['is_mm']]
@@ -931,6 +937,9 @@ def render():
     limit = row_limit(len(shown), show_all, day)
     if day is not None:
         kit.caption(f'Made public on {kit.day(day)}: {kit.count(len(shown))} rows. Companies under ₹100 Cr are not on the site.')
+    else:
+        kit.caption(f'Made public {dates.label(rng)}: {kit.count(len(shown))} rows'
+                    + (', dates ahead included' if rng.end >= pd.Timestamp(ctx.ref).date() else '') + '.')
     if len(shown) > limit:
         kit.caption(f'Showing the first {kit.count(limit)} of {kit.count(len(shown))} rows, newest first, the largest first within a day. '
                     + ('Pick one day, or turn on "Show every row" in Filters & sort, to see the rest.' if limit == LIMIT

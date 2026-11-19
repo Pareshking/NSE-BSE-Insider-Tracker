@@ -1,0 +1,139 @@
+name: Industry classification (NSE + BSE, four levels)
+
+# scripts/industry.py: NSE's quote-equity industryInfo and BSE's quote header (Sector, IndustryNew, IGroup,
+# ISubGroup), one call per symbol, incremental: never-fetched symbols first, then the oldest past their age
+# (30 days for a classification, 7 for anything else), at most `limit` per exchange a run. Builds
+# clean/current/industry.parquet.
+#
+# Two jobs: `fetch` asks the exchanges (hours on a full run) and writes nothing to archive/ or clean/, so it holds no
+# lock (it also stores the raw responses, write-once); `build` merges the answers and rebuilds the table inside the
+# r2-archive-writes group, for a minute or two. A full run in the group would hold the nightly R2 Storage Write
+# for hours.
+#
+# First run: Run workflow with `full` ticked (every symbol and scrip due, up to 5.5 hours). Nightly after that.
+# On a pull request that touches the collector: a probe of a few symbols on both exchanges, printed, nothing stored.
+on:
+  schedule:
+    - cron: '43 2 * * *'   # 08:13 IST, after the nightly write and its 04:30 IST backup
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Full run: every due symbol on both exchanges (first run), up to 5.5 hours'
+        type: boolean
+        required: false
+        default: false
+      limit:
+        description: 'At most this many symbols per exchange (blank = 400; a full run has no limit)'
+        required: false
+        default: ''
+      sources:
+        description: 'Comma list of nse, bse'
+        required: false
+        default: 'nse,bse'
+  pull_request:
+    paths:
+      - 'scripts/industry.py'
+      - 'insiders_clean/industry.py'
+      - '.github/workflows/industry.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RAW_CAPTURE_DIR: artifacts/raw_capture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Probe (prints each answer; nothing stored)
+        run: python -u scripts/industry.py probe --out artifacts/industry --nse ABB,INFY,RELIANCE,HDFCBANK,NOSUCHSYMBOLX --bse 500002,500012,500014,999999,543000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: industry-probe
+          path: artifacts/
+          retention-days: 7
+
+  fetch:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.full && 350 || 100 }}
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      RAW_CAPTURE_DIR: artifacts/raw_capture
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Ask NSE and BSE
+        env:
+          FULL: ${{ inputs.full }}
+          LIMIT: ${{ inputs.limit }}
+          SOURCES: ${{ inputs.sources || 'nse,bse' }}
+        run: |
+          set -o pipefail
+          if [ "$FULL" = "true" ]; then args=(--limit 0 --minutes 330); else args=(--limit "${LIMIT:-400}" --minutes 75); fi
+          mkdir -p artifacts
+          python -u scripts/industry.py fetch --out artifacts/industry --sources "$SOURCES" "${args[@]}" | tee artifacts/industry_fetch.log
+      # raw_v2 is write-once and named by content, so this needs no lock (thousands of objects on a full run)
+      - name: Store raw responses (write-once)
+        if: always()
+        run: python scripts/raw_flush.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: industry-fetch
+          path: |
+            artifacts/industry/
+            artifacts/industry_fetch.log
+          retention-days: 7
+
+  build:
+    needs: fetch
+    if: always() && needs.fetch.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: r2-archive-writes
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        continue-on-error: true   # a fetch that died before its upload: rebuild from the archive alone
+        with:
+          name: industry-fetch
+          path: artifacts/
+      - name: Merge into the archive, rebuild clean/current/industry.parquet
+        run: |
+          set -o pipefail
+          if [ -d artifacts/industry ]; then src=(--in artifacts/industry); else src=(); fi
+          python -u scripts/industry.py build "${src[@]}" | tee artifacts/industry_build.log
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Industry classification' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' artifacts/industry_build.log >> "$GITHUB_STEP_SUMMARY" || true

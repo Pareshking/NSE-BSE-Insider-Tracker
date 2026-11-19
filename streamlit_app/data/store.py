@@ -36,6 +36,7 @@ TABLES += ('mf_stock_month', 'mf_changes', 'mf_coverage')   # fund houses' month
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
 TABLES += ('industry',)   # macro, sector, industry, basic industry per ISIN: the Results page's filters (screens/results.py)
 TABLES += ('market_flows',)   # FPI, DII and mutual fund flows a day (scripts/market_flows.py): the flows line, screens/market_flows.py
+TABLES += ('industry',)   # four-level industry per ISIN, NSE else BSE else VR export (scripts/industry.py): industry_of, with_industry
 
 
 def _local() -> Path | None:
@@ -234,6 +235,49 @@ def artifact(key: str) -> pd.DataFrame:
     """A parquet the precompute job writes under artifacts/ (empty if absent)."""
     body = _read(key)
     return pd.read_parquet(io.BytesIO(body)) if body else pd.DataFrame()
+
+
+INDUSTRY_LEVELS = ('macro', 'sector', 'industry', 'basic_industry')
+
+
+def industry_of(isin, table: pd.DataFrame | None = None) -> dict | None:
+    """One company's classification: {macro, sector, industry, basic_industry, source, as_of}, or None when no
+    list classifies it. `source` says whose words they are: 'nse', 'bse' (the same four-level scheme) or
+    'vr_master' (the Value Research export: its own two levels in `sector` and `industry`, macro and basic
+    industry empty). A level the source left blank is None, never a guess."""
+    t = industry_table() if table is None else table
+    if t.empty or not isin:
+        return None
+    hit = t[t['isin'] == str(isin).strip()]
+    if hit.empty:
+        return None
+    r = hit.iloc[0]
+    return {k: (None if pd.isna(r[k]) else r[k]) for k in (*INDUSTRY_LEVELS, 'source', 'as_of')}
+
+
+def with_industry(df: pd.DataFrame, on: str = 'isin', table: pd.DataFrame | None = None,
+                  levels=INDUSTRY_LEVELS, prefix: str = '') -> pd.DataFrame:
+    """`df` with the classification levels (and `industry_source`) joined by ISIN; a copy, row order and count
+    kept (one industry row per ISIN). A column `df` already has (e.g. securities' VR `sector`) is not
+    overwritten: pass `prefix` ('ind_') to add them beside it."""
+    t = industry_table() if table is None else table
+    cols = [*levels, 'source']
+    names = {c: (f'{prefix}{c}' if c != 'source' else f'{prefix}industry_source') for c in cols}
+    out = df.copy()
+    if t.empty or on not in out:
+        for c in names.values():
+            if c not in out:
+                out[c] = None
+        return out
+    right = t[['isin', *cols]].drop_duplicates('isin').rename(columns={'isin': '__isin', **names})
+    right = right[[c for c in right.columns if c == '__isin' or c not in out.columns]]
+    merged = out.merge(right, how='left', left_on=on, right_on='__isin', validate='many_to_one')
+    return merged.drop(columns='__isin').set_axis(out.index)
+
+
+def industry_table() -> pd.DataFrame:
+    """clean/current/industry.parquet (cut to the study universe like every table); empty until the first run."""
+    return table('industry')
 
 
 def snapshot() -> pd.DataFrame:
