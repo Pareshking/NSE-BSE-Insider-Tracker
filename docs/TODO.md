@@ -15,6 +15,19 @@ call; not solved), Navi (Cloudflare challenge), Union (connection reset), AlphaG
 equity (Monarch, Carnelian and ASK: liquid or overnight only; IL&FS IDF: debt). **Next:** merge, then dispatch
 Fund house probe (`mf-probe.yml`) to see whether a GitHub runner reaches ICICI, Kotak, Navi, Union and AlphaGrep;
 add whichever answers.
+## Funds explorer, 19 Nov 2026 (branch `funds-explorer`, draft PR)
+
+The Funds page rebuilt as an explorer (`streamlit_app/screens/funds.py`, arithmetic in `screens/funds_logic.py`, tests in
+`tests/test_funds_page.py`): month-end picker (default the newest month with 90% of the most houses compared) and 3 / 6 /
+12-month windows; active or every scheme; filters by size, a 4-level industry cascade (`industry` table, else the
+security master's sector and industry) and fund house; the month so far from bulk and block deals by fund type and name;
+bought / sold by rupees and by % of the company, per size bucket; stocks no house held before (new listings such as Jio
+Platforms, listed on NSE 28 Oct 2026, INE0BJO01010) kept apart; new entries and exits; sector roll-up; how each house is
+positioning (flow as % of its equity at constant prices, breadth, broad trim / add at 40%, size and sector shifts, top-10
+weight, house x month heatmap); one house; NPS apart; houses compared, not collected (`houses.NOT_COLLECTED`) and coverage
+by value over every company whose filing has the mutual-fund line read (stated as a share only from 200 companies).
+**Missing:** cash, TREPS and receivables per house (the collector keeps equity lines only; parsing them needs a raw
+re-read, not done); ICICI Prudential and Kotak Mahindra mutual funds not collected; the `industry` table (another branch).
 
 ## NPS pension fund portfolios, 19 Nov 2026 (branch `nps-portfolios`, draft PR)
 

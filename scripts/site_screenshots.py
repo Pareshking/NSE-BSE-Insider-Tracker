@@ -20,7 +20,7 @@ from playwright.async_api import async_playwright
 PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes', 'stakes'), ('situations', 'situations'),
          ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('company?symbol=IIFL', 'company-iifl'), ('data-health', 'data-health'),
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
-         ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
+         ('investors', 'investors'), ('funds', 'funds'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
          ('proto-today', 'old-proto-address'),
          # the shared date control (ui/dates.py): a preset, a Custom range and a past day, each from the address
          ('insiders?range=1m', 'insiders-1m'), ('deals?from=2026-10-01&to=2026-10-31', 'deals-custom'),
@@ -28,6 +28,9 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
+# Long pages get a tall window: Streamlit scrolls inside its own container, so a full-page shot stops at the window's
+# height and the lower sections were never seen on real data (19 Nov 2026).
+TALL = {'funds': 9000, 'results': 7000, 'company-hcltech': 9000, 'company-iifl': 9000, 'dashboard': 7000}
 # Streamlit marks the app "notRunning" once a script run has finished.
 RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
@@ -57,7 +60,12 @@ async def main(base: str, out: Path) -> int:
                 except Exception:  # noqa: BLE001
                     problems.append({'page': name, 'width': label, 'error': 'page still running after 90 s'})
                 timings.append({'page': name, 'width': label, 'seconds': round(time.monotonic() - t0, 1)})
+                if name in TALL:
+                    await page.set_viewport_size({'width': w, 'height': TALL[name] if label == 'desktop' else int(TALL[name] * 1.6)})
+                    await page.wait_for_timeout(1500)
                 await page.screenshot(path=str(out / f'{name}-{label}.png'), full_page=(label == 'desktop'))
+                if name in TALL:
+                    await page.set_viewport_size({'width': w, 'height': h})
                 text = await page.inner_text('body')
                 hit = next((m for m in ERROR_MARKERS if m in text), None)
                 if hit:
