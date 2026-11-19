@@ -43,6 +43,11 @@ COLORS = {
     'range-lo': '#F6DCD2', 'range-mid': '#E9EBEF', 'range-hi': '#CFEBDA',   # the 52-week bar, low to high
     # Dashboard charts (19 Nov 2026): one hue per flow series, the bars' sign shows buying or selling
     'series-fpi': '#1F5FA8', 'series-mf': '#8A6D3B', 'series-dii': '#5B4A8B',
+    # Company page (19 Nov 2026): the ownership mix, one muted hue per group (promoters darkest, the crowd lightest),
+    # the results band on the price chart and the SAST marker.
+    'own-promoter': '#22324A', 'own-mf': '#1F5FA8', 'own-insurance': '#7FA6D6', 'own-fpi': '#2F7E6F', 'own-dii': '#9CC8B9',
+    'own-retail': '#D9B76E', 'own-others': '#D3D7DD',
+    'band': '#F4EAD2', 'mark-sast': '#6B4FA0',
 }
 
 FONTS = {

@@ -235,14 +235,16 @@ company.render()
     assert {'Insider buy', 'Staff trade'} <= kinds['HCLTECH']   # designated persons apart from decision-makers (12 Nov)
     assert 'Rights issue' in html['HCLTECH']           # its row is drawn (on by default)
     h = html['HCLTECH']
-    # redesign 12 Nov: the masthead (the preview waits for '.head h1'), the stat strip, the checks; 13 Nov (R8): insiders,
-    # deals and stakes as the dense tables of the topic pages, without a Company column on the company's own page
-    assert '<div class="head ds-head">' in h and 'class="ds-kpis' in h
-    for part in ('>Checks before acting<', '>Insider decisions <', '>Bulk and block deals <', '>Stake changes <',
-                 '>Who owns it?<', '>Every filing<', '>Price and every decision<'):
+    # redesign 19 Nov (owner: "not glance-worthy"): the head (the preview waits for '.head h1') carries the verdict and
+    # its chips; the checks are a scorecard; the questions in pairs; 13 Nov (R8): insiders, deals and stakes as the dense
+    # tables of the topic pages, without a Company column on the company's own page
+    assert '<div class="head ds-head co-head">' in h and 'class="co-verdict' in h and 'class="cg-chips"' in h
+    for part in ('>Is anything wrong with it?<', '>Insider decisions <', '>Bulk and block deals <', '>Stake changes <',
+                 '>Who owns it, and who is moving?<', '>Which funds hold it?<', '>Is the business growing?<',
+                 '>Every filing<', '>What has the price done?<'):
         assert part in h, part
-    for check in ('Pledge', 'Promoter sales', 'Late filings', 'Tradability'):
-        assert f'<dt>{check}</dt>' in h, check
+    for check in ('Pledge', 'Promoter selling', 'Late filings', 'Surveillance'):
+        assert f'<span class="k">{check}</span>' in h, check
     ins = h.split('>Insider decisions <')[1].split('>Bulk and block deals <')[0]
     assert '<table class="dt' in ins and 'class="ev"' in ins and '>Company<' not in ins   # a dense row with its evidence, no name repeated
 

@@ -641,11 +641,12 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
     import streamlit as st
 
     from screens import more_pages
+    from ui import charts
     cards = []
     pct_word = lambda d: f'{d:+,.0f}'
     if ins:
         cards.append(_card(f'Insider net buying · {w.short}', esc(kit.rupees(ins['net'], signed=True)), _tone(ins['net']),
-                           f'{esc(kit.rupees(ins["buy"]))} bought, {esc(kit.rupees(ins["sell"]))} sold',
+                           charts.split_bar(ins['buy'], ins['sell']) or 'No buying or selling in the window',
                            delta_html(ins['net'], ins['net_before'], lambda d: kit.rupees(d, signed=True), w.before),
                            spark(ins['spark']), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
         cards.append(_card('Companies with a promoter buying', f'{ins["promoter_companies"]:,}', '',
