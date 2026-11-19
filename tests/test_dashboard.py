@@ -179,6 +179,32 @@ def test_coming_up_lists_seven_days_and_counts_dividends_and_results_meetings():
     assert counts == {'dividends': 1, 'results_meetings': 1}
 
 
+def test_coming_up_makes_a_companys_lock_ins_on_one_day_one_row_sized_in_all():
+    day = REF + pd.Timedelta(days=1)
+    up = pd.DataFrame([{'kind': 'lockin', 'date': day, 'isin': 'A', 'symbol': 'A', 'company': 'Co A', 'what': 'Lock-in ends', 'value': v}
+                       for v in (1e7, 2e7, None)]
+                      + [{'kind': 'lockin', 'date': day, 'isin': 'B', 'symbol': None, 'company': 'Co B', 'what': 'Lock-in ends', 'value': None}])
+    rows, _ = D.coming_up(up, None, None, REF)
+    assert rows['company'].tolist() == ['Co A', 'Co B'] and rows['n'].tolist() == [3, 1]
+    assert rows['value'].iloc[0] == 3e7 and pd.isna(rows['value'].iloc[1])
+
+
+def test_fpi_top_keeps_the_largest_buys_and_sales_only():
+    x = pd.DataFrame({'sector': list('abcdefgh'), 'net_equity_cr': [50, 40, 30, 1, -1, -20, -30, -60]})
+    t = D.fpi_top(x, n=2)
+    assert t['sector'].tolist() == ['a', 'b', 'g', 'h']
+
+
+def test_window_words_follow_its_length():
+    w = D.Window('2026-11-18 15:00', 31)
+    assert w.end == pd.Timestamp('2026-11-18') and w.short == '31 days' and w.before == 'vs the 31 days before'
+    assert D.Window('2026-11-18', 1).span == 'in 1 day'
+
+
+def test_a_change_that_rounds_to_nothing_is_unchanged():
+    assert 'Unchanged vs before' in D.delta_html(69.2, 69.4, lambda d: f'{d:+.0f} pts', 'vs before')
+
+
 def test_sparkline_and_delta_draw_no_colour_of_their_own():
     svg = D.spark_svg([1, -2, 3], bars=True)
     assert svg.startswith('<svg') and 'class="p"' in svg and 'class="n"' in svg and '#' not in svg

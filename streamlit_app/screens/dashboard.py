@@ -95,6 +95,16 @@ def weekly(df: pd.DataFrame | None, when: str, ref, weeks: int = SPARK_WEEKS, va
     return out
 
 
+class Window:
+    """The period of the insider, deal and SAST figures: `days` to `end`, both counted, and its words."""
+
+    def __init__(self, end, days: int):
+        self.end, self.days = pd.Timestamp(end).normalize(), int(days)
+        self.short = f'{self.days} days' if self.days != 1 else '1 day'
+        self.span = f'in {self.short}'
+        self.before = f'vs the {self.short} before'
+
+
 # ---- 1. KPI figures -------------------------------------------------------------------------------------------------
 
 def _decision_rows(elig: pd.DataFrame | None, ref) -> pd.DataFrame:
@@ -425,6 +435,15 @@ def fpi_sectors(df: pd.DataFrame | None) -> tuple[pd.Timestamp | None, pd.DataFr
     return last, x[['sector', 'net_equity_cr'] + [c for c in ('period_start',) if c in x]].sort_values('net_equity_cr', ascending=False).reset_index(drop=True)
 
 
+def fpi_top(x: pd.DataFrame, n: int = 6) -> pd.DataFrame:
+    """The `n` largest buys and `n` largest sales of a sector table (largest buying first), for a chart that stays short."""
+    if x.empty:
+        return x
+    buy = x[x['net_equity_cr'] > 0].nlargest(n, 'net_equity_cr')
+    sell = x[x['net_equity_cr'] < 0].nsmallest(n, 'net_equity_cr')
+    return pd.concat([buy, sell]).sort_values('net_equity_cr', ascending=False).reset_index(drop=True)
+
+
 ACTION_WORDS = {'buyback': 'Buyback', 'bonus': 'Bonus', 'split': 'Split', 'rights': 'Rights', 'consolidation': 'Consolidation'}
 
 
@@ -459,6 +478,13 @@ def coming_up(upcoming: pd.DataFrame | None, actions: pd.DataFrame | None, meeti
         counts['results_meetings'] = int(meetings.loc[res, 'symbol'].nunique()) if 'symbol' in meetings else int(res.sum())
     out = pd.DataFrame(rows)
     if not out.empty:
+        # one row per company, day and event: a company's several lock-ins ending the same day are one line, sized in all
+        out = out.assign(_k=out['symbol'].fillna(out['company']).fillna(out['isin']).astype(str),
+                         value=pd.to_numeric(out['value'], errors='coerce'))
+        out = (out.groupby(['date', '_k', 'kind', 'what'], as_index=False, sort=False, dropna=False)
+               .agg(isin=('isin', 'first'), company=('company', 'first'), symbol=('symbol', 'first'),
+                    value=('value', lambda v: v.sum(min_count=1)), n=('_k', 'size'))
+               .drop(columns='_k'))
         out = out.sort_values(['date', 'kind'], kind='stable').reset_index(drop=True)
     return out, counts
 
@@ -473,12 +499,12 @@ def evidence_tag(summary: pd.DataFrame | None, code: str | None, fallback: str) 
     return fallback, ''
 
 
-def headline(ins: dict | None, fpi: dict | None, mf: dict | None) -> str:
+def headline(ins: dict | None, fpi: dict | None, mf: dict | None, span: str = 'in 30 days') -> str:
     """The page's news as a sentence, from the figures the cards show; parts with no data are left out."""
     parts = []
     if ins:
         n = ins['net']
-        parts.append(f'Insiders were net {"buyers" if n >= 0 else "sellers"} of <b>{esc(kit.rupees(abs(n)))}</b> in 30 days')
+        parts.append(f'Insiders were net {"buyers" if n >= 0 else "sellers"} of <b>{esc(kit.rupees(abs(n)))}</b> {span}')
     if fpi and fpi.get('mtd') is not None:
         word = 'bought' if fpi['mtd'] >= 0 else 'sold'
         parts.append(f'FPIs have {word} <b>{esc(crore(abs(fpi["mtd"]), signed=False))}</b> this month')
@@ -523,7 +549,7 @@ def hbar_chart(df: pd.DataFrame, label: str, value: str, title: str):
     order = list(d[label])
     base = alt.Chart(d).encode(y=alt.Y(f'{label}:N', sort=order, title=None, axis=alt.Axis(grid=False, labelLimit=170)))
     bars = base.mark_bar(cornerRadius=2, height=13).encode(
-        x=alt.X(f'{value}:Q', title=None, axis=alt.Axis(format='~s', tickCount=4, labelExpr="'₹' + datum.label")),
+        x=alt.X(f'{value}:Q', title=None, axis=alt.Axis(format='~s', tickCount=4, labelExpr="'₹' + datum.label + ' Cr'")),
         color=alt.Color('_tone:N', scale=alt.Scale(domain=['buy', 'sell'], range=[C['buy'], C['sell']]), legend=None),
         tooltip=[alt.Tooltip(f'{label}:N', title='Sector'), alt.Tooltip(f'{value}:Q', title=title, format=',.0f')])
     zero = alt.Chart(pd.DataFrame({'x': [0]})).mark_rule(color=C['ink-4']).encode(x='x:Q')
@@ -592,43 +618,50 @@ def render():
     summary = store.artifact('artifacts/track_summary.parquet')
     flows = store.table('market_flows')
     stock = store.table('mf_stock_month')
-    ins = insider_kpi(ctx.eligible, ref)
+    _strip(ctx, ['insider filings, deals and SAST to this day', 'fund month-ends, NSDL, SEBI and NSE flows each with its own date'])
+    head = st.empty()
+    # the window of the insider, deal and SAST figures (ui/dates.py); funds, flows and results keep their own periods
+    from ui import dates
+    elig = ctx.eligible
+    rng = dates.range_picker('dashboard', *dates.bounds(elig['seen'] if elig is not None and 'seen' in elig else None,
+                                                         hi=ctx.ref), default='1m', presets=('1w', '1m', '3m', '6m'))
+    w = Window(rng.end_ts, rng.days)
+    ins = insider_kpi(elig, w.end, w.days)
     fpi = fpi_kpi(flows)
     mf = mf_kpi(stock)
-    _strip(ctx, ['insider filings, deals and SAST to this day', 'fund month-ends, NSDL, SEBI and NSE flows each with its own date'])
-    st.html(f'<div class="head ds-head dash-head"><div class="ds-kicker">Dashboard · {ref:%d %b %Y}</div>'
-            f'<h1>{headline(ins, fpi, mf)}</h1>'
+    head.html(f'<div class="head ds-head dash-head"><div class="ds-kicker">Dashboard · {ref:%d %b %Y}</div>'
+            f'<h1>{headline(ins, fpi, mf, w.span)}</h1>'
             '<p class="ds-dek">Who is buying what, and should you look. Each figure links to the page with its rows; '
             'the grey tag on each says how far its evidence goes.</p></div>'
             '<div class="qa-toc"><a href="#flows">Market flows</a><a href="#agree">Where the smart money agrees</a>'
             '<a href="#leaders">Insider buying</a><a href="#funds">Funds</a><a href="#fpi-sectors">FPI sectors</a>'
             '<a href="#coming">Coming up</a></div>')
-    _safe(_kpis, ctx, ref, summary, flows, stock, ins, fpi, mf)
+    _safe(_kpis, ctx, ref, w, summary, flows, stock, ins, fpi, mf)
     _safe(_flows_tile, flows)
     _safe(_agree_tile, ctx, ref, stock, names)
-    _safe(_leaders_tile, ctx, ref, px, names, summary)
+    _safe(_leaders_tile, ctx, w, px, names, summary)
     _safe(_funds_tile, ctx, stock, names)
     _safe(_fpi_sector_tile)
     _safe(_coming_tile, ctx, ref)
 
 
-def _kpis(ctx, ref, summary, flows, stock, ins, fpi, mf):
+def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
     import streamlit as st
 
     from screens import more_pages
     cards = []
     pct_word = lambda d: f'{d:+,.0f}'
     if ins:
-        cards.append(_card('Insider net buying · 30 days', esc(kit.rupees(ins['net'], signed=True)), _tone(ins['net']),
+        cards.append(_card(f'Insider net buying · {w.short}', esc(kit.rupees(ins['net'], signed=True)), _tone(ins['net']),
                            f'{esc(kit.rupees(ins["buy"]))} bought, {esc(kit.rupees(ins["sell"]))} sold',
-                           delta_html(ins['net'], ins['net_before'], lambda d: kit.rupees(d, signed=True), 'vs the 30 days before'),
+                           delta_html(ins['net'], ins['net_before'], lambda d: kit.rupees(d, signed=True), w.before),
                            spark_svg(ins['spark'], bars=True), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
         cards.append(_card('Companies with a promoter buying', f'{ins["promoter_companies"]:,}', '',
-                           f'of {ins["buy_companies"]:,} with any insider buying, 30 days',
-                           delta_html(ins['promoter_companies'], ins['promoter_companies_before'], pct_word, 'vs the 30 days before'),
+                           f'of {ins["buy_companies"]:,} with any insider buying, {w.short}',
+                           delta_html(ins['promoter_companies'], ins['promoter_companies_before'], pct_word, w.before),
                            spark_svg(ins['spark_promoter']), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
     else:
-        cards += [_missing_card('Insider net buying · 30 days', 'No open-market insider filings in the data yet.'),
+        cards += [_missing_card(f'Insider net buying · {w.short}', 'No open-market insider filings in the data yet.'),
                   _missing_card('Companies with a promoter buying', 'No open-market insider filings in the data yet.')]
     if fpi:
         if fpi['mtd'] is not None:
@@ -662,15 +695,15 @@ def _kpis(ctx, ref, summary, flows, stock, ins, fpi, mf):
                            spark_svg(mf['spark'], bars=True), ('Not measured', ''), '/funds'))
     else:
         cards.append(_missing_card('Mutual funds, net active buying', 'Fund houses\' month-end portfolios are not collected yet.'))
-    dk = deals_kpi(ctx.deals, ref)
+    dk = deals_kpi(ctx.deals, w.end, w.days)
     if dk:
         share = f' · {dk["funds"] / dk["value"] * 100:.0f}% by funds' if dk['value'] > 0 else ''
-        cards.append(_card('Bulk and block deals · 30 days', esc(kit.rupees(dk['value'])), '',
+        cards.append(_card(f'Bulk and block deals · {w.short}', esc(kit.rupees(dk['value'])), '',
                            esc(f'bought by real buyers in {dk["companies"]:,} companies{share}; market makers out'),
-                           delta_html(dk['value'], dk['before'], lambda d: kit.rupees(d, signed=True), 'vs the 30 days before'),
+                           delta_html(dk['value'], dk['before'], lambda d: kit.rupees(d, signed=True), w.before),
                            spark_svg(dk['spark'], bars=True), evidence_tag(summary, 'fund_deal_buy', 'Studies: weak'), '/deals'))
     else:
-        cards.append(_missing_card('Bulk and block deals · 30 days', 'No deals in the data yet.'))
+        cards.append(_missing_card(f'Bulk and block deals · {w.short}', 'No deals in the data yet.'))
     rk = results_kpi(more_pages._latest_results(ctx, RESULTS_DAYS + SEASON_GAP + 7) if ctx.results is not None else None, ref)
     if rk and rk['n']:
         cards.append(_card('Results: profit up year on year', f'{rk["share"]:.0f}%', _tone(rk['share'] - 50),
@@ -680,11 +713,11 @@ def _kpis(ctx, ref, summary, flows, stock, ins, fpi, mf):
                            spark_svg(rk['spark']), ('Filed figures', ''), '/results'))
     else:
         cards.append(_missing_card('Results: profit up year on year', 'No results with a year-ago quarter in the last six weeks.'))
-    sk = sast_kpi(ctx.sast, ref)
+    sk = sast_kpi(ctx.sast, w.end, w.days)
     if sk is not None:
-        cards.append(_card('Holders crossing a threshold · 30 days', f'{sk["n"]:,}', '',
+        cards.append(_card(f'Holders crossing a threshold · {w.short}', f'{sk["n"]:,}', '',
                            esc(f'{sk["in"]} crossed up, {sk["out"]} fell below a 5, 10, 15, 20, 25, 50 or 75% line (SAST)'),
-                           delta_html(sk['n'], sk['before'], pct_word, 'vs the 30 days before'),
+                           delta_html(sk['n'], sk['before'], pct_word, w.before),
                            spark_svg(sk['spark'], bars=True), ('Not measured', ''), '/stakes'))
     else:
         cards.append(_missing_card('Holders crossing a threshold', 'No SAST filings in the data yet.'))
@@ -752,22 +785,22 @@ def _agree_tile(ctx, ref, stock, names):
     st.html(_foot('/insiders', 'Insiders: every decision past the bar') + _foot('/funds', 'Funds: the month-end lists'))
 
 
-def _leaders_tile(ctx, ref, px, names, summary):
+def _leaders_tile(ctx, w, px, names, summary):
     import streamlit as st
 
     from screens import moves
     from screens.proto import _company, _decisions, _num, _table, day_multiple
-    d, clubbed = _decisions(ctx, INSIDER_DAYS)
+    d, clubbed = _decisions(ctx, w.days, w.end)
     b = d[d['side'] == 'BUY'].sort_values('value', ascending=False) if not d.empty else d
     ev = evidence_tag(summary, 'promoter_buy', 'Not measured')
     if b.empty:
-        st.html(_q('Who put the most money in?', 'No buy past the bar in 30 days', '', 'leaders', ev))
+        st.html(_q('Who put the most money in?', f'No buy past the bar {w.span}', '', 'leaders', ev))
         return
     top = b.head(10)
     big = top.iloc[0]
     rec = moves.record('Promoter buying', summary)[0]
     st.html(_q('Who put the most money in?', esc(f'{names.get(big["isin"]) or big["company"]}: {kit.rupees(big["value"])}'),
-               esc(f'The 10 largest open-market buys by promoters and directors in 30 days, of {len(b)} past the bar ({clubbed} smaller clubbed). '
+               esc(f'The 10 largest open-market buys by promoters and directors {w.span}, of {len(b)} past the bar ({clubbed} smaller clubbed). '
                    '"× a day" is the buy against the stock\'s average day of trading (20 sessions).'
                    + (f' Promoter buying, measured on our filings: {rec}.' if rec else '')), 'leaders', ev))
     rows = []
@@ -804,9 +837,10 @@ def _funds_tile(ctx, stock, names):
                'funds', ('Not measured', '')))
 
     def tbl(x):
-        return _table([('co', 'Company', 'l'), ('net', 'Net', 'r'), ('h', 'Houses', 'r ph')],
+        return _table([('co', 'Company', 'l'), ('net', 'Net', 'r'), ('h', 'Houses + / −', 'r ph')],
                       [{'co': _company(names.get(r['isin']) or r.get('name'), syms.get(r['isin'])), 'net': f'<b>{esc(crore(r["_n"]))}</b>',
-                        'h': f'{int(r["houses_adding"])} adding · {int(r["houses_cutting"])} cutting'} for r in x.to_dict('records')])
+                        'h': f'<span class="up">{int(r["houses_adding"])}</span> / <span class="dn">{int(r["houses_cutting"])}</span>'}
+                       for r in x.to_dict('records')])
     left, right = st.columns(2, gap='large')
     with left:
         st.html('<p class="dash-sub-h">Bought most</p>' + (tbl(bought) if len(bought) else '<p class="dt-empty">None of ₹1 Cr or more.</p>'))
@@ -817,7 +851,7 @@ def _funds_tile(ctx, stock, names):
     if g.empty:
         st.html('<p class="dt-empty">No sector to group the month\'s buying by: neither the industry table nor the security master has one.</p>')
     else:
-        where = 'NSE\'s industry classification' if source == 'industry' else 'the security master'
+        where = 'the official classification (NSE, else BSE, else Value Research)' if source == 'industry' else 'the security master'
         st.html(f'<p class="dash-sub-h">Net by sector <span>the 10 largest either way · sector from {where}'
                 + (f'; {unplaced * 100:.0f}% of the month\'s moves have no sector and are left out' if unplaced >= 0.01 else '') + '</span></p>')
         st.altair_chart(hbar_chart(g, 'sector', 'net_cr', 'Net ₹ Cr'), width='stretch')
@@ -841,7 +875,10 @@ def _fpi_sector_tile():
     st.html(_q('Where are foreign investors putting money?', esc(ans),
                esc(f'Net FPI equity investment by sector, {span} (NSDL, fortnightly; BSE\'s sector names). The total of all sectors: '
                    f'{crore(x["net_equity_cr"].sum())}.'), 'fpi-sectors', ('Context, not a stock signal', '')))
-    st.altair_chart(hbar_chart(x, 'sector', 'net_equity_cr', 'Net equity ₹ Cr'), width='stretch')
+    top = fpi_top(x)
+    if len(top) < len(x):
+        st.html(f'<p class="dash-sub-h">The {len(top)} largest either way <span>of {len(x)} sectors</span></p>')
+    st.altair_chart(hbar_chart(top, 'sector', 'net_equity_cr', 'Net equity ₹ Cr'), width='stretch')
 
 
 def _coming_tile(ctx, ref):
@@ -866,11 +903,13 @@ def _coming_tile(ctx, ref):
     st.html(_q('What is coming up this week?', esc(f'{len(rows)} events in the next 7 days'), esc(why), 'coming', ('As announced', '')))
     out = []
     for r in rows.head(25).to_dict('records'):
-        dd = (r['date'] - ref.normalize()).days
-        when = 'today' if dd == 0 else 'tomorrow' if dd == 1 else f'{r["date"]:%a %d %b}'
+        when = f'{r["date"]:%a %d %b}'
         tone = 'wn' if r['kind'] in ('lockin', 'tender') else ''
         out.append({'d': esc(when), 'co': _company(r.get('company'), r.get('symbol')),
-                    'what': f'<span class="dt-chip {tone}">{esc(str(r.get("what") or ""))}</span>',
+                    'what': f'<span class="dt-chip {tone}">{esc(str(r.get("what") or ""))}</span>'
+                            + (f' <span class="mute">× {int(r["n"])}</span>' if r.get('n', 1) > 1 else ''),
                     'v': esc(kit.rupees(r['value'])) if _f(r.get('value')) is not None else ''})
     st.html(_table([('d', 'When', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'), ('v', 'Size', 'r ph')], out))
+    if len(rows) > 25:
+        st.html(f'<p class="dt-empty">The first 25 of {len(rows)}; the Calendar has them all.</p>')
     st.html(_foot('/calendar', 'Calendar: the next 30 days'))
