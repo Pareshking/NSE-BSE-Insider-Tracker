@@ -67,12 +67,21 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
     """One result per month: {'house', 'month', 'found', 'files', 'rows' (DataFrame) or 'why'}."""
     from raw_capture import capture
     out = []
-    try:
-        links = find.links_rendered(house.page, browser, house.click) if house.render else find.links_plain(house.page)
-    except Exception as exc:  # noqa: BLE001
-        return [{'house': house.key, 'month': m, 'found': False, 'why': f'page not read ({type(exc).__name__}: {exc})'[:300]}
-                for m in months]
+    links = []
+    if house.api is None:
+        try:
+            links = find.links_rendered(house.page, browser, house.click) if house.render else find.links_plain(house.page)
+        except Exception as exc:  # noqa: BLE001
+            return [{'house': house.key, 'month': m, 'found': False, 'why': f'page not read ({type(exc).__name__}: {exc})'[:300]}
+                    for m in months]
     for month in months:
+        if house.api is not None:   # the page's own JSON call, asked for this month
+            try:
+                links = house.api(month)
+            except Exception as exc:  # noqa: BLE001
+                out.append({'house': house.key, 'month': month, 'found': False,
+                            'why': f'list not read ({type(exc).__name__}: {exc})'[:300]})
+                continue
         urls = find.candidates(links, month, house)
         res = {'house': house.key, 'month': month, 'found': bool(urls), 'links_on_page': len(links), 'files': urls}
         if not urls:

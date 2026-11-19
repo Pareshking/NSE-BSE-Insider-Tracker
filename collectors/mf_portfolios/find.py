@@ -5,6 +5,8 @@ drawn by script. Every link (text and address) is scored against the month: its 
 (October 2026 / Oct-26 / 31102026 / 2026-10-31 ...) and read as a monthly portfolio, not a fortnightly, debt-only,
 risk-o-meter, AAUM or factsheet file. A fund house that files one workbook for all schemes gives one file
 (`mode='one'`); one that files a workbook per scheme gives all of them (`mode='all'`).
+A page whose list is drawn from a JSON call has `api` (collectors/mf_portfolios/apis.py): the call is read directly,
+per month, and gives the same (text, href) links.
 Nothing is guessed: no candidate means "not found", reported with the page's link count.
 """
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import calendar
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 from urllib.parse import unquote, urljoin
 
 FILE = re.compile(r'\.(xlsx|xls|xlsm|zip)(\?|#|$)', re.I)
@@ -31,6 +34,9 @@ class House:
     must: str | None = None      # a regex a candidate must also match (when the page lists other monthly files)
     exclude: str | None = None   # a regex that rules a candidate out, on top of EXCLUDE
     click: list = field(default_factory=list)   # texts to click (tabs) before reading links, in a browser
+    api: Callable[[str], list] | None = None    # month -> (text, href) links, for a page whose list is a JSON call
+    base_exclude: bool = True    # apply EXCLUDE; off where every link is a scheme's portfolio and EXCLUDE's words
+                                 # (debt, dividend, sector ...) would drop scheme names
 
 
 def month_tokens(month: str) -> re.Pattern:
@@ -61,7 +67,7 @@ def candidates(links: list[tuple[str, str]], month: str, house: House) -> list[s
             continue
         hay = f'{text} {unquote(href)}'.lower()
         base = f'{text} {unquote(href).split("?")[0].rsplit("/", 1)[-1]}'.lower()   # folder names say nothing of the file
-        if not tok.search(hay) or EXCLUDE.search(base) or (excl and excl.search(base)) or (must and not must.search(hay)):
+        if not tok.search(hay) or (house.base_exclude and EXCLUDE.search(base)) or (excl and excl.search(base)) or (must and not must.search(hay)):
             continue
         score = (2 if 'monthly' in hay else 0) + (2 if re.search(r'all[ -_]?schemes?|consolidat|combined', hay) else 0) \
             + (1 if 'portfolio' in hay else 0)
