@@ -205,10 +205,12 @@ def test_a_change_that_rounds_to_nothing_is_unchanged():
     assert 'Unchanged vs before' in D.delta_html(69.2, 69.4, lambda d: f'{d:+.0f} pts', 'vs before')
 
 
-def test_sparkline_and_delta_draw_no_colour_of_their_own():
-    svg = D.spark_svg([1, -2, 3], bars=True)
-    assert svg.startswith('<svg') and 'class="p"' in svg and 'class="n"' in svg and '#' not in svg
-    assert D.spark_svg([1]) == '' and '<polyline' in D.spark_svg([1, 2, 3])
+def test_sparkline_is_html_columns_with_no_colour_of_its_own():
+    h = D.spark([1, -2, 3])
+    assert h.startswith('<span class="dash-spark"') and '<svg' not in h and '#' not in h   # st.html strips SVG
+    assert h.count('class="p') == 2 and h.count('class="n') == 1 and 'class="p last"' in h
+    assert D.spark([1]) == '' and 'class="q' in D.spark([1, 2, 3], bars=False)
+    assert D.spark([None, 2, 3], bars=False).count('class="q') == 2   # a missing value keeps its slot empty
     assert 'dash-delta-up' in D.delta_html(5, 3, str, 'vs before') and 'dash-delta-down' in D.delta_html(1, 3, str, 'x')
     assert 'No earlier period' in D.delta_html(1, None, str, 'x')
 

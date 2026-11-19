@@ -72,12 +72,12 @@ a.dash-card:hover .dash-l { color: var(--accent); }
 .dash-delta { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .dash-delta-up { color: var(--buy); } .dash-delta-down { color: var(--sell); }
 .dash-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--gap-2); margin-top: auto; padding-top: 6px; }
-.dash-spark { width: 120px; height: 30px; flex: none; color: var(--ink-3); overflow: visible; }
-.dash-kpi.up .dash-spark { color: var(--buy); } .dash-kpi.down .dash-spark { color: var(--sell); }
-.dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.dash-spark circle { fill: currentColor; }
-.dash-spark line { stroke: var(--line-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.dash-spark.bars rect.p { fill: var(--buy); } .dash-spark.bars rect.n { fill: var(--sell); }
+/* sparklines are HTML columns (st.html strips SVG): positions inline, colours here */
+.dash-spark { position: relative; display: block; width: 120px; height: 30px; flex: none; }
+.dash-spark i { position: absolute; display: block; border-radius: 1px; }
+.dash-spark i.z { left: 0; right: 0; height: 0; border-top: 1px solid var(--line-strong); border-radius: 0; }
+.dash-spark i.p { background: var(--buy); opacity: .5; } .dash-spark i.n { background: var(--sell); opacity: .5; }
+.dash-spark i.q { background: var(--ink-4); } .dash-spark i.last { opacity: 1; } .dash-spark i.q.last { background: var(--ink-2); }
 .dash-ev { display: inline-block; padding: 2px 7px; border-radius: 3px; font: var(--fw-medium) 11px/1.4 var(--ui); white-space: nowrap;
   background: var(--subtle); color: var(--ink-2); vertical-align: middle; }
 .dash-ev.up { background: var(--buy-tint); color: var(--buy); } .dash-ev.dn { background: var(--sell-tint); color: var(--sell); }

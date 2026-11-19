@@ -41,26 +41,29 @@ def crore(v_cr, signed: bool = True) -> str:
     return '—' if v is None else kit.rupees(v * 1e7, signed=signed)
 
 
-def spark_svg(values, w: int = 120, h: int = 30, bars: bool = False) -> str:
-    """A sparkline as inline SVG (a line, or bars about a zero line for flows); '' with fewer than two points.
-    Colour comes from the card's class through currentColor, so no colour is written here."""
-    vals = [float(v) for v in values if _f(v) is not None]
-    if len(vals) < 2:
+def spark(values, bars: bool = True) -> str:
+    """A sparkline as plain HTML (st.html allows no SVG): one column per value about a zero line, `p` for a positive
+    value and `n` for a negative one (`q`, neutral, when `bars` is False: a count or a share). A missing value keeps its
+    slot empty. '' with fewer than two values. Colours come from look.css; only positions are written here."""
+    vals = [_f(v) for v in values]
+    real = [v for v in vals if v is not None]
+    if len(real) < 2:
         return ''
-    lo, hi = min(vals + [0.0]) if bars else min(vals), max(vals + [0.0]) if bars else max(vals)
+    lo, hi = min(real + [0.0]), max(real + [0.0])
     span = (hi - lo) or 1.0
-    y = lambda v: h - 2 - (v - lo) / span * (h - 4)
-    if bars:
-        bw = w / len(vals)
-        zero = y(0.0)
-        rects = ''.join(f'<rect class="{"p" if v >= 0 else "n"}" x="{i * bw + bw * 0.15:.1f}" y="{min(y(v), zero):.1f}" '
-                        f'width="{bw * 0.7:.1f}" height="{max(abs(y(v) - zero), 1):.1f}"/>' for i, v in enumerate(vals))
-        return (f'<svg class="dash-spark bars" viewBox="0 0 {w} {h}" preserveAspectRatio="none" aria-hidden="true">'
-                f'<line x1="0" x2="{w}" y1="{zero:.1f}" y2="{zero:.1f}"/>{rects}</svg>')
-    step = w / (len(vals) - 1)
-    pts = ' '.join(f'{i * step:.1f},{y(v):.1f}' for i, v in enumerate(vals))
-    return (f'<svg class="dash-spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none" aria-hidden="true">'
-            f'<polyline points="{pts}"/><circle cx="{(len(vals) - 1) * step:.1f}" cy="{y(vals[-1]):.1f}" r="2.2"/></svg>')
+    zero = hi / span * 100          # the zero line, % from the top
+    wd = 100 / len(vals)
+    cols = []
+    for i, v in enumerate(vals):
+        if v is None:
+            continue
+        ht = max(abs(v) / span * 100, 3.0)
+        top = zero - ht if v >= 0 else zero
+        cls = ('p' if v >= 0 else 'n') if bars else 'q'
+        last = ' last' if i == len(vals) - 1 else ''
+        cols.append(f'<i class="{cls}{last}" style="left:{i * wd + wd * 0.15:.2f}%;width:{wd * 0.7:.2f}%;'
+                    f'top:{max(top, 0.0):.2f}%;height:{ht:.2f}%"></i>')
+    return f'<span class="dash-spark" aria-hidden="true"><i class="z" style="top:{zero:.2f}%"></i>{"".join(cols)}</span>'
 
 
 def delta_html(now, before, fmt, label: str) -> str:
@@ -655,11 +658,11 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Insider net buying · {w.short}', esc(kit.rupees(ins['net'], signed=True)), _tone(ins['net']),
                            f'{esc(kit.rupees(ins["buy"]))} bought, {esc(kit.rupees(ins["sell"]))} sold',
                            delta_html(ins['net'], ins['net_before'], lambda d: kit.rupees(d, signed=True), w.before),
-                           spark_svg(ins['spark'], bars=True), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
+                           spark(ins['spark']), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
         cards.append(_card('Companies with a promoter buying', f'{ins["promoter_companies"]:,}', '',
                            f'of {ins["buy_companies"]:,} with any insider buying, {w.short}',
                            delta_html(ins['promoter_companies'], ins['promoter_companies_before'], pct_word, w.before),
-                           spark_svg(ins['spark_promoter']), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
+                           spark(ins['spark_promoter'], bars=False), evidence_tag(summary, 'promoter_buy', 'Not measured'), '/insiders'))
     else:
         cards += [_missing_card(f'Insider net buying · {w.short}', 'No open-market insider filings in the data yet.'),
                   _missing_card('Companies with a promoter buying', 'No open-market insider filings in the data yet.')]
@@ -670,7 +673,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                 sub += f' · NSE {kit.day(fpi["nse_day"], with_year=False)}: {crore(fpi["nse_net"])} provisional'
             cards.append(_card('FPI net, equity', esc(crore(fpi['mtd'])), _tone(fpi['mtd']), esc(sub),
                                delta_html(fpi['mtd'], fpi['prev'], crore, f'vs all of {_month(fpi.get("prev_month")).split(" ")[0]}' if fpi['prev'] is not None else ''),
-                               spark_svg(fpi['spark'], bars=True), ('Context, not a stock signal', ''), '#flows'))
+                               spark(fpi['spark']), ('Context, not a stock signal', ''), '#flows'))
         else:
             cards.append(_card('FPI net, cash market', esc(crore(fpi['nse_net'])), _tone(fpi['nse_net']),
                                esc(f'NSE provisional, {kit.day(fpi["nse_day"], with_year=False)}; NSDL month to date not collected'),
@@ -684,7 +687,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card('DII net, cash market · latest day', esc(crore(dii['net'])), _tone(dii['net']), esc(note),
                            delta_html(dii['net'], dii['before'], crore, f'vs {kit.day(dii["before_day"], with_year=False)}') if dii['before'] is not None
                            else '<div class="dash-delta">No earlier day kept yet</div>',
-                           spark_svg(dii['spark'], bars=True), ('Context, not a stock signal', ''), '#flows'))
+                           spark(dii['spark']), ('Context, not a stock signal', ''), '#flows'))
     else:
         cards.append(_missing_card('DII net, cash market', 'NSE\'s FII/DII figures are not collected yet.'))
     if mf:
@@ -692,7 +695,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                            esc(f'{_month(mf["month"])} month-end · {mf["bought"]} stocks bought, {mf["sold"]} sold (₹1 Cr+)'),
                            delta_html(mf['net'], mf['before'], crore, f'vs {_month(mf.get("prev_month")).split(" ")[0]}') if mf['before'] is not None
                            else '<div class="dash-delta">First month collected</div>',
-                           spark_svg(mf['spark'], bars=True), ('Not measured', ''), '/funds'))
+                           spark(mf['spark']), ('Not measured', ''), '/funds'))
     else:
         cards.append(_missing_card('Mutual funds, net active buying', 'Fund houses\' month-end portfolios are not collected yet.'))
     dk = deals_kpi(ctx.deals, w.end, w.days)
@@ -701,7 +704,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Bulk and block deals · {w.short}', esc(kit.rupees(dk['value'])), '',
                            esc(f'bought by real buyers in {dk["companies"]:,} companies{share}; market makers out'),
                            delta_html(dk['value'], dk['before'], lambda d: kit.rupees(d, signed=True), w.before),
-                           spark_svg(dk['spark'], bars=True), evidence_tag(summary, 'fund_deal_buy', 'Studies: weak'), '/deals'))
+                           spark(dk['spark'], bars=False), evidence_tag(summary, 'fund_deal_buy', 'Studies: weak'), '/deals'))
     else:
         cards.append(_missing_card(f'Bulk and block deals · {w.short}', 'No deals in the data yet.'))
     rk = results_kpi(more_pages._latest_results(ctx, RESULTS_DAYS + SEASON_GAP + 7) if ctx.results is not None else None, ref)
@@ -710,7 +713,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
                            esc(f'{rk["up"]:,} of {rk["n"]:,} companies with a year-ago quarter, filed in the last {RESULTS_DAYS} days'),
                            delta_html(rk['share'], rk['before'], lambda d: f'{d:+.0f} pts', 'vs the season before') if rk['before'] is not None
                            else f'<div class="dash-delta">The season before: {rk["before_n"]} comparable filings, too few</div>',
-                           spark_svg(rk['spark']), ('Filed figures', ''), '/results'))
+                           spark(rk['spark'], bars=False), ('Filed figures', ''), '/results'))
     else:
         cards.append(_missing_card('Results: profit up year on year', 'No results with a year-ago quarter in the last six weeks.'))
     sk = sast_kpi(ctx.sast, w.end, w.days)
@@ -718,7 +721,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card(f'Holders crossing a threshold · {w.short}', f'{sk["n"]:,}', '',
                            esc(f'{sk["in"]} crossed up, {sk["out"]} fell below a 5, 10, 15, 20, 25, 50 or 75% line (SAST)'),
                            delta_html(sk['n'], sk['before'], pct_word, w.before),
-                           spark_svg(sk['spark'], bars=True), ('Not measured', ''), '/stakes'))
+                           spark(sk['spark'], bars=False), ('Not measured', ''), '/stakes'))
     else:
         cards.append(_missing_card('Holders crossing a threshold', 'No SAST filings in the data yet.'))
     st.html('<div class="dash-grid">' + ''.join(cards) + '</div>')
@@ -908,7 +911,7 @@ def _coming_tile(ctx, ref):
         out.append({'d': esc(when), 'co': _company(r.get('company'), r.get('symbol')),
                     'what': f'<span class="dt-chip {tone}">{esc(str(r.get("what") or ""))}</span>'
                             + (f' <span class="mute">× {int(r["n"])}</span>' if r.get('n', 1) > 1 else ''),
-                    'v': esc(kit.rupees(r['value'])) if _f(r.get('value')) is not None else ''})
+                    'v': esc(kit.rupees(r['value'])) if (_f(r.get('value')) or 0) > 0 else ''})
     st.html(_table([('d', 'When', 'l'), ('co', 'Company', 'l'), ('what', 'Event', 'l'), ('v', 'Size', 'r ph')], out))
     if len(rows) > 25:
         st.html(f'<p class="dt-empty">The first 25 of {len(rows)}; the Calendar has them all.</p>')
