@@ -32,7 +32,7 @@ header[data-testid="stHeader"] { border-bottom: 1px solid var(--rule-strong) !im
   line-height: 1.25 !important; letter-spacing: -0.005em; }
 .dt-h2 { border-top: 1px solid var(--rule-strong); padding-top: var(--gap-5); margin-top: var(--gap-6) !important; }
 .dt-h2 span { font-family: var(--ui); }
-.qa-answer { font-family: var(--display); font-size: var(--fs-answer); line-height: 1.2; color: var(--ink); margin: 4px 0 6px; }
+.stApp .qa-answer { font-family: var(--display) !important; font-size: var(--fs-answer); line-height: 1.2; color: var(--ink); margin: 4px 0 6px; }
 .qa-why { font-size: 15px; line-height: 1.5; color: var(--ink-2); margin: 0 0 var(--gap-4); max-width: 820px; }
 .qa-toc { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: var(--gap-3) 0 var(--gap-5); }
 .qa-toc a { color: var(--ink) !important; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--ink-4); }
