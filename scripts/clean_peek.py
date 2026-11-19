@@ -705,30 +705,30 @@ def mf_stock(r2, sym: str, pattern: str = '') -> int:
 
 
 def mf_raw(r2) -> int:
-    """MF_RAW (19 Nov): raw month-end portfolio fetches per house and month (raw_v2/amc/), against the archived months:
-    can every archived house-month be read again from raw, scheme by scheme?"""
-    import json
-    from collections import Counter
+    """MF_RAW (19 Nov): raw month-end portfolio files per house (raw_v2/amc/), by key listing only (no record read:
+    reading each record one by one ran past the job's 15 minutes), against the archived house-months."""
+    from collections import Counter, defaultdict
 
-    from clean_writer import get, list_keys
-    arch = {k.split('month=')[1].split('/')[0] + ' ' + k.rsplit('/', 1)[1][:-8]
-            for k in list_keys(r2, 'archive/mf_holdings/') if k.endswith('.parquet')}
-    keys = [k for k in list_keys(r2, 'raw_v2/amc/') if '/fetches/' in k and k.endswith('.json')]
-    print(f'{len(keys)} fetch records, {len(arch)} archived house-months')
-    per, days = Counter(), Counter()
+    from clean_writer import list_keys
+    arch = defaultdict(list)
+    for k in list_keys(r2, 'archive/mf_holdings/'):
+        if k.endswith('.parquet'):
+            arch[k.rsplit('/', 1)[1][:-8]].append(k.split('month=')[1].split('/')[0])
+    keys = list_keys(r2, 'raw_v2/amc/')
+    fetch, blobs, days = Counter(), Counter(), defaultdict(Counter)
     for k in keys:
-        r = json.loads(get(r2, k))
-        m = (r.get('covers') or {}).get('month')
-        house = r['dataset'].split('/')[0]
-        per[(m, house, r.get('http_status'))] += 1
-        days[(m, house, k.split('/fetches/')[1][:10])] += 1
-    have = {f'{m} {h}' for (m, h, s) in per if s == 200}
-    print('archived house-months with no raw 200 fetch:', sorted(arch - have))
-    print('raw house-months not archived:', sorted(have - arch)[:80])
-    multi = Counter((m, h) for (m, h, d) in days)
-    print('house-months fetched on more than one day:', sorted(f'{m} {h} x{n}' for (m, h), n in multi.items() if n > 1))
-    for (m, h, s), n in sorted(per.items(), key=lambda kv: (str(kv[0][0]), kv[0][1])):
-        print(m, h, s, n)
+        parts = k.split('/')
+        house = parts[2]
+        if '/fetches/' in k:
+            fetch[house] += 1
+            days[house][k.split('/fetches/')[1][:10]] += 1
+        elif '/blobs/' in k:
+            blobs[house] += 1
+    print(f'{len(keys)} raw amc keys; {sum(len(v) for v in arch.values())} archived house-months')
+    for house in sorted(set(arch) | set(fetch)):
+        ms = sorted(arch.get(house, []))
+        print(f'{house:14s} archived {len(ms):2d} ({ms[0] if ms else "-"}..{ms[-1] if ms else "-"}) | raw fetches '
+              f'{fetch[house]:4d}, blobs {blobs[house]:4d} | fetch days {dict(sorted(days[house].items()))}')
     return 0
 
 
