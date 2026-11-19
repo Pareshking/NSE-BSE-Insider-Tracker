@@ -25,39 +25,34 @@ def _colours(spec: dict) -> set:
 
 def test_diverging_bar_sorts_added_over_cut_and_writes_each_value():
     df = pd.DataFrame({'company': ['ITC', 'HDFC Bank', 'Infosys', 'Flat Co', 'No Data'],
-                       'pct_change': [0.42, -1.09, 2.30, 0.0, None], 'tag': [None, None, 'new', None, None]})
-    spec = _spec(charts.diverging_bar(df, 'company', 'pct_change', tag='tag'))
-    rows = next(iter(spec['datasets'].values()))
-    assert [r['_l'] for r in rows] == ['Infosys', 'ITC', 'HDFC Bank']          # zero and blank left out, largest added first
-    assert [r['_t'] for r in rows] == ['+2.30 pts new', '+0.42 pts', '-1.09 pts']
-    assert [r['_tone'] for r in rows] == ['up', 'up', 'down']
-    assert {COLORS['buy'], COLORS['sell']} <= _colours(spec)
-    assert 'legend' not in json.dumps(spec) or '"legend": null' in json.dumps(spec)
+                       'pct_change': [0.42, -1.09, 2.30, 0.0, None], 'tag': [None, None, 'new: crossed 1%', None, None]})
+    html = charts.diverging_bar(df, 'company', 'pct_change', tag='tag')
+    assert html.index('Infosys') < html.index('ITC') < html.index('HDFC Bank')     # largest added first, cut last
+    assert 'Flat Co' not in html and 'No Data' not in html                         # zero and blank left out
+    assert '+2.30 pts' in html and '+0.42 pts' in html and '-1.09 pts' in html and '<em>new: crossed 1%</em>' in html
+    assert 'class="up"' in html and 'class="down"' in html
 
 
-def test_diverging_bar_in_rupees_keeps_the_largest_and_repeats_no_label():
-    df = pd.DataFrame({'company': ['A'] * 3 + [f'C{i}' for i in range(20)],
+def test_diverging_bar_in_rupees_keeps_the_largest_either_way():
+    df = pd.DataFrame({'company': ['Big buy', 'Big sale', 'Small'] + [f'C{i}' for i in range(20)],
                        'net': [5e8, -3e8, 1e7] + [1e6 * (i + 1) for i in range(20)]})
-    spec = _spec(charts.diverging_bar(df, 'company', 'net', fmt=lambda v: charts.rupees(v, signed=True), limit=5))
-    rows = next(iter(spec['datasets'].values()))
-    assert len(rows) == 5 and rows[0]['_l'] == rows[-1]['_l'] == 'A' and rows[-1]['_k'] == 'A (2)'
-    assert rows[0]['_t'].startswith('+₹') and rows[-1]['_t'].startswith('−₹')
+    html = charts.diverging_bar(df, 'company', 'net', fmt=lambda v: charts.rupees(v, signed=True), limit=5)
+    assert html.count('cg-drow') == 5 and 'Big buy' in html and 'Big sale' in html and 'C0<' not in html
+    assert '+₹50.00 Cr' in html and '−₹30.00 Cr' in html
 
 
 def test_diverging_bar_with_nothing_to_draw():
-    assert charts.diverging_bar(None, 'company', 'x') is None
-    assert charts.diverging_bar(pd.DataFrame(), 'company', 'x') is None
-    assert charts.diverging_bar(pd.DataFrame({'company': ['A'], 'x': [0.0]}), 'company', 'x') is None
-    assert charts.diverging_bar(pd.DataFrame({'company': ['A']}), 'company', 'x') is None
+    assert charts.diverging_bar(None, 'company', 'x') == ''
+    assert charts.diverging_bar(pd.DataFrame(), 'company', 'x') == ''
+    assert charts.diverging_bar(pd.DataFrame({'company': ['A'], 'x': [0.0]}), 'company', 'x') == ''
+    assert charts.diverging_bar(pd.DataFrame({'company': ['A']}), 'company', 'x') == ''
 
 
 def test_buy_sell_split_one_bar_with_both_totals():
-    spec = _spec(charts.buy_sell_split(3e9, 1e9))
-    text = json.dumps(spec, ensure_ascii=False)
-    assert 'Bought ₹300.00 Cr · 75%' in text and 'Sold ₹100.00 Cr · 25%' in text
-    assert {COLORS['buy'], COLORS['sell']} <= _colours(spec)
-    assert charts.buy_sell_split(2e8, 0) is not None            # bought only: still a bar
-    assert charts.buy_sell_split(0, 0) is None and charts.buy_sell_split(None, float('nan')) is None
+    html = charts.buy_sell_split(3e9, 1e9)
+    assert '₹300.00 Cr</b> · 75%' in html and '₹100.00 Cr</b> · 25%' in html and 'width:75.00%' in html
+    assert charts.buy_sell_split(2e8, 0) != ''            # bought only: still a bar
+    assert charts.buy_sell_split(0, 0) == '' and charts.buy_sell_split(None, float('nan')) == ''
 
 
 def test_holding_trend_one_company_and_small_multiples():

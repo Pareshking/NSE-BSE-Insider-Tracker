@@ -222,7 +222,7 @@ def holder_moves(ev: pd.DataFrame, kinds: set) -> pd.DataFrame:
         return pd.DataFrame(columns=['company', 'pts', 'who'])
     x = ev[ev['kind'].isin(kinds)].copy()
     x['pts'] = pd.to_numeric(x['pct_of_company'], errors='coerce') * x['kind'].map(lambda k: 1 if k in HOLDER_UP else -1)
-    x['who'] = x['kind'].map(lambda k: 'MF' if k.startswith('Mutual') else 'foreign' if k.startswith('Foreign') else '')
+    x['who'] = x['kind'].map(lambda k: 'Mutual funds' if k.startswith('Mutual') else 'Foreign investors' if k.startswith('Foreign') else '')
     x['company'] = x['company'].fillna(x['nse_symbol']).astype(str)
     return x[['company', 'pts', 'who']].dropna(subset=['pts'])
 
@@ -231,18 +231,18 @@ def _ownership_chart(ctx, ev) -> None:
     """Who added and who cut, at a glance: one bar per filing, points of the company, before the stories."""
     stake = charts.diverging_bar(holder_moves(ev, STAKE_KINDS), 'company', 'pts', limit=20)
     funds = charts.diverging_bar(holder_moves(ev, HOLDER_KINDS), 'company', 'pts', tag='who', limit=20)
-    if stake is None and funds is None:
+    if not stake and not funds:
         return
     ds.section('Who added, who cut?', 'Points of the company, one bar per filing, the 20 largest either way')
     with ds.inside():
-        if stake is not None:
+        if stake:
             st.html('<p class="chart-cap"><b>Outside holders</b> crossing 5% or moving 2% or more (SAST filings): '
                     'the points they bought or sold</p>')
-            st.altair_chart(stake, width='stretch')
-        if funds is not None:
+            st.html(stake)
+        if funds:
             st.html('<p class="chart-cap"><b>Mutual funds and foreign investors</b>, change in the latest quarter filed '
                     '(a quarter-end filing, not a trade this period)</p>')
-            st.altair_chart(funds, width='stretch')
+            st.html(funds)
 
 
 def ownership():

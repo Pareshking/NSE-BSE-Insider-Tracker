@@ -55,13 +55,13 @@ def _panel(df: pd.DataFrame, key: str, empty: str) -> None:
 
 
 def fund_moves(s: pd.DataFrame) -> pd.DataFrame:
-    """Each company's quarterly change for mutual funds and for foreign investors as one row each, labelled "Company · MF"."""
+    """Each company's quarterly change for mutual funds and for foreign investors as one row each, with who moved."""
     if s is None or s.empty:
-        return pd.DataFrame(columns=['label', 'pts'])
+        return pd.DataFrame(columns=['label', 'pts', 'who'])
     name = s['company'].fillna(s['symbol']).astype(str) if 'company' in s else s['symbol'].astype(str)
-    parts = [pd.DataFrame({'label': [f'{n} · {who}' for n in name], 'pts': pd.to_numeric(s[col], errors='coerce')})
-             for col, who in (('mf_change_pts', 'MF'), ('fpi_change_pts', 'foreign')) if col in s]
-    return pd.concat(parts, ignore_index=True).dropna(subset=['pts']) if parts else pd.DataFrame(columns=['label', 'pts'])
+    parts = [pd.DataFrame({'label': list(name), 'pts': pd.to_numeric(s[col], errors='coerce'), 'who': who})
+             for col, who in (('mf_change_pts', 'Mutual funds'), ('fpi_change_pts', 'Foreign investors')) if col in s]
+    return pd.concat(parts, ignore_index=True).dropna(subset=['pts']) if parts else pd.DataFrame(columns=['label', 'pts', 'who'])
 
 
 def investor_net(buy: pd.DataFrame, sell: pd.DataFrame) -> pd.DataFrame:
@@ -84,9 +84,9 @@ def _holders(ctx) -> None:
         return
     s['nse_symbol'] = s['symbol']
     with kit.card('Funds in each company', 'inv_holders', 'latest quarter filed, change from the quarter before, in points of the company'):
-        chart = charts.diverging_bar(fund_moves(s), 'label', 'pts', limit=20)
-        if chart is not None:
-            st.altair_chart(chart, width='stretch')
+        bars = charts.diverging_bar(fund_moves(s), 'label', 'pts', tag='who', limit=20)
+        if bars:
+            st.html(bars)
         cols = [Col('company', 'Company', 'co'), Col('mf', 'Mutual funds', 'pct'), Col('mf_change_pts', 'Change', 'spct'),
                 Col('fpi', 'Foreign investors', 'pct'), Col('fpi_change_pts', 'Change', 'spct'),
                 Col('mf_quarter', 'As of', 'date', phone=False)]
@@ -135,13 +135,13 @@ def render():
     buy, sell = investors.buyers_sellers(inv, LIMIT, by='value')
     split = charts.buy_sell_split(types['buy'].sum(), types['sell'].sum())
     net = charts.diverging_bar(investor_net(buy, sell), 'investor', 'net', fmt=lambda v: kit.rupees(v, signed=True), limit=2 * LIMIT)
-    if split is not None or net is not None:
+    if split or net:
         with kit.card('Bought or sold?', 'inv_split', f'funds and institutions, last {days} days, bulk and block deals'):
-            if split is not None:
-                st.altair_chart(split, width='stretch')
-            if net is not None:
+            if split:
+                st.html(split)
+            if net:
                 st.html('<p class="chart-cap">Net bought or sold by each of the biggest buyers and sellers below</p>')
-                st.altair_chart(net, width='stretch')
+                st.html(net)
     with kit.card('Biggest net buyers', 'inv_buy', f'last {days} days'):
         _panel(buy, 'inv_buy_t', 'No net buyers above the floor in this period.')
     with kit.card('Biggest net sellers', 'inv_sell', f'last {days} days'):

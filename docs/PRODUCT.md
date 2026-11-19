@@ -46,6 +46,13 @@ reader can't get by scrolling the exchange pages:
 
 ## Decisions (with dates)
 
+- **Company page is a decision page** (owner, 19 Nov 2026: "Completely useless design and not glance-worthy to take even a
+  decision"): it answers "is smart money accumulating or leaving, and is anything wrong?" in one sentence at the top, built
+  from chips that each name their window and evidence status (insiders 90 days, mutual funds at the month end, FPI and DII
+  this quarter, deals, red flags); then the price with every decision marked, the checks as a scorecard, the ownership
+  mix and the fund houses as charts, the business quarter by quarter, and the detail below. Logic in
+  `streamlit_app/screens/company_glance.py`, tested in `tests/test_company_page.py`.
+
 - **Redesign from blank** (owner, 12 Nov 2026): more pages, each one question (Insiders, Deals, Raises, Risks, Holders,
   Calendar beside Companies, Investors, Evidence, Filings); every item a 5W-2H story with the arithmetic done; noise
   (staff trades, ESOPs, gifts, transfers, small deals) clubbed and counted, not listed; fewer clicks; flat, minimal,

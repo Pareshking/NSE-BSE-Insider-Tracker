@@ -82,6 +82,121 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 /* a row of controls lines up on their bottom edge, whatever each label's height */
 .stApp [data-testid="stHorizontalBlock"]:has([data-testid="stButtonGroup"], [data-testid="stSelectbox"]) { align-items: flex-end; }
 
+/* ---- Company page at a glance (19 Nov 2026; owner: "not glance-worthy to take even a decision"): the verdict band, the
+   scorecard and the small charts of ui/charts.py. Tokens only. */
+.co-head { margin-bottom: var(--gap-3); }
+.co-name { font-family: var(--display); font-size: 26px; line-height: 1.2; color: var(--ink); margin: 6px 0 2px; }
+.co-quote { font-size: 15px; color: var(--ink-2); margin-bottom: var(--gap-4); }
+.co-quote b { font-weight: var(--fw-strong); color: var(--ink); }
+.co-quote .up, .cg-dv.up, .cg-fh .c.up, .cg-splab .up, .cg-cs.up { color: var(--buy); }
+.co-quote .down, .cg-dv.down, .cg-fh .c.down, .cg-splab .down, .cg-cs.down { color: var(--sell); }
+.co-quote .sep { color: var(--ink-4); margin: 0 4px; }
+.co-head h1.co-verdict { margin: 0 0 8px !important; padding-left: 18px; border-left: 5px solid var(--ink-4); }
+.co-head h1.co-verdict.accumulating { border-left-color: var(--buy); }
+.co-head h1.co-verdict.leaving { border-left-color: var(--sell); }
+.co-head h1.co-verdict.mixed { border-left-color: var(--warn); }
+
+.cg-chips { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--line-strong); margin: var(--gap-4) 0 var(--gap-3); }
+.cg-chip { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px 12px 12px; border-right: 1px solid var(--line);
+  border-top: 4px solid var(--line-strong); margin-top: -1px; min-width: 0; }
+.cg-chip:last-child { border-right: 0; }
+.cg-chip .l { font-size: 12.5px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.cg-chip .l i { font-style: normal; font-size: 10px; width: 16px; height: 16px; border-radius: var(--radius-pill); display: inline-flex; align-items: center;
+  justify-content: center; background: var(--subtle); color: var(--ink-3); flex: none; }
+.cg-chip b { font-family: var(--display); font-weight: var(--fw-regular); font-size: 24px; line-height: 1.15; color: var(--ink); }
+.cg-chip .n { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+.cg-chip .ev { font-size: 11px; color: var(--ink-3); margin-top: auto; padding-top: 4px; }
+.cg-chip.up { border-top-color: var(--buy); } .cg-chip.up b { color: var(--buy); } .cg-chip.up .l i { background: var(--buy-tint); color: var(--buy); }
+.cg-chip.down { border-top-color: var(--sell); } .cg-chip.down b { color: var(--sell); } .cg-chip.down .l i { background: var(--sell-tint); color: var(--sell); }
+.cg-chip.fail { border-top-color: var(--sell); background: var(--sell-tint); } .cg-chip.fail b { color: var(--sell); }
+.cg-chip.warn { border-top-color: var(--warn); } .cg-chip.warn .l i { background: var(--warn-tint); color: var(--warn-ink); }
+.cg-chip.pass { border-top-color: var(--buy); } .cg-chip.pass .l i { background: var(--buy-tint); color: var(--buy); }
+.cg-chip.na b { color: var(--ink-4); }
+@media (max-width: 1100px) { .cg-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); } .cg-chip:nth-child(3n) { border-right: 0; } }
+@media (max-width: 640px) { .cg-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cg-chip:nth-child(3n) { border-right: 1px solid var(--line); }
+  .cg-chip:nth-child(2n) { border-right: 0; } .cg-chip b { font-size: 20px; } .cg-chip { padding: 10px 10px 10px 8px; } }
+
+/* the price chart's key */
+.cg-mk { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink-3); margin-top: 6px; }
+.cg-mk span { display: inline-flex; align-items: center; gap: 5px; }
+.cg-mk .ar { font-style: normal; font-size: 11px; } .cg-mk .ar.up { color: var(--buy); } .cg-mk .ar.down { color: var(--sell); }
+.cg-mk .sq { width: 9px; height: 9px; display: inline-block; } .cg-mk .sq.up { background: var(--buy); } .cg-mk .sq.down { background: var(--sell); }
+.cg-mk .ci { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--mark-sast); }
+.cg-mk .bd { width: 12px; height: 12px; display: inline-block; background: var(--band); }
+.lw-tip .e { color: var(--mark-sast); } .lw-tip .r { color: var(--ink-2); }
+
+/* the checks as a scorecard */
+.cg-checks { border-top: 1px solid var(--rule-strong); }
+.cg-ck { display: grid; grid-template-columns: 24px 118px minmax(0, 1fr); gap: 8px; align-items: start; padding: 9px 0; border-bottom: 1px solid var(--line);
+  font-size: 13.5px; }
+.cg-ck i { font-style: normal; font-weight: var(--fw-strong); font-size: 11px; width: 20px; height: 20px; border-radius: var(--radius-pill); display: inline-flex;
+  align-items: center; justify-content: center; background: var(--subtle); color: var(--ink-3); }
+.cg-ck.pass i { background: var(--buy-tint); color: var(--buy); }
+.cg-ck.warn i { background: var(--warn-tint); color: var(--warn-ink); }
+.cg-ck.fail i { background: var(--sell); color: var(--on-accent); }
+.cg-ck .k { color: var(--ink); font-weight: var(--fw-medium); padding-top: 1px; }
+.cg-ck .t { color: var(--ink-2); padding-top: 1px; overflow-wrap: anywhere; }
+.cg-ck.fail .t { color: var(--sell); } .cg-ck.warn .t { color: var(--warn-ink); }
+.cg-ck .t em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink-3); }
+@media (max-width: 640px) { .cg-ck { grid-template-columns: 24px 96px minmax(0, 1fr); } }
+
+/* ownership: a 100% bar per quarter */
+.cg-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); margin: 2px 0 10px; }
+.cg-key { display: inline-flex; align-items: center; gap: 5px; } .cg-key i { width: 10px; height: 10px; border-radius: var(--radius-pill); display: inline-block; }
+.cg-key b { font-weight: var(--fw-strong); color: var(--ink); }
+.cg-stack { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--gap-4); }
+.cg-srow { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; align-items: center; }
+.cg-q { font-size: 12px; color: var(--ink-3); }
+.cg-sbar { display: flex; height: 22px; border-radius: var(--radius-pill); overflow: hidden; }
+.cg-sbar i { font-style: normal; font-size: 11px; color: var(--ink); display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; }
+.cg-sbar i.dk { color: var(--on-accent); }
+
+/* diverging bars */
+.cg-delta { display: flex; flex-direction: column; gap: 7px; margin: 4px 0 var(--gap-3); }
+.cg-drow { display: grid; grid-template-columns: minmax(96px, 1.1fr) minmax(70px, 1.4fr) 92px; gap: 10px; align-items: center; font-size: 13.5px; }
+.cg-dl { color: var(--ink-2); } .cg-dl em { display: block; font-style: normal; font-size: 11.5px; color: var(--ink-3); }
+.cg-dtrack { position: relative; height: 12px; }
+.cg-dtrack::after { content: ''; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-4); }
+.cg-dtrack i { position: absolute; top: 0; bottom: 0; border-radius: var(--radius-pill); background: var(--ink-4); }
+.cg-dtrack i.up { background: var(--buy); } .cg-dtrack i.down { background: var(--sell); }
+.cg-dv { text-align: right; font-weight: var(--fw-strong); white-space: nowrap; color: var(--ink-3); }
+
+/* bought against sold */
+.cg-split { margin: 10px 0 14px; max-width: 760px; }
+.cg-splab { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 4px; }
+.cg-splab b { font-weight: var(--fw-strong); }
+.cg-spbar { display: flex; height: 12px; border-radius: var(--radius-pill); overflow: hidden; background: var(--subtle); }
+.cg-spbar i.up { background: var(--buy); } .cg-spbar i.down { background: var(--sell); }
+
+/* fund houses with their month-end trend */
+.cg-fhs { border-top: 1px solid var(--rule-strong); }
+.cg-fh { display: grid; grid-template-columns: minmax(0, 1fr) 96px 92px 84px; gap: 10px; align-items: center; padding: 6px 0;
+  border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.cg-fh .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-fh .v { text-align: right; font-weight: var(--fw-strong); } .cg-fh .v em { display: block; font-style: normal; font-weight: var(--fw-regular); font-size: 11px; color: var(--ink-3); }
+.cg-fh .c { text-align: right; font-size: 12.5px; color: var(--ink-3); }
+.cg-spark polyline { stroke: var(--ink-3); } .cg-spark circle { fill: var(--ink-3); }
+.cg-spark.up polyline { stroke: var(--buy); } .cg-spark.up circle { fill: var(--buy); }
+.cg-spark.down polyline { stroke: var(--sell); } .cg-spark.down circle { fill: var(--sell); }
+@media (max-width: 640px) { .cg-fh { grid-template-columns: minmax(0, 1fr) 64px 72px 70px; gap: 6px; } .cg-fh .cg-spark { width: 64px; } }
+
+/* revenue and profit columns */
+.cg-cols { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 6px; margin: 4px 0 var(--gap-4); }
+.cg-col { display: flex; flex-direction: column; align-items: stretch; min-width: 0; text-align: center; }
+.cg-cv { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.cg-cplot { position: relative; height: 92px; margin: 3px 0; }
+.cg-cplot i { position: absolute; left: 14%; right: 14%; background: var(--accent); border-radius: var(--radius-pill) var(--radius-pill) 0 0; opacity: .85; }
+.cg-cplot i.pos { background: var(--buy); } .cg-cplot i.down { background: var(--sell); border-radius: 0 0 var(--radius-pill) var(--radius-pill); }
+.cg-col:last-child .cg-cplot i { opacity: 1; }
+.cg-cplot b { position: absolute; left: 0; right: 0; height: 1px; background: var(--line-strong); }
+.cg-cl { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.cg-cs { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+@media (max-width: 640px) { .cg-cv, .cg-cs { font-size: 10px; } .cg-cl { font-size: 10px; } }
+/* the glance's question pairs sit close: a column's question needs no extra space over its rule */
+[class*="st-key-co_g"] .dt-h2 { margin-top: var(--gap-3) !important; }
+[class*="st-key-co_g"] .qa-answer { font-size: 26px; }
+@media (max-width: 640px) { [class*="st-key-co_g"] .qa-answer { font-size: 22px; } [class*="st-key-co_g"] .dt-h2 { font-size: 20px !important; } }
 /* six KPI cards three to a row (Results): a hairline between the rows, none after the third */
 .ds-kpis.n3 .kpi:nth-child(3n) { border-right: 0; }
 .ds-kpis.n3 .kpi:nth-child(n+4) { border-top: 1px solid var(--line); }
@@ -94,6 +209,8 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
   .stApp [data-variant="segmented_control"] { height: 38px; }
   .stApp [data-variant="segmented_control"] { border-bottom: 1px solid var(--line) !important; }
 }
+.cg-nospark { font-size: 11px; color: var(--ink-4); text-align: center; }
+@media (max-width: 640px) { .co-head h1.co-verdict { font-size: 26px !important; padding-left: 12px; border-left-width: 4px; } }
 
 /* Bought vs sold at a glance (19 Nov 2026, ui/charts.py): a line of counts, and a dense change list in place of tall cards */
 .cstrip { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: var(--gap-2) 0 var(--gap-3); font-size: 14px; color: var(--ink-3); }

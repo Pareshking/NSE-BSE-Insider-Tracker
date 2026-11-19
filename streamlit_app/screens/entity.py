@@ -80,9 +80,9 @@ def _summary(held: pd.DataFrame, gone: pd.DataFrame, bought: float, sold: float,
                        if c.get('no_previous', 0) else '') + '</p>')
             if compared or len(gone):
                 st.html(charts.count_strip(int(c.get('added', 0)), int(c.get('cut', 0)), int(c.get('new', 0)), len(gone)))
-        chart = charts.buy_sell_split(bought, sold)
-        if chart is not None:
-            st.altair_chart(chart, width='stretch')
+        split = charts.buy_sell_split(bought, sold)
+        if split:
+            st.html(split)
             st.html('<p class="chart-cap">Open-market insider trades and bulk or block deals of the last 12 months, in rupees; '
                     'a deal that is also this person\'s own filing counted once</p>')
 
@@ -94,14 +94,14 @@ def _holdings_card(held: pd.DataFrame, gone: pd.DataFrame, hist: pd.DataFrame) -
                    for t, q in zip(rows['type_label'], pd.to_datetime(rows['quarter_end'], errors='coerce'))]
     with kit.card('Holdings over 1%', 'en_ph', "named in each company's latest shareholding pattern"):
         moved = rows[rows['change'].isin(['added', 'cut', 'new', 'exited'])].copy()
-        moved['tag'] = moved['change'].map({'new': 'new', 'exited': 'exited'})
-        chart = charts.diverging_bar(moved, 'company', 'pct_change', tag='tag', limit=20)
-        if chart is not None:
+        moved['tag'] = moved['change'].map({'new': 'new: crossed 1%', 'exited': 'exited: under 1%'})
+        bars = charts.diverging_bar(moved, 'company', 'pct_change', tag='tag', limit=20)
+        if bars:
             st.html('<p class="chart-cap">Change since the quarter before, in points of the company'
                     + (f' · the 20 largest of {len(moved)}' if len(moved) > 20 else '') + '. '
                     + ('New and exited bars are the whole holding: below 1% a holder is not named, so that is the most it '
                        'can have moved.' if moved['tag'].notna().any() else '') + '</p>')
-            st.altair_chart(chart, width='stretch')
+            st.html(bars)
         st.html(charts.change_rows(rows, sub='sub'))
     two = hist.groupby('isin')['quarter_end'].transform('nunique') >= 2 if len(hist) else pd.Series(dtype=bool)
     if len(hist) and two.any():
@@ -230,9 +230,9 @@ def render():
     per = investors.by_company(d, ref_deals, 90) if len(d) else pd.DataFrame()
     if len(per):
         with kit.card('Net by company', 'en_net', 'last 90 days, bulk and block deals'):
-            chart = charts.diverging_bar(per, 'company', 'net', fmt=lambda v: kit.rupees(v, signed=True))
-            if chart is not None:
-                st.altair_chart(chart, width='stretch')
+            bars = charts.diverging_bar(per, 'company', 'net', fmt=lambda v: kit.rupees(v, signed=True))
+            if bars:
+                st.html(bars)
             kit.table(per, [kit.Col('company', 'Company', 'co'), kit.Col('net', 'Net', 'smoney'), kit.Col('buy', 'Bought', 'money', phone=False),
                             kit.Col('sell', 'Sold', 'money', phone=False), kit.Col('pct', 'Share of company', 'spct'),
                             kit.Col('last', 'Last deal', 'date', phone=False)], limit=30, key='en_net_t', keep_empty=True)
