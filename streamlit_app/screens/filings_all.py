@@ -40,6 +40,7 @@ PERIODS = {7: '7 days', 30: '30 days', 90: '90 days', 365: '1 year'}
 ROLES = ['Promoter', 'Director/KMP', 'Others']
 MIN_VALUE = {0: 'Any value', 1e6: '₹10 L+', 1e7: '₹1 Cr+', 1e8: '₹10 Cr+', 1e9: '₹100 Cr+'}
 LIMIT = 200
+ALL_ROWS = 2000   # "Show every row" and a picked day draw up to this many (drawing more makes the page slow on a phone)
 
 # Insider `kind` (insiders_clean/insider.py _MODE_RULES) in plain words.
 KIND_WORDS = {
@@ -359,6 +360,28 @@ def build(ctx, days: int) -> tuple[pd.DataFrame, dict]:
         rows = rows.sort_values(['made_public', '_v'], ascending=False, na_position='last', kind='stable') \
             .drop(columns='_v').reset_index(drop=True)
     return rows, {k: v[0] for k, v in parts.items()}
+
+
+def days_for(ref, day) -> int | None:
+    """The period `build` needs to reach back to a picked day (that day to the as-of date), None for no day
+    or a day after the as-of date."""
+    if day is None or ref is None:
+        return None
+    n = (pd.Timestamp(ref).normalize() - pd.Timestamp(day).normalize()).days + 1
+    return int(n) if n >= 1 else None
+
+
+def on_day(rows: pd.DataFrame, day) -> pd.DataFrame:
+    """The rows made public on one day (owner, 19 Nov: "Daily insider buying as on 17 Nov" could not be found:
+    the list ran newest first and stopped at 200 rows, inside the latest day)."""
+    if rows.empty or day is None:
+        return rows
+    return rows[pd.to_datetime(rows['made_public'], errors='coerce').dt.normalize().eq(pd.Timestamp(day).normalize())]
+
+
+def row_limit(n: int, show_all: bool, day) -> int:
+    """How many rows the table draws: LIMIT, or up to ALL_ROWS when every row is asked for or one day is picked."""
+    return min(n, ALL_ROWS) if (show_all or day is not None) else LIMIT
 
 
 def in_kind(rows: pd.DataFrame, kind: str) -> pd.Series:
@@ -854,6 +877,10 @@ def render():
                           label_visibility='collapsed', width=260)
         days = st.segmented_control('Period', list(PERIODS), default=30, format_func=PERIODS.get, required=True,
                                     key='fa_days', label_visibility='collapsed') or 30
+        ref_day = pd.Timestamp(ctx.ref).normalize()
+        day = st.date_input('One day', value=None, min_value=(ref_day - pd.Timedelta(days=max(PERIODS) - 1)).date(),
+                            max_value=ref_day.date(), format='DD/MM/YYYY', key='fa_day', label_visibility='collapsed',
+                            width=150, help='Only what was made public on this day; the period is then ignored. Clear it to go back.')
         with st.popover('Filters & sort', icon=':material/tune:', width='content'):
             side = st.segmented_control('Side', ['Buy and sell', 'Buy', 'Sell'], default='Buy and sell', required=True,
                                         key='fa_side') or 'Buy and sell'
@@ -866,8 +893,14 @@ def render():
                                    'of the company (0.25% alone, or ₹25 Cr), a director or KMP selling only at ₹25 Cr, deals of '
                                    '₹25 Cr or 0.25%, stake changes except lenders, issues of ₹100 Cr or more, all buybacks. '
                                    'Pledges, dividends, other filings and dates ahead are left out')
+            show_all = st.toggle('Show every row', value=False, key='fa_all',
+                                 help=f'The table draws the first {LIMIT} rows, newest first; on, up to {ALL_ROWS:,}')
 
-    rows, sources = build(ctx, int(days))
+    day_days = days_for(ctx.ref, day)
+    if day_days is None:
+        day = None
+    rows, sources = build(ctx, day_days or int(days))
+    rows = on_day(rows, day)
     if not rows.empty:
         if not mm:
             rows = rows[~rows['is_mm']]
@@ -893,12 +926,19 @@ def render():
     if kind == 'Upcoming' and not shown.empty:   # what is next first
         shown = shown.sort_values('made_public', kind='stable')
     if shown.empty:
-        kit.empty('No filings for these filters.')
+        kit.empty(f'No filings made public on {kit.day(day)} for these filters.' if day is not None else 'No filings for these filters.')
         return
+    limit = row_limit(len(shown), show_all, day)
+    if day is not None:
+        kit.caption(f'Made public on {kit.day(day)}: {kit.count(len(shown))} rows. Companies under ₹100 Cr are not on the site.')
+    if len(shown) > limit:
+        kit.caption(f'Showing the first {kit.count(limit)} of {kit.count(len(shown))} rows, newest first, the largest first within a day. '
+                    + ('Pick one day, or turn on "Show every row" in Filters & sort, to see the rest.' if limit == LIMIT
+                       else 'Narrow with a search or a filter to see the rest.'))
 
     if left_out:
         kit.caption(f'Real money only: {kit.count(left_out)} filings left out (pledges, dividends, small trades and other filings).')
-    top = shown.head(LIMIT).copy()
+    top = shown.head(limit).copy()
     extra = _decorate(top, sources, ctx)
     ins = top['_src'] == 'insider'
     if ins.any():
@@ -914,7 +954,7 @@ def render():
     spec = KIND_SPECS.get(kind)
     if spec:
         top = spec[0](top, sources, ctx, tables)
-    shown = pd.concat([top, shown.iloc[LIMIT:]], ignore_index=True) if len(shown) > LIMIT else top
+    shown = pd.concat([top, shown.iloc[limit:]], ignore_index=True) if len(shown) > limit else top
 
     def detail(r: dict) -> str:
         src, i = r.get('_src'), r.get('_i')
@@ -924,5 +964,5 @@ def render():
         own = extra.get(i, {}) if src == 'insider' else {}
         return f'<p class="hl">{kit.esc(filings_rules.headline(r))}</p>' + FACTS[src](frame.loc[i].to_dict(), {**own, **tables})
 
-    kit.table(shown, spec[1] if spec else GENERIC_COLS, limit=LIMIT, height=760, detail=detail, key=f'fa_{kind}',
+    kit.table(shown, spec[1] if spec else GENERIC_COLS, limit=limit, height=760, detail=detail, key=f'fa_{kind}',
               keep_empty=bool(spec))
