@@ -47,6 +47,8 @@ Steps 3 and 4 are `continue-on-error`: they can never fail the collection.
 | `archive/nse_events/issues/year=YYYY.parquet` | Every further-issue filing NSE posted in a date window (NSE events job), with NSE's row and the parsed XBRL | Forever |
 | `archive/nse_events/promoter_group/batch={run time}.parquet` | Promoter-group members parsed in one NSE events run; a new file per run, never rewritten | Forever |
 | `clean/current/promoter_group.parquet` | One row per company, quarter and promoter-group member, rebuilt from the batches | Rewritten daily |
+| `archive/nse_events/public_holders/batch={run time}.parquet` | Public shareholders over 1% parsed in one NSE events run (every XBRL downloaded, or every kept raw XBRL on `--reparse-raw`); a new file per run, never rewritten | Forever |
+| `clean/current/public_holders.parquet` | One row per company, quarter and public shareholder named over 1%, rebuilt from the batches | Rewritten daily |
 | `clean/reports/{date}.json` | What each rule removed, flagged or couldn't place | Forever (small) |
 | `clean/latest.json` | Pointer to the last complete run, written last | Rewritten nightly |
 | `archive/_backfill/nse_{dataset}.json` | Backfill progress: chunks done, with row counts | Forever (small) |

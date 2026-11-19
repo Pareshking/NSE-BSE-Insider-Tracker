@@ -36,6 +36,15 @@ Filings with no raw copy (fetched before 12 Oct 2026) are filled when the
 fetch path downloads them again (--days 400 with chain=1 covers four
 quarters).
 
+Public shareholders over 1% (parsers.parse_shp_public_holders: the mutual
+funds, insurers, FPIs, bodies corporate and individuals each filing names)
+are a fourth parse of the same download: every XBRL downloaded goes to a
+write-once batch under archive/nse_events/public_holders/, and
+clean/current/public_holders.parquet is rebuilt from all batches
+(insiders_clean/public_holders.py). `--reparse-raw` reads them from every
+kept raw XBRL too, so the quarters already fetched are filled with no NSE
+call.
+
 Buybacks (TODO 12): NSE's tender-offer list (every buyback tender with its
 offer price) and the daily buyback reports of open-market buybacks are
 collected as streams `tenders` and `daily_buybacks`; with the corporate
@@ -85,7 +94,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
-from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results, units
+from insiders_clean import archive, buybacks, issues, promoter_group, public_holders, raw_store, results, units
 from insiders_clean import sast as sast_rules
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
@@ -309,7 +318,7 @@ def _keep_raw(raw, body: str, row) -> str | None:
 
 def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None, report: dict,
                max_xbrl: int = MAX_XBRL_PER_RUN, members: list | None = None, raw=None,
-               run_date: str | None = None) -> pd.DataFrame:
+               run_date: str | None = None, holders: list | None = None) -> pd.DataFrame:
     """Add pledge figures to listing rows whose XBRL hasn't been parsed yet,
     and the promoter-group member list (parsers.parse_shp_members) from the
     same download. A filing parsed before member lists existed is fetched
@@ -318,7 +327,10 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
     to `members` (one frame per filing); one download counts once against
     max_xbrl. The ownership by investor type (CATEGORY_COLS) is read from the
     same download; a filing without it (parsed before it existed) is fetched
-    again whenever it is in the listing, newest quarters first."""
+    again whenever it is in the listing, newest quarters first. The public
+    holders over 1% of every file downloaded are appended to `holders`
+    (parsers.parse_shp_public_holders; a filing that names none adds an empty
+    frame)."""
     done, mdone, cdone, prev = set(), set(), set(), None
     if known is not None and 'xbrl_status' in known.columns:
         done = set(known.loc[known['xbrl_status'].astype(str).eq('ok'), 'event_id'])
@@ -372,6 +384,8 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
                 listing.at[i, 'xbrl_error'] = str(exc)[:120]
             continue
         sha = _keep_raw(raw, body, row)
+        if holders is not None:
+            _add_holders(holders, body, row.to_dict(), sha, run_date or '', report)
         if need_categories:
             _set_categories(listing, i, body)
         if not totals_done:
@@ -401,14 +415,33 @@ def fetch_xbrl(nse: NSEClient, listing: pd.DataFrame, known: pd.DataFrame | None
     return listing
 
 
-def reparse_shareholding_raw(r2, workers: int = 16) -> dict:
+def _add_holders(holders: list, body: str, filing: dict, sha, run_date: str, report: dict) -> None:
+    """The public holders over 1% of one XBRL, as rows with the filing's identity, appended to `holders`; the parse
+    check counted in report['public_holders_parse'] (ok / unmapped / over_category / failed), never fatal."""
+    counts = report.setdefault('public_holders_parse', {})
+    try:
+        found, check = parsers.parse_shp_public_holders(body)
+    except Exception as exc:  # noqa: BLE001
+        key = f'failed: {type(exc).__name__}'
+        counts[key] = counts.get(key, 0) + 1
+        return
+    counts[check['check']] = counts.get(check['check'], 0) + 1
+    for section, n in check['unmapped'].items():   # a section with names this parser does not read: said, not guessed
+        u = report.setdefault('public_holders_unmapped', {})
+        u[section] = u.get(section, 0) + n
+    holders.append(public_holders.holder_rows(found, filing, check['check'], sha, run_date))
+
+
+def reparse_shareholding_raw(r2, workers: int = 16, holders: list | None = None, run_date: str = '') -> dict:
     """Ownership by investor type for every filing whose XBRL is kept in
     raw_v2/nse/shareholding_xbrl/, with no NSE call: each fetch record names
     the filing (params.record_id) and its blob; the blob is un-gzipped, its
     SHA-256 checked against the record's sha256_as_sent, parsed, and the
     CATEGORY_COLS of the archive row with that record_id are replaced
-    (first_seen and last_seen stay as they were; raw is only read). Counts
-    for the report."""
+    (first_seen and last_seen stay as they were; raw is only read). The
+    public holders over 1% of each archive row with a raw copy are appended
+    to `holders` (the catch-up for quarters fetched before they were parsed).
+    Counts for the report."""
     keys = [k for k in list_keys(r2, SHP_RAW_FETCHES) if k.endswith('.json')]
     with ThreadPoolExecutor(workers) as ex:
         records = list(ex.map(lambda k: json.loads(get(r2, k) or b'{}'), keys))
@@ -439,6 +472,7 @@ def reparse_shareholding_raw(r2, workers: int = 16) -> dict:
             parsed = parsed.drop(index=rid)
             continue
         _set_categories(parsed, rid, body)
+    bodies = {rid: b for rid, (state, b) in bodies.items() if state == 'ok'} if holders is not None else {}
     counts['parsed'] = {str(k): int(v) for k, v in parsed['categories_status'].astype(str).value_counts().items()}
     counts['check'] = {str(k): int(v) for k, v in parsed['categories_check'].dropna().value_counts().items()}
     filled, rows, rows_filled = set(), 0, 0
@@ -464,6 +498,11 @@ def reparse_shareholding_raw(r2, workers: int = 16) -> dict:
         put_parquet(r2, key, part)
         filled |= set(rid[hit])
         rows_filled += int(hit.sum())
+        if holders is not None:
+            for _, row in part[hit].iterrows():
+                rec = newest[str(row['record_id'])]
+                _add_holders(holders, bodies[str(row['record_id'])], row.to_dict(),
+                             (rec.get('params') or {}).get('sha256_as_sent'), run_date, counts)
     counts.update(archive_rows=rows, archive_rows_filled=rows_filled, archive_rows_without_raw=rows - rows_filled,
                   raw_without_archive_row=len(set(parsed.index) - filled))
     return counts
@@ -839,6 +878,33 @@ def write_promoter_group(r2, batch: list, master: SecurityMaster, run_date: str,
     return entry
 
 
+HOLDER_BATCHES = 'archive/nse_events/public_holders/'
+
+
+def write_public_holders(r2, batch: list, master: SecurityMaster, now: datetime) -> dict:
+    """Public holders over 1% parsed tonight -> a new write-once batch file
+    (archive/nse_events/public_holders/batch=<run time>.parquet, never
+    rewritten), then clean/current/public_holders.parquet rebuilt from every
+    batch (insiders_clean/public_holders.clean_holders). Counts for the report."""
+    frames = [b for b in batch if b is not None and not b.empty]
+    entry = {'filings_parsed': len(batch), 'holders_parsed': int(sum(len(b) for b in frames))}
+    if frames:
+        key = f'{HOLDER_BATCHES}batch={now:%Y-%m-%dT%H%M%S}.parquet'
+        if get(r2, key) is None:
+            put_parquet(r2, key, pd.concat(frames, ignore_index=True))
+            entry['batch_written'] = key
+    keys = sorted(k for k in list_keys(r2, HOLDER_BATCHES) if k.endswith('.parquet'))
+    if not keys:
+        return entry
+    table, counts = public_holders.clean_holders([read_parquet(r2, k) for k in keys])
+    entry.update(batches=len(keys), **counts)
+    if not table.empty:
+        table = add_identity(table, master)
+        table['isin'] = table['isin'].astype('string')
+        put_parquet(r2, 'clean/current/public_holders.parquet', table)
+    return entry
+
+
 REPORT_KEY = 'reports/nse_events/latest_{}.json'
 EMPTY_NOTE_DAYS = 7   # a window this long with no row is said in the notes (C4)
 
@@ -875,6 +941,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
     master = security_master(r2, run_date, report['notes'])
     blocked = False
     members: list = []
+    holders: list = []
     for stream in streams:
         entry = report['streams'].setdefault(stream, {})
         new = None
@@ -912,14 +979,14 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 elif stream == ENCUMBRANCES:
                     new = parsers.parse_encumbrances(nse.encumbrances(start, today))
                 elif reparse_raw:   # no NSE call: the kept XBRLs, read again
-                    report['shareholding_reparse'] = reparse_shareholding_raw(r2)
+                    report['shareholding_reparse'] = reparse_shareholding_raw(r2, holders=holders, run_date=run_date)
                 else:
                     if raw is not None:   # the listing raw (C13); the XBRL files after it are kept by fetch_xbrl
                         nse.on_response = raw_hook(raw, 'shareholding_list', {'from': start.isoformat(), 'to': run_date})
                     listing = parsers.parse_shareholding_listing(nse.shareholding_filings(start, today))
                     nse.on_response = None
                     known = merge_into_archive(r2, stream, None, run_date)[0]
-                    new = fetch_xbrl(nse, listing, known, report, max_xbrl, members, raw, run_date)
+                    new = fetch_xbrl(nse, listing, known, report, max_xbrl, members, raw, run_date, holders)
                     blocked = bool(report.get('xbrl_blocked'))
             except Blocked as exc:
                 blocked = True
@@ -980,6 +1047,15 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 r2, members, master, run_date, now or datetime.now(timezone.utc))
         except Exception as exc:  # noqa: BLE001
             report['notes'].append(f'promoter_group: failed ({type(exc).__name__}: {exc})')
+        try:  # nor the promoter group's
+            report['public_holders'] = write_public_holders(
+                r2, holders, master, now or datetime.now(timezone.utc))
+        except Exception as exc:  # noqa: BLE001
+            report['notes'].append(f'public_holders: failed ({type(exc).__name__}: {exc})')
+        unread = report.get('public_holders_unmapped') or report.get('shareholding_reparse', {}).get('public_holders_unmapped')
+        if unread:
+            report['notes'].append('public_holders: named holders in sections not read: ' + ', '.join(
+                f'{k} ({v})' for k, v in unread.items()))
     report['nse_calls'] = nse.calls
     put(r2, f'clean/reports/nse_events/{run_date}.json', json.dumps(report, indent=2, default=str).encode(),
         'application/json')
@@ -1030,6 +1106,8 @@ def main(argv=None):
         print(f'  results_reparse: {report["results_reparse"]}')
     if 'promoter_group' in report:
         print(f'  promoter_group: {report["promoter_group"]}')
+    if 'public_holders' in report:
+        print(f'  public_holders: {report["public_holders"]}')
     for n in report['notes']:
         print(f'  note: {n}')
     print(f'  NSE calls: {report["nse_calls"]}; bucket {"set" if BUCKET else "MISSING"}')

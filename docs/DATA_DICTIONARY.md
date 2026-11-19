@@ -20,6 +20,7 @@ signal thresholds in `docs/SIGNALS.md`.
 | `clean/current/encumbrances.parquet` | One SAST Reg 31(1)/(2) disclosure: a promoter's pledge, non-disposal undertaking or other encumbrance created, released or invoked | NSE `/api/corporate-pledgedata-sast3132` (page *Regulation 31(1) and 31(2)*), raw kept in `raw_v2/nse/encumbrances/` | Daily (NSE Corporate Events, from 22 Oct 2026). Columns (no `isin`: NSE's feed carries the symbol only, so pages key it on the NSE symbol; corrected 12 Nov 2026): event_id, symbol, company, promoter_name, promoter_id, lender, event_type (Creation / Release / Invocation), encumbrance_type (Pledge / Non disposal undertaking / Others), event_from, event_to, shares and pct_of_company of the event, encumbered_shares / encumbered_pct (NSE `encumbHolding`/`encumbPerc`: the holder's encumbrance BEFORE the event), pre_event_holding / pre_event_holding_pct (the holder's shares) and post_event_holding / post_event_holding_pct (the encumbrance AFTER the event: before + created, or before − released; checked on NSE's rows 13 Nov 2026, Themis Medicare 4.89 + 2.71 = 7.60%), as filed, reporting_date, broadcast_date, attachment |
 | `clean/current/shareholding.parquet` | One company x quarter | NSE `/api/corporate-share-holdings-master` + each filing's XBRL | Daily |
 | `clean/current/promoter_group.parquet` | One company x quarter x promoter-group member | The same shareholding XBRL (Table II) | Daily (NSE Corporate Events) |
+| `clean/current/public_holders.parquet` | One company x quarter x public shareholder named over 1% | The same shareholding XBRL (Tables III and IV) | Daily (NSE Corporate Events) |
 | `clean/current/tradability.parquet` | One ISIN (NSE equity series, or on an NSE surveillance list) | NSE `/api/reportASM`, `/api/reportGSM`, `/api/reportESM`, `sec_list.csv`, NSE bhavcopy | Nightly (R2 Storage Write; also Tradability flags) |
 | `clean/current/tenders.parquet` | One tender offer (buyback, takeover, delisting) | NSE `/api/liveTenderPast-issues` + `liveTenderActive-issues` | Daily |
 | `clean/current/daily_buybacks.parquet` | One daily buyback report | NSE `/api/corporates-daily-buyback` | Daily |
@@ -273,6 +274,50 @@ anyway) and no promoter/promoter-group split (NSE masks `TypeOfPromoterSharehold
 | `shares`, `pct_of_company`, `pledged_shares` | As filed; % of total shares. Members with 0 shares are listed by the filing and kept |
 | `members_check` | The filing's members add up to its promoter total: `match` or `mismatch` |
 | `xbrl_sha256`, `parsed_on` | SHA-256 of the XBRL bytes NSE sent (the raw copy's `sha256_as_sent`); run date of the parse |
+
+### public_holders — public shareholders over 1% (19 Nov 2026)
+
+SEBI's form names every public shareholder holding more than 1% of the company under its sub-category (Table III
+institutions, Table IV non-institutions). From the same shareholding XBRL as `promoter_group`
+(`parsers.parse_shp_public_holders`, `insiders_clean/public_holders.py`). One row per holder named in one company's
+filing for one quarter; a revised filing replaces the original, a later parse of the same filing replaces the earlier.
+Parsed rows go first to `archive/nse_events/public_holders/batch=<run time>.parquet` (never rewritten); this table is
+rebuilt from all batches. No PAN (NSE masks it). Only NSE filings so far (not `bse_shareholding`).
+
+In the XBRL each holder is `D_<Section>_Context<n>` (`NameOfTheShareholder`) with `<Section>_Context<n>`
+(`NumberOfShares`). Sections read, each seen in real filings (123 of Sep 2026, 5 of Jun 2026): `MutualFundsOrUTI`,
+`AlternativeInvestmentFunds`, `InsuranceCompanies`, `ProvidentFundsOrPensionFunds`, `NBFCsRegisteredWithRBI`,
+`OverseasDepositories`, `OtherNonInstitutions`, and `DetailsOfSharesHeldBy` + `Banks`, `OtherFinancialInstitutions`,
+`OtherInstitutionsDomestic`, `ForeignDirectInvestment`, `InstitutionsForeignPortfolioInvestorOne` / `Two`,
+`OtherInstitutionsForeign`, `CentralGovernmentOrPresidentOfIndia`, `StateGovernmentsOrGovernors`,
+`ShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter`, `DirectorsAndDirectorsRelatives`,
+`KeyManagerialPersonnel`, `TrustsWhere...Trust`, `InvestorEducationAndProtectionFund`,
+`ResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh`, `NonResidentIndians`,
+`ForeignCompanies`, `BodiesCorporate`. Not seen in any filing, so not read (a name there is counted in the run
+report's `public_holders_unmapped` and a note, never typed): venture capital, asset reconstruction, sovereign wealth
+funds, foreign venture capital, associate companies, relatives of promoters, foreign nationals, individuals up to
+Rs 2 lakh. An "any other" row marked `WhetherACategoryOrMoreThan1PercentageOfShareholding` = `Category` is a
+sub-category total typed as a name ("Foreign Institutional Investors", "HUF"), not a holder: left out, counted.
+Table IV C (depository-receipt custodian, employee benefit trusts) is not public and not read.
+
+| Column | Meaning |
+|---|---|
+| `event_id`, `record_id`, `symbol`, `isin`, `company`, `quarter_end`, `submission_date`, `xbrl_url` | The filing (as in `shareholding`) |
+| `holder_no` | Order in the filing (domestic institutions, foreign, government, non-institutions) |
+| `holder_name_filed`, `holder_name` | Name as filed; display spelling |
+| `holder_key` | The name for joining across companies and quarters: lower case, punctuation out, `&` as `and`, Ltd / Limited / Pvt / Private and a leading "The" dropped, Co / Corp / Intl / Funds spelled one way; "A/c ..." kept (written `ac`), so each scheme account stays its own holder. Joined by `-`, so it is also an `/entity` id. Never by similarity |
+| `type` | The `{type}` of `shareholding` the section belongs to: `mf`, `insurance`, `banks_fi`, `aif`, `other_dii`, `fpi`, `other_foreign`, `govt`, `hni`, `corporate`, `other_public` |
+| `category`, `section`, `sub_category` | SEBI's sub-category context (as `parse_shp_categories` reads it), the XBRL section as filed, and the filed category of an "any other" row (`Clearing Members`, `Trusts`, `LLP`, ...) |
+| `shares`, `pct_of_company` | Shares as filed; % of `pct_base_shares` (total less depository-receipt shares), computed from the shares: taxonomy 2025-05-31 files the % as a percentage, 2025-10-31 as a fraction |
+| `holders_check` | `ok`; `unmapped` (the filing also names holders in a section not read); `over_category` (a category's named holders add up to more than its filed total; never seen in 128 real filings) |
+| `xbrl_sha256`, `parsed_on` | As in `promoter_group` |
+
+Change since the last quarter (`public_holders.changes`, computed on the page, not stored): per company and
+`holder_key`, its latest quarter in the table against the one before: `new` (named now, not before: crossed 1%),
+`exited` (named before, not now: under 1% or sold out; the filing does not say which), `added`, `cut`, `same`, or
+`no_previous` (only one quarter read: nothing compared); `shares_change` in shares, `pct_change` in points of the
+company. A quarter whose filing names nobody adds no rows, so the page says when the shareholding table has a newer
+quarter than the holder list.
 
 ### preferential and rights — NSE issue records, one row per stage record
 
