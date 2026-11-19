@@ -645,7 +645,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         if fpi['mtd'] is not None:
             sub = f'{_month(fpi["month"])} to date, {fpi["mtd_days"]} NSDL reports to {kit.day(fpi["last"], with_year=False)}'
             if fpi['secondary'] and fpi['primary'] is not None:
-                sub += (f' · plus {crore(fpi["primary"])} in the primary market (IPOs, QIPs, allotments): '
+                sub += (f' · primary market (IPOs, QIPs) {crore(fpi["primary"])}, '
                         f'{crore(fpi["total"])} in all')
             if fpi['nse_net'] is not None:
                 sub += f' · NSE {kit.day(fpi["nse_day"], with_year=False)}: {crore(fpi["nse_net"])} provisional'
@@ -665,7 +665,7 @@ def _kpis(ctx, ref, w, summary, flows, stock, ins, fpi, mf):
         cards.append(_card('DII net, cash market · latest day', esc(crore(dii['net'])), _tone(dii['net']), esc(note),
                            delta_html(dii['net'], dii['before'], crore, f'vs {kit.day(dii["before_day"], with_year=False)}') if dii['before'] is not None
                            else '<div class="dash-delta">No earlier day kept yet</div>',
-                           charts.spark(dii['spark'], 120, 30, signed=True), ('Context, not a stock signal', ''), '#flows'))
+                           (charts.spark(dii['spark'], 120, 30, signed=True) if len(dii['spark']) > 1 else ''), ('Context, not a stock signal', ''), '#flows'))
     else:
         cards.append(_missing_card('DII net, cash market', 'NSE\'s FII/DII figures are not collected yet.'))
     if mf:
