@@ -90,8 +90,8 @@ def _header(rows: list) -> tuple[int, dict] | None:
                 col['isin'] = j
             elif _is_qty(x) and 'qty' not in col:
                 col['qty'] = j
-            elif ('market' in x or 'fair value' in x or x.replace('_', ' ').startswith(('value', 'mkt val'))) and 'val' not in col:
-                col['val'] = j   # 'Mkt_Value' (NPS, SBI Pension Funds)
+            elif ('market' in x or 'fair value' in x or x.replace('_', ' ').startswith(('value', 'mkt'))) and 'val' not in col:
+                col['val'] = j   # 'Mkt_Value' (NPS, SBI Pension Funds), 'Mkt Value Rs. in Lacs' (Sundaram)
             elif ('% to' in x or '% of' in x or 'to net assets' in x or x in ('%', '% aum')) and 'pct' not in col:
                 col['pct'] = j
             elif ('name of' in x or 'instrument' in x or 'issuer' in x or x in ('company', 'security', 'particulars')) \

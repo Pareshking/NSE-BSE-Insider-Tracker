@@ -19,7 +19,7 @@ from urllib.parse import unquote, urljoin
 
 FILE = re.compile(r'\.(xlsx|xls|xlsm|zip)(\?|#|$)', re.I)
 EXCLUDE = re.compile(r'fortnight|debt|risk|a?aum|factsheet|fact-sheet|half|proxy|voting|commission|transaction|dashboard|'
-                     r'riskometer|ter\b|expense|nav\b|dividend|idcw|brsr|esg-score|stress|liquidity|scheme-differentiation|'
+                     r'riskometer|ter\b|expense|nav\b|dividend(?![ _-]?yield)|idcw|brsr|esg-score|stress|liquidity|scheme-differentiation|'
                      r'stewardship|investor-complaint|unclaimed|kim|sid\b|top-?10|sector', re.I)
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
@@ -72,7 +72,7 @@ def candidates(links: list[tuple[str, str]], month: str, house: House) -> list[s
     excl = re.compile(house.exclude, re.I) if house.exclude else None
     scored = []
     for text, href in links:
-        if not href or not FILE.search(href):
+        if not href or not (house.api or FILE.search(href)):   # an api lists files; some are served without an extension
             continue
         hay = f'{text} {unquote(href)}'.lower()
         base = f'{text} {unquote(href).split("?")[0].rsplit("/", 1)[-1]}'.lower()   # folder names say nothing of the file
