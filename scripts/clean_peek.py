@@ -787,6 +787,150 @@ def price_jump_audit(r2, check=()) -> int:
     return 0
 
 
+def mf_stock(r2, sym: str, pattern: str = '') -> int:
+    """MF_STOCK:SYMBOL[:regex] (19 Nov): every fund table row behind one company on the Funds page (mf_holdings,
+    mf_changes, mf_stock_month, its shareholding total_shares, actions), ISINs found by symbol and by name, and the
+    scheme lines in the raw portfolio files of the houses that moved it in the latest two months. Read-only."""
+    import json
+    import re
+
+    from clean_writer import get, get_blob, list_keys
+    from insiders_clean import mf_holdings
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    h = read_parquet(r2, 'clean/current/mf_holdings.parquet')
+    ch = read_parquet(r2, 'clean/current/mf_changes.parquet')
+    st = read_parquet(r2, 'clean/current/mf_stock_month.parquet')
+    sh = read_parquet(r2, 'clean/current/shareholding.parquet')
+    s = sec[sec['nse_symbol'].astype(str).str.upper() == sym]
+    show('securities', s, ['isin', 'nse_symbol', 'bse_code', 'display_name', 'market_cap', 'listing_status'])
+    isins = set(s['isin'].dropna())
+    rx = re.compile(pattern, re.I) if pattern else None
+    if rx is not None:
+        isins |= set(h.loc[h['name'].astype(str).str.contains(rx), 'isin'])
+    print('ISINs:', sorted(isins))
+    hh = h[h['isin'].isin(isins)]
+    show('mf_holdings', hh.sort_values(['month', 'amc']),
+         ['month', 'amc', 'isin', 'name', 'shares', 'active_shares', 'value_lakh', 'schemes', 'active_schemes', 'kind'])
+    print('per month and ISIN: houses, shares, value (lakh), implied price (value*1e5/shares)')
+    g = hh.groupby(['month', 'isin']).agg(houses=('amc', 'nunique'), shares=('shares', 'sum'), value=('value_lakh', 'sum'))
+    g['price'] = g['value'] * 1e5 / g['shares']
+    print(g.to_string())
+    ib = ch['isin_before'] if 'isin_before' in ch else pd.Series(index=ch.index, dtype=object)
+    cc = ch[ch['isin'].isin(isins) | ib.isin(isins)]
+    show('mf_changes', cc.sort_values(['month', 'amc']),
+         ['month', 'amc', 'isin', 'isin_before', 'shares_before', 'shares', 'factor', 'change', 'active_before',
+          'active_shares', 'active_change', 'kind', 'value_lakh', 'house_kind'])
+    show('mf_stock_month', st[st['isin'].isin(isins)].sort_values('month'), list(st.columns))
+    q = sh[sh['isin'].isin(isins) | (sh['symbol'].astype(str).str.upper() == sym)]
+    show('shareholding', q.sort_values('quarter_end'), ['isin', 'symbol', 'quarter_end', 'total_shares', 'mf_shares',
+                                                        'promoter_holding_pct', 'submission_date'])
+    px = read_parquet(r2, 'artifacts/prices_summary_slim.parquet')
+    if px is not None:
+        show('prices_summary_slim', px[px['isin'].isin(isins)], list(px.columns)[:12])
+    for k in ('clean/current/actions.parquet', 'clean/current/bse_actions.parquet'):
+        a = read_parquet(r2, k)
+        if a is not None and 'isin' in a:
+            print(k, 'columns:', list(a.columns)[:30])
+            show(k, a[a['isin'].isin(isins)], list(a.columns)[:14])
+    # The raw scheme lines of the houses that moved it in the latest two months
+    ms = sorted(ch['month'].unique())[-2:]
+    movers = sorted(set(cc.loc[cc['month'].isin(ms) & cc['change'].ne(0), 'amc']))
+    print('houses that moved it in', ms, ':', movers)
+    want = set(ms) | {str(pd.Period(ms[0], 'M') - 1)}
+    for amc in movers:
+        recs = []
+        for k in list_keys(r2, f'raw_v2/amc/{amc}/portfolio_month/fetches/'):
+            if k.endswith('.json'):
+                r = json.loads(get(r2, k))
+                if (r.get('covers') or {}).get('month') in want and r.get('http_status') == 200:
+                    recs.append(r)
+        print(f'--- {amc}: {len(recs)} raw fetches for {sorted(want)}')
+        seen = set()
+        for r in sorted(recs, key=lambda r: r['fetched_at_utc']):
+            if r['sha256'] in seen:
+                continue
+            seen.add(r['sha256'])
+            body = get_blob(r2, r['blob_key'])
+            try:
+                df, rep = mf_holdings.parse_workbook(body, r['url'].split('?')[0].rsplit('/', 1)[-1])
+            except Exception as e:  # noqa: BLE001
+                print('   not parsed', r['url'][:120], e)
+                continue
+            hit = df['isin'].isin(isins)
+            if rx is not None:
+                hit |= df['name'].astype(str).str.contains(rx)
+            x = df[hit]
+            if len(x):
+                print(f'   {r["covers"].get("month")} {r["fetched_at_utc"][:16]} {r["url"][:110]}')
+                print(x[['sheet', 'scheme', 'isin', 'name', 'quantity', 'value_lakh', 'pct_aum']].to_string(index=False))
+    return 0
+
+
+def mf_raw(r2) -> int:
+    """MF_RAW (19 Nov): raw month-end portfolio files per house (raw_v2/amc/), by key listing only (no record read:
+    reading each record one by one ran past the job's 15 minutes), against the archived house-months."""
+    from collections import Counter, defaultdict
+
+    from clean_writer import list_keys
+    arch = defaultdict(list)
+    for k in list_keys(r2, 'archive/mf_holdings/'):
+        if k.endswith('.parquet'):
+            arch[k.rsplit('/', 1)[1][:-8]].append(k.split('month=')[1].split('/')[0])
+    keys = list_keys(r2, 'raw_v2/amc/')
+    fetch, blobs, days = Counter(), Counter(), defaultdict(Counter)
+    for k in keys:
+        parts = k.split('/')
+        house = parts[2]
+        if '/fetches/' in k:
+            fetch[house] += 1
+            days[house][k.split('/fetches/')[1][:10]] += 1
+        elif '/blobs/' in k:
+            blobs[house] += 1
+    print(f'{len(keys)} raw amc keys; {sum(len(v) for v in arch.values())} archived house-months')
+    for house in sorted(set(arch) | set(fetch)):
+        ms = sorted(arch.get(house, []))
+        print(f'{house:14s} archived {len(ms):2d} ({ms[0] if ms else "-"}..{ms[-1] if ms else "-"}) | raw fetches '
+              f'{fetch[house]:4d}, blobs {blobs[house]:4d} | fetch days {dict(sorted(days[house].items()))}')
+    return 0
+
+
+def mf_schemes(r2, month: str = '2026-10') -> int:
+    """MF_SCHEMES[:YYYY-MM] (19 Nov): per house with raw files for the month, the schemes read from them against AMFI's
+    open-ended equity schemes for the house that month-end (the scheme count check, mf_holdings.scheme_coverage), and
+    whether the scheme rows add up to the archived house rows. Read-only: nothing is written to R2."""
+    import mf_portfolios as mp
+    from clean_writer import read_parquet
+    from collectors.mf_portfolios.houses import HOUSES, NOT_COLLECTED
+    from insiders_clean import mf_holdings as m
+    amfi, info = mp.amfi_list(month)
+    print('AMFI:', info)
+    lists, adds = [], {}
+    for h in HOUSES:
+        got = mp.raw_rows(r2, h, {month})
+        if month not in got:
+            continue
+        rows = got[month]
+        lists.append(m.scheme_list(rows, h.key, month, h.name))
+        hold = read_parquet(r2, f'{mp.ARCHIVE}month={month}/{h.key}.parquet')
+        adds[h.key] = mp.add_up(m.scheme_holdings(rows, h.key, month, h.name), hold) if hold is not None else 'no archive'
+    cov = m.scheme_coverage(pd.concat(lists, ignore_index=True), amfi if len(amfi) else None,
+                            {h.key: h.kind for h in HOUSES})
+    cov['isins_not_adding_up'] = cov['amc'].map(adds)
+    pd.set_option('display.max_colwidth', 120)
+    print(cov.drop(columns=['amfi_not_matched']).to_string(index=False))
+    print('\nAMFI equity schemes not matched by name, per house:')
+    for r in cov.to_dict('records'):
+        if r.get('amfi_not_matched'):
+            print(f'  {r["amc"]}: {r["amfi_not_matched"][:600]}')
+    if len(amfi):
+        eq = amfi[amfi['open_ended'] & amfi['category'].eq('equity')]
+        per = eq.groupby('house').agg(amc=('amc', 'first'), equity=('scheme_key', 'nunique')).reset_index()
+        print('\nAMFI open-ended equity schemes per house (every house on the list; amc blank = not collected):')
+        print(per.to_string(index=False))
+    print('not collected:', NOT_COLLECTED)
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -826,6 +970,13 @@ def main() -> int:
         return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
         return deal_days(r2)
+    if syms and syms[0].startswith('MF_STOCK:'):   # one company's fund rows and raw scheme lines (19 Nov)
+        parts = syms[0].split(':')
+        return mf_stock(r2, parts[1], parts[2] if len(parts) > 2 else '')
+    if syms and syms[0].startswith('MF_SCHEMES'):   # schemes read per house against AMFI's list (19 Nov)
+        return mf_schemes(r2, *syms[0].split(':')[1:2])
+    if syms == ['MF_RAW']:   # raw portfolio fetches per house-month against the archive (19 Nov)
+        return mf_raw(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
         return fund_names(r2)
     sec = read_parquet(r2, 'clean/current/securities.parquet')

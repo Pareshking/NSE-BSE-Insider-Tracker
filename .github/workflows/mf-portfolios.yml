@@ -19,6 +19,11 @@ on:
         description: 'House keys, space-separated; blank = all'
         required: false
         default: ''
+      schemes:
+        description: 'Archive scheme by scheme every archived house-month not yet (from raw, else fetched again)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -48,9 +53,11 @@ jobs:
         env:
           MONTHS: ${{ inputs.months }}
           HOUSES: ${{ inputs.houses }}
+          SCHEMES: ${{ inputs.schemes }}
         run: |
           args=""
-          if [ -z "$MONTHS" ]; then args="--latest 2"; else
+          if [ "$SCHEMES" = "true" ]; then args="--schemes"; fi
+          if [ -z "$MONTHS" ]; then args="$args --latest 2"; else
             for m in $(python scripts/mf_portfolios.py --expand "$MONTHS"); do args="$args --month $m"; done
           fi
           for h in $HOUSES; do args="$args --house $h"; done
