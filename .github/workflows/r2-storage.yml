@@ -297,6 +297,32 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: python scripts/clean_writer.py
 
+      # --- Market-wide flows (scripts/market_flows.py): NSE's provisional FII/DII for the day, NSDL's FPI
+      # daily trends and fortnightly sectors, SEBI's mutual fund trends -> clean/current/market_flows.parquet
+      # and fpi_sector_flows.parquet. A context line only: after everything else, its own capture folder and
+      # raw flush, and neither step can fail the nightly. ---
+      - name: Market flows (FPI, DII, mutual funds)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          TARGET_DATE: ${{ steps.target.outputs.date }}
+          RAW_CAPTURE_DIR: artifacts/raw_capture_market_flows
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python -u scripts/market_flows.py
+      - name: Store market flows raw responses (write-once)
+        if: always()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: python scripts/raw_flush.py --dir artifacts/raw_capture_market_flows
+
       - name: Upload run evidence
         if: always()
         uses: actions/upload-artifact@v4

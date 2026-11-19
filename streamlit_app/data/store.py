@@ -33,6 +33,7 @@ TABLES += ('results',)   # NSE results from the XBRL (insiders_clean/results.py)
 TABLES += ('encumbrances',)   # SAST Reg 31 (collectors/nse_events): the lender on a promoter's pledge row
 TABLES += ('universe',)   # companies of Rs 100 Cr and up (insiders_clean/universe.py): every other table is cut to it
 TABLES += ('announcement_reads', 'announcement_reads_history')   # filings read by scripts/announcement_reader.py, values checked; the history is reads older than 60 days
+TABLES += ('market_flows',)   # FPI, DII and mutual fund flows a day (scripts/market_flows.py): the flows line, screens/market_flows.py
 
 
 def _local() -> Path | None:

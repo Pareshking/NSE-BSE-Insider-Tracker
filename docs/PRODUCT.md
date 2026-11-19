@@ -66,7 +66,12 @@ reader can't get by scrolling the exchange pages:
 
 - **Data correctness first.** Data is cleaned once, in the nightly
   pipeline (`insiders_clean/`); the site never cleans. (07 Oct 2026)
-- **Sources: NSE and BSE only.** Screener.in is not scraped: its
+- **Sources: official disclosures beyond the exchanges** (owner, 19 Nov 2026: "find the data sources and have it", "don't
+  restrict yourself to only mutual funds"): besides NSE and BSE, the official publishers of mandated disclosures are read
+  directly: fund houses' month-end portfolios (SEBI rule, linked from AMFI), NPS pension funds' portfolios, NSDL's FPI
+  reports, SEBI's mutual fund trends. Third-party re-packagers (Screener, Trendlyne, Value Research) stay out, as below.
+  Aggregates with no stock (PMS monthly reports, AIF statistics, P-notes) are not collected: nothing per stock to act on.
+- ~~**Sources: NSE and BSE only.**~~ (07 Oct 2026, widened 19 Nov above) Screener.in is not scraped: its
   robots.txt disallows the paginated URLs and its terms forbid copying or
   mirroring; it mostly re-presents exchange filings anyway. (07 Oct 2026)
 - ~~Concall announcements are not collected~~ **Everything is captured from now on** (owner, 15 Oct 2026):

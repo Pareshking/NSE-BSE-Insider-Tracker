@@ -1,0 +1,62 @@
+name: Market flows backfill (FPI, DII, mutual funds)
+
+# The nightly R2 Storage Write run has this step for the latest days; this one is for a range by hand
+# (scripts/market_flows.py --from/--to): NSDL's FPI daily trends and SEBI's mutual fund trends month by month,
+# NSDL's fortnightly sector reports in the range. NSE's provisional FII/DII answer holds the latest day only,
+# so it has no backfill (asked for a range ending today, it is fetched once).
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'From (YYYY-MM-DD). Product window starts 2025-10-08.'
+        required: true
+        default: '2025-10-08'
+      to:
+        description: 'To (YYYY-MM-DD). Blank = today (IST).'
+        required: false
+        default: ''
+      sources:
+        description: 'Comma list of nse, nsdl, sebi, sectors'
+        required: false
+        default: 'nsdl,sebi,sectors'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Market flows
+        env:
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          SOURCES: ${{ inputs.sources }}
+        run: |
+          args=(--from "$FROM" --sources "$SOURCES")
+          if [ -n "$TO" ]; then args+=(--to "$TO"); fi
+          python -u scripts/market_flows.py "${args[@]}" | tee market_flows.log
+      - name: Store raw responses (write-once)
+        if: always()
+        run: python scripts/raw_flush.py
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Market flows (aggregate)' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' market_flows.log >> "$GITHUB_STEP_SUMMARY" || true

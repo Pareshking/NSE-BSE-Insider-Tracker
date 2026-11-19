@@ -4,6 +4,19 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Market flows, 19 Nov 2026 (branch `market-flows`, draft PR)
+
+A daily table of market-wide flows for a context line on Today ("FPIs sold Rs X Cr, DIIs bought Rs Y Cr on 18 Nov;
+mutual funds ... on 4 Nov"). Done: `scripts/market_flows.py` (nightly step at the end of R2 Storage Write, cannot fail
+it; `market-flows.yml` for a range), `clean/current/market_flows.parquet` and `fpi_sector_flows.parquet`
+(`docs/DATA_DICTIONARY.md`, Market flows), `screens/market_flows.flows_line` (tested; not on a page).
+Each source fetched from the container on 19 Nov: NSE `fiidiiTradeReact`/`fiidiiTradeNse` (latest day only, no
+history), NSDL daily trends (Oct 2025 - 18 Nov 2026 read in a dry run, every month adding to NSDL's total), NSDL
+fortnightly sectors (27 reports from 15 Oct 2025), SEBI mutual fund trends (newest day 04 Nov: about two weeks late).
+Note `docs/PRODUCT.md` says "Sources: NSE and BSE only" (07 Oct, about Screener.in); NSDL and SEBI were asked for by
+the owner on 19 Nov; the decision line is the owner's to update.
+**Next:** run Market flows backfill (from 2025-10-08) once merged; place `flows_line` on Today (another change);
+NSDL's DII pages (`DIIGenerateReport.aspx`) not read yet.
 ## Public shareholders over 1%, 19 Nov 2026 (branch `public-holders`, draft PR)
 
 The shareholding XBRL we already fetch names every public holder over 1% (Tables III and IV). Now parsed
