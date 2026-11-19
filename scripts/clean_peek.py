@@ -732,6 +732,43 @@ def mf_raw(r2) -> int:
     return 0
 
 
+def mf_schemes(r2, month: str = '2026-10') -> int:
+    """MF_SCHEMES[:YYYY-MM] (19 Nov): per house with raw files for the month, the schemes read from them against AMFI's
+    open-ended equity schemes for the house that month-end (the scheme count check, mf_holdings.scheme_coverage), and
+    whether the scheme rows add up to the archived house rows. Read-only: nothing is written to R2."""
+    import mf_portfolios as mp
+    from clean_writer import read_parquet
+    from collectors.mf_portfolios.houses import HOUSES, NOT_COLLECTED
+    from insiders_clean import mf_holdings as m
+    amfi, info = mp.amfi_list(month)
+    print('AMFI:', info)
+    lists, adds = [], {}
+    for h in HOUSES:
+        got = mp.raw_rows(r2, h, {month})
+        if month not in got:
+            continue
+        rows = got[month]
+        lists.append(m.scheme_list(rows, h.key, month, h.name))
+        hold = read_parquet(r2, f'{mp.ARCHIVE}month={month}/{h.key}.parquet')
+        adds[h.key] = mp.add_up(m.scheme_holdings(rows, h.key, month, h.name), hold) if hold is not None else 'no archive'
+    cov = m.scheme_coverage(pd.concat(lists, ignore_index=True), amfi if len(amfi) else None,
+                            {h.key: h.kind for h in HOUSES})
+    cov['isins_not_adding_up'] = cov['amc'].map(adds)
+    pd.set_option('display.max_colwidth', 120)
+    print(cov.drop(columns=['amfi_not_matched']).to_string(index=False))
+    print('\nAMFI equity schemes not matched by name, per house:')
+    for r in cov.to_dict('records'):
+        if r.get('amfi_not_matched'):
+            print(f'  {r["amc"]}: {r["amfi_not_matched"][:600]}')
+    if len(amfi):
+        eq = amfi[amfi['open_ended'] & amfi['category'].eq('equity')]
+        per = eq.groupby('house').agg(amc=('amc', 'first'), equity=('scheme_key', 'nunique')).reset_index()
+        print('\nAMFI open-ended equity schemes per house (every house on the list; amc blank = not collected):')
+        print(per.to_string(index=False))
+    print('not collected:', NOT_COLLECTED)
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -769,6 +806,8 @@ def main() -> int:
     if syms and syms[0].startswith('MF_STOCK:'):   # one company's fund rows and raw scheme lines (19 Nov)
         parts = syms[0].split(':')
         return mf_stock(r2, parts[1], parts[2] if len(parts) > 2 else '')
+    if syms and syms[0].startswith('MF_SCHEMES'):   # schemes read per house against AMFI's list (19 Nov)
+        return mf_schemes(r2, *syms[0].split(':')[1:2])
     if syms == ['MF_RAW']:   # raw portfolio fetches per house-month against the archive (19 Nov)
         return mf_raw(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
