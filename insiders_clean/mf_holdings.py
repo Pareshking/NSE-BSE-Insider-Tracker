@@ -78,7 +78,7 @@ def _header(rows: list) -> tuple[int, dict] | None:
                 col['isin'] = j
             elif ('quantity' in x or x in ('qty', 'no. of shares')) and 'qty' not in col:
                 col['qty'] = j
-            elif ('market' in x or 'fair value' in x or x.startswith('value')) and 'val' not in col:
+            elif ('market' in x or x.startswith('mkt') or 'fair value' in x or x.startswith('value')) and 'val' not in col:
                 col['val'] = j
             elif ('% to' in x or '% of' in x or 'to net assets' in x or x in ('%', '% aum')) and 'pct' not in col:
                 col['pct'] = j

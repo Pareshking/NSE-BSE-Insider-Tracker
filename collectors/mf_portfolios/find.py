@@ -12,11 +12,12 @@ from __future__ import annotations
 import calendar
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 from urllib.parse import unquote, urljoin
 
 FILE = re.compile(r'\.(xlsx|xls|xlsm|zip)(\?|#|$)', re.I)
 EXCLUDE = re.compile(r'fortnight|debt|risk|a?aum|factsheet|fact-sheet|half|proxy|voting|commission|transaction|dashboard|'
-                     r'riskometer|ter\b|expense|nav\b|dividend|idcw|brsr|esg-score|stress|liquidity|scheme-differentiation|'
+                     r'riskometer|ter\b|expense|nav\b|dividend(?![ _-]?yield)|idcw|brsr|esg-score|stress|liquidity|scheme-differentiation|'
                      r'stewardship|investor-complaint|unclaimed|kim|sid\b|top-?10|sector', re.I)
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
@@ -31,6 +32,9 @@ class House:
     must: str | None = None      # a regex a candidate must also match (when the page lists other monthly files)
     exclude: str | None = None   # a regex that rules a candidate out, on top of EXCLUDE
     click: list = field(default_factory=list)   # texts to click (tabs) before reading links, in a browser
+    # The house's own listing service, for a page that draws its file list from one (a JSON or form endpoint) rather
+    # than links: a function (month 'YYYY-MM') -> [(text, href)] of file addresses, read in place of the page.
+    api: Callable | None = None
 
 
 def month_tokens(month: str) -> re.Pattern:
@@ -57,7 +61,7 @@ def candidates(links: list[tuple[str, str]], month: str, house: House) -> list[s
     excl = re.compile(house.exclude, re.I) if house.exclude else None
     scored = []
     for text, href in links:
-        if not href or not FILE.search(href):
+        if not href or not (house.api or FILE.search(href)):   # an api lists files; some are served without an extension
             continue
         hay = f'{text} {unquote(href)}'.lower()
         base = f'{text} {unquote(href).split("?")[0].rsplit("/", 1)[-1]}'.lower()   # folder names say nothing of the file
