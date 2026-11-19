@@ -19,8 +19,8 @@ from ui.theme import C
 INK, INK2, INK3, INK4, LINE = C['ink'], C['ink-2'], C['ink-3'], C['ink-4'], C['line']   # ui/theme.py
 BUY, SELL, PRICE = C['buy'], C['sell'], C['accent']
 FONT = C['ui'].split(',')[0].strip("' ")
-ROW = 26           # px per bar: a thumb's height, labels in 12 px
-LABEL_CHARS = 24   # a company name cut to fit a phone's label column
+ROW = 36           # px per row of a bar chart: a line of text over a thin bar
+LABEL_CHARS = 30   # a name cut to leave room for its value on a 390 px phone
 
 
 def _finish(chart, height: int):
@@ -70,7 +70,7 @@ def basket_vs_index(nav: pd.DataFrame) -> alt.Chart | None:
 def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable[[float], str] = pts,
                   tag: str | None = None, limit: int = 15) -> alt.Chart | None:
     """Added (green, right of zero) against cut (red, left of zero), one bar per row, largest added at the top and
-    largest cut at the bottom, each bar's value written at its end. `fmt` writes the value (points by default; pass
+    largest cut at the bottom; each row's name and value on a line over its bar. `fmt` writes the value (points by default; pass
     lambda v: rupees(v, signed=True) for rupees); `tag` names a column whose text follows the value ("new", "exited").
     Rows with no value or a zero change are left out (nothing to draw); the `limit` largest either way are kept."""
     if df is None or df.empty or label not in df or value not in df:
@@ -87,19 +87,20 @@ def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable
     d['_tone'] = d['_v'].map(lambda v: 'up' if v > 0 else 'down')
     lo, hi = min(d['_v'].min(), 0.0), max(d['_v'].max(), 0.0)
     span = (hi - lo) or 1.0
-    # room at each end for the written value (about 40% of the bars' span where bars point that way)
-    dom = [lo - (0.55 * span if lo < 0 else 0.02 * span), hi + (0.55 * span if hi > 0 else 0.02 * span)]
+    dom = [lo - 0.01 * span, hi + 0.01 * span]
+    # Each row: the name on the left and the value on the right, on one line, the bar under them from the zero line. The
+    # bars have the full width and no text sits beside them, so nothing collides on a 390 px phone.
     x = alt.X('_v:Q', scale=alt.Scale(domain=dom, nice=False), axis=None)
-    y = alt.Y('_l:N', sort=list(d['_l']), axis=alt.Axis(labelLimit=170, labelColor=INK, labelPadding=8))
+    y = alt.Y('_l:N', sort=list(d['_l']), axis=None, scale=alt.Scale(paddingInner=0, paddingOuter=0))
+    tone = alt.Color('_tone:N', scale=alt.Scale(domain=['up', 'down'], range=[BUY, SELL]), legend=None)
+    tip = [alt.Tooltip('_l:N', title='Name'), alt.Tooltip('_t:N', title='Change')]
     base = alt.Chart(d).encode(y=y)
-    bars = base.mark_bar(height=ROW - 10, cornerRadius=2).encode(
-        x=x, x2=alt.datum(0),
-        color=alt.Color('_tone:N', scale=alt.Scale(domain=['up', 'down'], range=[BUY, SELL]), legend=None),
-        tooltip=[alt.Tooltip('_l:N', title='Name'), alt.Tooltip('_t:N', title='Change')])
-    zero = alt.Chart(pd.DataFrame({'z': [0.0]})).mark_rule(color=INK4, strokeWidth=1).encode(x=alt.X('z:Q', scale=alt.Scale(domain=dom)))
-    up = base.transform_filter('datum._v > 0').mark_text(align='left', dx=4, fontSize=12, color=BUY).encode(x=x, text='_t:N')
-    dn = base.transform_filter('datum._v < 0').mark_text(align='right', dx=-4, fontSize=12, color=SELL).encode(x=x, text='_t:N')
-    return _finish(alt.layer(bars, zero, up, dn), ROW * len(d) + 6)
+    bars = base.mark_bar(height=8, yOffset=8, cornerRadius=2).encode(x=x, x2=alt.datum(0), color=tone, tooltip=tip)
+    zero = base.mark_tick(color=INK4, thickness=1, size=14, yOffset=8).encode(x=alt.datum(0))
+    name = base.mark_text(align='left', baseline='middle', dy=-7, x=0, fontSize=12.5, color=INK).encode(text='_l:N', tooltip=tip)
+    val = base.mark_text(align='right', baseline='middle', dy=-7, x='width', fontSize=12.5, fontWeight=600).encode(
+        text='_t:N', color=tone)
+    return _finish(alt.layer(bars, zero, name, val), ROW * len(d))
 
 
 def buy_sell_split(buy, sell, fmt: Callable[[float], str] = rupees) -> alt.Chart | None:
