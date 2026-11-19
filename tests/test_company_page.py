@@ -119,7 +119,7 @@ def test_red_flags_levels():
     assert {x.name: x for x in cg.red_flags(pledge=0.0, trade_flags=['T2T'])}['Surveillance'].level == 'warn'
 
 
-def glance(ins_net=0.0, mf=None, fpi=0.0, dii=0.0, deal_net=0.0, flags=None):
+def glance(ins_net=0.0, mf=None, fpi=0.0, dii=0.0, deal_net=0.0, flags=None, deal_pct=None):
     ins = {'buy': max(ins_net, 0), 'sell': max(-ins_net, 0), 'net': ins_net, 'buyers': 1, 'sellers': 0, 'promoter_net': ins_net,
            'rows': 1 if ins_net else 0, 'days': 90}
     fm = None if mf is None else {'month': '2026-10', 'latest': True, 'net_cr': mf, 'adding': 3, 'cutting': 1, 'new': 0, 'exit': 0,
@@ -128,10 +128,10 @@ def glance(ins_net=0.0, mf=None, fpi=0.0, dii=0.0, deal_net=0.0, flags=None):
     delta = pd.DataFrame([{'group': 'FPI', 'pts': fpi, 'now': 15.0, 'before': 15.0 - fpi, 'quarter': q, 'prev_quarter': p},
                           {'group': 'Mutual funds', 'pts': dii, 'now': 9.0, 'before': 9.0, 'quarter': q, 'prev_quarter': p}])
     deals = {'buy': max(deal_net, 0), 'sell': max(-deal_net, 0), 'net': deal_net, 'n': 1 if deal_net else 0,
-             'top_buyer': '', 'top_seller': '', 'days': 90}
+             'top_buyer': '', 'top_seller': '', 'days': 90, 'net_pct': deal_pct}
     fl = flags if flags is not None else cg.red_flags(pledge=0.0, trade_flags=[])
     cs = cg.chips(ins, fm, delta, deals, fl, 'Promoter buys: measured ahead')
-    return cs, cg.verdict(cs, fl)
+    return cs, cg.verdict(cs, fl, deals)
 
 
 def test_verdict_buying_with_no_red_flags():
@@ -150,10 +150,47 @@ def test_verdict_selling_and_a_red_flag():
 def test_verdict_mixed_small_moves_do_not_count_and_deals_only_when_alone():
     _, (s, lean) = glance(ins_net=1e6, mf=-5.0, fpi=0.1, dii=0.6)   # ₹10 L of insiders, 0.1 pts of FPI: not moving
     assert s == 'Domestic institutions buying, mutual funds selling; no red flags' and lean == 'mixed'
-    _, (s, lean) = glance(deal_net=-5e9)
-    assert s.startswith('Big sellers in deals are selling') and lean == 'leaving'
+    _, (s, lean) = glance(deal_net=-5e9, deal_pct=-0.4)
+    assert s == '₹500 Cr net sold in bulk and block deals (0.4% of the company); no red flags' and lean == 'leaving'
+    _, (s, lean) = glance(fpi=0.5, deal_net=-5e9, deal_pct=-0.4)   # under 1% of the company: the others lead alone
+    assert s == 'Foreign investors are buying; no red flags'
     _, (s, lean) = glance()
     assert s == 'No clear move by insiders or funds; no red flags' and lean == 'quiet'
+
+
+def test_a_block_of_a_big_share_of_the_company_is_named_beside_the_quarter():
+    """IIFL Finance, 18 Nov 2026: FIH Mauritius sold about 24% of the company in a block while the September quarter showed
+    foreign investors adding; the block is news and is said, and the lean is mixed."""
+    _, (s, lean) = glance(fpi=1.77, deal_net=-3.288e10, deal_pct=-11.6)
+    assert s == ('Foreign investors are buying; ₹3,288 Cr net sold in bulk and block deals (11.6% of the company); '
+                 'no red flags') and lean == 'mixed'
+
+
+def test_a_matched_block_is_its_size_and_its_seller_not_a_nil_net():
+    """IIFL Finance, 18 Nov 2026 on real data: FIH Mauritius sold 12.35% of the company to 47 buyers, so bought = sold and
+    the net was ₹0; the chip and the verdict say how much changed hands and who sold."""
+    ins = {'buy': 0.0, 'sell': 0.0, 'net': 0.0, 'buyers': 0, 'sellers': 0, 'promoter_net': 0.0, 'rows': 0, 'days': 90}
+    year = {**ins, 'rows': 2, 'net': 6.577e8}
+    deals = {'buy': 3.488e10, 'sell': 3.488e10, 'net': 0.0, 'n': 49, 'top_buyer': 'SBI MUTUAL FUND',
+             'top_seller': 'FIH MAURITIUS INVESTMENTS LTD', 'days': 90, 'net_pct': 0.0, 'buy_pct': 12.35, 'sell_pct': 12.35}
+    fl = cg.red_flags(pledge=0.0, trade_flags=[])
+    cs = cg.chips(ins, None, pd.DataFrame(), deals, fl, ins_year=year)
+    by = {c.key: c for c in cs}
+    assert by['deals'].value == '₹3,488 Cr traded' and by['deals'].moving == 0
+    assert by['deals'].note == '12.3% of the company changed hands · sold by FIH Mauritius Investments LTD · bought most by SBI Mutual Fund'
+    assert by['insiders'].note == 'none in 90 days; 12 months: net +₹65.8 Cr'
+    s, lean = cg.verdict(cs, fl, deals)
+    assert s == ('No clear move by insiders or funds; 12.3% of the company changed hands in bulk and block deals '
+                 '(seller: FIH Mauritius Investments LTD); no red flags') and lean == 'quiet'
+
+
+def test_deal_flow_nets_value_and_share_of_the_company():
+    d = pd.DataFrame({'date': [REF, REF, REF - pd.Timedelta(days=200)], 'side': ['SELL', 'BUY', 'BUY'],
+                      'value': [6.776e10, 3.488e10, 1e9], 'pct_of_mcap': [23.98, 12.35, 0.4],
+                      'client_name': ['FIH MAURITIUS', 'SBI MF', 'OLD BUYER']})
+    f = cg.deal_flow(d, REF)
+    assert f['net'] == 3.488e10 - 6.776e10 and round(f['net_pct'], 2) == -11.63 and f['n'] == 2
+    assert (f['top_buyer'], f['top_seller']) == ('SBI MF', 'FIH MAURITIUS')
 
 
 def test_missing_data_is_said_and_never_counts():

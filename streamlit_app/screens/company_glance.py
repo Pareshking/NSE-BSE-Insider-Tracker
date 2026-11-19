@@ -33,6 +33,7 @@ INSIDER_MIN = 25e5              # ₹25 lakh: under this net, insiders are not "
 FUND_MIN_CR = 1.0               # ₹1 Cr: the Funds page's floor for a stock's net buying or selling in a month
 DEAL_MIN = 1e7                  # ₹1 Cr net in deals
 QUARTER_MIN_PTS = 0.20          # a quarter's change in a group's holding under this many points is "steady"
+DEAL_BIG_PCT = 1.0              # deals netting 1% of the company or more are named in the verdict even beside other moves
 
 # Ownership groups, the parser's investor types they add up (docs/DATA_DICTIONARY.md, shareholding). Retail takes in
 # HNIs: both are resident individuals, split only by ₹2 lakh of nominal capital.
@@ -57,7 +58,7 @@ def _cr(v: float) -> str:
     """₹ in crore, short: ₹3,488 Cr, ₹65.8 Cr, ₹42 L."""
     a = abs(v)
     sign = '−' if v < 0 else ''
-    if a >= 1e10:
+    if a >= 1e9:
         return f'{sign}₹{a / 1e7:,.0f} Cr'
     if a >= 1e7:
         return f'{sign}₹{a / 1e7:,.1f} Cr'
@@ -206,7 +207,8 @@ def mix_delta(mix: pd.DataFrame | None) -> pd.DataFrame:
 def deal_flow(d: pd.DataFrame | None, ref, days: int = FLOW_DAYS) -> dict:
     """Bulk and block deals by real buyers and sellers (the caller leaves market makers and copies of insider filings
     out) in the `days` to `ref`: {'buy', 'sell', 'net', 'n', 'top_buyer', 'top_seller'}."""
-    out = {'buy': 0.0, 'sell': 0.0, 'net': 0.0, 'n': 0, 'top_buyer': '', 'top_seller': '', 'days': days}
+    out = {'buy': 0.0, 'sell': 0.0, 'net': 0.0, 'n': 0, 'top_buyer': '', 'top_seller': '', 'days': days, 'net_pct': None,
+           'buy_pct': None, 'sell_pct': None}
     if d is None or d.empty or not {'date', 'side', 'value'} <= set(d.columns):
         return out
     ref = pd.Timestamp(ref)
@@ -219,6 +221,11 @@ def deal_flow(d: pd.DataFrame | None, ref, days: int = FLOW_DAYS) -> dict:
     b, s = x['side'].eq('BUY'), x['side'].eq('SELL')
     out.update(buy=float(v[b].sum()), sell=float(v[s].sum()), n=int(len(x)))
     out['net'] = out['buy'] - out['sell']
+    if 'pct_of_mcap' in x:   # each leg's share of the company at the deal's own market cap
+        p = pd.to_numeric(x['pct_of_mcap'], errors='coerce')
+        if p.notna().any():
+            out['net_pct'] = float(p[b].sum() - p[s].sum())
+            out['buy_pct'], out['sell_pct'] = float(p[b].sum()), float(p[s].sum())
     if b.any():
         out['top_buyer'] = str(v[b].groupby(who[b]).sum().idxmax())
     if s.any():
@@ -339,13 +346,23 @@ class Chip:
     extra: dict = field(default_factory=dict)
 
 
+def _short(name: str, n: int = 32) -> str:
+    """A client's name as the exchange files it, out of capitals (short words such as SBI or FIH kept), cut to `n`."""
+    words = str(name).split()
+    if str(name).isupper():
+        words = [w if len(w) <= 3 else w.title() for w in words]
+    name = ' '.join(words)
+    return name if len(name) <= n else name[:n - 1].rstrip() + '…'
+
+
 def _side(v: float, floor: float) -> int:
     return 1 if v >= floor else -1 if v <= -floor else 0
 
 
 def chips(ins: dict, fm: dict | None, delta: pd.DataFrame | None, deals: dict, flags: list[Flag],
-          insider_evidence: str = '', month_label=None) -> list[Chip]:
-    """The verdict band's chips, each with its evidence status. A group whose data is missing says so (tone 'na')."""
+          insider_evidence: str = '', month_label=None, ins_year: dict | None = None) -> list[Chip]:
+    """The verdict band's chips, each with its evidence status. A group whose data is missing says so (tone 'na').
+    `ins_year`: the same insider flow over 12 months, named on the chip when the 90 days are quiet."""
     out = []
     m = _side(ins['net'], INSIDER_MIN)
     if ins['rows']:
@@ -353,6 +370,9 @@ def chips(ins: dict, fm: dict | None, delta: pd.DataFrame | None, deals: dict, f
         note = f'bought {_cr(ins["buy"])} · sold {_cr(ins["sell"])}'
     else:
         val, note = 'No trades', 'no promoter, director or KMP traded on the market'
+        if ins_year and ins_year['rows']:
+            note = (f'none in {ins["days"]} days; 12 months: net {signed_cr(ins_year["net"])}' if ins_year['net']
+                    else f'none in {ins["days"]} days; 12 months: ₹0 net')
     out.append(Chip('insiders', f'Insiders, {ins["days"]} days', val, note, 'up' if m > 0 else 'down' if m < 0 else 'flat',
                     insider_evidence or 'Not measured', m))
     if fm is None:
@@ -379,9 +399,20 @@ def chips(ins: dict, fm: dict | None, delta: pd.DataFrame | None, deals: dict, f
             out.append(Chip(key, f'{label}, {q:%b %Y} qtr', f'{pts:+.2f} pts', f'now {now:.2f}% of the company',
                             'up' if m > 0 else 'down' if m < 0 else 'flat', 'Exploratory: not measured', m))
     m = _side(deals['net'], DEAL_MIN)
-    if deals['n']:
+    gross = max(deals['buy'], deals['sell'])
+    if deals['n'] and gross and abs(deals['net']) < 0.1 * gross:
+        # a matched block: one side sold what the other bought, so the net says nothing; the size and who does
+        pct = _num(deals.get('sell_pct')) or _num(deals.get('buy_pct'))
+        who = ' · '.join(x for x in (f'sold by {_short(deals["top_seller"])}' if deals['top_seller'] else '',
+                                     f'bought most by {_short(deals["top_buyer"])}' if deals['top_buyer'] else '') if x)
+        out.append(Chip('deals', f'Bulk and block, {deals["days"]} days', f'{_cr(gross)} traded',
+                        (f'{pct:.1f}% of the company changed hands · ' if pct and pct >= 0.05 else 'changed hands · ') + who, 'flat',
+                        'Studies: weak (copying bulk deals)', 0))
+    elif deals['n']:
         out.append(Chip('deals', f'Bulk and block, {deals["days"]} days', signed_cr(deals['net']) if deals['net'] else '₹0 net',
-                        f'bought {_cr(deals["buy"])} · sold {_cr(deals["sell"])}', 'up' if m > 0 else 'down' if m < 0 else 'flat',
+                        f'bought {_cr(deals["buy"])} · sold {_cr(deals["sell"])}'
+                        + (f' · net {deals["net_pct"]:+.1f}% of the company' if _num(deals.get('net_pct')) is not None
+                           and abs(deals['net_pct']) >= 0.05 else ''), 'up' if m > 0 else 'down' if m < 0 else 'flat',
                         'Studies: weak (copying bulk deals)', m))
     else:
         out.append(Chip('deals', f'Bulk and block, {deals["days"]} days', 'None', 'no deal by a real buyer or seller', 'flat', '', 0))
@@ -399,37 +430,56 @@ def chips(ins: dict, fm: dict | None, delta: pd.DataFrame | None, deals: dict, f
     return out
 
 
-NAMES = {'insiders': 'insiders', 'mf': 'mutual funds', 'fpi': 'foreign investors', 'dii': 'domestic institutions',
-         'deals': 'big buyers in deals'}
-SELLERS = {'deals': 'big sellers in deals'}
+NAMES = {'insiders': 'insiders', 'mf': 'mutual funds', 'fpi': 'foreign investors', 'dii': 'domestic institutions'}
 
 
 def _join(xs: list[str]) -> str:
     return xs[0] if len(xs) == 1 else ', '.join(xs[:-1]) + ' and ' + xs[-1]
 
 
-def verdict(cs: list[Chip], flags: list[Flag]) -> tuple[str, str]:
-    """(sentence, lean). lean: 'accumulating', 'leaving', 'mixed' or 'quiet'. Deals count only when nobody else moves:
-    a block's buyer and seller are both in it, and copying bulk deals is weak in the studies (docs/PRODUCT.md)."""
+def _deal_words(deals: dict) -> str:
+    """'₹3,288 Cr net sold in bulk and block deals (11.6% of the company)'."""
+    net, pct = deals['net'], _num(deals.get('net_pct'))
+    return (f'{_cr(abs(net))} net {"bought" if net > 0 else "sold"} in bulk and block deals'
+            + (f' ({abs(pct):.1f}% of the company)' if pct is not None and abs(pct) >= 0.05 else ''))
+
+
+def verdict(cs: list[Chip], flags: list[Flag], deals: dict | None = None) -> tuple[str, str]:
+    """(sentence, lean). lean: 'accumulating', 'leaving', 'mixed' or 'quiet'. Deals lead only when nobody else moves, and
+    are named beside the others when they net DEAL_BIG_PCT of the company or more (a block sale of a quarter of the company
+    is news whatever last quarter's holdings say); copying bulk deals is weak in the studies (docs/PRODUCT.md)."""
     core = [c for c in cs if c.key in ('insiders', 'mf', 'fpi', 'dii')]
     buy = [NAMES[c.key] for c in core if c.moving > 0]
     sell = [NAMES[c.key] for c in core if c.moving < 0]
-    if not buy and not sell:
-        d = next((c for c in cs if c.key == 'deals'), None)
-        if d is not None and d.moving:
-            (buy if d.moving > 0 else sell).append(NAMES['deals'] if d.moving > 0 else SELLERS['deals'])
+    d = next((c for c in cs if c.key == 'deals'), None)
+    deal_move = d.moving if d is not None else 0
+    pct = _num(deals.get('net_pct')) if deals else None
+    big = bool(deal_move) and pct is not None and abs(pct) >= DEAL_BIG_PCT
+    gross_pct = max(_num(deals.get('sell_pct')) or 0.0, _num(deals.get('buy_pct')) or 0.0) if deals else 0.0
+    block = not deal_move and gross_pct >= DEAL_BIG_PCT
     if buy and not sell:
         head, lean = f'{_join(buy)} are buying', 'accumulating'
     elif sell and not buy:
         head, lean = f'{_join(sell)} are selling', 'leaving'
     elif buy and sell:
         head, lean = f'{_join(buy)} buying, {_join(sell)} selling', 'mixed'
+    elif deal_move:
+        head = _deal_words(deals) if deals else ('big buyers in deals are buying' if deal_move > 0 else 'big sellers in deals are selling')
+        lean, big = ('accumulating' if deal_move > 0 else 'leaving'), False
     else:
         head, lean = 'No clear move by insiders or funds', 'quiet'
+    if block:
+        seller = f' (seller: {_short(deals["top_seller"])})' if deals.get('top_seller') else ''
+        head += f'; {gross_pct:.1f}% of the company changed hands in bulk and block deals{seller}'
+    if big:
+        head += f'; {_deal_words(deals)}'
+        if (lean == 'accumulating' and deal_move < 0) or (lean == 'leaving' and deal_move > 0):
+            lean = 'mixed'
     red = [f for f in flags if f.level == 'fail']
     warn = [f for f in flags if f.level == 'warn']
     if red:
-        tail = f'red flag: {red[0].text[0].lower() + red[0].text[1:]}' if len(red) == 1 else f'{len(red)} red flags ({_join([f.name.lower() for f in red])})'
+        tail = (f'red flag: {red[0].text[0].lower() + red[0].text[1:]}' if len(red) == 1
+                else f'{len(red)} red flags ({_join([f.name.lower() for f in red])})')
     else:
         tail = 'no red flags' + (f', {len(warn)} thing{"s" * (len(warn) != 1)} to check' if warn else '')
     s = f'{head}; {tail}'

@@ -480,7 +480,7 @@ def _funds(fm: dict | None, ch: pd.DataFrame, stock_month: pd.DataFrame, isin, t
     """Which fund houses hold it, their month-end trend, and who added or cut last month."""
     from screens import proto
     names = _house_names()
-    houses, trend = cg.fund_houses(ch, isin, tot_sh, {k: v.replace(' Mutual Fund', '') for k, v in names.items()})
+    houses, trend = cg.fund_houses(ch, isin, tot_sh, {k: v.replace(' Mutual Fund', '') for k, v in names.items()}, limit=10)
     collected = int(cg._mf(ch)['amc'].nunique()) if ch is not None and not ch.empty and 'amc' in ch else 0
     filed = f'Mutual funds hold {srow_mf:.2f}% by the company\'s own filing.' if kit._finite(srow_mf) is not None else ''
     if houses.empty or fm is None:
@@ -503,17 +503,25 @@ def _funds(fm: dict | None, ch: pd.DataFrame, stock_month: pd.DataFrame, isin, t
         tone = 'up' if c and c > 0 else 'down' if c and c < 0 else 'flat'
         kind = r.get('kind')
         chg = ('new' if kind == 'new' else 'sold out' if kind == 'exit' or r['shares'] <= 0 else
-               (('+' if c > 0 else '−') + kit.shares(abs(c))) if c else 'unchanged')
-        rows.append(f'<div class="cg-fh"><span class="nm">{esc(r["house"])}</span>'
-                    f'{cg_charts.spark(vals, 96, 28, tone)}'
-                    f'<span class="v num">{kit.pct(r["pct"], 2) if kit._finite(r.get("pct")) is not None else kit.shares(r["shares"])}'
-                    f'<em>{kit.shares(r["shares"])} sh</em></span><span class="c num {tone}">{esc(chg)}</span></div>')
+               (('+' if c > 0 else '−') + _sh(abs(c))) if c else 'unchanged')
+        line = cg_charts.spark(vals, 96, 28, tone) if len(vals) > 1 else '<span class="cg-nospark">one month</span>'
+        rows.append(f'<div class="cg-fh"><span class="nm">{esc(r["house"])}</span>{line}'
+                    f'<span class="v num">{kit.pct(r["pct"], 2) if kit._finite(r.get("pct")) is not None else _sh(r["shares"])}'
+                    f'<em>{_sh(r["shares"])} shares</em></span><span class="c num {tone}">{esc(chg)}</span></div>')
     # st.markdown, not st.html: st.html's sanitiser drops inline SVG (the trend lines)
-    st.markdown(ds.sub('Fund houses, largest first', f'% of the company · trend over {trend["month"].nunique()} month ends · '
-                       f'shares added or cut in {_month(fm["month"])}')
+    st.markdown(ds.sub('Fund houses', f'% of the company · {trend["month"].nunique()} month ends · shares added or cut in {_month(fm["month"])}')
                 + '<div class="cg-fhs">' + ''.join(rows) + '</div>'
                 + (f'<p class="dt-foot">{len(houses) - 10} more houses hold smaller amounts.</p>' if len(houses) > 10 else ''),
                 unsafe_allow_html=True)
+
+
+def _sh(n) -> str:
+    """A share count short, in Indian units: 4.94 Cr, 62.0 L, 4,481."""
+    v = kit._finite(n)
+    if v is None:
+        return '—'
+    a = abs(v)
+    return f'{a / 1e7:,.2f} Cr' if a >= 1e7 else f'{a / 1e5:,.1f} L' if a >= 1e5 else kit.shares(a)
 
 
 def _movers(houses: pd.DataFrame) -> str:
@@ -522,9 +530,9 @@ def _movers(houses: pd.DataFrame) -> str:
     up, dn = houses[c > 0].assign(_c=c).sort_values('_c', ascending=False), houses[c < 0].assign(_c=c).sort_values('_c')
     part = []
     if len(up):
-        part.append(f'Added most: {up["house"].iloc[0]} (+{kit.shares(up["_c"].iloc[0])} shares)')
+        part.append(f'Added most: {up["house"].iloc[0]} (+{_sh(up["_c"].iloc[0])} shares)')
     if len(dn):
-        part.append(f'cut most: {dn["house"].iloc[0]} (−{kit.shares(-dn["_c"].iloc[0])})')
+        part.append(f'cut most: {dn["house"].iloc[0]} (−{_sh(-dn["_c"].iloc[0])})')
     return ('; '.join(part) + '. ') if part else ''
 
 
@@ -679,8 +687,8 @@ def render():
                          len(late), list(cheap.loc[cheap['list'] == 'warn', 'sentence']) if not cheap.empty else [],
                          cg.results_doubts(ctx.results, isin), float(sold['value'].sum()) if not sold.empty else 0.0,
                          pd.to_numeric(sold['pct_of_mcap'], errors='coerce').sum() if not sold.empty else None, enc)
-    chips = cg.chips(ins, fm, delta, dflow, flags, _insider_evidence(ins, summary), _month)
-    sentence, lean = cg.verdict(chips, flags)
+    chips = cg.chips(ins, fm, delta, dflow, flags, _insider_evidence(ins, summary), _month, cg.insider_flow(e, ctx.ref, 365))
+    sentence, lean = cg.verdict(chips, flags, dflow)
 
     # ---- The verdict band: the answer in one sentence, the groups behind it as chips ----
     ds._reset()
