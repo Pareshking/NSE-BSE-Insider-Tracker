@@ -11,7 +11,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import ds, kit
+from ui import charts, ds, kit
 from ui.kit import esc
 
 from insiders_clean import evidence, ideas
@@ -171,7 +171,7 @@ def deals():
     ds.club('Left out as noise', club)
 
 
-def _events_page(key: str, title: str, question: str, kinds: set, note: str, extra: list | None = None, after=None):
+def _events_page(key: str, title: str, question: str, kinds: set, note: str, extra: list | None = None, after=None, lead=None):
     ctx = _ctx()
     if ctx is None:
         return
@@ -185,6 +185,8 @@ def _events_page(key: str, title: str, question: str, kinds: set, note: str, ext
     with top:
         ds.head(f'{title} · {esc(_span(p, ctx.ref))}', f'{kit.plural(len(items), "filing")} past the bar', [note])
     ds.stats([(k, counts.get(k, 0), '') for k in sorted(kinds) if counts.get(k)] or [('Filings', 0, 'in this period')])
+    if lead is not None:
+        lead(ctx, ev)
     ds.section(question, 'Largest share of the company first')
     ds.record(_why_line(items))
     ds.stories(items, 'Nothing past the bar in this period.')
@@ -210,11 +212,45 @@ def risks():
                  after=lambda ctx, days: __import__('screens.more_pages', fromlist=['x']).red_flags_section(ctx, days))
 
 
+HOLDER_UP = {'Big investor in', 'Mutual funds adding', 'Foreign investors adding'}
+
+
+def holder_moves(ev: pd.DataFrame, kinds: set) -> pd.DataFrame:
+    """The period's holder events of `kinds` as signed points of the company (in or adding +, out or trimming -), with the
+    company's name and, for the quarterly fund changes, who moved (MF or foreign)."""
+    if ev is None or ev.empty:
+        return pd.DataFrame(columns=['company', 'pts', 'who'])
+    x = ev[ev['kind'].isin(kinds)].copy()
+    x['pts'] = pd.to_numeric(x['pct_of_company'], errors='coerce') * x['kind'].map(lambda k: 1 if k in HOLDER_UP else -1)
+    x['who'] = x['kind'].map(lambda k: 'Mutual funds' if k.startswith('Mutual') else 'Foreign investors' if k.startswith('Foreign') else '')
+    x['company'] = x['company'].fillna(x['nse_symbol']).astype(str)
+    return x[['company', 'pts', 'who']].dropna(subset=['pts'])
+
+
+def _ownership_chart(ctx, ev) -> None:
+    """Who added and who cut, at a glance: one bar per filing, points of the company, before the stories."""
+    stake = charts.diverging_bar(holder_moves(ev, STAKE_KINDS), 'company', 'pts', limit=20)
+    funds = charts.diverging_bar(holder_moves(ev, HOLDER_KINDS), 'company', 'pts', tag='who', limit=20)
+    if not stake and not funds:
+        return
+    ds.section('Who added, who cut?', 'Points of the company, one bar per filing, the 20 largest either way')
+    with ds.inside():
+        if stake:
+            st.html('<p class="chart-cap"><b>Outside holders</b> crossing 5% or moving 2% or more (SAST filings): '
+                    'the points they bought or sold</p>')
+            st.html(stake)
+        if funds:
+            st.html('<p class="chart-cap"><b>Mutual funds and foreign investors</b>, change in the latest quarter filed '
+                    '(a quarter-end filing, not a trade this period)</p>')
+            st.html(funds)
+
+
 def ownership():
     _events_page('pg_own', 'Big holders', 'Who crossed 5% or moved 2%?', STAKE_KINDS,
                  'Outside holders crossing 5% or moving 2% or more (SAST filings), and mutual funds and foreign investors moving 1 point '
                  'or more of a company in the latest quarter (shareholding filings, dated by the quarter).',
-                 [('Quarter-end shareholding filings, not trades this period', 'How did funds change their holdings?', HOLDER_KINDS)])
+                 [('Quarter-end shareholding filings, not trades this period', 'How did funds change their holdings?', HOLDER_KINDS)],
+                 lead=_ownership_chart)
 
 
 def calendar():

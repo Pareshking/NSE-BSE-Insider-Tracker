@@ -7,7 +7,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 from data import store
-from ui import kit
+from ui import charts, kit
 from ui.kit import Col, Tile
 
 from insiders_clean import investors, participants, signals
@@ -54,6 +54,25 @@ def _panel(df: pd.DataFrame, key: str, empty: str) -> None:
     kit.table(d, INVESTOR_COLS, limit=LIMIT, key=key, keep_empty=True)
 
 
+def fund_moves(s: pd.DataFrame) -> pd.DataFrame:
+    """Each company's quarterly change for mutual funds and for foreign investors as one row each, with who moved."""
+    if s is None or s.empty:
+        return pd.DataFrame(columns=['label', 'pts', 'who'])
+    name = s['company'].fillna(s['symbol']).astype(str) if 'company' in s else s['symbol'].astype(str)
+    parts = [pd.DataFrame({'label': list(name), 'pts': pd.to_numeric(s[col], errors='coerce'), 'who': who})
+             for col, who in (('mf_change_pts', 'Mutual funds'), ('fpi_change_pts', 'Foreign investors')) if col in s]
+    return pd.concat(parts, ignore_index=True).dropna(subset=['pts']) if parts else pd.DataFrame(columns=['label', 'pts', 'who'])
+
+
+def investor_net(buy: pd.DataFrame, sell: pd.DataFrame) -> pd.DataFrame:
+    """The biggest net buyers and sellers as one list of signed rupees, for the diverging bar."""
+    parts = [x for x in (buy, sell) if x is not None and not x.empty]
+    if not parts:
+        return pd.DataFrame(columns=['investor', 'net'])
+    both = pd.concat(parts, ignore_index=True)
+    return both.drop_duplicates('investor_id')[['investor', 'net']] if 'investor_id' in both else both[['investor', 'net']]
+
+
 def _holders(ctx) -> None:
     snap = store.snapshot()
     if snap.empty or not {'mf', 'fpi'} <= set(snap.columns):
@@ -65,6 +84,9 @@ def _holders(ctx) -> None:
         return
     s['nse_symbol'] = s['symbol']
     with kit.card('Funds in each company', 'inv_holders', 'latest quarter filed, change from the quarter before, in points of the company'):
+        bars = charts.diverging_bar(fund_moves(s), 'label', 'pts', tag='who', limit=20)
+        if bars:
+            st.html(bars)
         cols = [Col('company', 'Company', 'co'), Col('mf', 'Mutual funds', 'pct'), Col('mf_change_pts', 'Change', 'spct'),
                 Col('fpi', 'Foreign investors', 'pct'), Col('fpi_change_pts', 'Change', 'spct'),
                 Col('mf_quarter', 'As of', 'date', phone=False)]
@@ -111,6 +133,15 @@ def render():
                     'up' if r.net > 0 else 'down') for r in types.head(4).itertuples()])
     kit.caption(STANDING + (f' {left_out} investors with an unclear type are left out.' if left_out else ''))
     buy, sell = investors.buyers_sellers(inv, LIMIT, by='value')
+    split = charts.buy_sell_split(types['buy'].sum(), types['sell'].sum())
+    net = charts.diverging_bar(investor_net(buy, sell), 'investor', 'net', fmt=lambda v: kit.rupees(v, signed=True), limit=2 * LIMIT)
+    if split or net:
+        with kit.card('Bought or sold?', 'inv_split', f'funds and institutions, last {days} days, bulk and block deals'):
+            if split:
+                st.html(split)
+            if net:
+                st.html('<p class="chart-cap">Net bought or sold by each of the biggest buyers and sellers below</p>')
+                st.html(net)
     with kit.card('Biggest net buyers', 'inv_buy', f'last {days} days'):
         _panel(buy, 'inv_buy_t', 'No net buyers above the floor in this period.')
     with kit.card('Biggest net sellers', 'inv_sell', f'last {days} days'):
