@@ -6,7 +6,7 @@ from __future__ import annotations
 import calendar
 from datetime import date
 
-from collectors.mf_portfolios import apis
+from collectors.mf_portfolios import apis, apis2
 from collectors.mf_portfolios.find import UA, House
 
 _YEAR = date.today().year
@@ -129,8 +129,29 @@ HOUSES = [
     House('bajaj', 'Bajaj Finserv Mutual Fund', 'https://www.bajajamc.com/downloads', render=True, must=r'monthly-portfolio',
           click=["css=a:text-is('Portfolio')"] + [c for fy in (_FY, _FY - 1) for c in
                  [f'select:27:{fy}-{(fy + 1) % 100:02d}'] + [f'select:28:{calendar.month_name[(i + 3) % 12 + 1]}' for i in range(12)]]),
-]
+    # Houses whose page draws its list from a service (collectors/mf_portfolios/apis2.py); `page` is where a person looks.
+    House('franklin', 'Franklin Templeton Mutual Fund', 'https://www.franklintempletonindia.com/reports',
+          must=r'monthly-portfolio', api=apis2.franklin),
+    House('hsbc', 'HSBC Mutual Fund', apis2.HSBC, mode='all', exclude=r'additional-information', api=apis2.hsbc),
+    House('canara', 'Canara Robeco Mutual Fund', apis2.CANARA, mode='all', api=apis2.canara),
+    House('invesco', 'Invesco Mutual Fund', 'https://www.invescomutualfund.com/literature-forms/monthly-holdings/equity',
+          mode='all', api=apis2.invesco),
+    House('quant', 'quant Mutual Fund', 'https://quantmutual.com/statutory-disclosures', must=r'monthly_portfolio',
+          api=apis2.quant),
+    House('edelweiss', 'Edelweiss Mutual Fund', apis2.EDELWEISS, must=r'monthly', api=apis2.edelweiss),
+    House('sundaram', 'Sundaram Mutual Fund', apis2.SUNDARAM, mode='all', must=r'monthly portfolio disclosure',
+          exclude=r'fixed income', api=apis2.sundaram),
+    House('lic', 'LIC Mutual Fund', 'https://www.licmf.com/downloads/monthly-portfolio', mode='all', must=r'monthly',
+          api=apis2.lic),
+    House('pgim', 'PGIM India Mutual Fund', 'https://www.pgimindia.com/mutual-funds/disclosures/Portfolios/Monthly-Portfolio',
+          mode='all', api=apis2.pgim),
+    House('whiteoak', 'WhiteOak Capital Mutual Fund', 'https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios',
+          mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
+    House('bandhan', 'Bandhan Mutual Fund', apis2.BANDHAN, mode='all', api=apis2.bandhan),
+    House('one360', '360 ONE Mutual Fund', apis2.ONE360, must=r'monthly_portfolio', exclude=r'overlap', api=apis2.one360),
 # Not collected: Navi (navi.com answers a Cloudflare challenge that a plain rendered browser does not pass; not
-# worked around), Monarch (only an overnight fund: no equity holdings).
+# worked around), Monarch (only an overnight fund: no equity holdings), Mahindra Manulife (downloads show only after
+# declaring "I am NOT a US person/resident of Canada": the owner's call), Union (resets connections from outside India).
+]
 
 BY_KEY = {h.key: h for h in HOUSES}
