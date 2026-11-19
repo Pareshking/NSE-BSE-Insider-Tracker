@@ -625,6 +625,168 @@ def raw_deal_legs(r2, code: str, day: str) -> int:
     return 0
 
 
+def _months(start: pd.Timestamp, end: pd.Timestamp) -> list[str]:
+    return [p.strftime('%Y-%m') for p in pd.period_range(start.to_period('M'), end.to_period('M'), freq='M')]
+
+
+def symbol_prices(r2, sym: str, start: str, end: str) -> int:
+    """PRICES:SYMBOL:FROM:TO: one company's price layer around a jump (19 Nov 2026: IIFL Finance from ~330 to ~600
+    in July 2026). Every print under the symbol or its ISINs on both exchanges, all series, as printed; the implied
+    factors with their kind and basis; the closes the site draws (artifacts/price_history.parquet); the filed
+    corporate actions, the rights issues and the board meetings of those ISINs. Read only."""
+    from clean_writer import list_keys
+    from insiders_clean import adjust
+    lo, hi = pd.Timestamp(start), pd.Timestamp(end)
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    s = sec[sec['nse_symbol'].astype(str).str.upper() == sym] if sec is not None else pd.DataFrame()
+    show('securities', s, ['isin', 'nse_symbol', 'bse_code', 'display_name', 'market_cap'])
+    isins = set(s['isin'].dropna()) if len(s) else set()
+    have = {k for k in list_keys(r2, 'prices/daily/') if k.endswith('.parquet')}
+    frames = []
+    for ex in ('nse', 'bse'):
+        for m in _months(lo - pd.Timedelta(days=40), pd.Timestamp.today()):
+            k = f'prices/daily/{ex}/{m}.parquet'
+            if k in have:
+                frames.append(read_parquet(r2, k))
+    px = pd.concat([f for f in frames if f is not None], ignore_index=True)
+    px['date'] = pd.to_datetime(px['date'])
+    hit = px['symbol'].astype(str).str.upper().eq(sym) | px['isin'].isin(isins)
+    isins |= set(px.loc[hit, 'isin'].dropna())
+    # Any ISIN of the same issuer and security type (first nine characters): a new ISIN after a split or a
+    # consolidation, or a partly paid line from a rights issue.
+    stems = {i[:9] for i in isins if isinstance(i, str) and len(i) == 12}
+    hit |= px['isin'].astype(str).str[:9].isin(stems)
+    mine = px[hit].copy()
+    print(f'prices read: {len(px)} rows, {px["date"].min().date()} to {px["date"].max().date()}; this company: {len(mine)} rows')
+    print('--- prints by exchange, ISIN, symbol, series (first, last, rows):')
+    print(mine.groupby(['exchange', 'isin', 'symbol', 'series'])['date'].agg(['min', 'max', 'size']).to_string())
+    win = mine[(mine['date'] >= lo) & (mine['date'] <= hi)].sort_values(['date', 'exchange', 'isin', 'series'])
+    show(f'prints {start} to {end}', win, ['date', 'exchange', 'isin', 'symbol', 'series', 'open', 'high', 'low', 'close',
+                                          'prev_close', 'volume', 'value'])
+    acts = [a for a in (read_parquet(r2, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions')) if a is not None and len(a)]
+    acts = pd.concat(acts, ignore_index=True) if acts else None
+    mine_acts = None
+    if acts is not None:
+        sm = acts['symbol'].astype(str).str.upper().eq(sym) if 'symbol' in acts else False
+        mine_acts = acts[acts['isin'].isin(isins) | sm]
+        show('filed corporate actions (clean actions + bse_actions)', mine_acts.sort_values('ex_date'),
+             ['isin', 'symbol', 'purpose', 'subject', 'ex_date', 'record_date', 'ratio', 'face_value', 'rights_issue_price',
+              'face_value_from', 'face_value_to', 'dividend_per_share'])
+        show('expected factors', adjust.expected_factors(mine_acts), ['isin', 'ex_date', 'expected', 'split_bonus'])
+    arch = [read_parquet(r2, k) for k in list_keys(r2, 'archive/nse_events/actions/') if k.endswith('.parquet')]
+    arch = [a for a in arch if a is not None and len(a)]
+    if arch:
+        a = pd.concat(arch, ignore_index=True)
+        a = a[a['isin'].isin(isins) | a['symbol'].astype(str).str.upper().eq(sym)]
+        show('archived NSE actions (all kept purposes)', a.sort_values('ex_date'), ['isin', 'symbol', 'series', 'purpose', 'subject',
+                                                                                   'ex_date', 'first_seen'])
+    for t in ('rights', 'meetings', 'bse_meetings'):
+        r = read_parquet(r2, f'clean/current/{t}.parquet')
+        if r is None or r.empty:
+            print(f'--- {t}: empty or missing'); continue
+        m = r['isin'].isin(isins) if 'isin' in r else pd.Series(False, index=r.index)
+        if 'symbol' in r:
+            m |= r['symbol'].astype(str).str.upper().eq(sym)
+        x = r[m]
+        dc = next((c for c in ('meeting_date', 'record_date', 'date', 'broadcast_date') if c in x), None)
+        if dc is not None:
+            d = pd.to_datetime(x[dc], errors='coerce')
+            x = x[(d >= lo - pd.Timedelta(days=120)) & (d <= hi + pd.Timedelta(days=30))]
+        print(f'--- {t}: {len(x)} rows; columns {list(r.columns)[:30]}')
+        if len(x):
+            print(x.head(20).to_string(max_colwidth=60))
+    f = adjust.implied_factors(mine, actions=mine_acts)
+    f = adjust.inherit_nse(f)
+    fw = f[(f['date'] >= lo) & (f['date'] <= hi)]
+    show('implied factors in the window, kind not none', fw[fw['kind'] != 'none'],
+         ['exchange', 'isin', 'symbol', 'date', 'close', 'prev_close', 'last_close', 'factor', 'kind', 'kind_basis'])
+    s2 = adjust.session_frame(mine).sort_values(['exchange', 'isin', 'date'])
+    s2['move'] = s2.groupby(['exchange', 'isin'])['close'].pct_change()
+    big = s2[(s2['date'] >= lo) & (s2['date'] <= hi) & (s2['move'].abs() >= 0.2)]
+    show('one-day close moves of 20% or more (most traded series)', big, ['exchange', 'isin', 'symbol', 'series', 'date', 'close',
+                                                                         'prev_close', 'move', 'volume'])
+    h = read_parquet(r2, 'artifacts/price_history.parquet')
+    if h is not None:
+        h = h[h['isin'].isin(isins)]
+        h = h.assign(date=pd.to_datetime(h['date']))
+        hw = h[(h['date'] >= lo) & (h['date'] <= hi)].sort_values(['isin', 'date'])
+        hw = hw.assign(move=hw.groupby('isin')['close'].pct_change())
+        show('site line (artifacts/price_history.parquet)', hw, ['isin', 'date', 'close', 'move'])
+    summ = read_parquet(r2, 'artifacts/prices_summary_slim.parquet')
+    if summ is not None:
+        show('prices_summary_slim', summ[summ['isin'].isin(isins)], list(summ.columns))
+    from insiders_clean import slim
+    close, _, f3, raw = slim.adjusted_and_raw(mine, actions=mine_acts)
+    print('--- side-window rows of this company:', adjust.side_series_rows(mine))
+    for i in close.columns:
+        line = pd.DataFrame({'raw': raw[i], 'adjusted (this branch)': close[i]}).loc[lo:hi].dropna(how='all')
+        line['move'] = line['adjusted (this branch)'].pct_change()
+        print(f'--- {i}: line recomputed with this code, {len(line)} sessions; largest |move| {line["move"].abs().max():.3f}')
+        print(line[line['move'].abs() >= 0.03].to_string())
+    return 0
+
+
+def price_jump_audit(r2, check=()) -> int:
+    """PRICE_JUMPS: the price-jump audit (insiders_clean/price_jumps.py) on the whole price layer with this branch's
+    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only."""
+    from insiders_clean import adjust, price_jumps, slim
+    from insiders_clean.pipeline import PRODUCT_START
+    from price_coverage import load_prefix
+    from r2_writer import BUCKET
+    px = load_prefix(r2, BUCKET, 'prices/daily/')
+    px['date'] = pd.to_datetime(px['date'])
+    print(f'prices: {len(px)} rows, {px["date"].min().date()} to {px["date"].max().date()}')
+    print('rows by exchange and series (top 40):')
+    print(px.groupby(['exchange', 'series']).size().sort_values(ascending=False).head(40).to_string())
+    acts = [a for a in (read_parquet(r2, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions')) if a is not None and len(a)]
+    acts = pd.concat(acts, ignore_index=True) if acts else None
+    left_out = adjust.side_series_rows(px)
+    print('side-window rows left out:', left_out)
+    close, _, f, raw = slim.adjusted_and_raw(px, actions=acts)
+    print('adjust coverage:', adjust.coverage(f))
+    lost = f[f['kind_basis'] == 'previous_session_missing']
+    print('sessions after one the layer lacks (exchange, date: rows):',
+          {f'{e} {d:%Y-%m-%d}': int(n) for (e, d), n in lost.groupby(['exchange', 'date']).size().items()})
+    import json
+    from clean_writer import get
+    cal = json.loads(get(r2, 'reference/nse_calendar.json') or b'{}')
+    wk = sorted(d for d in cal.get('traded', []) if pd.Timestamp(d).weekday() >= 5)
+    print('calendar: weekend days traded:', wk[-10:], '; special sessions:', cal.get('special_sessions', [])[-10:])
+    held = {e: sorted({f'{d:%Y-%m-%d}' for d in pd.to_datetime(px.loc[px['exchange'] == e, 'date'].unique()) if d.weekday() >= 5}) for e in ('NSE', 'BSE')}
+    print('price layer: weekend days held:', held)
+    uni = read_parquet(r2, 'clean/current/universe.parquet')
+    uni = set(uni.loc[uni['in_universe'].astype(bool), 'isin']) if uni is not None and 'in_universe' in uni else None
+    meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
+            .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name']])
+    for sym in check:
+        for i in meta.loc[meta['symbol'].astype(str).str.upper() == sym, 'isin']:
+            line = close[i].dropna() if i in close else pd.Series(dtype=float)
+            if line.empty:
+                continue
+            yr = line.loc[line.index.max() - pd.Timedelta(days=365):]
+            ff = f[(f['isin'] == i) & (f['kind'] == 'split_bonus')]
+            print(f'--- {sym} {i}: last {line.iloc[-1]:.2f} on {line.index[-1]:%Y-%m-%d}; a year {yr.iloc[-1] / yr.iloc[0] - 1:+.1%} '
+                  f'(from {yr.iloc[0]:.2f} on {yr.index[0]:%Y-%m-%d}); 52w high {yr.max():.2f}, low {yr.min():.2f}; largest one-day '
+                  f'|move| {yr.pct_change().abs().max():.3f}; factors applied {ff[["exchange", "date", "factor", "kind_basis"]].to_dict("records")}')
+    rows = price_jumps.jumps(raw, close, f, acts, start=PRODUCT_START, universe=uni, meta=meta)
+    rep = price_jumps.report(rows, raw, start=PRODUCT_START, left_out=left_out)
+    print({k: v for k, v in rep.items() if k != 'rows'})
+    cols = ['symbol', 'isin', 'date', 'prev_date', 'gap_days', 'prev_close', 'close', 'raw_move', 'adj_move', 'factor', 'kind',
+            'kind_basis', 'actions', 'in_universe']
+    for s in price_jumps.STATUSES:
+        x = rows[rows['status'] == s]
+        if 'in_universe' in x and x['in_universe'].notna().any():
+            xu = x[x['in_universe'].astype(bool)]
+            print(f'\n--- {s}: {len(x)} moves, {x["isin"].nunique()} companies; in the study universe {len(xu)} moves, '
+                  f'{xu["isin"].nunique()} companies')
+            x = pd.concat([xu, x[~x['in_universe'].astype(bool)]])
+        else:
+            print(f'\n--- {s}: {len(x)} moves, {x["isin"].nunique()} companies')
+        if len(x):
+            print(x[cols].head(40).to_string(index=False))
+    return 0
+
+
 def market_flows_check(r2) -> int:
     """MARKET_FLOWS: is November 2026's FPI equity figure real (19 Nov: +Rs 1,06,229 Cr on the Dashboard)? The clean
     NSDL rows per reporting date and segment (duplicates, exchange against primary market), every month's total, the
@@ -868,7 +1030,12 @@ def main() -> int:
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
         _, code, day = syms[0].split(':')
         return raw_deal_legs(r2, code, day)
-    if syms and syms[0].startswith('TRADES:'):   # a company's insider rows and deals as cleaned (14 Nov)
+    if syms and syms[0].split(':')[0] == 'PRICE_JUMPS':   # every 40% one-day move on the site's lines (19 Nov); PRICE_JUMPS:SYM,SYM2 also prints those lines
+        return price_jump_audit(r2, [syms[0].split(':', 1)[1]] + syms[1:] if ':' in syms[0] else [])
+    if syms and syms[0].startswith('PRICES:'):  # one company's prints, factors, site line and actions (19 Nov)
+        _, sym, start, end = syms[0].split(':')
+        return symbol_prices(r2, sym, start, end)
+    if syms and syms[0].startswith('TRADES:'):  # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
         return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])

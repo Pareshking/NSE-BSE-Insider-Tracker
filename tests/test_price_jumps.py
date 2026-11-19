@@ -1,0 +1,176 @@
+"""Side-window series (IIFL Finance, 30 Jul 2026), the ratio guess that must show in the close, and the price-jump audit."""
+import numpy as np
+import pandas as pd
+
+from insiders_clean import adjust, price_jumps, slim
+
+
+def _row(day, close, prev, ex='NSE', series='EQ', isin='INE530B01024', sym='IIFL', value=1e9):
+    return {'date': pd.Timestamp(day), 'exchange': ex, 'isin': isin, 'symbol': sym, 'series': series, 'name': sym,
+            'open': close, 'high': close, 'low': close, 'close': close, 'prev_close': prev, 'volume': 1, 'value': value}
+
+
+def iifl():
+    """Real prints, NSE and BSE, 28-31 Jul 2026: NSE's block window (BL) on 30 Jul carries a base price of 334.25 and
+    more value than EQ."""
+    return pd.DataFrame([
+        _row('2026-07-28', 582.35, 573.20, value=1.70e9), _row('2026-07-28', 582.15, 572.35, ex='BSE', series='A', value=4.5e7),
+        _row('2026-07-29', 595.10, 582.35, value=1.46e9), _row('2026-07-29', 594.90, 582.15, ex='BSE', series='A', value=8.7e7),
+        _row('2026-07-30', 607.85, 595.10, value=2.35e9), _row('2026-07-30', 590.00, 334.25, series='BL', value=3.74e9),
+        _row('2026-07-30', 608.20, 594.90, ex='BSE', series='A', value=9.7e7),
+        _row('2026-07-31', 608.65, 607.85, value=1.52e9), _row('2026-07-31', 608.65, 608.20, ex='BSE', series='A', value=7.3e7),
+    ])
+
+
+def test_block_window_series_is_never_the_session():
+    f = adjust.implied_factors(iifl())
+    nse = f[(f['exchange'] == 'NSE') & (f['date'] == '2026-07-30')].iloc[0]
+    assert nse['close'] == 607.85 and nse['kind'] == 'none'
+    assert (f['kind'] != 'split_bonus').all()
+
+
+def test_iifl_line_has_no_jump():
+    close, _, f = slim.adjusted_panels(iifl())
+    line = close['INE530B01024']
+    assert line['2026-07-29'] == 595.10 and line['2026-07-30'] == 607.85
+    assert line.pct_change().abs().max() < 0.05
+
+
+def test_side_series_rows_counted():
+    c = adjust.side_series_rows(iifl())
+    assert c == {'rows': 1, 'by_series': {'NSE:BL': 1}, 'would_have_won': 1}
+
+
+def test_ratio_guess_needs_the_close_to_move():
+    # A base price reset to a clean ratio (1:2 split, 0.5) while the close stays put is no split.
+    p = pd.DataFrame([_row('2026-01-01', 100, 100, isin='INE000A01011', sym='X'),
+                      _row('2026-01-02', 101, 50, isin='INE000A01011', sym='X')])
+    f = adjust.implied_factors(p)
+    r = f[f['date'] == '2026-01-02'].iloc[0]
+    assert r['kind'] == 'other_large' and r['kind_basis'] == 'ratio_price_disagrees'
+    # The same reset with the close halving is a split.
+    p.loc[1, 'close'] = 51
+    r = adjust.implied_factors(p).iloc[-1]
+    assert r['kind'] == 'split_bonus' and r['kind_basis'] == 'ratio'
+
+
+def _panels(rows):
+    close, _, f, raw = slim.adjusted_and_raw(pd.DataFrame(rows))
+    return raw, close, f
+
+
+def test_jump_statuses():
+    rows = []
+    # A: a real 1:2 split (base reset, close halves) -> adjusted
+    rows += [_row('2026-01-01', 100, 100, isin='INE00000A011', sym='A'), _row('2026-01-02', 51, 50, isin='INE00000A011', sym='A')]
+    # B: a 60% fall with no reset and no action -> unexplained
+    rows += [_row('2026-01-01', 100, 100, isin='INE00000B011', sym='B'), _row('2026-01-02', 40, 100, isin='INE00000B011', sym='B')]
+    # C: a fall on a filed rights ex-date -> action_not_adjusted
+    rows += [_row('2026-01-01', 100, 100, isin='INE00000C011', sym='C'), _row('2026-01-02', 50, 100, isin='INE00000C011', sym='C')]
+    # D: base reset by 0.35 (a demerger, not a clean ratio) -> exchange_reset_not_adjusted
+    rows += [_row('2026-01-01', 100, 100, isin='INE00000D011', sym='D'), _row('2026-01-02', 36, 35, isin='INE00000D011', sym='D')]
+    # E: a doubling after a 40-day gap -> after_gap
+    rows += [_row('2026-01-01', 100, 100, isin='INE00000E011', sym='E'), _row('2026-02-10', 200, 100, isin='INE00000E011', sym='E')]
+    raw, adj, f = _panels(rows)
+    acts = pd.DataFrame({'isin': ['INE00000C011'], 'purpose': ['rights'], 'ex_date': ['2026-01-02']})
+    meta = pd.DataFrame(rows)[['isin', 'symbol', 'name']]
+    out = price_jumps.jumps(raw, adj, f, acts, universe={'INE00000B011'}, meta=meta)
+    got = dict(zip(out['symbol'], out['status']))
+    assert got == {'A': 'adjusted', 'B': 'unexplained', 'C': 'action_not_adjusted', 'D': 'exchange_reset_not_adjusted',
+                   'E': 'after_gap'}
+    assert out.loc[out['symbol'] == 'C', 'actions'].item() == 'rights'
+    rep = price_jumps.report(out, raw)
+    assert rep['moves'] == 5 and rep['by_status']['unexplained'] == {'moves': 1, 'companies': 1}
+    assert rep['in_universe']['unexplained']['moves'] == 1 and rep['in_universe']['adjusted']['moves'] == 0
+    assert rep['rows'][0]['status'] == 'unexplained'
+
+
+def test_made_by_adjustment_is_caught():
+    # A wrong factor applied to a quiet line: the audit flags the move it creates.
+    raw = pd.DataFrame({'X': [100.0, 101.0, 102.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02', '2026-01-05']))
+    adj = raw.copy()
+    adj.iloc[:2] *= 0.5
+    out = price_jumps.jumps(raw.rename_axis(index='date', columns='isin'), adj.rename_axis(index='date', columns='isin'))
+    assert out['status'].tolist() == ['made_by_adjustment']
+    assert np.isclose(out['adj_move'].item(), 102 / 50.5 - 1)
+
+
+def test_start_cuts_the_window():
+    raw = pd.DataFrame({'X': [100.0, 30.0, 31.0]}, index=pd.to_datetime(['2025-10-01', '2025-10-02', '2025-10-09']))
+    raw = raw.rename_axis(index='date', columns='isin')
+    assert price_jumps.jumps(raw, raw, start='2025-10-08').empty
+    assert len(price_jumps.jumps(raw, raw)) == 1
+
+
+def test_session_missing_from_the_layer_measures_no_factor():
+    # 1 Feb 2026 (a Sunday session) is not in the layer: on 2 Feb every base price is that day's close, not 30 Jan's.
+    # IIFL's 528.70 -> 475.75 looked like a 10:11 bonus (0.8998) and moved its whole line before February.
+    rows = [_row('2026-01-30', 528.70, 530.0), _row('2026-02-02', 495.15, 475.75)]
+    for k in range(150):
+        isin, last = f'INE{k:03d}X01011', 100.0 + k
+        rows += [_row('2026-01-30', last, last, isin=isin, sym=f'S{k}'),
+                 _row('2026-02-02', last * 0.97, last * 0.98, isin=isin, sym=f'S{k}')]
+    f = adjust.implied_factors(pd.DataFrame(rows))
+    day = f[f['date'] == '2026-02-02']
+    assert (day['kind_basis'] == 'previous_session_missing').all() and day['factor'].isna().all()
+    close, _, _ = slim.adjusted_panels(pd.DataFrame(rows))
+    assert close.loc['2026-01-30', 'INE530B01024'] == 528.70
+
+
+def test_a_normal_day_of_dividends_is_not_a_missing_session():
+    rows = []
+    for k in range(150):
+        isin, last = f'INE{k:03d}X01011', 100.0 + k
+        base = last * 0.98 if k < 10 else last   # ten of 150 go ex-dividend
+        rows += [_row('2026-03-02', last, last, isin=isin, sym=f'S{k}'), _row('2026-03-03', last, base, isin=isin, sym=f'S{k}')]
+    f = adjust.implied_factors(pd.DataFrame(rows))
+    assert not (f['kind_basis'] == 'previous_session_missing').any()
+
+
+def test_filed_split_on_a_new_isin_with_no_base_price_is_applied():
+    # KSE, 28 Oct 2025: the split's new ISIN prints with no base price; the old ISIN's prints are bridged under it,
+    # and the split is filed under the old ISIN.
+    rows = [_row('2025-10-24', 2700.0, 2690.0, isin='INE953E01014', sym='KSE'),
+            _row('2025-10-27', 2698.35, 2700.0, isin='INE953E01014', sym='KSE'),
+            _row('2025-10-28', 262.20, np.nan, isin='INE953E01022', sym='KSE')]
+    acts = pd.DataFrame({'isin': ['INE953E01014'], 'purpose': ['split'], 'ex_date': ['2025-10-28'],
+                         'face_value_from': [10.0], 'face_value_to': [1.0]})
+    close, _, f, raw = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
+    line = close['INE953E01022'].dropna()
+    assert abs(line.pct_change().iloc[-1]) < 0.05
+    out = price_jumps.jumps(raw, close, f, acts)
+    assert out['isin'].tolist() == ['INE953E01022'] and out['status'].tolist() == ['adjusted']
+
+
+def test_filed_bonus_after_a_gap_is_applied():
+    # VEGA: no print for 12 days around its bonus; here a 4:1 bonus (factor 0.2).
+    rows = [_row('2026-04-16', 312.25, 310.0, isin='INE603D01017', sym='VEGA'),
+            _row('2026-04-28', 61.95, 312.25, isin='INE603D01017', sym='VEGA')]
+    acts = pd.DataFrame({'isin': ['INE603D01017'], 'purpose': ['bonus'], 'ex_date': ['2026-04-24'], 'ratio': ['4:1']})
+    close, _, f = slim.adjusted_panels(pd.DataFrame(rows), actions=acts)
+    assert abs(close['INE603D01017'].pct_change().iloc[-1]) < 0.05
+
+
+def test_bse_keeps_its_factor_on_a_day_nse_did_not_print():
+    # PANORAMA: BSE-only on its 5:2 bonus (05 Dec 2025), on NSE from Aug 2026. The BSE factor must stay.
+    i = 'INE258R01028'
+    rows = [_row('2025-12-04', 164.35, 170.00, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2025-12-05', 48.40, 164.35, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2026-08-17', 60.0, 59.0, isin=i, sym='PANORAMA'), _row('2026-08-17', 60.0, 59.0, ex='BSE', series='B', isin=i, sym='PANORAMA'),
+            _row('2026-08-18', 61.0, 60.0, isin=i, sym='PANORAMA'), _row('2026-08-18', 61.0, 60.0, ex='BSE', series='B', isin=i, sym='PANORAMA')]
+    acts = pd.DataFrame({'isin': [i], 'purpose': ['bonus'], 'ex_date': ['2025-12-05'], 'ratio': ['5:2']})
+    close, _, f = slim.adjusted_panels(pd.DataFrame(rows), actions=acts)
+    b = f[(f['exchange'] == 'BSE') & (f['date'] == '2025-12-05')].iloc[0]
+    assert b['kind'] == 'split_bonus' and np.isclose(b['factor'], 2 / 7)
+    assert abs(close[i].loc['2025-12-04':'2025-12-05'].pct_change().iloc[-1]) < 0.05
+    # Where NSE printed, BSE still takes NSE's factor.
+    assert f[(f['exchange'] == 'BSE') & (f['date'] == '2026-08-18')]['kind'].item() == 'none'
+
+
+def test_action_matched_by_symbol():
+    raw = pd.DataFrame({'INE00000N012': [100.0, 10.0]}, index=pd.to_datetime(['2026-01-01', '2026-01-02']))
+    raw = raw.rename_axis(index='date', columns='isin')
+    meta = pd.DataFrame({'isin': ['INE00000N012'], 'symbol': ['NEWCO'], 'name': ['New Co']})
+    acts = pd.DataFrame({'isin': ['INE00000N011'], 'symbol': ['newco'], 'purpose': ['split'], 'ex_date': ['2026-01-02']})
+    out = price_jumps.jumps(raw, raw, None, acts, meta=meta)
+    assert out['status'].item() == 'action_not_adjusted' and out['actions'].item() == 'split'

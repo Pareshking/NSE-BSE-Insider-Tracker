@@ -34,8 +34,9 @@ def average_daily_value(prices: pd.DataFrame, sessions: int = ADV_SESSIONS) -> p
 
 
 def price_panel(prices: pd.DataFrame, field: str) -> pd.DataFrame:
-    """date x ISIN panel of `field`, NSE preferred, BSE filling the gaps."""
-    p = prices.dropna(subset=['isin', field])
+    """date x ISIN panel of `field`, NSE preferred, BSE filling the gaps. Side-window series (block window, T+0;
+    adjust.SIDE_SERIES) are never the day's price."""
+    p = adjust.regular_series(prices).dropna(subset=['isin', field])
     p = p[p['isin'] != '']
     p = p.assign(_rank=(p['exchange'] != 'NSE').astype(int)).sort_values(['isin', 'date', '_rank', 'value'],
                                                                          ascending=[True, True, True, False])
@@ -47,14 +48,27 @@ def adjusted_panels(px: pd.DataFrame, actions: pd.DataFrame | None = None):
     """(close, open) date x ISIN panels adjusted as of the last stored session. `actions`: the filed corporate
     actions (clean `actions` and `bse_actions`), which classify a reset as a bonus or split (insiders_clean/adjust.py).
     A split's new ISIN carries its old ISIN's prints (adjust.bridge_isins), so its line and its split are whole."""
-    px, _ = adjust.bridge_isins(px)
+    close, open_, f, _ = adjusted_and_raw(px, actions)
+    return close, open_, f
+
+
+def adjusted_and_raw(px: pd.DataFrame, actions: pd.DataFrame | None = None):
+    """adjusted_panels plus the unadjusted close panel of the same bridged prints (the price-jump audit compares
+    the two: insiders_clean/price_jumps.py)."""
+    px, links = adjust.bridge_isins(px)
+    if links and actions is not None and len(actions) and 'isin' in actions:
+        # A split filed under the ISIN it replaces applies to the new ISIN's line, which now carries the old prints.
+        moved = actions[actions['isin'].isin(set(links))]
+        actions = pd.concat([actions, moved.assign(isin=moved['isin'].map(links))], ignore_index=True)
+    px = adjust.regular_series(px)
+    raw = price_panel(px, 'close')
     f = adjust.inherit_nse(adjust.implied_factors(px, actions=actions))
     adj = adjust.adjust_as_of(f, px[['exchange', 'isin', 'date', 'close']].dropna(), px['date'].max())
     px = px.merge(adj[['exchange', 'isin', 'date', 'adj_close']], on=['exchange', 'isin', 'date'], how='left')
     ratio = (px['adj_close'] / px['close']).where(px['close'] > 0)
     px['open'] = px['open'] * ratio
     px['close'] = px['adj_close']
-    return price_panel(px, 'close'), price_panel(px, 'open'), f
+    return price_panel(px, 'close'), price_panel(px, 'open'), f, raw
 
 
 def bucket(rank: float) -> str | None:

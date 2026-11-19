@@ -22,7 +22,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
-from insiders_clean import adjust, basket, bse_events, evidence, slim, snapshot, track  # noqa: E402
+from insiders_clean import adjust, basket, bse_events, evidence, price_jumps, slim, snapshot, track  # noqa: E402
+from insiders_clean.pipeline import PRODUCT_START  # noqa: E402
 from price_coverage import load_prefix  # noqa: E402
 
 SUMMARY_KEY = 'artifacts/prices_summary_slim.parquet'
@@ -31,6 +32,7 @@ EVENTS_KEY, TRACK_KEY = 'artifacts/track_events.parquet', 'artifacts/track_summa
 FORWARD_KEY = 'artifacts/forward_outcomes.parquet'
 BASKET_POS_KEY, BASKET_NAV_KEY = 'artifacts/basket_positions.parquet', 'artifacts/basket_nav.parquet'
 SNAPSHOT_KEY = 'artifacts/company_snapshot.parquet'
+JUMPS_KEY = 'clean/reports/price_jumps.json'
 
 
 def put(client, bucket, key, df):
@@ -61,6 +63,20 @@ def filed_actions(client, bucket) -> pd.DataFrame | None:
             print(f'adjust: {table} not read ({e})')
     frames = [f for f in frames if len(f)]
     return pd.concat(frames, ignore_index=True) if frames else None
+
+
+def price_jump_report(client, bucket, raw_close, close, factors, acts, uni, meta, left_out) -> dict:
+    """clean/reports/price_jumps.json (insiders_clean/price_jumps.py): every one-day close move of 40% or more in the
+    product window, matched to an applied split or bonus, a filed action, an exchange reset, a gap, or unexplained."""
+    rows = price_jumps.jumps(raw_close, close, factors, acts, start=PRODUCT_START, universe=uni, meta=meta)
+    rep = price_jumps.report(rows, raw_close, start=PRODUCT_START, left_out=left_out)
+    rep['generated_at'] = pd.Timestamp.now(tz='UTC').strftime('%Y-%m-%dT%H:%M:%SZ')
+    rep['last_session'] = f'{close.index.max():%Y-%m-%d}'
+    client.put_object(Bucket=bucket, Key=JUMPS_KEY, Body=json.dumps(rep, default=str).encode(),
+                      ContentType='application/json')
+    print(f'price jumps: {rep["moves"]} moves of 40%+ since {rep["start"]}: '
+          + ', '.join(f'{s} {v["moves"]} ({v["companies"]} cos)' for s, v in rep['by_status'].items()))
+    return rep
 
 
 def company_snapshot(client, bucket, summary, clean, uni) -> None:
@@ -114,8 +130,10 @@ def main() -> int:
     client, bucket = r2_writer.r2_client(), r2_writer.BUCKET
     px = load_prefix(client, bucket, 'prices/daily/')
     px['date'] = pd.to_datetime(px['date'])
-    close, _, factors = slim.adjusted_panels(px, actions=filed_actions(client, bucket))
-    print(f'adjust: {adjust.coverage(factors)}')
+    acts = filed_actions(client, bucket)
+    close, _, factors, raw_close = slim.adjusted_and_raw(px, actions=acts)
+    left_out = adjust.side_series_rows(px)
+    print(f'adjust: {adjust.coverage(factors)}; side-window rows left out: {left_out}')
     meta = (px.dropna(subset=['isin']).assign(_nse=lambda d: d['exchange'].eq('NSE')).sort_values(['_nse', 'date'])
             .drop_duplicates('isin', keep='last')[['isin', 'symbol', 'name', 'exchange']])
     mc = load_prefix(client, bucket, 'marketcap/daily/')
@@ -136,6 +154,10 @@ def main() -> int:
     # so neither its price lines nor its track record events are kept.
     uni = (set(clean['universe'].loc[clean['universe']['in_universe'].astype(bool), 'isin'])
            if 'universe' in clean and 'in_universe' in clean['universe'] else None)
+    try:
+        price_jump_report(client, bucket, raw_close, close, factors, acts, uni, meta, left_out)
+    except Exception as e:  # noqa: BLE001 -- an audit, never a reason to leave the site's lines unwritten
+        print(f'price jumps: FAILED ({type(e).__name__}: {e})')
     isins = set().union(*(set(clean[t]['isin'].dropna()) for t in ('insider_trades', 'deals') if t in clean))
     if uni is not None:
         isins &= uni

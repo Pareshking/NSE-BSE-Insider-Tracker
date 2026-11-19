@@ -30,6 +30,16 @@ RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts
 KIND_ADJUSTED = ('split_bonus',)   # the only kind applied to prices (owner directive: splits and bonuses only)
 MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
 BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
+# Series printed beside a security's own market that are not its price: NSE's block deal window ('BL') and its T+0
+# settlement segment ('T0'). Audit 19 Nov 2026: IIFL Finance (INE530B01024) printed BL on 30 Jul 2026 at 590.00 with
+# a base price of 334.25 and more value (Rs 374 Cr) than EQ (Rs 235 Cr, close 607.85, base 595.10). The most traded
+# series won the session, 334.25 / 595.10 = 0.5617 sat within 1.1% of a 5:4 bonus (5/9) and was applied: the site's
+# line fell to ~330 before 30 Jul and showed "Up 131.7% in a year". These rows never make a session or a close;
+# `side_series_rows` counts them (reason `side_window_series`).
+SIDE_SERIES = {'NSE': frozenset({'BL', 'T0'})}
+ACTION_GAP_DAYS = 31    # a filed bonus or split is priced from the close across a gap of up to this many days
+MISSING_SHARE = 0.5     # an exchange-date where this share of base prices disagree with our previous close ...
+MISSING_MIN_ROWS = 100  # ... of at least this many securities follows a session the layer does not hold
 
 
 # Bonus n:h (n new shares for every h held) moves the price by h/(h+n). Boards use small n and h, and h of 6 or 10
@@ -94,9 +104,42 @@ def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
     return out[cols]
 
 
+def is_side_series(prices: pd.DataFrame) -> pd.Series:
+    """True for a row of a side-window series (SIDE_SERIES): a block window or T+0 print, not the day's price."""
+    if prices is None or prices.empty or not {'exchange', 'series'} <= set(prices.columns):
+        return pd.Series(False, index=getattr(prices, 'index', None), dtype=bool)
+    ex = prices['exchange'].astype(str).str.upper()
+    se = prices['series'].astype(str).str.strip().str.upper()
+    out = pd.Series(False, index=prices.index)
+    for e, names in SIDE_SERIES.items():
+        out |= ex.eq(e) & se.isin(names)
+    return out
+
+
+def regular_series(prices: pd.DataFrame) -> pd.DataFrame:
+    """The rows that can be a security's price for the day: every series but the side windows (SIDE_SERIES)."""
+    if prices is None or prices.empty:
+        return prices
+    return prices[~is_side_series(prices)]
+
+
+def side_series_rows(prices: pd.DataFrame) -> dict:
+    """Counted reason `side_window_series`: rows left out of every session and close, by exchange and series, and
+    the sessions where such a row had more traded value than every regular series (where it used to be taken)."""
+    side = is_side_series(prices)
+    if not side.any():
+        return {'rows': 0, 'by_series': {}, 'would_have_won': 0}
+    p = prices.assign(_side=side, _v=prices['value'].fillna(0) if 'value' in prices else 0)
+    top = p.sort_values('_v', ascending=False).drop_duplicates(['exchange', 'isin', 'date'])
+    return {'rows': int(side.sum()),
+            'by_series': {f'{e}:{s}': int(n) for (e, s), n in p[side].groupby(['exchange', 'series']).size().items()},
+            'would_have_won': int(top['_side'].sum())}
+
+
 def session_frame(prices: pd.DataFrame) -> pd.DataFrame:
-    """One row per exchange, ISIN and date: the most traded series that day."""
-    p = prices.dropna(subset=['date', 'close']).copy()
+    """One row per exchange, ISIN and date: the most traded regular series that day (never a side window,
+    SIDE_SERIES)."""
+    p = regular_series(prices).dropna(subset=['date', 'close']).copy()
     p = p[p['isin'] != '']
     p['value'] = p['value'].fillna(0)
     p = p.sort_values(['exchange', 'isin', 'date', 'value'], ascending=[True, True, True, False])
@@ -174,6 +217,14 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     s['kind'] = np.select([big & clean, big, (dev > MINOR).to_numpy(), s['factor'].notna().to_numpy()],
                           ['split_bonus', 'other_large', 'minor', 'none'], 'unknown')
     s['kind_basis'] = np.where(big & clean, 'ratio', '')
+    # A guessed ratio (nothing filed) must show in the day's own prices too: when the exchange really resets the base
+    # price for a split or bonus, the close moves with it (close / previous close near the factor; a day's band is at
+    # most 20%). A base price that moved while the close did not is no split (counted, `ratio_price_disagrees`).
+    with np.errstate(invalid='ignore', divide='ignore'):
+        day_move = (s['close'] / s['last_close']).where(usable).to_numpy(dtype=float)
+        follows = np.abs(np.log(day_move / s['factor'].to_numpy(dtype=float))) <= np.log(MOVE_TOL)
+    lone = (s['kind_basis'] == 'ratio').to_numpy() & ~follows
+    s.loc[lone, 'kind'], s.loc[lone, 'kind_basis'] = 'other_large', 'ratio_price_disagrees'
     act = _action_on_session(s, expected_factors(actions))
     has, sb = act['has_action'].to_numpy(dtype=bool), act['split_bonus'].to_numpy(dtype=bool)
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -190,16 +241,39 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     # Thyrocare 1,475.10 then 495.70 on its 1:2 bonus of 28 Nov 2025). So where the base price was not reset, a
     # filed bonus or split is applied at its filed factor when the day's own move agrees with it (close over the
     # previous close within MOVE_TOL of the factor: a day's band is at most 20%); basis `action_price`.
+    # Audit 19 Nov 2026: a split's new ISIN prints its first session with no base price (KSE 28 Oct 2025, KDGREEN,
+    # INDTONER, SUNRAKSHAK), and an illiquid stock may not print for more than `max_gap_days` around a bonus (VEGA,
+    # 12 days): those filed actions left no factor and the lines fell 80-90% on the site. A filed bonus or split is
+    # therefore priced from the close alone whenever the base price is missing or not reset, within ACTION_GAP_DAYS.
     exp = act['expected'].to_numpy(dtype=float)
+    movable = s['last_close'].notna() & (s['last_close'] > 0) & (gap <= ACTION_GAP_DAYS)
     with np.errstate(invalid='ignore', divide='ignore'):
-        move = (s['close'] / s['last_close']).where(usable).to_numpy(dtype=float)
+        move = (s['close'] / s['last_close']).where(movable).to_numpy(dtype=float)
         agrees = np.abs(np.log(move / exp)) <= np.log(MOVE_TOL)
-    not_reset = (dev <= MINOR).to_numpy() & usable.to_numpy()
+        base = (s['prev_close'] / s['last_close']).where(movable & (s['prev_close'] > 0))
+    not_reset = (base.isna() | ((base - 1).abs() <= MINOR)).to_numpy() & movable.to_numpy()
     priced = has & sb & ~near & not_reset & agrees & np.isfinite(exp)
     s.loc[priced, 'factor'] = exp[priced]
     s.loc[priced, 'kind'], s.loc[priced, 'kind_basis'] = 'split_bonus', 'action_price'
+    # A session whose base price differs from our previous close for most securities on the exchange means the
+    # layer lacks the session before it (audit 19 Nov 2026: the Sunday sessions of 1 Feb 2026, Budget day, and of
+    # 8 Nov 2026, Muhurat; 2 Feb and 9 Nov then showed 20% 'resets', the upper circuit of the missing day, and IIFL a
+    # 10:11 'bonus' of 0.8998). No factor is measured across it: `previous_session_missing`.
+    lost = missing_previous_session(s)
+    s.loc[lost, 'factor'], s.loc[lost, 'kind'], s.loc[lost, 'kind_basis'] = np.nan, 'unknown', 'previous_session_missing'
     return s[['exchange', 'isin', 'symbol', 'date', 'close', 'prev_close', 'last_close', 'factor', 'kind',
               'kind_basis']]
+
+
+def missing_previous_session(s: pd.DataFrame) -> np.ndarray:
+    """Per session row of `implied_factors`: True on an exchange-date where at least MISSING_SHARE of at least
+    MISSING_MIN_ROWS measurable rows have a base price off our previous close by more than MINOR (a cash dividend
+    resets a few percent of securities on a normal day; a session missing from the layer resets nearly all)."""
+    with np.errstate(invalid='ignore', divide='ignore'):
+        base = (s['prev_close'] / s['last_close']).where(s['last_close'] > 0)
+    d = pd.DataFrame({'exchange': s['exchange'], 'date': s['date'], 'n': base.notna(), 'off': (base - 1).abs() > MINOR})
+    g = d.groupby(['exchange', 'date'])[['n', 'off']].transform('sum')
+    return ((g['n'] >= MISSING_MIN_ROWS) & (g['off'] >= MISSING_SHARE * g['n'])).to_numpy()
 
 
 def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=KIND_ADJUSTED) -> pd.DataFrame:
@@ -233,9 +307,13 @@ def inherit_nse(factors: pd.DataFrame) -> pd.DataFrame:
     cols = ['factor', 'kind'] + (['kind_basis'] if 'kind_basis' in factors else [])
     ren = {c: f'n_{c}' for c in cols}
     nse = factors[factors['exchange'] == 'NSE'][['isin', 'date'] + cols].rename(columns=ren)
-    dual = set(nse['isin'])
+    nse['_on_nse'] = True
     out = factors.merge(nse, on=['isin', 'date'], how='left')
-    take = (out['exchange'] == 'BSE') & out['isin'].isin(dual)
+    # Only on a date NSE printed: a company that listed on NSE later, or a day NSE has no print, keeps BSE's own
+    # factor (audit 19 Nov 2026: KSE's split of 28 Oct 2025 and PANORAMA's 5:2 bonus of 05 Dec 2025, BSE-only then
+    # and on NSE from Aug 2026, took NSE's missing factor and were never adjusted).
+    take = (out['exchange'] == 'BSE') & out['_on_nse'].eq(True)
+    out = out.drop(columns=['_on_nse'])
     out.loc[take, 'factor'] = out.loc[take, 'n_factor']
     out.loc[take, 'kind'] = out.loc[take, 'n_kind'].fillna('unknown')
     if 'kind_basis' in factors:
