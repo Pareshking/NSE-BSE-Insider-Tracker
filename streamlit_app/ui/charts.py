@@ -1,6 +1,6 @@
 """Small charts, drawn with the theme's colours only (ui/theme.py). The company price chart is ui/lwchart.py (TradingView
 Lightweight Charts, 22 Oct); the model basket against the index and the Funds page's sector bars and heatmap are Altair
-(which ships with Streamlit); the Company page's at-a-glance charts are HTML and inline SVG (ownership_stack, delta_bars,
+(which ships with Streamlit); the Company page's at-a-glance charts are HTML (ownership_stack, delta_bars,
 split_bar, spark, columns), so they follow a 390 px phone's width with no horizontal scroll.
 
 Bought or sold at a glance (owner, 19 Nov 2026, on the People & funds page on a phone: "Not even pages have visualization to
@@ -238,20 +238,41 @@ def split_bar(buy, sell, fmt: Callable[[float], str] = rupees, what: tuple[str, 
             f'<div class="cg-spbar"><i class="up" style="width:{pb:.2f}%"></i><i class="down" style="width:{100 - pb:.2f}%"></i></div></div>')
 
 
-def spark(values: list, w: int = 120, h: int = 34, tone: str = 'flat') -> str:
-    """A small line of `values` (oldest first) with a dot on the last value."""
-    v = [float(x) for x in values if _finite(x) is not None]
-    if not v:
+def spark(values: list, w: int = 120, h: int = 34, tone: str = 'flat', signed: bool = False) -> str:
+    """A small run of `values` (oldest first) as HTML columns, the last one strong: plain HTML, so it draws in st.html
+    (whose sanitiser drops SVG) as well as in st.markdown. Plain: columns from the bottom, scaled from the lowest value
+    to the highest (the lowest still shows), the last in `tone` ('up', 'down', 'flat'). `signed`: columns above and
+    below a zero line, green for a positive value and red for a negative one (a flow). A missing value keeps its slot
+    empty. '' with no value. Colours are in ui/look.css; only positions are written here."""
+    vals = [_finite(x) for x in values]
+    real = [x for x in vals if x is not None]
+    if not real:
         return ''
-    lo, hi = min(v), max(v)
+    n = len(vals)
+    wd = 100 / n
+    if signed:
+        lo, hi = min(real + [0.0]), max(real + [0.0])
+        zero = hi / ((hi - lo) or 1.0) * 100   # % from the top
+    else:
+        lo, hi = min(real), max(real)
     span = (hi - lo) or 1.0
-    n = len(v)
-    xs = [w / 2] if n == 1 else [3 + i * (w - 6) / (n - 1) for i in range(n)]
-    ys = [h / 2 if hi == lo else h - 4 - (x - lo) / span * (h - 8) for x in v]
-    line = ' '.join(f'{x:.1f},{y:.1f}' for x, y in zip(xs, ys))
-    return (f'<svg class="cg-spark {tone}" viewBox="0 0 {w} {h}" width="{w}" height="{h}" aria-hidden="true">'
-            + (f'<polyline points="{line}" fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' if n > 1 else '')
-            + f'<circle cx="{xs[-1]:.1f}" cy="{ys[-1]:.1f}" r="2.6"/></svg>')
+    cols = []
+    for i, v in enumerate(vals):
+        if v is None:
+            continue
+        if signed:
+            ht = max(abs(v) / span * 100, 3.0)
+            top = max(zero - ht if v >= 0 else zero, 0.0)
+            cls = 'p' if v >= 0 else 'n'
+        else:
+            ht = 100.0 if hi == lo else 15 + (v - lo) / span * 85
+            top = 100 - ht
+            cls = 'q'
+        cols.append(f'<i class="{cls}{" last" if i == n - 1 else ""}" style="left:{i * wd + wd * 0.15:.2f}%;width:{wd * 0.7:.2f}%;'
+                    f'top:{top:.2f}%;height:{ht:.2f}%"></i>')
+    axis = f'<i class="z" style="top:{zero:.2f}%"></i>' if signed else ''
+    return (f'<span class="cg-spark {tone}{" signed" if signed else ""}" style="--w:{w}px;--h:{h}px" aria-hidden="true">'
+            f'{axis}{"".join(cols)}</span>')
 
 
 def columns(items: list[dict], fmt: Callable[[float], str] = rupees) -> str:
@@ -293,7 +314,7 @@ def diverging_bars(df: pd.DataFrame, label: str = 'label', value: str = 'net_cr'
         tips.append(alt.Tooltip('stocks:Q', title='Stocks'))
     bars = alt.Chart(d).mark_bar(cornerRadius=2).encode(
         y=alt.Y(f'{label}:N', sort=d[label].tolist(), title=None,
-                axis=alt.Axis(labelColor=INK, labelLimit=200, ticks=False, domain=False)),
+                axis=alt.Axis(labelColor=INK, labelLimit=200, ticks=False, domain=False, labelOverlap=False)),
         x=alt.X(f'{value}:Q', title=unit, axis=alt.Axis(format=',.0f', gridColor=LINE, labelColor=INK3, titleColor=INK3,
                                                          domain=False, tickCount=5)),
         color=alt.Color('side:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=[BUY, SELL]), legend=None),
