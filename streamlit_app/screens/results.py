@@ -300,13 +300,13 @@ def _table_rows(df: pd.DataFrame, names: dict, levels: list[str]) -> pd.DataFram
         name=_name_col(df, names),
         nse_symbol=_col(df, 'symbol'),
         mk_bucket=df['mcap_bucket'],
-        period=[period_label(f, q) for f, q in zip(df['fy'], df['q'])],
-        period_sub=[f'to {kit.day(e, with_year=False)} · {"consolidated" if c else "standalone"}'
-                    for e, c in zip(df['_end'], df['_cons'])],
+        period=[f'{period_label(f, q)} to {kit.day(e, with_year=False)} · {"consolidated" if c else "standalone"}'
+                for f, q, e, c in zip(df['fy'], df['q'], df['_end'], df['_cons'])],
         ind=_first_filled(df, deep),
         ind_sub=(df[top] if top and len(levels) > 1 else None),
-        notes=[[t for t, on in (('Back to profit', a), ('Into loss', b), ('Derived', d), ('Half year', h)) if on]
-               for a, b, d, h in zip(df['to_profit'], df['to_loss'], derived, df['half'])])
+        notes=[[t for t, on in (('Back to profit', a), ('Into loss', b), ('Derived', d), ('Half year', h),
+                                ('No revenue line', n)) if on]
+               for a, b, d, h, n in zip(df['to_profit'], df['to_loss'], derived, df['half'], df['rev'].isna())])
     return out.sort_values('market_cap', ascending=False, na_position='last')
 
 
@@ -382,7 +382,8 @@ def render():
               + (f'; shrank most: {_names(down, names)}' if len(down) else ''),
               'Revenue against the same quarter a year ago, where that quarter was ₹10 Cr or more. Against a year ago, '
               'not against analysts\' estimates: there are no estimates in our data.', anchor='movers')
-    back, into = group[group['to_profit'] & group['doubt'].eq('')], group[group['to_loss'] & group['doubt'].eq('')]
+    clean_q = group['doubt'].eq('') & ~group['half']   # as the KPI counts them
+    back, into = group[group['to_profit'] & clean_q], group[group['to_loss'] & clean_q]
     proto._qa('Who swung to profit, who into loss?',
               (f'Back to profit: {_names(back.sort_values("market_cap", ascending=False), names)}' if len(back) else 'None back to profit')
               + (f'; into loss: {_names(into.sort_values("market_cap", ascending=False), names)}' if len(into) else ''),
@@ -393,7 +394,8 @@ def render():
     proto._qa('Every result in this group', f'{len(shown):,} companies, largest first',
               'Click a column to sort it. Revenue and profit are the quarter\'s, as filed; YoY against the same quarter a '
               'year ago; margin is profit over revenue.', anchor='table')
-    table(shown, [Col('name', 'Company', 'co2'), Col('period', 'Quarter', sub='period_sub', phone=False),
+    # the quarter and basis under the company name: every row is the chosen quarter, and the table fits the page
+    table(shown, [Col('name', 'Company', 'co2', sub='period'),
                   Col('rev', 'Revenue', 'money'), Col('rev_yoy_', 'Revenue YoY', 'spct'),
                   Col('profit', 'Profit', 'money'), Col('profit_yoy', 'Profit YoY', 'spct'),
                   Col('margin', 'Margin', 'pct', phone=False), Col('market_cap', 'Market cap', 'money', phone=False),
@@ -424,7 +426,7 @@ def render():
               limit=60, height=420, key=f'rs_held_{fy}_{q}', keep_empty=True)
     st.html('<p class="dt-foot">One row per company and quarter, consolidated where both are filed. A dash: the year-ago '
             'quarter is not in our history, or the filing has no revenue line under the Ind AS names (banks, NBFCs and '
-            'insurers file theirs under other names). "Derived": the filing gives only its half year; the quarter is that '
+            'insurers file theirs under other names; marked "No revenue line"). "Derived": the filing gives only its half year; the quarter is that '
             'less the June quarter filed before. "Half year": no quarter could be derived, so the half year is compared '
             'with the half year a year earlier; such rows are not in the KPI counts. Market-cap bucket by rank of NSE '
             'market cap (1-100 Large, 101-250 Mid, 251-500 Small, the rest Micro), estimated by us, not AMFI\'s list; '
