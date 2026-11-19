@@ -15,10 +15,13 @@ Portfolio Disclosures files list: one zip a month, a workbook per scheme, at www
 200 was the Angular page shell; its list is `cmsweb.alphagrepmf.ai/api/portfolios` (Flexi Cap, Multi Asset
 Allocation, a liquid fund of funds; monthly from July 2026). Both added (`icici`, `alphagrep`; `apis2.py`) and taken
 off `NOT_COLLECTED`; both answer only a GitHub runner, which is where the collector runs. Dispatched runs, 2026-09 /
-2026-10: ICICI 728 / 737 ISINs (Rs 7,12,110 / 7,11,748 Cr). Kotak (Radware CAPTCHA), Navi (403) and Union (no
+2026-10: ICICI 728 / 737 ISINs (Rs 7,12,110 / 7,11,748 Cr). The AlphaGrep run (44611798421) was cancelled
+while queued behind other R2 writers and not re-sent (it would have displaced a queued price backfill); its October
+files, fetched by the probe on a runner, parse to 177 ISINs, Rs 87 Cr (Flexi Cap; the fund of funds holds no
+shares). Kotak (Radware CAPTCHA), Navi (403) and Union (no
 connection) still not collected. BSE route for ICICI: none of ICICI Prudential's portfolio filings is among BSE's
 corporate announcements of 6-10 Nov 2026 (the feed the collectors read), so no PDF was assessed. **Next:** merge;
-dispatch `icici alphagrep` for 2025-10..2026-08.
+dispatch `alphagrep` for 2026-07..2026-10 and `icici` for 2025-10..2026-08 when the R2 queue is free.
 
 ## Fund houses set E, 19 Nov 2026 (branch `mf-houses-e`, draft PR)
 
