@@ -122,6 +122,17 @@ def main(out: str) -> int:
     for path in ('document-libraries', 'archive-documents'):
         for q in ('populate=*&pagination[pageSize]=100', 'populate=*&pagination[pageSize]=100&pagination[page]=2'):
             call(f'alphagrep cms {path}', 'GET', f'https://cmsweb.alphagrepmf.ai/api/{path}?{q}', headers=ag_h)
+    # The Portfolio Disclosure tab reads /api/portfolios (by accordion); keep the list and its first workbooks.
+    r = call('alphagrep cms portfolios', 'GET',
+             'https://cmsweb.alphagrepmf.ai/api/portfolios?populate=*&pagination[pageSize]=100', headers=ag_h)
+    call('alphagrep cms portfolios accordions', 'GET',
+         'https://cmsweb.alphagrepmf.ai/api/portfolios?populate=accordian_name&pagination[pageSize]=100', headers=ag_h)
+    try:
+        ups = re.findall(r'"url":"(/uploads/[^"]+)"', r.text) if r is not None else []
+    except Exception:  # noqa: BLE001
+        ups = []
+    for u in [u for u in ups if re.search(r'month|portfolio', u, re.I)][:2]:
+        call('alphagrep portfolio file', 'GET', 'https://cmsweb.alphagrepmf.ai' + u, headers=ag_h)
 
     # BSE: ICICI Prudential's filings among the announcements BSE disseminated around the 10th (portfolio
     # disclosures are filed as PDFs against its listed ETFs). Keeps the matching rows and the first PDFs.
@@ -131,7 +142,7 @@ def main(out: str) -> int:
     from collectors.bse.client import BSEClient
     bse = BSEClient(raw=None, pace=(1.0, 2.0))
     hits = []
-    for day in (date(2026, 11, 10), date(2026, 11, 11)):
+    for day in (date(2026, 11, 6), date(2026, 11, 7), date(2026, 11, 9), date(2026, 11, 10)):
         pg = 0
         for pg in range(1, 60):
             try:
@@ -139,13 +150,15 @@ def main(out: str) -> int:
             except Exception as exc:  # noqa: BLE001
                 index.append(f'bse {day} page {pg} | {type(exc).__name__}: {exc}')
                 break
-            hits += [x for x in rows if re.search(r'icici pru', str(x.get('SLONGNAME')) + str(x.get('NEWSSUB')), re.I)]
+            hits += [x for x in rows if re.search(r'icici|monthly portfolio',
+                                                  str(x.get('SLONGNAME')) + str(x.get('NEWSSUB')), re.I)]
             if len(rows) < 50:
                 break
         index.append(f'bse {day}: {pg} pages ({bse.via}), ICICI Prudential rows so far {len(hits)}')
     bse.close()
     (d / 'bse-icici-rows.json').write_text(json.dumps(hits, indent=1, default=str))
-    port = [x for x in hits if re.search(r'portfolio', str(x.get('NEWSSUB')) + str(x.get('HEADLINE')), re.I)]
+    port = sorted((x for x in hits if re.search(r'portfolio', str(x.get('NEWSSUB')) + str(x.get('HEADLINE')), re.I)),
+                  key=lambda x: 'icici' not in str(x.get('SLONGNAME')).lower())
     for x in port[:3]:
         if x.get('ATTACHMENTNAME'):
             call(f'bse icici pdf {x.get("SCRIP_CD")}', 'GET',
