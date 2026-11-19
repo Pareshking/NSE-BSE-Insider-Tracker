@@ -27,8 +27,6 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
          ('today?day=2026-11-10', 'today-past-day'), ('calendar?range=3m', 'calendar-3m'),
          ('entity?id=sbi-mutual-fund', 'entity-sbi-mf'), ('ownership', 'holders'), ('investor-flows', 'investor-flows'),
          ('ownership', 'holders-90d')]
-# Long pages drawn taller at phone width, so the screenshot reaches their charts (the entity page's holdings).
-TALL = {'entity-sbi-mf': 7000, 'holders-90d': 4000}
 # A period button pressed before the screenshot, where the default period is often empty.
 CLICK = {'holders-90d': '90 days'}
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
@@ -36,7 +34,8 @@ CLICK = {'holders-90d': '90 days'}
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
 # Long pages get a tall window: Streamlit scrolls inside its own container, so a full-page shot stops at the window's
 # height and the lower sections were never seen on real data (19 Nov 2026).
-TALL = {'funds': 9000, 'results': 7000, 'company-hcltech': 9000, 'company-iifl': 9000, 'dashboard': 7000}
+TALL = {'funds': 9000, 'results': 7000, 'company-hcltech': 9000, 'company-iifl': 9000, 'dashboard': 7000,
+        'entity-sbi-mf': 5000, 'holders-90d': 3000}
 # Streamlit marks the app "notRunning" once a script run has finished.
 RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')
@@ -50,7 +49,7 @@ async def main(base: str, out: Path) -> int:
         for label, (w, h) in WIDTHS.items():
             page = await browser.new_page(viewport={'width': w, 'height': h})
             for path, name in PAGES:
-                await page.set_viewport_size({'width': w, 'height': TALL.get(name, h) if label == 'phone' else h})
+                await page.set_viewport_size({'width': w, 'height': h})
                 await page.goto(f'{base.rstrip("/")}/{path}', wait_until='networkidle', timeout=120_000)
                 # Streamlit draws after the first paint; the first page also
                 # loads every table from R2. Wait for the page head itself.

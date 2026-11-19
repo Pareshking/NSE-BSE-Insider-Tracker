@@ -74,7 +74,9 @@ def diverging_bar(df: pd.DataFrame | None, label: str, value: str, fmt: Callable
         return ''
     d = d.loc[d['_v'].abs().sort_values(ascending=False, kind='stable').index[:limit]]
     d = d.sort_values('_v', ascending=False, kind='stable')
-    return delta_bars([(_short(lab), v, g) for lab, v, g in zip(d['_l'], d['_v'], d['_g'])], fmt=fmt)
+    html = delta_bars([(_short(lab), v, g) for lab, v, g in zip(d['_l'], d['_v'], d['_g'])], fmt=fmt)
+    # 'wide': on a phone the name and value share a line and the bar runs the full width under them (ui/look.css)
+    return html.replace('<div class="cg-delta">', '<div class="cg-delta wide">', 1)
 
 
 def buy_sell_split(buy, sell, fmt: Callable[[float], str] = rupees) -> str:

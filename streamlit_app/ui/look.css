@@ -233,3 +233,13 @@ table.dt th:first-child, table.dt td:first-child { padding-left: 0 !important; }
 .cr-c em { font-style: normal; font-size: 11.5px; color: var(--ink-3); margin-left: 4px; }
 @media (max-width: 640px) { .cr { grid-template-columns: minmax(0, 1fr) 64px 96px; gap: 8px; } .cr-c em { display: block; margin: 0; } .cr-c em.u { display: none; } }
 .cr-s { font-size: 11.5px; color: var(--ink-3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* diverging_bar on a phone (ui/charts.py): a name and its value on one line, the bar the full width under them, so long
+   company names neither wrap onto three lines nor shrink the bars to a few pixels */
+@media (max-width: 640px) {
+  .cg-delta.wide { gap: 10px; }
+  .cg-delta.wide .cg-drow { grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
+  .cg-delta.wide .cg-dl { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .cg-delta.wide .cg-dl em { display: inline; margin-left: 6px; }
+  .cg-delta.wide .cg-dv { grid-column: 2; grid-row: 1; }
+  .cg-delta.wide .cg-dtrack { grid-column: 1 / -1; grid-row: 2; height: 8px; }
+}

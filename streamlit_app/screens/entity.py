@@ -94,7 +94,7 @@ def _holdings_card(held: pd.DataFrame, gone: pd.DataFrame, hist: pd.DataFrame) -
                    for t, q in zip(rows['type_label'], pd.to_datetime(rows['quarter_end'], errors='coerce'))]
     with kit.card('Holdings over 1%', 'en_ph', "named in each company's latest shareholding pattern"):
         moved = rows[rows['change'].isin(['added', 'cut', 'new', 'exited'])].copy()
-        moved['tag'] = moved['change'].map({'new': 'new: crossed 1%', 'exited': 'exited: under 1%'})
+        moved['tag'] = moved['change'].map({'new': 'new', 'exited': 'exited'})
         bars = charts.diverging_bar(moved, 'company', 'pct_change', tag='tag', limit=20)
         if bars:
             st.html('<p class="chart-cap">Change since the quarter before, in points of the company'
