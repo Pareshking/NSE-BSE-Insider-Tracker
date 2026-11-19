@@ -90,6 +90,10 @@ def data_dir(tmp_path_factory, real_nse_rows):
     extra, _ = clean_writer.issue_tables(r2)
     for name in ('preferential_lockins', 'preferential_allottees', 'qip', 'qip_allottees'):
         extra[name].to_parquet(cur / f'{name}.parquet')
+    # public shareholders over 1%: ITC's last two quarters, from the real XBRLs, as the nightly writes them
+    from test_public_holders import filing, pub, table_of
+    table_of((pub('ITC_2026Q2'), filing('a', 'ITC', '2026-06-30', '2026-07-15'), 'r'),
+             (pub('ITC_2026Q3'), filing('b', 'ITC', '2026-09-30', '2026-10-14'), 'r'))[0].to_parquet(cur / 'public_holders.parquet')
     (root / 'clean' / 'report_local.json').write_text(json.dumps(report, default=str))
     (root / 'clean' / 'latest.json').write_text(json.dumps({'date': RUN_DATE, 'report': 'local'}))
     return root
@@ -99,7 +103,8 @@ PAGES = [('pages:today', {}), ('pages:insiders', {}), ('pages:deals', {}), ('pag
          ('pages:ownership', {}), ('pages:calendar', {}), ('more_pages:watchlist', {}), ('more_pages:watchlist', {'watch': 'HCLTECH,ZEEL,NOPE'}),
          ('more_pages:screener', {}), ('more_pages:sectors', {}), ('more_pages:results', {}), ('filings_all', {}), ('investors', {}), ('capital_raises', {}),
          ('track_record', {}), ('data_status', {}), ('company', {'symbol': 'HCLTECH'}), ('company', {}),
-         ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}), ('coming', {}), ('filings', {})]
+         ('entity', {'id': 'vama-sundari-investments-delh'}), ('entity', {}),
+         ('entity', {'id': 'sbi-mutual-fund'}), ('coming', {}), ('filings', {})]
 
 
 @pytest.mark.parametrize(('screen', 'params'), PAGES, ids=[f'{s.replace(":", "-")}-{bool(p)}' for s, p in PAGES])

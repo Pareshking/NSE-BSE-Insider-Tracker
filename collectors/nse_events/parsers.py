@@ -665,3 +665,130 @@ def parse_shp_categories(xml: str) -> dict:
     out['categories_check'] = 'mismatch' if mismatch else 'match'
     out['categories_unmapped'] = '; '.join(notes) or None
     return out
+
+
+# --- Public shareholders named in Tables III and IV (over 1% of the company) ------
+#
+# SEBI's form names every public shareholder holding more than 1% under its
+# sub-category. In the XBRL each named holder is a pair of contexts on its own
+# axis, as the promoter members are: `D_<Section>_Context<n>` carrying
+# NameOfTheShareholder (and a PAN, never read), and `<Section>_Context<n>`
+# carrying NumberOfShares and the % of the company. The section is the
+# sub-category's context name, some prefixed `DetailsOfSharesHeldBy`, and the
+# two FPI ones shortened (`...PortfolioInvestorOne`, not `...CategoryOne`).
+# The "any other" rows (B1k, B2g, B4m) also carry
+# WhetherACategoryOrMoreThan1PercentageOfShareholding: 'Category' marks a
+# sub-category total typed as a name ("Foreign Institutional Investors",
+# "HUF", "Clearing Members"), not a holder; it is left out and counted.
+#
+# Only sections seen in real filings are read (PUBLIC_HOLDER_SECTIONS, with
+# a filing each was seen in; 19 Nov 2026: 123 filings of the Sep 2026 quarter
+# fetched from NSE's archive, 5 of Jun 2026, ZEEL Jun 2026 and the
+# shp_members fixtures, taxonomies 2025-05-31 and 2025-10-31; in all of them
+# the named holders of a category add up to no more than its filed total).
+# Any other section with a name is reported in `unmapped`, never put in a
+# type. Not seen in any filing, so not read: VentureCapitalFunds,
+# AssetReconstructionCompanies, SovereignWealthFunds (domestic and foreign),
+# ForeignVentureCapitalInvestors, AssociateCompaniesOrSubsidiaries,
+# RelativesOfPromotersOtherThanPromoterGroup, ForeignNationals, and resident
+# individuals up to Rs 2 lakh (B4g).
+# Table IV C (custodian of depository receipts, employee benefit trusts) is
+# not public and not read.
+#
+# pct_of_company is shares / SEBI's % base (total less depository-receipt
+# shares, as parse_shp_categories), not the filed %: taxonomy 2025-05-31 files
+# the % as a percentage (MOTILALOFS Jun 2025: 5.09 for 5.09%), 2025-10-31 as
+# a fraction (ITC Sep 2026: 0.0336 for 3.36%).
+
+# XBRL section -> (SEBI sub-category context, type). Types are parse_shp_categories' buckets.
+PUBLIC_HOLDER_SECTIONS = {
+    'MutualFundsOrUTI': ('MutualFundsOrUTI', 'mf'),                                                    # ITC, ASIANPAINT
+    'AlternativeInvestmentFunds': ('AlternativeInvestmentFunds', 'aif'),                               # ARIS
+    'DetailsOfSharesHeldByBanks': ('Banks', 'banks_fi'),                                               # AADHARHFC
+    'InsuranceCompanies': ('InsuranceCompanies', 'insurance'),                                         # ITC, ADANIENT
+    'ProvidentFundsOrPensionFunds': ('ProvidentFundsOrPensionFunds', 'other_dii'),                     # ITC, ETERNAL
+    'NBFCsRegisteredWithRBI': ('NBFCsRegisteredWithRBI', 'banks_fi'),                                  # MOMSBELIEF
+    'DetailsOfSharesHeldByOtherFinancialInstitutions': ('OtherFinancialInstitutions', 'banks_fi'),     # ITC
+    'DetailsOfSharesHeldByOtherInstitutionsDomestic': ('OtherInstitutionsDomestic', 'other_dii'),      # ITC, ESSENTIA
+    'DetailsOfSharesHeldByForeignDirectInvestment': ('ForeignDirectInvestment', 'other_foreign'),      # ITC, ETERNAL
+    'DetailsOfSharesHeldByInstitutionsForeignPortfolioInvestorOne':
+        ('InstitutionsForeignPortfolioInvestorCategoryOne', 'fpi'),                                    # ITC, ADANIENT
+    'DetailsOfSharesHeldByInstitutionsForeignPortfolioInvestorTwo':
+        ('InstitutionsForeignPortfolioInvestorCategoryTwo', 'fpi'),                                    # AAATECH
+    'OverseasDepositories': ('OverseasDepositories', 'other_foreign'),                                 # ICICIBANK
+    'DetailsOfSharesHeldByOtherInstitutionsForeign': ('OtherInstitutionsForeign', 'other_foreign'),    # ITC, ETERNAL
+    'DetailsOfSharesHeldByCentralGovernmentOrPresidentOfIndia': ('CentralGovernmentOrPresidentOfIndia', 'govt'),  # IDEA
+    'DetailsOfSharesHeldByStateGovernmentsOrGovernors': ('StateGovernmentsOrGovernors', 'govt'),
+    'DetailsOfSharesHeldByShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter':
+        ('ShareholdingByCompaniesOrBodiesCorporateWhereCentralOrStateGovernmentIsPromoter', 'govt'),   # GSPLTRANS
+    'DetailsOfSharesHeldByDirectorsAndDirectorsRelatives': ('DirectorsAndDirectorsRelatives', 'other_public'),  # ETERNAL
+    'DetailsOfSharesHeldByKeyManagerialPersonnel': ('KeyManagerialPersonnel', 'other_public'),
+    'DetailsOfSharesHeldByTrustsWhereAnyPersonBelongingToPromoterAndPromoterGroupIsTrusteeOrBeneficiaryOrAuthorOfTrust':
+        ('TrustsWhereAnyPersonBelongingToPromoterAndPromoterGroupIsTrusteeOrBeneficiaryOrAuthorOfTrust',
+         'other_public'),                                                                               # HEALTHX
+    'DetailsOfSharesHeldByInvestorEducationAndProtectionFund': ('InvestorEducationAndProtectionFund', 'other_public'),
+    'DetailsOfSharesHeldByResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh':
+        ('ResidentIndividualShareholdersHoldingNominalShareCapitalInExcessOfRsTwoLakh', 'hni'),       # AAATECH
+    'DetailsOfSharesHeldByNonResidentIndians': ('NonResidentIndians', 'other_public'),                 # ARIS
+    'DetailsOfSharesHeldByForeignCompanies': ('ForeignCompanies', 'other_public'),                     # ADANIENT
+    'DetailsOfSharesHeldByBodiesCorporate': ('BodiesCorporate', 'corporate'),                          # AAATECH
+    'OtherNonInstitutions': ('OtherNonInstitutions', 'other_public'),                                  # B4m: trusts, LLPs, ...
+}
+_NOT_PUBLIC = {'CustodianOrDRHolder', 'EmployeeBenefitsTrusts'}   # Table IV C
+_ANY_OTHER_CATEGORY = ('CategoryOfOtherNonInstitutions', 'CategoryOfOtherInstitutions')
+
+
+def parse_shp_public_holders(xml: str) -> tuple[list[dict], dict]:
+    """(holders, check) from a shareholding-pattern XBRL: every public
+    shareholder the filing names (Tables III and IV). Each holder: order in
+    the filing, name as filed, section (the XBRL's), category (SEBI's
+    sub-category context, as parse_shp_categories reads it), type (its
+    bucket), sub_category (the filed category of an "any other" row: Trusts,
+    LLP, ...), shares as filed, pct_of_company (% of SEBI's base).
+
+    `check`: holders, category_rows (sub-category totals typed as names, left
+    out), unmapped (sections with a name this parser does not read, with
+    their row count), over_category (a category whose named holders add up to
+    more shares than the filed category total), and 'ok' / 'unmapped' /
+    'over_category'. The promoter members (Table II) are parse_shp_members'."""
+    facts: dict[str, dict] = {}
+    for tag, ctx, val in _FACT.findall(xml):
+        facts.setdefault(ctx, {})[tag] = html.unescape(val).strip()
+    total = _fact(xml, 'NumberOfShares', _TOTAL_CTX)
+    base = (total - (_fact(xml, 'NumberOfShares', 'CustodianOrDRHolder_ContextI') or 0.0)) if total else None
+    holders, skipped, unmapped = [], 0, {}
+    for ctx, f in facts.items():
+        m = _MEMBER_CTX.match(ctx)
+        name = f.get('NameOfTheShareholder')
+        if not m or not name:
+            continue
+        section = m.group(1)
+        if section in PROMOTER_SECTIONS or 'TypeOfPromoterShareholding' in f or section in _NOT_PUBLIC:
+            continue
+        if section not in PUBLIC_HOLDER_SECTIONS:
+            unmapped[section] = unmapped.get(section, 0) + 1
+            continue
+        if f.get('WhetherACategoryOrMoreThan1PercentageOfShareholding', '').strip().lower() == 'category':
+            skipped += 1
+            continue
+        category, kind = PUBLIC_HOLDER_SECTIONS[section]
+        shares = _num(facts.get(ctx[2:], {}).get('NumberOfShares'))
+        holders.append({
+            'holder_no': int(m.group(2)), 'holder_name_filed': name, 'section': section, 'category': category,
+            'type': kind, 'sub_category': next((f[k] for k in _ANY_OTHER_CATEGORY if f.get(k)), None),
+            'shares': shares,
+            'pct_of_company': round(shares / base * 100, 4) if shares is not None and base else None,
+        })
+    order = list(PUBLIC_HOLDER_SECTIONS)
+    holders.sort(key=lambda r: (order.index(r['section']), r['holder_no']))
+    for i, r in enumerate(holders, 1):
+        r['holder_no'] = i
+    named: dict[str, float] = {}
+    for r in holders:
+        named[r['category']] = named.get(r['category'], 0.0) + (r['shares'] or 0.0)
+    over = {c: (n, _fact(xml, 'NumberOfShares', f'{c}_ContextI') or 0.0) for c, n in named.items()}
+    over = {c: v for c, v in over.items() if v[0] - v[1] >= 1}
+    check = 'over_category' if over else 'unmapped' if unmapped else 'ok'
+    return holders, {'holders': len(holders), 'category_rows': skipped, 'unmapped': unmapped,
+                     'over_category': {c: f'{n:.0f} named, {t:.0f} filed' for c, (n, t) in over.items()},
+                     'check': check}
