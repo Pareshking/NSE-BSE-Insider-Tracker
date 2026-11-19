@@ -63,7 +63,7 @@ jobs:
           done
       - name: Follow-up calls (the sites' own list calls)
         run: |
-          pip install requests
+          pip install requests selenium
           python -u scripts/mf_probe_follow.py probe/follow
       - uses: actions/upload-artifact@v4
         if: always()

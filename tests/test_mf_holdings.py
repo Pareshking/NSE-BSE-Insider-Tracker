@@ -238,3 +238,19 @@ def test_not_collected_names_houses_that_are_not_collected():
     names = {h.name for h in HOUSES}
     assert NOT_COLLECTED and all(n not in names and why for n, why in NOT_COLLECTED)
     assert 'Mahindra Manulife Mutual Fund' in names
+
+
+def test_icici_files_list_gives_the_month_zip():
+    """ICICI's files list as a GitHub runner got it (mf-probe, 19 Nov 2026), cut to three entries."""
+    from collectors.mf_portfolios import apis2
+    from collectors.mf_portfolios.houses import BY_KEY, NOT_COLLECTED
+    files = [{'title': {'text': f'Monthly Portfolio Disclosure {mn} 2026'},
+              'url': f'/downloads/Files/Monthly Portfolio Disclosures/2026/{ab}/Monthly-Portfolio-Disclosure-{mn}-2026.zip'}
+             for mn, ab in (('October', 'Oct'), ('September', 'Sep'), ('August', 'Aug'))]
+    links = apis2.icici_links(files)
+    oct_, sep = (find.candidates(links, mth, BY_KEY['icici']) for mth in ('2026-10', '2026-09'))
+    assert oct_ == ['https://www.icicipruamc.com/blob/downloads/Files/Monthly Portfolio Disclosures/2026/Oct/'
+                    'Monthly-Portfolio-Disclosure-October-2026.zip']
+    assert len(sep) == 1 and sep[0].endswith('September-2026.zip')
+    assert apis2._ist_day(1793422800000).isoformat() == '2026-10-31'   # applicableMonth: the month-end in IST
+    assert 'ICICI Prudential Mutual Fund' not in [n for n, _ in NOT_COLLECTED]

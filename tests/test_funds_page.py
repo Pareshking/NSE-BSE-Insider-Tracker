@@ -51,7 +51,7 @@ funds.render()
     assert 'Where did houses open a new position?' in html
     assert 'This month so far: what did funds buy and sell in bulk and block deals?' in html
     assert 'How is each house positioning?' in html
-    assert 'Is this complete?' in html and 'ICICI Prudential Mutual Fund (its file service' in html
+    assert 'Is this complete?' in html and 'Kotak Mahindra Mutual Fund (its file list' in html
     assert '2 fund houses compared' in html
 
 
@@ -306,6 +306,6 @@ def test_missing_houses_names_the_ones_not_collected():
     fl = _fl()
     from collectors.mf_portfolios.houses import NOT_COLLECTED
     names = [n for n, _ in NOT_COLLECTED]
-    assert 'ICICI Prudential Mutual Fund' in names and 'Kotak Mahindra Mutual Fund' in names
+    assert 'Navi Mutual Fund' in names and 'Kotak Mahindra Mutual Fund' in names
     mh = fl.missing_houses({'sbi'}, [('sbi', 'SBI'), ('hdfc', 'HDFC')], NOT_COLLECTED)
     assert mh['in'] == ['SBI'] and mh['absent'][0][0] == 'HDFC'

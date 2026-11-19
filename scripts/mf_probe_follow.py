@@ -91,6 +91,8 @@ def main(out: str) -> int:
             files = ((r.json().get('success') or {}).get('data') or []) if r is not None else []
         except ValueError:
             files = []
+        if isinstance(files, dict):   # {'files': [...], 'isNext': ...}
+            files = files.get('files') or []
         for f in files if isinstance(files, list) else []:
             if f.get('url') and first_file is None and re.search(r'monthly', json.dumps(f), re.I):
                 first_file = f
@@ -114,31 +116,34 @@ def main(out: str) -> int:
             if r is not None and r.status_code == 200:
                 (d / 'alphagrep-js-addresses.txt').write_text('\n'.join(sorted(set(
                     re.findall(r'["\'`](https?://[^"\'`\s]+|/?api/[^"\'`\s]+)', r.text)))))
+    # Its content service (Strapi), named in that script: the document library and the archive the page lists.
+    ag_h = {'Accept': 'application/json, text/plain, */*', 'Origin': 'https://www.alphagrepmf.ai',
+            'Referer': 'https://www.alphagrepmf.ai/'}
+    for path in ('document-libraries', 'archive-documents'):
+        for q in ('populate=*&pagination[pageSize]=100', 'populate=*&pagination[pageSize]=100&pagination[page]=2'):
+            call(f'alphagrep cms {path}', 'GET', f'https://cmsweb.alphagrepmf.ai/api/{path}?{q}', headers=ag_h)
 
     # BSE: ICICI Prudential's filings among the announcements BSE disseminated around the 10th (portfolio
     # disclosures are filed as PDFs against its listed ETFs). Keeps the matching rows and the first PDFs.
-    import time
-    b = requests.Session()
-    b.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plain, */*',
-                      'Origin': 'https://www.bseindia.com', 'Referer': 'https://www.bseindia.com/',
-                      'Sec-Fetch-Site': 'same-site'})
+    # The nightly collector's own BSE client (plain requests, then an XHR from inside a bseindia.com page if refused).
+    from datetime import date
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from collectors.bse.client import BSEClient
+    bse = BSEClient(raw=None, pace=(1.0, 2.0))
     hits = []
-    for day in ('20261110', '20261111', '20261009', '20261010'):
+    for day in (date(2026, 11, 10), date(2026, 11, 11)):
         pg = 0
         for pg in range(1, 60):
             try:
-                r = b.get('https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w', timeout=60,
-                          params={'pageno': pg, 'strCat': '-1', 'strPrevDate': day, 'strScrip': '', 'strSearch': 'P',
-                                  'strToDate': day, 'strType': 'C', 'subcategory': '-1'})
-                rows = r.json().get('Table') or []
+                rows, total = bse.announcements(day, pg)
             except Exception as exc:  # noqa: BLE001
                 index.append(f'bse {day} page {pg} | {type(exc).__name__}: {exc}')
                 break
             hits += [x for x in rows if re.search(r'icici pru', str(x.get('SLONGNAME')) + str(x.get('NEWSSUB')), re.I)]
             if len(rows) < 50:
                 break
-            time.sleep(1.5)
-        index.append(f'bse {day}: {pg} pages, ICICI Prudential rows so far {len(hits)}')
+        index.append(f'bse {day}: {pg} pages ({bse.via}), ICICI Prudential rows so far {len(hits)}')
+    bse.close()
     (d / 'bse-icici-rows.json').write_text(json.dumps(hits, indent=1, default=str))
     port = [x for x in hits if re.search(r'portfolio', str(x.get('NEWSSUB')) + str(x.get('HEADLINE')), re.I)]
     for x in port[:3]:
