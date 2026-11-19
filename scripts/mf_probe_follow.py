@@ -56,12 +56,17 @@ def main(out: str) -> int:
     s.headers.update({'User-Agent': UA, 'Accept-Language': 'en-IN,en;q=0.9'})
     api_h = {'Accept': 'application/json, text/plain, */*', 'Origin': SITE, 'Referer': SITE + '/',
              'Content-type': 'application/json'}
+    # What the site's own request code adds to every API call (index.*.js: headers.env = REACT_APP_ENV, which is
+    # 'api'; a fresh requestAPIId per call). Without env the gateway answers the site's 404 page.
+    import uuid
+    full_h = {**api_h, 'env': 'api'}
 
     # ICICI: the site first (cookies a browser would carry), then the page's own calls.
     call('icici site downloads page', 'GET',
          SITE + '/media-center/downloads?currentTabFilter=Disclosures&subCatTabFilter=MonthlyPortfolioDisclosures')
-    cats = call('icici categories', 'GET', f'{API}/nms/v1/downloads/categories?userType=Investor', headers=api_h)
-    call('icici categories plain', 'GET', f'{API}/nms/v1/downloads/categories?userType=Investor')
+    call('icici categories json-accept', 'GET', f'{API}/nms/v1/downloads/categories?userType=Investor', headers=api_h)
+    cats = call('icici categories site-headers', 'GET', f'{API}/nms/v1/downloads/categories?userType=Investor',
+                headers={**full_h, 'requestAPIId': str(uuid.uuid4())})
     picks = []
     if cats is not None:
         try:
@@ -81,7 +86,7 @@ def main(out: str) -> int:
         body = {'categoryId': str(sub.get('id') or ''), 'schemeCategory': '', 'userType': 'Investor', 'fileType': 'All',
                 'page': '1', 'size': '20', 'filter': [], 'categoryName': (cat.get('title') or {}).get('code')}
         r = call(f'icici files {(sub.get("title") or {}).get("code")}', 'POST', f'{API}/nms/v1/downloads/files',
-                 headers=api_h, json=body)
+                 headers={**full_h, 'requestAPIId': str(uuid.uuid4())}, json=body)
         try:
             files = ((r.json().get('success') or {}).get('data') or []) if r is not None else []
         except ValueError:
@@ -101,6 +106,46 @@ def main(out: str) -> int:
         (d / 'alphagrep-links.txt').write_text('\n'.join(links))
         for u in [u for u in links if re.search(r'portfolio', u, re.I)][:3]:
             call('alphagrep file', 'GET', u)
+
+    # AlphaGrep's page is an Angular shell: keep its main script and the addresses in it (its list call is there).
+    if page is not None and page.status_code == 200:
+        for js in re.findall(r'src="(main\.[0-9a-f]+\.js)"', page.text)[:1]:
+            r = call('alphagrep main js', 'GET', 'https://www.alphagrepmf.ai/' + js)
+            if r is not None and r.status_code == 200:
+                (d / 'alphagrep-js-addresses.txt').write_text('\n'.join(sorted(set(
+                    re.findall(r'["\'`](https?://[^"\'`\s]+|/?api/[^"\'`\s]+)', r.text)))))
+
+    # BSE: ICICI Prudential's filings among the announcements BSE disseminated around the 10th (portfolio
+    # disclosures are filed as PDFs against its listed ETFs). Keeps the matching rows and the first PDFs.
+    import time
+    b = requests.Session()
+    b.headers.update({'User-Agent': UA, 'Accept': 'application/json, text/plain, */*',
+                      'Origin': 'https://www.bseindia.com', 'Referer': 'https://www.bseindia.com/',
+                      'Sec-Fetch-Site': 'same-site'})
+    hits = []
+    for day in ('20261110', '20261111', '20261009', '20261010'):
+        pg = 0
+        for pg in range(1, 60):
+            try:
+                r = b.get('https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w', timeout=60,
+                          params={'pageno': pg, 'strCat': '-1', 'strPrevDate': day, 'strScrip': '', 'strSearch': 'P',
+                                  'strToDate': day, 'strType': 'C', 'subcategory': '-1'})
+                rows = r.json().get('Table') or []
+            except Exception as exc:  # noqa: BLE001
+                index.append(f'bse {day} page {pg} | {type(exc).__name__}: {exc}')
+                break
+            hits += [x for x in rows if re.search(r'icici pru', str(x.get('SLONGNAME')) + str(x.get('NEWSSUB')), re.I)]
+            if len(rows) < 50:
+                break
+            time.sleep(1.5)
+        index.append(f'bse {day}: {pg} pages, ICICI Prudential rows so far {len(hits)}')
+    (d / 'bse-icici-rows.json').write_text(json.dumps(hits, indent=1, default=str))
+    port = [x for x in hits if re.search(r'portfolio', str(x.get('NEWSSUB')) + str(x.get('HEADLINE')), re.I)]
+    for x in port[:3]:
+        if x.get('ATTACHMENTNAME'):
+            call(f'bse icici pdf {x.get("SCRIP_CD")}', 'GET',
+                 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/' + x['ATTACHMENTNAME'],
+                 headers={'Referer': 'https://www.bseindia.com/'})
 
     (d / 'INDEX.txt').write_text('\n'.join(index) + '\n')
     return 0
