@@ -35,6 +35,7 @@ ISIN = re.compile(r'^IN[A-Z0-9]{9}[0-9]$')
 PASSIVE = re.compile(r'\betf\b|exchange traded|index fund|\bindex\b|\bnifty\b|\bsensex\b|\bbse \d|\bbse (?:total|sensex|midcap|smallcap|'
                      r'bharat|india|psu|healthcare|it|power|capital|select)|fund of funds?|\bfof\b|arbitrage', re.I)
 HEADER_SCAN = 40      # rows from the top of a sheet searched for the header row
+BLOCK = re.compile(r'^scheme\s*:\s*', re.I)   # 'SCHEME: UTI - Large Cap Fund', a scheme's title row
 SCHEME_SCAN = 12      # rows from the top searched for the scheme name
 
 
@@ -62,7 +63,8 @@ def _scheme(rows: list) -> str | None:
                 if tail and _norm(tail) != t:
                     return tail
             if first is None and ('fund' in t or 'plan' in t or 'etf' in t) and 10 < len(t) < 200 and t not in (
-                    'mutual fund',) and not t.endswith(' mutual fund') and 'portfolio' not in t:
+                    'mutual fund',) and not t.strip('() .').endswith(' mutual fund') and 'portfolio' not in t \
+                    and 'investment manager' not in t:
                 first = str(c).strip()
     return first
 
@@ -78,7 +80,7 @@ def _header(rows: list) -> tuple[int, dict] | None:
                 col['isin'] = j
             elif ('quantity' in x or x in ('qty', 'no. of shares')) and 'qty' not in col:
                 col['qty'] = j
-            elif ('market' in x or 'fair value' in x or x.startswith('value')) and 'val' not in col:
+            elif ('market' in x or 'fair value' in x or x.startswith(('value', 'mkt val'))) and 'val' not in col:
                 col['val'] = j
             elif ('% to' in x or '% of' in x or 'to net assets' in x or x in ('%', '% aum')) and 'pct' not in col:
                 col['pct'] = j
@@ -94,10 +96,16 @@ def parse_rows(sheet: str, rows: list) -> tuple[list[dict], str | None]:
     if h is None:
         return [], 'no ISIN and Quantity header'
     k, col = h
-    scheme = _scheme(rows[:k + 1]) or sheet
+    scheme = BLOCK.sub('', _scheme(rows[:k + 1]) or sheet).strip() or sheet
     out = []
     for r in rows[k + 1:]:
         r = list(r)
+        # One sheet holding every scheme, each block opened by a 'SCHEME: name' row (UTI): the block's name
+        # applies to the lines under it.
+        title = next((str(c) for c in r if isinstance(c, str) and BLOCK.match(c.strip())), None)
+        if title is not None and BLOCK.sub('', title.strip()).strip():
+            scheme = BLOCK.sub('', title.strip()).strip()
+            continue
         if col['isin'] >= len(r):
             continue
         isin = str(r[col['isin']] or '').strip().upper()
