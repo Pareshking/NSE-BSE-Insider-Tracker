@@ -35,7 +35,7 @@ WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
 # Long pages get a tall window: Streamlit scrolls inside its own container, so a full-page shot stops at the window's
 # height and the lower sections were never seen on real data (19 Nov 2026).
 TALL = {'funds': 9000, 'results': 7000, 'company-hcltech': 9000, 'company-iifl': 9000, 'dashboard': 7000,
-        'entity-sbi-mf': 5000, 'holders-90d': 3000}
+        'entity-sbi-mf': 5000, 'holders-90d': 3000, 'insiders': 6000, 'insiders-1m': 7000, 'deals': 6000, 'stakes': 5000}
 # Streamlit marks the app "notRunning" once a script run has finished.
 RUN_FINISHED = "() => document.querySelector('[data-testid=\"stApp\"]')?.dataset.testScriptState === 'notRunning'"
 ERROR_MARKERS = ('Traceback (most recent call last)', 'This app has encountered an error', 'Error running app')

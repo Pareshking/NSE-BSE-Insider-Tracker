@@ -341,3 +341,56 @@ def heatmap(df: pd.DataFrame, x: str = 'month_label', y: str = 'house', value: s
         tooltip=[alt.Tooltip(f'{y}:N', title='House'), alt.Tooltip(f'{x}:O', title='Month'),
                  alt.Tooltip(f'{value}:Q', title='Net bought, % of equity', format='+.2f')],
     ).properties(height=max(120, 20 * rows)).configure_view(stroke=None)
+
+
+# ---- Insiders, Deals and Stakes at a glance (owner, 19 Nov 2026: "Not even pages have visualization to understand bought
+# or sold"). HTML like the builders above, so a 390 px phone keeps the full width with no horizontal scroll.
+
+def split_rows(rows: list[tuple[str, float, float]], fmt: Callable[[float], str] = rupees,
+               what: tuple[str, str] = ('bought', 'sold'), note: Callable[[float, float], str] | None = None) -> str:
+    """One bar per group (label, bought, sold): the bar's length is the group's total against the largest group's, green
+    for the bought part from the left and red for the sold part after it, both figures written beside the name. So
+    which group moved most and which way it leaned read at once. `note(b, s)` adds a muted figure after the two (the
+    net). Rows with nothing either way are left out; '' when no row is left."""
+    rows = [(str(lab), max(_finite(b) or 0.0, 0.0), max(_finite(s) or 0.0, 0.0)) for lab, b, s in rows]
+    rows = [r for r in rows if r[1] + r[2] > 0]
+    if not rows:
+        return ''
+    top = max(b + s for _, b, s in rows)
+    out = []
+    for lab, b, s in rows:
+        extra = f' <em>{esc(note(b, s))}</em>' if note else ''
+        out.append(f'<div class="cg-srows-r"><span class="cg-srl">{esc(lab)}</span>'
+                   f'<span class="cg-srv num"><span class="up">{esc(fmt(b))} {esc(what[0])}</span> · '
+                   f'<span class="down">{esc(fmt(s))} {esc(what[1])}</span>{extra}</span>'
+                   f'<span class="cg-srbar"><i class="up" style="width:{b / top * 100:.2f}%"></i>'
+                   f'<i class="down" style="width:{s / top * 100:.2f}%"></i></span></div>')
+    return '<div class="cg-srows">' + ''.join(out) + '</div>'
+
+
+def flow_strip(days: list, values: list, fmt: Callable[[float], str] = lambda v: rupees(v, signed=True)) -> str:
+    """A day-by-day column strip the full width of the column: net buying above the zero line in green, net selling
+    under it in red, a day with nothing filed left empty; the first and last day written under it and each column's
+    day and figure on hover. `days` and `values` are in step, oldest first. '' with fewer than two days or no value."""
+    if len(days) < 2 or len(days) != len(values):
+        return ''
+    vals = [_finite(v) for v in values]
+    real = [v for v in vals if v is not None]
+    if not real:
+        return ''
+    lo, hi = min(real + [0.0]), max(real + [0.0])
+    span = (hi - lo) or 1.0
+    zero = hi / span * 100
+    n = len(vals)
+    wd = 100 / n
+    cols = []
+    for i, (d, v) in enumerate(zip(days, vals)):
+        if v is None or v == 0:
+            continue
+        ht = max(abs(v) / span * 100, 2.0)
+        top = max(zero - ht if v > 0 else zero, 0.0)
+        tip = f'{pd.Timestamp(d):%d %b %Y}: {fmt(v)}'
+        cols.append(f'<i class="{"p" if v > 0 else "n"}" title="{esc(tip, quote=True)}" style="left:{i * wd + wd * 0.12:.3f}%;'
+                    f'width:{max(wd * 0.76, 0.2):.3f}%;top:{top:.2f}%;height:{ht:.2f}%"></i>')
+    return (f'<div class="cg-flow"><div class="cg-fplot"><i class="z" style="top:{zero:.2f}%"></i>{"".join(cols)}</div>'
+            f'<div class="cg-faxis"><span>{pd.Timestamp(days[0]):%d %b}</span><span>{pd.Timestamp(days[-1]):%d %b %Y}</span></div></div>')
