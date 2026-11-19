@@ -158,6 +158,13 @@ def today():
             '<div class="qa-toc"><a href="#money-in">Who put real money in?</a><a href="#money-out">Who is getting out?</a>'
             '<a href="#blocks">Where did big blocks change hands?</a><a href="#thresholds">Who crossed a threshold?</a>'
             '<a href="#funds">What did fund managers do?</a><a href="#record">Has this worked before?</a></div>')
+    try:   # the market's direction, one line (market_flows: NSE provisional, NSDL, SEBI; each with its own date)
+        from screens.market_flows import flows_line
+        fl = flows_line(store.table('market_flows'))
+    except Exception:  # noqa: BLE001 -- optional until the first collection
+        fl = ''
+    if fl:
+        st.html(f'<p class="qa-why"><b>Market:</b> {esc(fl)}.</p>')
     b = d[d['side'] == 'BUY'].sort_values('pct_of_company', ascending=False) if not d.empty else d
     s_ = d[d['side'] == 'SELL'].sort_values('pct_of_company', ascending=False) if not d.empty else d
     summary = store.artifact('artifacts/track_summary.parquet')
