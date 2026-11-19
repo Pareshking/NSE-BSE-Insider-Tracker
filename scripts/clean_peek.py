@@ -152,15 +152,19 @@ def trades_and_deals(r2, sym: str) -> int:
     pd.set_option('display.width', 250)
     pd.set_option('display.max_columns', 30)
     if t is not None:
-        x = t[(t['nse_symbol'].astype(str).str.upper() == sym) & (t['trade_date_to'].astype(str) >= '2026-10-01')]
+        # an NSE symbol or a BSE code (19 Nov 2026: BSE-only companies such as Millworks 544826)
+        x = t[((t['nse_symbol'].astype(str).str.upper() == sym) | (t['bse_code'].astype(str) == sym))
+              & (t['trade_date_to'].astype(str) >= '2026-10-01')]
         cols = [c for c in ('person_name', 'person_role', 'side', 'kind', 'is_market', 'is_primary', 'exchange', 'quantity', 'value',
-                            'trade_date_from', 'trade_date_to', 'cross_with', 'placement_buyers', 'group_transfer_by_deal') if c in x]
+                            'trade_date_from', 'trade_date_to', 'holding_before', 'holding_after', 'app_id', 'source_id',
+                            'broadcast_ts', 'cross_with', 'placement_buyers', 'group_transfer_by_deal') if c in x]
         print(f'insider rows {sym}: {len(x)}')
         print(x[cols].to_string())
     if d is not None:
-        y = d[(d['nse_symbol'].astype(str).str.upper() == sym) & (d['date'].astype(str) >= '2026-10-01')]
+        y = d[((d['nse_symbol'].astype(str).str.upper() == sym) | (d['bse_code'].astype(str) == sym))
+              & (d['date'].astype(str) >= '2026-10-01')]
         cols = [c for c in ('date', 'exchange', 'client_name', 'side', 'quantity', 'price', 'client_is_promoter', 'matched_pair',
-                            'client_is_market_maker') if c in y]
+                            'client_is_market_maker', 'two_way_bought', 'two_way_sold', 'counterparties') if c in y]
         print(f'deals {sym}: {len(y)}')
         print(y[cols].to_string())
     return 0

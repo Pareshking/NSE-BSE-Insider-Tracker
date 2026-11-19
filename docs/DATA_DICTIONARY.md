@@ -74,6 +74,7 @@ NSE and BSE publish nothing else about the client.
 | `client_is_promoter`, `client_promoter_basis` | The client is the company's promoter: in its latest promoter-group list (`promoter_group_list`) or filed under PIT as its promoter / promoter group (`pit_filing`). Never a fund, whatever `client_type` says (audit 22 Oct, T5: Fosun Pharma Industrial Pte for Gland Pharma). Counted in `tables.deals.promoter_clients` |
 | `investor_group`, `investor_group_id` | One investor across spellings, share classes and series; never merges entity IDs. From `insiders_clean/investor_aliases.csv` (each line with its reason) or a suffix rule |
 | `investor_group_rule` | `alias`, `share class`, `series`, or blank (the name itself) |
+| `two_way_bought`, `two_way_sold` | (19 Nov 2026) Set when the client bought and sold this security the same day in amounts more than 1% apart: the day's gross shares bought and sold. The leg itself is then the net (larger side, scaled to the difference at its own price); the smaller side's legs are removed, reason `same_day_both_sides_netted` (`docs/CLEAN_LAYER.md`). Empty on one-sided legs and market makers |
 | `matched_pair`, `matched_client` | (13 Nov 2026) One buyer and one seller, different clients, same exchange, security and day, the same quantity at the same price (within 0.05%): one transfer. Both legs carry the shared pair id and the other side's name. Pages call it a group transfer when both legs are `client_is_promoter`, else a negotiated cross. Counted in `tables.deals.matched_pairs` |
 
 The cleaning report counts rows by type and confidence under `tables.deals.participants`.
@@ -131,6 +132,8 @@ filings don't; promoters appear too (`is_promoter`).
 | `pct_acquired`, `pct_sold`, `post_stake_pct` | % of share capital, as filed |
 | `shares_traded`, `percent_equity_traded` | Acquired minus sold; empty when the filing gives neither (a filed 0 stays 0) |
 | `broadcast_ts`, `application_no`, `attachment` | NSE's publication time, filing number, attachment link |
+| `holder_kind` | (19 Nov 2026, `insiders_clean/sast.py`) `lender` (a lender's trustee, security agent or bank branch by name: shares held as security; a mutual fund's trustee filing for a scheme is a `holder`), `filing_agent` (a named law firm, or advocates/solicitors, filing for someone), else `holder`. Also on `bse_sast` |
+| `held_back_reason` | (19 Nov 2026) Why the row is held back from the signal pages; empty for a holder's move. `lender_or_trustee` and `encumbrance_mode` (mode says pledge, encumbrance, release, invocation, lien): an encumbrance event, shown as "Encumbrance" on Stakes, never "Bought"; `filed_by_law_firm`; `promoter_whole_stake_out_mode_others` (a promoter's 70%+ to 0% with mode Others). Rows are kept; counted per reason in the nightly report (`streams.sast.held_back`, BSE `held_back`). Also on `bse_sast` |
 
 ### actions — corporate actions
 

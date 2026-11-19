@@ -18,7 +18,9 @@ from ui import kit
 from ui.kit import esc
 
 DAYS = 7
-SAST_LATE_DAYS = 30   # on Today a SAST filing this late after its trade is counted, not listed (13 Nov 2026)
+# On Today a SAST filing made public more than this many days after its trade is counted, not listed: it is on Stakes,
+# with the amber "late" chip at the same 14 days (13 Nov 2026 at 30; 14 from 19 Nov 2026, docs/DESIGN_V3.md)
+SAST_LATE_DAYS = 14
 TODAY_DEAL_MCAP = 500e7   # ₹500 Cr: smaller companies' deals stay on the Deals page, not on Today (13 Nov 2026)
 
 
@@ -85,21 +87,11 @@ def today():
     n_tiny = int(dl.loc[tiny, 'isin'].nunique()) if not dl.empty else 0
     drows, churn, small = _deal_rows(dl[~tiny]) if not dl.empty else ([], 0, 0)
     drows.sort(key=lambda x: -(kit._finite(x['pct']) or 0))
-    sa = ctx.sast
-    srows, inter, tiny, n_late = [], 0, 0, 0
+    srows = []
+    sa, n_late, n_held = _today_sast(ctx.sast, ref)
     if sa is not None and not sa.empty:
-        sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
-        sa = sa[(sa['_f'] > ref - pd.Timedelta(days=DAYS)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
-        # a filing made a month or more after the trade is old news on Today (13 Nov 2026: both "crossings" shown were
-        # filed 85 and 97 days late, mode "Others"): counted, and on the Stakes page
-        lag = (sa['_f'].dt.tz_localize(None) if getattr(sa['_f'].dt, 'tz', None) is not None else sa['_f']) \
-            - pd.to_datetime(sa.get('trade_date_to'), errors='coerce')
-        late = lag.dt.days.gt(SAST_LATE_DAYS)
-        n_late = int(late.sum())
-        sa = sa[~late]
-        if not sa.empty:
-            srows, inter, tiny = _sast_rows(sa, names)
-            srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
+        srows, _, _ = _sast_rows(sa, names)
+        srows = [r for r in srows if r['cross']]   # on Today: only holders crossing a threshold
     v_buy = d.loc[d['side'] == 'BUY', 'value'].sum() if not d.empty else 0
     v_sell = d.loc[d['side'] == 'SELL', 'value'].sum() if not d.empty else 0
     _strip(ctx, ['last 7 days', 'NSE + BSE copies merged', 'noise counted, not listed'])
@@ -119,9 +111,27 @@ def today():
                            f'{n_tiny} companies under ₹{TODAY_DEAL_MCAP / 1e7:,.0f} Cr left to the Deals page'))
     st.html('<h2 class="dt-h2">Holders crossing a threshold <span>SAST Reg 29 · 5, 10, 15, 20, 25, 50, 75%</span></h2>')
     st.html(_table(SAST_COLS, srows[:10]) if srows else '<p class="dt-empty">No holder crossed a threshold in 7 days.</p>')
-    st.html(_more('stakes', 'All stake changes and pledges' + (f'; {n_late} filed over {SAST_LATE_DAYS} days after the trade are there, not here'
-                                                                  if n_late else '')))
+    left = [f'{n_late} made public over {SAST_LATE_DAYS} days after the trade'] if n_late else []
+    left += [f'{n_held} held back (a lender\'s trustee, a law firm filing, or a whole promoter stake out as "Others")'] if n_held else []
+    st.html(_more('stakes', 'All stake changes and pledges' + (f'; {" and ".join(left)} are there, not here' if left else '')))
     st.html(_more('situations', 'Open offers, buybacks, rights and raises'))
+
+
+def _today_sast(sa, ref):
+    """(SAST rows for Today, how many were left to Stakes as late, how many held back). Today is what was made public
+    in the last DAYS days (the filing's broadcast time, as before); of those, a filing made public more than
+    SAST_LATE_DAYS after its trade is old news here, and a row the clean layer holds back (`held_back_reason`,
+    insiders_clean/sast.py: a lender's trustee, an encumbrance mode, a law firm, a whole promoter stake out as "Others")
+    is not a holder's move. Both are counted and stay on Stakes."""
+    if sa is None or sa.empty:
+        return sa, 0, 0
+    sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
+    sa = sa[(sa['_f'] > ref - pd.Timedelta(days=DAYS)) & (sa['_f'] <= ref + pd.Timedelta(days=1))]
+    filed = sa['_f'].dt.tz_localize(None) if getattr(sa['_f'].dt, 'tz', None) is not None else sa['_f']
+    lag = filed.dt.normalize() - pd.to_datetime(sa.get('trade_date_to'), errors='coerce')
+    late = lag.dt.days.gt(SAST_LATE_DAYS)
+    held = sa['held_back_reason'].notna() if 'held_back_reason' in sa else pd.Series(False, index=sa.index)
+    return sa[~late & ~held], int(late.sum()), int((held & ~late).sum())
 
 
 def _decisions(ctx, days: int):
@@ -389,9 +399,13 @@ def _deal_rows(d):
     for r in rest.to_dict('records'):
         buy = r['side'] == 'BUY'
         cp = str(r.get('counterparties') or '').split('; ')[0]
+        # a client that bought and sold the same day is netted in the clean layer (deals._net_two_way_days): said
+        gb, gs = kit._finite(r.get('two_way_bought')), kit._finite(r.get('two_way_sold'))
+        net = (f' <span class="mute" title="the same client bought and sold this day; the line is the difference">· net of '
+               f'{esc(kit.shares(gb))} bought, {esc(kit.shares(gs))} sold</span>') if gb is not None and gs is not None else ''
         rows.append(dict(_v=r['value'], date=r['date'], isin=r['isin'], company=r['company'], sym=r.get('nse_symbol') or r.get('symbol'),
                          kind=_chip('Buy' if buy else 'Sell', 'up' if buy else 'dn') + (' ' + _chip('Promoter', '') if r.get('client_is_promoter') else ''),
-                         who=esc(str(r['client_name'])) + (f' <span class="mute">· other side: {esc(cp)}</span>' if cp else ''),
+                         who=esc(str(r['client_name'])) + net + (f' <span class="mute">· other side: {esc(cp)}</span>' if cp else ''),
                          qty=r['quantity'], price=r['price'], pct=r.get('pct_of_mcap'), feed=r.get('feeds'), ex=r.get('exchange'), n=r.get('trades')))
     return rows, churn, clubbed_small
 
@@ -440,6 +454,12 @@ SAST_COLS = [('co', 'Company', 'l'), ('who', 'Holder', 'l ph'), ('act', '', 'l p
              ('cross', 'Threshold', 'l ph'), ('mode', 'Mode · Reg', 'l ph'), ('when', 'Trade', 'r ph'), ('filed', 'Filed', 'r ph'), ('ev', 'Evidence', 'l ph')]
 
 
+# insiders_clean/sast.py reasons, as the row's tooltip on Stakes
+HELD_BACK_WHY = {'filed_by_law_firm': 'Filed in the name of a law firm, which holds nothing: held back until the filing is read',
+                 'promoter_whole_stake_out_mode_others': 'A promoter\'s whole stake of 70% or more to 0% with mode "Others": '
+                                                         'held back until the filing is read'}
+
+
 def _crossed(before, after) -> str:
     if not (kit._finite(before) is not None and kit._finite(after) is not None):
         return ''
@@ -465,9 +485,13 @@ def _sast_rows(sa, names, with_year=False):
             if pd.notna(pd.to_datetime(r.get('trade_date_to'), errors='coerce')) else None
         up = (moved or 0) > 0
         att = r.get('attachment')
+        why = r.get('held_back_reason') if isinstance(r.get('held_back_reason'), str) else None
+        act = (_chip('Encumbrance', '') if why in ('lender_or_trustee', 'encumbrance_mode')   # shares held as security
+               else f'<span title="{esc(HELD_BACK_WHY.get(why, why), quote=True)}">{_chip("Held back", "wn")}</span>' if why
+               else _chip('Bought' if up else 'Sold', 'up' if up else 'dn'))
         rows.append({'co': _company(names.get(r.get('isin')) or r.get('company_display') or r.get('company'), r.get('symbol')),
                      'who': '<span class="clip" style="max-width:220px">' + esc(str(r.get('acquirer_name') or '')) + '</span>' + (' ' + _chip('Promoter', '') if r.get('is_promoter') else ''),
-                     'act': _chip('Bought' if up else 'Sold', 'up' if up else 'dn'),
+                     'act': act,
                      'moved': _num(moved, '{:+.2f}%'), 'stake': (f'<span title="Derived: stake after less the move; NSE files the after and the move only">{_num(before, "{:.2f}%")}</span>'
                                + ' → ' + _num(after, '{:.2f}%')),
                      'cross': esc(_crossed(before, after)), 'mode': esc(str(r.get('mode') or '')) + f' <span class="mute">{esc(str(r.get("regulation") or "").replace("Reg", ""))}</span>', 'reg': '',

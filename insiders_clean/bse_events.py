@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from . import sast as sast_rules
 from .securities import SecurityMaster
 
 
@@ -123,6 +124,8 @@ def clean(arch: pd.DataFrame | None, master: SecurityMaster, nse: pd.DataFrame |
         df = df[parsed]
         nse = None   # BSE-only companies: nothing to link
     df = link_to_nse(df, nse, stream)
+    if stream == 'sast':   # holders that are not investors, kept with a reason (insiders_clean/sast.py, 19 Nov 2026)
+        df, extra['held_back'] = sast_rules.hold_back(df)
     counts = {'rows': len(df), 'on_nse': int(df['on_nse'].sum()), 'bse_only': int((~df['on_nse']).sum()),
               'unmatched_securities': int(df['unmatched_security'].sum()),
               'nse_rows_compared': 0 if nse is None else len(nse), **extra}
