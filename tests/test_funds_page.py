@@ -309,3 +309,115 @@ def test_missing_houses_names_the_ones_not_collected():
     assert 'ICICI Prudential Mutual Fund' in names and 'Kotak Mahindra Mutual Fund' in names
     mh = fl.missing_houses({'sbi'}, [('sbi', 'SBI'), ('hdfc', 'HDFC')], NOT_COLLECTED)
     assert mh['in'] == ['SBI'] and mh['absent'][0][0] == 'HDFC'
+
+
+# ---- Scheme by scheme (19 Nov 2026) -------------------------------------------------------------------------------
+
+def _scheme_frames(month, vals):
+    return pd.DataFrame([{'amc': h, 'month': month, 'scheme_key': k, 'scheme': f'{h.upper()} {k.title()} Fund', 'isin': i,
+                          'name': f'Co {i}', 'shares': s, 'value_lakh': s * 500 / 1e5, 'passive': False}
+                         for h, k, i, s in vals])
+
+
+@pytest.fixture(scope='module')
+def site_schemes(data_dir, tmp_path_factory):  # noqa: F811
+    """Two houses, three schemes, every table built as scripts/mf_portfolios.py builds it, from scheme rows."""
+    root = tmp_path_factory.mktemp('funds_schemes') / 'site'
+    shutil.copytree(data_dir, root)
+    cur = root / 'clean' / 'current'
+    sec = pd.read_parquet(cur / 'securities.parquet').dropna(subset=['isin']).head(3)
+    a, b, c = sec['isin'].tolist()
+    prev = _scheme_frames('2026-09', [('sbi', 'largecap', a, 600_000), ('sbi', 'smallcap', a, 400_000),
+                                      ('nippon', 'flexicap', a, 500_000), ('sbi', 'largecap', b, 2_000_000)])
+    now = _scheme_frames('2026-10', [('sbi', 'largecap', a, 1_100_000), ('sbi', 'smallcap', a, 300_000),
+                                     ('nippon', 'flexicap', a, 900_000), ('sbi', 'largecap', b, 1_000_000),
+                                     ('sbi', 'largecap', c, 300_000), ('nippon', 'flexicap', c, 200_000)])
+    hp = m.house_from_schemes(prev).assign(value_lakh=1.0, kind='mf')
+    hn = m.house_from_schemes(now).merge(now.groupby('isin', as_index=False)['value_lakh'].sum().rename(
+        columns={'value_lakh': '_v'}), on='isin')
+    hn = hn.assign(value_lakh=hn['shares'] * 500 / 1e5, kind='mf').drop(columns='_v')
+    ch = m.tag_house_kind(m.changes(hn, hp), pd.concat([hp, hn]))
+    ch.to_parquet(cur / 'mf_changes.parquet')
+    stock = m.stock_months(ch).assign(total_shares=10_000_000.0)          # the company's shares on October's basis
+    stock.to_parquet(cur / 'mf_stock_month.parquet')
+    sc = m.value_scheme_changes(m.scheme_changes(now, prev).assign(house_kind='mf'), stock)
+    m.scheme_month(sc).to_parquet(cur / 'mf_scheme_month.parquet')
+    m.scheme_moves(sc).to_parquet(cur / 'mf_scheme_moves.parquet')
+    lists = pd.concat([now.groupby(['amc', 'month', 'scheme_key'], as_index=False).agg(
+        scheme=('scheme', 'first'), lines=('isin', 'size'), equity_lines=('isin', 'size'), passive=('passive', 'max'))])
+    amfi = pd.DataFrame([{'amc': 'sbi', 'house': 'SBI Mutual Fund', 'scheme_key': k, 'scheme': f'SBI {k} Fund', 'category': 'equity',
+                          'open_ended': True, 'plans': 4, 'date': '30-Oct-2026', 'month': '2026-10'}
+                         for k in ('largecap', 'smallcap', 'midcap', 'contra', 'focused')])
+    m.scheme_coverage(lists, amfi).to_parquet(cur / 'mf_scheme_coverage.parquet')
+    return root, (a, b, c)
+
+
+def _render(monkeypatch, root, extra=''):
+    monkeypatch.setenv('INSIDERS_LOCAL_DATA', str(root))
+    at = AppTest.from_string(APP_PATHS + """
+import streamlit as st
+st.cache_data.clear(); st.cache_resource.clear()
+from screens import funds
+funds.render()
+""", default_timeout=90)
+    at.run()
+    assert not at.exception, at.exception[0].value
+    return at
+
+
+def test_funds_page_shows_which_schemes_bought_and_sold(site_schemes, monkeypatch):
+    root, (a, b, c) = site_schemes
+    at = _render(monkeypatch, root)
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    assert 'Which schemes bought and sold?' in html
+    assert 'SBI Largecap Fund' in html and 'NIPPON Flexicap Fund' in html and 'SBI Smallcap Fund' in html
+    head = html.split('Which schemes bought and sold?')[1].split('Where did funds buy')[0]
+    assert head.index('NIPPON Flexicap Fund') < head.index('Net sellers') < head.index('SBI Smallcap Fund')
+    # Stock a: both houses added; inside SBI the large cap scheme added and the small cap scheme cut
+    assert '2 houses · 2 schemes adding · 0 houses · 1 scheme cutting' in html
+    # % of the company over the month-end basis count (mf_stock_month.total_shares), 800,000 of 10,000,000
+    assert '+8.00%' in html
+
+
+def test_one_house_view_picks_a_scheme(site_schemes, monkeypatch):
+    root, (a, b, c) = site_schemes
+    at = _render(monkeypatch, root)
+    pick = next(s for s in at.selectbox if s.label.startswith('Scheme ('))
+    assert pick.label == 'Scheme (2 that moved)'          # SBI: large cap and small cap
+    pick.set_value('smallcap').run()
+    assert not at.exception
+    html = ' '.join(e.proto.body for e in at.get('html'))
+    assert '<b>SBI Smallcap Fund</b>: added to 0 stocks' in html and 'cut 1 for' in html
+
+
+def test_is_this_complete_shows_the_scheme_count_check(site_schemes, monkeypatch):
+    root, _ = site_schemes
+    html = ' '.join(e.proto.body for e in _render(monkeypatch, root).get('html'))
+    part = html.split('id="complete"')[1]
+    assert 'Schemes read, October 2026' in part and '1 flagged' in part
+    assert 'fewer schemes read' in part and '2 of 5' in part   # SBI: 2 active equity read, AMFI lists 5
+
+
+def test_scheme_rows_take_the_window_ends_from_rows_that_moved():
+    fl = _fl()
+    mv = pd.DataFrame([
+        {'month': '2026-09', 'amc': 'sbi', 'house_kind': 'mf', 'scheme_key': 'largecap', 'isin': A, 'shares_start': 100.0,
+         'shares_end': 150.0, 'change_cr': 5.0, 'scheme_seen': 'both'},
+        {'month': '2026-10', 'amc': 'sbi', 'house_kind': 'mf', 'scheme_key': 'largecap', 'isin': A, 'shares_start': 150.0,
+         'shares_end': 0.0, 'change_cr': -15.0, 'scheme_seen': 'both'},
+        {'month': '2026-10', 'amc': 'sbi', 'house_kind': 'mf', 'scheme_key': 'newfund', 'isin': A, 'shares_start': 0.0,
+         'shares_end': 70.0, 'change_cr': 7.0, 'scheme_seen': 'end_only'}])
+    r = fl.scheme_rows(mv, ['2026-09', '2026-10']).set_index('scheme_key')
+    assert r.loc['largecap', 'start'] == 100 and r.loc['largecap', 'end'] == 0 and r.loc['largecap', 'status'] == 'exit'
+    assert r.loc['largecap', 'net_cr'] == -10 and bool(r.loc['newfund', 'one_end'])
+    cnt = fl.scheme_counts(fl.scheme_rows(mv, ['2026-09', '2026-10'])).iloc[0]
+    assert cnt['schemes_adding'] == 0 and cnt['schemes_cutting'] == 1   # the scheme new in the files is not counted
+    t = fl.scheme_totals(fl.scheme_rows(mv, ['2026-10'])).set_index('scheme_key')
+    assert t.loc['newfund', 'new'] == 1 and t.loc['largecap', 'exits'] == 1
+
+
+def test_month_total_shares_prefers_the_month_end_basis():
+    fl = _fl()
+    st_ = pd.DataFrame({'month': ['2026-10'], 'isin': [A], 'total_shares': [455403140.0]})
+    assert fl.month_total_shares(st_, '2026-10', {A: 45540314}) == {A: 455403140.0}
+    assert fl.month_total_shares(st_.drop(columns='total_shares'), '2026-10', {A: 45540314}) == {A: 45540314}

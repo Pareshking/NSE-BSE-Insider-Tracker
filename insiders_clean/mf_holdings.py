@@ -505,7 +505,7 @@ def scheme_changes(cur: pd.DataFrame, prev: pd.DataFrame, factors: pd.DataFrame 
     m['scheme'] = m['scheme'].fillna(m.pop('_scheme0'))
     m['name'] = m['name'].fillna(m.pop('_name0'))
     p0 = m.pop('_passive0')
-    m['passive'] = m['passive'].where(m['passive'].notna(), p0).fillna(False).astype(bool)
+    m['passive'] = [bool(v) if pd.notna(v) else False for v in m['passive'].combine_first(p0)]
     m['month'] = cur['month'].iloc[0]
     keys_c = set(zip(cur['amc'], cur['scheme_key']))
     keys_p = set(zip(prev['amc'], prev['scheme_key']))
