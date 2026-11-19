@@ -31,6 +31,7 @@ class House:
     must: str | None = None      # a regex a candidate must also match (when the page lists other monthly files)
     exclude: str | None = None   # a regex that rules a candidate out, on top of EXCLUDE
     click: list = field(default_factory=list)   # texts to click (tabs) before reading links, in a browser
+    api: object = None           # a function (month) -> [(text, href)] when the files are listed only by an API
 
 
 def month_tokens(month: str) -> re.Pattern:
@@ -39,13 +40,17 @@ def month_tokens(month: str) -> re.Pattern:
     full, short = calendar.month_name[m].lower(), calendar.month_abbr[m].lower()
     last = calendar.monthrange(y, m)[1]
     yy = f'{y % 100:02d}'
+    if m == 9:
+        short = 'sept?'          # Sep or Sept
+    nl = '(?<![a-z])'            # not inside a word; unlike \b, '_Oct_26' counts
     parts = [
-        rf'{full}[^a-z0-9]{{0,3}}(?:{y}|{yy}\b)', rf'\b{short}[^a-z0-9]{{0,3}}(?:{y}|{yy}\b)',
+        rf'{full}[^a-z0-9]{{0,3}}(?:{y}|{yy}\b)', rf'{nl}{short}[^a-z0-9]{{0,3}}(?:{y}|{yy}(?![0-9]))',
         rf'{full}(?:{y}|{yy}\b)', rf'{short}(?:{y}|{yy}\b)',
         rf'(?:{y}|{yy})[^a-z0-9]{{0,3}}{full}', rf'(?:{y})[^a-z0-9]{{0,3}}{short}\b',
         rf'{last}(?:st|nd|rd|th)?[^a-z0-9]{{0,3}}{full}[^a-z0-9]{{0,3}},?[^a-z0-9]{{0,3}}{y}',
         rf'{last}[^0-9]?{m:02d}[^0-9]?{y}', rf'{y}[^0-9]?{m:02d}[^0-9]?{last}', rf'{last}{m:02d}{yy}\b',
         rf'{full}[^a-z0-9]{{0,3}}{last},?[^a-z0-9]{{0,3}}{y}',
+        rf'{nl}{short}[^a-z0-9]{{0,3}}{last},?[^a-z0-9]{{0,3}}{y}',     # Oct 31 2026
     ]
     return re.compile('|'.join(f'(?:{p})' for p in parts), re.I)
 
@@ -100,14 +105,25 @@ def links_rendered(url: str, browser, click: list | None = None, wait_ms: int = 
         except Exception:  # noqa: BLE001 - a page that never goes idle still has its links
             pass
         page.wait_for_timeout(wait_ms)
+        js = "() => [...document.querySelectorAll('a')].map(a => [a.innerText || a.title || '', a.href])"
+        anchors = page.evaluate(js) if click else []
+        html = ''
         for t in click or []:
             try:
-                page.get_by_text(t, exact=False).first.click(timeout=5000)
+                if t.startswith('select:'):            # 'select:N:Label' picks Label in the page's N-th <select>
+                    _, i, label = t.split(':', 2)
+                    page.locator('select').nth(int(i)).select_option(label=label, timeout=5000)
+                elif t.startswith(('css=', 'xpath=')):  # a Playwright selector (a pager's next button)
+                    page.locator(t).first.click(timeout=5000)
+                else:
+                    page.get_by_text(t, exact=False).first.click(timeout=5000)
                 page.wait_for_timeout(2500)
             except Exception:  # noqa: BLE001
                 pass
-        anchors = page.evaluate("() => [...document.querySelectorAll('a')].map(a => [a.innerText || a.title || '', a.href])")
-        html = page.content()
+            anchors += page.evaluate(js)              # links after every step: a pager shows one page at a time
+            html += page.content()
+        anchors += page.evaluate(js)
+        html += page.content()
     finally:
         ctx.close()
     out = [(t.strip(), h) for t, h in anchors if h]

@@ -68,7 +68,10 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
     from raw_capture import capture
     out = []
     try:
-        links = find.links_rendered(house.page, browser, house.click) if house.render else find.links_plain(house.page)
+        if house.api:
+            links = [link for m in months for link in house.api(m)]
+        else:
+            links = find.links_rendered(house.page, browser, house.click) if house.render else find.links_plain(house.page)
     except Exception as exc:  # noqa: BLE001
         return [{'house': house.key, 'month': m, 'found': False, 'why': f'page not read ({type(exc).__name__}: {exc})'[:300]}
                 for m in months]
