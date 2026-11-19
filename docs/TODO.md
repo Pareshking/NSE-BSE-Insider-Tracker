@@ -4,6 +4,29 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Today page data, 19 Nov 2026 (live data to 18 Nov; branch `fix-today-data-19nov`)
+
+Found from code reading; production tables were not read (R2 is in Actions only). Check after the next nightly with
+`clean_peek TRADES:544826` (now takes a BSE code) and the report counts named below.
+- **Same client on both sides of a deal** (Millworks 544826 LRSD Capital, SC Agrotech 526081 Pravinbhai Bharatbhai Gohil,
+  GRP Bellwether Capital, BSE bulk). Cause: the round-trip rule (writer and `deals.py`) fires only when bought and sold are
+  within 1%; an unequal two-way day kept both gross legs, and the client was listed as its own counterparty. The names on
+  the page are identical, so one `client_id`, not a spelling split. Fixed: the day is netted to the difference (reason
+  `same_day_both_sides_netted`, columns `two_way_bought`/`two_way_sold`; `docs/CLEAN_LAYER.md`).
+- **SAST holders that are not investors** (TBZ / AZB & Partners, promoter, 74.12% to 0%, Others; Medplus / Catalyst
+  Trusteeship as debenture trustee). Cause: the trustee pattern (`ideas.SECURITY_HOLDER`) was applied only by
+  `ideas.stake_events`, not by the Today and Stakes tables (`screens/proto._sast_rows`), and nothing caught a law firm.
+  Fixed: `insiders_clean/sast.py` writes `holder_kind` and `held_back_reason` on `sast` and `bse_sast` (rows kept, counted).
+  NSE's raw row has `acquisitionMode`, `promoterType`, `acqType` and `remarks`; no acquirer-type field.
+- **Late SAST on Today** (Info Edge / LIC 28 days late): the cut was 30 days; now 14, the same as the "late" chip
+  (`docs/DESIGN_V3.md`, Today's selection rules).
+- **Vectras Enprocon, two directors, same rupees and %**: not decidable from code. The duplicate check keys on the person,
+  so one trade filed under two names would stay two rows; two directors with equal stakes buying together is also
+  possible. The clean report now counts `tables.insider_trades.same_trade_two_names` (same exchange, ISIN, side, shares,
+  value, days and holdings before and after, different people; `same_filing` when they share one `app_id`). Nothing
+  merged. **Next:** read that count and the two rows' `app_id`/holdings (`clean_peek TRADES:<BSE code>`); remove only if it
+  is one filing.
+
 ## Site redesign, 12 Nov 2026 (PR #229, live)
 
 Done (owner's brief: redesign from blank, more pages, no mental arithmetic, club the noise, fewer clicks, no AI,
@@ -21,6 +44,15 @@ Open from it:
 | D1 | Year-on-year on Results. **12 Nov, backfill run** (NSE Corporate Events, dataset results, 90-day windows from Oct 2026 back, chained; the first try in one 22-month window hit the 90-minute limit and saved nothing). **Finding** (`clean_peek` RESULTS_QUARTERS, run 43241666660): NSE's integrated-filing results start with broadcasts of **6 Feb 2026**; the archive holds Dec 2025 quarter 2,339, Mar 2026 4,798, Jun 2026 1,108, Sep 2026 3,306, but Sep 2025 only 155, so only 60 of 1,771 companies with a Sep 2026 quarter have the year-ago one. Year-on-year fills in by itself from the Dec 2026 quarter (filed Jan-Feb 2027). **Probe, 12 Nov** (Results XBRL probe MODE=OLD, run 43243993785, read-only): the 6 Feb 2026 start above is **not NSE's limit**. (a) The same integrated-filing feed asked for broadcasts 01-15 Nov 2025 answers (paged: `data/size/page/totalCount`, first page 20 rows), all quarter 30-Sep-2025, each with an XBRL that parses (Kavveri Defence: 275 facts, RevenueFromOperations for the quarter and half-year). So the low Sep 2025 count is most likely the backfill not having reached those windows yet (the chain was still running at the probe: run 126 in progress, 124-125 failed on NSE timeouts), not a missing source. (b) The older `corporates-financial-results?period=Quarterly` feed serves pre-integrated-filing XBRL (`INDAS_*.xml`): HAVELLS 113 rows, quarters Mar 2023 to Dec 2024; with no dates, 3,816 rows all Dec 2024 quarter; with a date window it gave 31 late filings only. Not seen in either feed: Mar 2025 and Jun 2025 quarters (not asked for). **Chain done, 17:51** (peek run 43273639041): broadcasts now from 8 Apr 2025; quarters Mar 2025 4,300, Jun 2025 274, Sep 2025 155, Dec 2025 2,339; still 60 of 1,771. **Cause:** rounds 5-6 (windows Oct 2025-Jan 2026 and Jul-Oct 2025) timed out listing at NSE, the report said 0 pending, and the chain moved to the older window: those windows were never read. **Fix:** a failed listing now stops the chain with its resume line (`nse-events.yml`, test `test_nse_events_chain.py`); the two windows are run again. **Rerun, 12 Nov 21:50** (peek run 43314101046): Sep 2025 quarter 1,794 rows, Jun 2025 4,045; 599 of 1,771 Sep 2026 companies have the year-ago quarter (34%). **Second cause:** NSE counts 4,287 filings for 19 Oct 2025 - 16 Jan 2026 (3,676 in 19 Oct - 18 Nov alone, pages fine from a desktop fetch), but the runner listed 1,400 in 14 calls: a page came back with nothing new and the lister took it as the end. **Fix:** an empty page before NSE's count is asked again; a window still short is reported as a failed listing (the chain stops and is resumed, the window is not skipped; test in `test_results.py`). **Done, 13 Nov 00:47** (peek run 43339754686, after the #238 rerun): 25,102 results rows from broadcasts of 8 Apr 2025; quarters Mar 2025 4,386, Jun 2025 4,074, Sep 2025 4,500, Dec 2025 2,559, Mar 2026 4,798, Jun 2026 1,108, Sep 2026 3,637; **1,822 of 1,953 companies with a Sep 2026 quarter have the Sep 2025 one (93%)**. The Results dek says year-on-year is shown where our history holds the quarter (from Apr 2025). Open: Dec 2025 (2,559) and Jun 2026 (1,108) look short against their neighbours; check with NSE's totalCount for their filing windows. **Next:** when that rerun finishes, rerun `clean_peek` RESULTS_QUARTERS; if Sep 2025 fills in, year-on-year works now for Sep 2026 and the Results dek, neutral since 12 Nov ("Year-ago quarters are still being loaded"), says what holds. A collector for the older feed waits for the owner | rerun peek after the chain; owner decides on the older feed |
 | D2 | `/today` typed by hand shows Streamlit's "Page not found" (the default page lives at `/`; Streamlit refuses a second page at `/today`) | a Streamlit option or an upstream fix; links all use `/` |
 | D3 | Forward record of the Worth-a-look shortlist itself (started 12 Nov) | three months of picks measured |
+
+## Filings by day, 19 Nov 2026
+
+Owner could not find a day's insider buys (a broker's "Daily insider buying, 17 Nov" list) on the site. Checked on the
+live site: most of its rows were there, but only on `/filings-all`, which had no menu link, listed newest first and
+stopped at 200 rows (481 insider filings in 7 days), so 17 Nov fell past the cut. Insiders shows decisions, not
+filings, by design (staff, trusts and small buys counted, not listed).
+Done: Filings in the menu (More); a one-day picker (only what was made public that day, up to 2,000 rows); "Show every
+row" in Filters & sort; a line above the table when rows are cut. Companies under Rs 100 Cr stay off (universe).
 
 ## Where things stand (09 Oct 2026)
 

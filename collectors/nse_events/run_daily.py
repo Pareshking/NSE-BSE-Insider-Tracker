@@ -86,6 +86,7 @@ from r2_writer import BUCKET, SECURITY_MASTER_PATH, r2_client
 from collectors.nse_events import parsers
 from collectors.nse_events.client import Blocked, NSEClient
 from insiders_clean import archive, buybacks, issues, promoter_group, raw_store, results, units
+from insiders_clean import sast as sast_rules
 from insiders_clean.raw_store import RawStore
 from insiders_clean.securities import SecurityMaster, bse_list_frame, nse_list_frame
 
@@ -953,6 +954,9 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             entry['instrument'] = clean['instrument'].fillna('not filed').value_counts().to_dict()
         if stream == 'sast':
             clean, entry['refiled_removed'] = parsers.drop_sast_refilings(clean)
+            # holders that are not investors (a lender's trustee, a law firm, a whole promoter stake out as "Others"):
+            # kept, with the reason the pages hold them back for (insiders_clean/sast.py, 19 Nov 2026)
+            clean, entry['held_back'] = sast_rules.hold_back(clean)
         if stream == 'shareholding':
             clean = clean_shareholding(clean)
             entry['coverage'] = shareholding_coverage(clean)

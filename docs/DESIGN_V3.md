@@ -257,6 +257,18 @@ whole market; this page's unit is a filing.
   A pledge change names the earlier quarter it is compared with, and says when the quarters between are not in the data.
 - Still open: one block deal shown on both sides (seller under Money out, buyer under Money in) should be one row.
 
+## Today's selection rules, 19 Nov 2026
+
+- **Clock**: Today lists what was made public in the last 7 days (the filing's broadcast time), as before.
+- **SAST crossings**: a filing made public more than 14 days after its trade (`screens/proto.SAST_LATE_DAYS`, was 30 from
+  13 Nov) is old news on Today: counted in the line under the table and listed on Stakes, where it carries the amber
+  "Nd late" chip from the same 14 days. Info Edge / LIC, made public 28 days after a 16 Oct trade, led the list on 18 Nov.
+- **Not a holder's move**: a SAST row the clean layer holds back (`held_back_reason`, `insiders_clean/sast.py`: a
+  lender's trustee or an encumbrance mode, a law firm filing, a promoter's whole 70%+ stake to 0% as "Others") is counted
+  and left to Stakes, where a lender row reads "Encumbrance" and the others "Held back" with the reason.
+- **Deals**: a client that bought and sold the same day is one net line, said on the row ("net of X bought, Y sold";
+  `deals.two_way_bought`/`two_way_sold`); it no longer names itself as the other side.
+
 ## Company page, 12 Nov 2026 (same three principles)
 
 - **Masthead**: codes, sector and the NSE link on one line; the name; then the news in sentences: the latest open-market

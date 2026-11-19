@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from . import evidence, signals
+from .sast import ENCUMBRANCE_MODE, SECURITY_HOLDER  # noqa: F401 (re-exported)
 
 WINDOW = 90
 MIN_VALUE = 25e5        # Rs 25 lakh
@@ -485,19 +486,8 @@ def pledge_events(trades: pd.DataFrame, ref: pd.Timestamp, sh=None, days: int = 
     return _ev(rows)
 
 
-# A SAST filing by a lender's trustee or security agent, or by a bank branch, is a pledge or its release
-# (the shares are held as security), not an investor buying or selling: Vedanta's tap bonds (GLAS Agency,
-# Citicorp, Kroll, Axis Trustee), Orient Green (Catalyst Trusteeship), Horizon Industrial Parks and Manipal
-# (Deutsche Bank AG, Singapore Branch; Vistra ITCL), Oct 2026.
-SECURITY_HOLDER = re.compile(r'truste|security agent|\bagent\b|on behalf of|debenture|for the holders|facility agreement'
-                             r'|\blenders?\b|\bglas\b|vistra|\bitcl\b|madison pacific|citicorp international'
-                             r'|international trust|\bbank\b.*\bbranch\b', re.I)
-
-
-# A mode that says the shares were pledged, encumbered or released is security, never a stake bought or sold,
-# whoever files it: BSE's Reg 29 list holds 224 such non-promoter rows to 21 Oct 2026, 37 by names the trustee
-# pattern misses (Deutsche Bank AG for Horizon Industrial Parks, Piramal Pharma, Manipal; Comfort Fincap).
-ENCUMBRANCE_MODE = re.compile(r'pledge|encumb|releas|invoc|revoc|non.?disposal|\blien\b', re.I)
+# The lender/trustee name pattern and the encumbrance mode live with the SAST hold-back rule (insiders_clean/sast.py,
+# 19 Nov 2026); kept importable from here for the pages and scripts that read them.
 _MARKET_MODES = {'', 'open market', 'market'}
 _OTHER = {'others', 'other'}
 _ACRONYMS = {'ipo': 'IPO', 'fpo': 'FPO', 'ofs': 'OFS', 'qip': 'QIP', 'esop': 'ESOP', 'esops': 'ESOPs', 'sast': 'SAST'}
@@ -513,7 +503,8 @@ def stake_events(sast: pd.DataFrame | None, ref: pd.Timestamp, days: int = WINDO
     mode = sast['mode'].fillna('').astype(str) if 'mode' in sast else pd.Series('', index=sast.index)
     s = sast[~sast['is_promoter'].astype('boolean').fillna(False)
              & ~sast['acquirer_name'].fillna('').astype(str).str.contains(SECURITY_HOLDER)
-             & ~mode.str.contains(ENCUMBRANCE_MODE)].copy()
+             & ~mode.str.contains(ENCUMBRANCE_MODE)
+             & (sast['held_back_reason'].isna() if 'held_back_reason' in sast else True)].copy()
     when = pd.to_datetime(s['broadcast_date'], errors='coerce') if 'broadcast_date' in s else pd.Series(pd.NaT, index=s.index)
     if 'transaction_date' in s:
         when = when.fillna(pd.to_datetime(s['transaction_date'], errors='coerce'))

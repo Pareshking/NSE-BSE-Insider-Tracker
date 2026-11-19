@@ -516,6 +516,38 @@ def _superseded_by_marker(d: pd.DataFrame) -> tuple[pd.Index, dict]:
     return pd.Index(sorted(removed)), out
 
 
+SAME_TRADE_KEY = ['exchange', 'isin', 'side', 'quantity', 'value', 'trade_date_from', 'trade_date_to',
+                  'holding_before', 'holding_after']
+
+
+def same_trade_two_names(df: pd.DataFrame, limit: int = 20) -> dict:
+    """Counted, nothing removed (19 Nov 2026, Vectras Enprocon: two directors with the same rupees and % the same day).
+    Two people who trade the same shares at the same value on the same days are possible (a couple, two founders with
+    equal stakes); the same holdings before and after as well would make it one trade filed under two names. Rows
+    with the whole SAME_TRADE_KEY equal and different `person_id`: groups, and whether they share a filing (`app_id`
+    or `source_url`). The duplicate check that removes rows (`repeat_filing`) keys on the person, so these stay
+    two rows; the count is here for the run report and `clean_peek TRADES:` to read."""
+    if df.empty or not set(SAME_TRADE_KEY + ['person_id']) <= set(df.columns):
+        return {'groups': 0, 'same_filing': 0, 'examples': []}
+    k = df.dropna(subset=['isin', 'quantity', 'holding_before', 'holding_after'])
+    k = k[k['quantity'] > 0]
+    many = k.groupby(SAME_TRADE_KEY, dropna=False)['person_id'].transform('nunique') > 1
+    g = k[many]
+    out = {'groups': 0, 'same_filing': 0, 'examples': []}
+    for _, grp in g.groupby(SAME_TRADE_KEY, dropna=False):
+        app = grp['app_id'] if 'app_id' in grp else pd.Series(pd.NA, index=grp.index)
+        one_filing = bool(app.notna().all() and app.nunique() == 1)
+        ids = sorted({str(v) for c in ('app_id', 'source_url') if c in grp for v in grp[c].dropna()})
+        out['groups'] += 1
+        out['same_filing'] += int(one_filing)
+        if len(out['examples']) < limit:
+            out['examples'].append({'company': str(grp['company'].iloc[0]) if 'company' in grp else None,
+                                    'names': sorted(grp['person_name'].astype(str).unique()) if 'person_name' in grp else [],
+                                    'trade_date_to': str(grp['trade_date_to'].iloc[0]), 'one_filing': one_filing,
+                                    'filings': ids[:4]})
+    return out
+
+
 def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, report, run_date,
                   price_ranges: pd.DataFrame | None = None,
                   market_cap_daily: pd.DataFrame | None = None, bse_caps: tuple | None = None) -> pd.DataFrame:
@@ -716,6 +748,7 @@ def clean_insider(raw: pd.DataFrame, master: SecurityMaster, cal: Calendar, repo
     df.loc[group_transfer, 'kind'] = 'inter_se'
     df.loc[group_transfer, 'is_market'] = False
     t['promoter_group_transfers_on_market'] = int(group_transfer.sum())
+    t['same_trade_two_names'] = same_trade_two_names(df)
 
     # --- flags: kept, but held back from rankings until checked ---
     flags = [[] for _ in range(len(df))]

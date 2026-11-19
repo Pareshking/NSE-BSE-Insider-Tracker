@@ -13,6 +13,7 @@ REASONS = {
     'superseded_by_revision': 'Replaced by a revision NSE marked', 'before_product_start': 'Traded before 08 Oct 2025',
     'no_readable_transaction_date': 'No readable trade date', 'intraday_round_trip': 'Intraday round trip (bought and sold same day)',
     'intraday_round_trip_across_exchanges': 'Intraday round trip across exchanges or feeds (bought and sold same day)',
+    'same_day_both_sides_netted': 'Same client bought and sold the same day: smaller side netted into the larger',
     'same_deal_in_older_json_form': 'Same deal in the old feed format', 'same_trade_in_both_feeds': 'Same trade in bulk and block feeds',
     'unrecognised_mode': 'Mode of acquisition not stated', 'unmatched_security': 'Company not found in NSE/BSE lists',
     'holding_change_differs_from_quantity': "Holding change doesn't match shares traded",

@@ -18,22 +18,25 @@ HERE = Path(__file__).resolve().parent
 # ---- Colour: a warm-neutral page, near-black ink, one muted accent, muted green and red for buying and selling only,
 # muted amber for "needs a look". Tints are the same hues at low strength, for backgrounds only.
 COLORS = {
-    'bg': '#F3F4F6',            # the page: a soft grey the cards sit on
-    'surface': '#FFFFFF',       # a card
+    # Look of 19 Nov 2026 (owner: "why can't we have such beautiful site", pointing at paresh.streamlit.app): a white
+    # page, sections set apart by rules rather than grey cards, a serif for headlines and answers.
+    'bg': '#FFFFFF',            # the page
+    'surface': '#FFFFFF',       # a card (now the page itself: sections are ruled, not boxed)
     'subtle': '#F1F2F6',        # a quiet fill: avatars, date badges, a neutral chip
     'hover': '#F8F9FB',         # a row under the pointer
     'line': '#EEF0F3',          # hairlines between rows inside a card
     'line-strong': '#E3E6EA',   # an input's edge, a table head's rule
     'rule': '#E3E6EA',
+    'rule-strong': '#1B1B1B',   # the rule over a section and under the menu
     'ink': '#111827',           # text
     'ink-2': '#4B5563',         # secondary text
     'ink-3': '#6B7280',         # labels, notes
     'ink-4': '#A3A9B3',         # a dash, an empty value
-    'accent': '#4F5BD5',        # links, the selected control, the brand mark
-    'accent-ink': '#3F49B8',
-    'accent-tint': '#EEF0FC',
-    'buy': '#15803D',     'buy-tint': '#E9F7EE',
-    'sell': '#C2410C',    'sell-tint': '#FDEFE7',
+    'accent': '#1F5FA8',        # links, the selected control, the brand mark
+    'accent-ink': '#1F4F8A',
+    'accent-tint': '#EEF3FA',
+    'buy': '#1F7A45',     'buy-tint': '#EAF4EE',
+    'sell': '#A8481F',    'sell-tint': '#F8EDE7',
     'warn': '#B45309',    'warn-tint': '#FEF5E6',  'warn-ink': '#92400E',
     'nse': '#5B4A8B',     'bse': '#2F6F7E',        # exchange marks
     'on-accent': '#FFFFFF',     # text on a filled accent chip
@@ -43,12 +46,14 @@ COLORS = {
 FONTS = {
     'ui': "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     'mono': "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+    'display': "'Source Serif 4', Georgia, 'Times New Roman', serif",   # headlines, section questions and their answers
 }
-FONT_LINK = ('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400..600&display=swap')
+FONT_LINK = ('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400..600'
+             '&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap')
 
 # ---- Type scale (px): one per role. Headline is the page's news line; title a section's; the rest by use.
 TYPE = {
-    'fs-headline': '34px', 'fs-headline-phone': '26px',
+    'fs-headline': '44px', 'fs-headline-phone': '30px', 'fs-question': '24px', 'fs-answer': '28px',
     'fs-title': '17px', 'fs-card': '15px', 'fs-body': '14px', 'fs-small': '12.5px', 'fs-label': '11px',
     'fs-stat': '28px', 'fs-stat-phone': '22px',
     'fw-regular': '400', 'fw-medium': '500', 'fw-strong': '600', 'fw-stat': '600',
@@ -77,7 +82,7 @@ def _css() -> str:
     return _css_for(tuple((HERE / f).stat().st_mtime for f in CSS_FILES))
 
 
-CSS_FILES = ('insiders.css', 'table.css', 'ds.css', 'dt.css')
+CSS_FILES = ('insiders.css', 'table.css', 'ds.css', 'dt.css', 'look.css')
 
 
 @lru_cache(maxsize=2)
