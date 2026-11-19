@@ -40,7 +40,7 @@ def diverging_bars(df: pd.DataFrame, label: str = 'label', value: str = 'net_cr'
         tips.append(alt.Tooltip('stocks:Q', title='Stocks'))
     bars = alt.Chart(d).mark_bar(cornerRadius=2).encode(
         y=alt.Y(f'{label}:N', sort=d[label].tolist(), title=None,
-                axis=alt.Axis(labelColor=INK, labelLimit=200, ticks=False, domain=False)),
+                axis=alt.Axis(labelColor=INK, labelLimit=200, ticks=False, domain=False, labelOverlap=False)),
         x=alt.X(f'{value}:Q', title=unit, axis=alt.Axis(format=',.0f', gridColor=LINE, labelColor=INK3, titleColor=INK3,
                                                          domain=False, tickCount=5)),
         color=alt.Color('side:N', scale=alt.Scale(domain=['Bought', 'Sold'], range=[BUY, SELL]), legend=None),
