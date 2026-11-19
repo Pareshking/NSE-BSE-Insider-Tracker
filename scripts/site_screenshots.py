@@ -21,7 +21,10 @@ PAGES = [('', 'today'), ('insiders', 'insiders'), ('deals', 'deals'), ('stakes',
          ('results', 'results'), ('calendar', 'calendar'), ('company?symbol=HCLTECH', 'company-hcltech'), ('data-health', 'data-health'),
          ('watchlist?watch=HAVELLS,JSL,HCLTECH,TITAN', 'watchlist'), ('raises', 'raises'), ('risks', 'risks'),
          ('investors', 'investors'), ('track-record', 'evidence'), ('filings-all', 'filings'), ('data', 'data'), ('market', 'old-market-address'),
-         ('proto-today', 'old-proto-address')]
+         ('proto-today', 'old-proto-address'), ('entity?id=sbi-mutual-fund', 'entity-sbi-mf'), ('ownership', 'holders'),
+         ('investor-flows', 'investor-flows')]
+# Long pages drawn taller at phone width, so the screenshot reaches their charts (the entity page's holdings).
+TALL = {'entity-sbi-mf': 7000}
 # Tall viewports: Streamlit scrolls inside its own container, so a "full page"
 # screenshot would stop at the first screen.
 WIDTHS = {'desktop': (1440, 2600), 'phone': (390, 2200)}
@@ -38,6 +41,7 @@ async def main(base: str, out: Path) -> int:
         for label, (w, h) in WIDTHS.items():
             page = await browser.new_page(viewport={'width': w, 'height': h})
             for path, name in PAGES:
+                await page.set_viewport_size({'width': w, 'height': TALL.get(name, h) if label == 'phone' else h})
                 await page.goto(f'{base.rstrip("/")}/{path}', wait_until='networkidle', timeout=120_000)
                 # Streamlit draws after the first paint; the first page also
                 # loads every table from R2. Wait for the page head itself.
