@@ -34,7 +34,7 @@ def by_kind(df: pd.DataFrame | None, kind: str) -> pd.DataFrame | None:
     'pension' (NPS pension fund managers)."""
     if df is None or df.empty:
         return df
-    k = df['house_kind'].fillna('mf') if 'house_kind' in df else pd.Series('mf', index=df.index)
+    k = df['house_kind'].astype(object).fillna('mf') if 'house_kind' in df else pd.Series('mf', index=df.index)
     return df[k == kind]
 
 
@@ -493,3 +493,94 @@ def house_positioning(ch: pd.DataFrame, stock: pd.DataFrame, size: dict | None =
                      'sector_shift': [(k, float(v)) for k, v in sec.items()],
                      'top10_before': top(g['v0']), 'top10_after': top(g['v1'])})
     return pd.DataFrame(rows, columns=cols)
+
+
+# ---- Scheme by scheme --------------------------------------------------------------------------------------------
+# mf_scheme_moves (insiders_clean/mf_holdings.scheme_moves): active schemes, one row per house, scheme, month and ISIN
+# where the scheme's shares moved, with the shares at the two month-ends and the change in rupees at the month's filed
+# price. A row that did not move is not in it, so a scheme's shares at a window's start are the start of its first row
+# in the window and at the end the end of its last one. mf_scheme_month names the schemes.
+
+def scheme_rows(moves: pd.DataFrame | None, ms: list[str], houses: list[str] | None = None) -> pd.DataFrame:
+    """One row per house, scheme and ISIN over the window `ms`: start, end, net shares, net rupees (crore), status
+    (new / added / cut / exit / none), and `one_end`: the scheme was not in the house's files at both month-ends of
+    some month in the window (a new scheme, a scheme gone, or a name that changed)."""
+    cols = ['amc', 'scheme_key', 'isin', 'start', 'end', 'net', 'net_cr', 'status', 'one_end']
+    if moves is None or moves.empty or not ms:
+        return pd.DataFrame(columns=cols)
+    m = moves[moves['month'].astype(str).isin(ms)]
+    if houses:
+        m = m[m['amc'].astype(str).isin(houses)]
+    if m.empty:
+        return pd.DataFrame(columns=cols)
+    m = pd.DataFrame({'amc': m['amc'].astype(str), 'scheme_key': m['scheme_key'].astype(str), 'isin': m['isin'].astype(str),
+                      'month': m['month'].astype(str), 's0': m['shares_start'].astype(float), 's1': m['shares_end'].astype(float),
+                      'cr': m['change_cr'].astype(float), 'oe': m['scheme_seen'].astype(str).ne('both')}).sort_values('month')
+    m['d'] = m['s1'] - m['s0']
+    g = m.groupby(['amc', 'scheme_key', 'isin'], sort=False)
+    out = g.agg(start=('s0', 'first'), end=('s1', 'last'), net=('d', 'sum'), net_cr=('cr', 'sum'), _n=('cr', 'count'),
+                one_end=('oe', 'max')).reset_index()
+    out['net_cr'] = out['net_cr'].where(out.pop('_n').gt(0))
+    s, e = out['start'], out['end']
+    out['status'] = 'held'
+    out.loc[s.gt(0) & e.gt(0) & out['net'].gt(0), 'status'] = 'added'
+    out.loc[s.gt(0) & e.gt(0) & out['net'].lt(0), 'status'] = 'cut'
+    out.loc[s.eq(0) & e.gt(0), 'status'] = 'new'
+    out.loc[s.gt(0) & e.eq(0), 'status'] = 'exit'
+    out.loc[s.eq(0) & e.eq(0), 'status'] = 'none'
+    return out[cols]
+
+
+def scheme_names(sm: pd.DataFrame | None) -> dict:
+    """{(house, scheme key): the scheme's name as last filed} from mf_scheme_month."""
+    if sm is None or sm.empty:
+        return {}
+    s = sm.sort_values('month').drop_duplicates(['amc', 'scheme_key'], keep='last')
+    return {(str(a), str(k)): str(n) for a, k, n in zip(s['amc'], s['scheme_key'], s['scheme'])}
+
+
+def scheme_totals(sr: pd.DataFrame) -> pd.DataFrame:
+    """Per house and scheme from `scheme_rows`: net rupees, rupees bought and sold (stock by stock), stocks added (new
+    too), cut (exits too), new, sold out, and `one_end`; largest net buying first."""
+    cols = ['amc', 'scheme_key', 'net_cr', 'bought_cr', 'sold_cr', 'adding', 'cutting', 'new', 'exits', 'one_end']
+    if sr is None or sr.empty:
+        return pd.DataFrame(columns=cols)
+    v = sr['net_cr']
+    x = sr.assign(_b=v.clip(lower=0), _s=v.clip(upper=0), _a=sr['net'].gt(0), _c=sr['net'].lt(0),
+                  _n=sr['status'].eq('new'), _x=sr['status'].eq('exit'))
+    out = x.groupby(['amc', 'scheme_key'], sort=False).agg(
+        net_cr=('net_cr', 'sum'), bought_cr=('_b', 'sum'), sold_cr=('_s', 'sum'), adding=('_a', 'sum'), cutting=('_c', 'sum'),
+        new=('_n', 'sum'), exits=('_x', 'sum'), one_end=('one_end', 'max')).reset_index()
+    for c in ('adding', 'cutting', 'new', 'exits'):
+        out[c] = out[c].astype(int)
+    return out.sort_values('net_cr', ascending=False).reset_index(drop=True)[cols]
+
+
+def scheme_counts(sr: pd.DataFrame) -> pd.DataFrame:
+    """Per ISIN: schemes adding and cutting over the window (net shares), schemes in the files at both month-ends only
+    (a scheme seen at one end has every line new or sold out, which says nothing about a decision)."""
+    if sr is None or sr.empty:
+        return pd.DataFrame(columns=['isin', 'schemes_adding', 'schemes_cutting'])
+    x = sr[~sr['one_end'].astype(bool)]
+    return x.assign(_a=x['net'].gt(0), _c=x['net'].lt(0)).groupby('isin').agg(
+        schemes_adding=('_a', 'sum'), schemes_cutting=('_c', 'sum')).reset_index()
+
+
+def scheme_coverage_at(cov: pd.DataFrame | None, month: str, kind: str = 'mf') -> pd.DataFrame:
+    """The scheme count check for one month-end and house kind (mf_scheme_coverage), houses flagged first."""
+    if cov is None or cov.empty:
+        return pd.DataFrame()
+    c = cov[(cov['month'].astype(str) == month)]
+    if 'house_kind' in c:
+        c = c[c['house_kind'].fillna('mf') == kind]
+    return c.assign(_f=c['flag'].fillna('').astype(str).eq('')).sort_values(['_f', 'amc']).drop(columns='_f')
+
+
+def month_total_shares(stock: pd.DataFrame | None, month: str, fallback: dict | None = None) -> dict:
+    """{isin: the company's shares on `month`'s basis}: mf_stock_month's `total_shares` (the last filing with a split or
+    bonus since applied, scripts/mf_portfolios.py); `fallback` (the latest filing as is) only for a table written
+    before the column existed."""
+    if stock is not None and not stock.empty and 'total_shares' in stock:
+        s = stock[stock['month'] == month].dropna(subset=['total_shares']).drop_duplicates('isin')
+        return dict(zip(s['isin'], s['total_shares']))
+    return dict(fallback or {})
