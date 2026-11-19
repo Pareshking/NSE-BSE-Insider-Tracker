@@ -980,10 +980,13 @@ def calendar():
 
 # ---- Company: the same dense tables, one company, 12 months (R8) ------------------------------------------------------
 
-def company_tables(ctx, isin: str | None, sym: str, days: int = 365, rng: dates.Range | None = None) -> None:
+def company_tables(ctx, isin: str | None, sym: str, days: int = 365, rng: dates.Range | None = None,
+                   bars: dict | None = None) -> None:
     """Insider decisions, deals and SAST stake changes of one company, as on the topic pages, over `rng` (the company
     page's date control) or the `days` days to the as-of date. Every decision is listed (no size bar: on its own page a
-    company's small decisions are the story); market makers, inter-se transfers and moves under 0.1% stay counted."""
+    company's small decisions are the story); market makers, inter-se transfers and moves under 0.1% stay counted. `bars`: HTML under
+    the insider and deal headings (the Company page's bought-against-sold bars, 19 Nov 2026)."""
+    bars = bars or {}
     ref = pd.Timestamp(ctx.ref)
     if rng is not None:
         ref, days = rng.end_ts, rng.days
@@ -997,7 +1000,7 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365, rng: dates.
         if not d.empty:
             frames.append(d.assign(side=side))
     d = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    st.html(f'<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · {span} · each decision added up</span></h2>')
+    st.html(f'<h2 class="dt-h2">Insider decisions <span>promoters, directors and KMP · open market · {span} · each decision added up</span></h2>' + bars.get('insiders', ''))
     st.html(_insider_table(ctx, d, px, names, company_col=False) if not d.empty
             else f'<p class="dt-empty">No promoter, director or KMP traded on the market, {span}.</p>')
 
@@ -1008,7 +1011,7 @@ def company_tables(ctx, isin: str | None, sym: str, days: int = 365, rng: dates.
     # under FIH Mauritius's sale buried SBI MF's ₹503 Cr); newest day first, largest first within a day
     rows = club_blocks(rows)
     rows.sort(key=lambda x: (pd.Timestamp(x['date']).normalize(), x['_v'] or 0), reverse=True)
-    st.html(f'<h2 class="dt-h2">Bulk and block deals <span>{span} · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>')
+    st.html(f'<h2 class="dt-h2">Bulk and block deals <span>{span} · matched buyer and seller on one line · a block\'s buyers on one line</span></h2>' + bars.get('deals', ''))
     st.html(_deal_table(rows, names, limit=60, company_col=False, with_year=True))
     if churn or small or len(rows) > 60:
         st.html(f'<p class="dt-foot">Clubbed: <b>{churn}</b> market-maker legs, <b>{small}</b> legs under ₹1 Cr'
