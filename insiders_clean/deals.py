@@ -23,7 +23,9 @@ Steps, each counted in the cleaning report:
 
 Intraday round trips (same client buying and selling the same size on the
 same day) are flagged by scripts/r2_writer.py (`intraday_round_trip`), kept
-in the raw layer, and excluded here with a counted reason.
+in the raw layer, and excluded here with a counted reason. A client that
+bought and sold unequal amounts the same day is netted to the difference
+(`_net_two_way_days`, reason `same_day_both_sides_netted`).
 """
 from __future__ import annotations
 
@@ -88,6 +90,60 @@ def _drop_json_copies(raw: pd.DataFrame, report) -> pd.DataFrame:
         report.removed('deals', 'same_deal_in_older_json_form', _col(raw.loc[older_copy], 'canonical_event_id'))
         raw = raw.loc[~older_copy]
     return raw
+
+
+def _net_two_way_days(legs: pd.DataFrame, report) -> pd.DataFrame:
+    """One client that bought and sold the same security on the same day, in amounts more than
+    ROUND_TRIP_QTY_TOLERANCE apart (so not a round trip), changed its holding only by the difference. Shown gross,
+    its larger leg led Today with itself as "the other side" (19 Nov 2026: Millworks Technologies, LRSD Capital
+    Private Limited, Sell 3.19% · other side: LRSD Capital Private Limited, BSE bulk; SC Agrotech, Pravinbhai
+    Bharatbhai Gohil; GRP, Bellwether Capital). The day is netted: the smaller side's legs are removed, counted as
+    `same_day_both_sides_netted` (the archive keeps them), and the larger side's legs keep their price and are scaled
+    to the net quantity. `two_way_bought` and `two_way_sold` keep the day's gross shares on the kept legs.
+
+    The same client is the same `client_id` (entity_key: spelling and company-suffix variants only), as for round
+    trips; two names that only look alike are two clients and are never netted. Market makers keep their gross legs
+    (labelled and out of signals already). Judged across exchanges and feeds, as the round-trip rule is."""
+    legs = legs.copy()
+    legs['two_way_bought'] = np.nan
+    legs['two_way_sold'] = np.nan
+    if legs.empty:
+        return legs
+    day_client = ['security_key', 'client_id', 'date']
+    mm = legs['client_is_market_maker'].astype(bool)
+    qty = legs['quantity'].where(legs['quantity'] > 0)
+    keys = [legs[k] for k in day_client]
+    bought = qty.where(legs['side'].eq('BUY')).groupby(keys, dropna=True).transform('sum')
+    sold = qty.where(legs['side'].eq('SELL')).groupby(keys, dropna=True).transform('sum')
+    two_way = ((bought > 0) & (sold > 0)).fillna(False) & legs[day_client].notna().all(axis=1) & ~mm
+    if not two_way.any():
+        return legs
+    bigger = np.where(bought > sold, 'BUY', 'SELL')
+    smaller_leg = two_way & legs['side'].ne(pd.Series(bigger, index=legs.index))
+    kept_leg = two_way & ~smaller_leg
+    big_qty = np.maximum(bought, sold)
+    factor = ((big_qty - np.minimum(bought, sold)) / big_qty).where(kept_leg)
+    # The removed legs' exchange rows are listed on the kept leg of the same client-day, for the audit trail.
+    gid = legs.groupby(day_client, dropna=True, sort=False).ngroup()
+    moved_ids: dict = {}
+    for g, ids in zip(gid[smaller_leg], legs.loc[smaller_leg, 'source_ids']):
+        moved_ids.setdefault(g, []).extend(json.loads(ids))
+    report.removed('deals', 'same_day_both_sides_netted', legs.loc[smaller_leg, 'deal_id'])
+    t = report.table('deals')
+    t['two_way_days_netted'] = int(gid[two_way].nunique())
+    legs.loc[kept_leg, 'two_way_bought'] = bought[kept_leg]
+    legs.loc[kept_leg, 'two_way_sold'] = sold[kept_leg]
+    for c in ('quantity', 'value'):
+        legs.loc[kept_leg, c] = legs.loc[kept_leg, c] * factor[kept_leg]
+    first_kept = legs.index[kept_leg][~gid[kept_leg].duplicated().to_numpy()]
+    for i in first_kept:
+        extra = moved_ids.get(gid[i])
+        if extra:
+            legs.at[i, 'source_ids'] = json.dumps(json.loads(legs.at[i, 'source_ids']) + extra)
+            legs.at[i, 'trades'] = legs.at[i, 'trades'] + len(extra)
+    legs['signed_value'] = legs['value'] * legs['side'].map({'BUY': 1, 'SELL': -1})
+    legs['pct_of_mcap'] = (legs['value'] / legs['market_cap_at_trade'] * 100).where(legs['market_cap_at_trade'] > 0)
+    return legs.loc[~smaller_leg].reset_index(drop=True)
 
 
 def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
@@ -215,6 +271,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
     if trip.any():
         report.removed('deals', 'intraday_round_trip_across_exchanges', legs.loc[trip, 'deal_id'])
         legs = legs.loc[~trip].reset_index(drop=True)
+    legs = _net_two_way_days(legs, report)
 
     # 4. other side of the tape in that security that day
     day_key = ['exchange', 'security_key', 'date']
@@ -292,7 +349,7 @@ def clean_deals(raw: pd.DataFrame, master: SecurityMaster, report, run_date,
             'client_id', 'client_name', 'client_is_market_maker', 'side', 'quantity', 'price', 'value', 'signed_value',
             'trades', 'market_cap', 'market_cap_at_trade', 'market_cap_date', 'market_cap_basis', 'pct_of_mcap',
             'same_size_on_other_exchange', 'counterparties', 'matched_pair', 'matched_client', 'source_ids',
-            'flags', 'needs_review']
+            'two_way_bought', 'two_way_sold', 'flags', 'needs_review']
     out = legs[cols].reset_index(drop=True)
     t['output_rows'] += len(out)
     t['by_exchange'] = out['exchange'].value_counts().to_dict()
