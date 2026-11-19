@@ -625,9 +625,80 @@ def raw_deal_legs(r2, code: str, day: str) -> int:
     return 0
 
 
+def market_flows_check(r2) -> int:
+    """MARKET_FLOWS: is November 2026's FPI equity figure real (19 Nov: +Rs 1,06,229 Cr on the Dashboard)? The clean
+    NSDL rows per reporting date and segment (duplicates, exchange against primary market), every month's total, the
+    archive's fetches, NSDL's own "Total for November" from the newest raw page, and NSE's provisional days."""
+    import json
+    import re
+
+    from clean_writer import get, list_keys
+    from insiders_clean import market_flows as M
+    from insiders_clean import raw_store
+    f = read_parquet(r2, 'clean/current/market_flows.parquet')
+    if f is None or f.empty:
+        print('clean/current/market_flows.parquet: empty or missing')
+        return 0
+    f = f.assign(date=pd.to_datetime(f['date']))
+    print('rows by source/category/segment:')
+    print(f.groupby(['source', 'category', 'segment']).size().to_string())
+    n = f[(f['source'] == 'nsdl') & (f['date'] >= '2026-11-01')]
+    dup = n[n.duplicated(['date', 'segment'], keep=False)]
+    print(f'\n--- NSDL Nov 2026: {len(n)} rows, {n["date"].nunique()} reporting dates, duplicated (date, segment): {len(dup)}')
+    piv = n[n['segment'].isin(['equity', 'equity_exchange', 'equity_primary', 'total'])].pivot_table(
+        index='date', columns='segment', values='net_cr', aggfunc=['sum', 'count'])
+    print(piv.to_string())
+    eq = n[n['segment'].isin(['equity', 'equity_exchange', 'equity_primary'])].groupby('segment')['net_cr'].sum()
+    print('Nov sums:', eq.round(2).to_dict())
+    m = f[(f['source'] == 'nsdl') & f['segment'].isin(['equity', 'equity_exchange', 'equity_primary'])]
+    print('\n--- NSDL equity net by month (Rs Cr), all months held:')
+    print(m.pivot_table(index=m['date'].dt.strftime('%Y-%m'), columns='segment', values='net_cr', aggfunc='sum').round(0).to_string())
+    a = read_parquet(r2, 'archive/market_flows/nsdl/year=2026.parquet')
+    if a is not None and not a.empty:
+        a = a.assign(date=pd.to_datetime(a['date']))
+        an = a[(a['date'] >= '2026-11-01') & (a['segment'] == 'equity')]
+        print(f'\n--- archive nsdl 2026, Nov equity: {len(an)} rows, dates {an["date"].nunique()}, '
+              f'fetched_at values: {an["fetched_at"].astype(str).value_counts().to_dict() if "fetched_at" in an else "none"}')
+    keys = sorted(k for k in list_keys(r2, 'raw_v2/nsdl/fpi_daily/fetches/2026-11') if k.endswith('.json'))
+    print(f'\n--- raw NSDL fetches in Nov 2026: {len(keys)}')
+    for k in keys[-3:]:
+        print('   ', k)
+    if keys:
+        rec = json.loads(get(r2, keys[-1]))
+        print('newest fetch record:', {x: rec.get(x) for x in ('url', 'params', 'status', 'fetched_at', 'covers', 'sha256', 'blob_key', 'bytes')})
+        blob = rec.get('blob_key') or next((b for b in list_keys(r2, f"raw_v2/nsdl/fpi_daily/blobs/{rec['sha256'][:2]}/{rec['sha256']}")), None)
+        body = raw_store.read_blob(lambda key: get(r2, key), blob) if blob else None
+        if body is None:
+            print('newest raw page: blob not found')
+        else:
+            html = body.decode('utf-8', 'ignore')
+            i = html.find('Daily Trends in FPI Investments')
+            html = html[html.rfind('<table', 0, i):]
+            on = False
+            for cells, _ in M._rows(html):
+                c = list(cells)
+                if c and c[0].startswith('Total for '):
+                    on = c[0].startswith('Total for November')
+                    print('NSDL page:', c)
+                elif on and len(c) >= 4 and (c[0] in ('Primary market & others', 'Sub-total')):
+                    print('NSDL page:', c)
+                    if c[0] == 'Sub-total':
+                        on = False
+            notes = []
+            d = M.parse_nsdl_daily(body.decode('utf-8', 'ignore'), notes)
+            print('parsed again: equity days sum', round(float(d.loc[d['segment'] == 'equity', 'net_cr'].sum()), 2), 'notes:', notes)
+    nse = f[(f['source'] == 'nse') & (f['category'] == 'fpi')]
+    print('\n--- NSE provisional FII/FPI days held:')
+    print(nse[['date', 'segment', 'buy_cr', 'sell_cr', 'net_cr']].sort_values(['date', 'segment']).to_string(index=False))
+    print('NSE days held sum by segment:', nse.groupby('segment')['net_cr'].sum().round(2).to_dict())
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
+    if syms == ['MARKET_FLOWS']:   # is November's FPI equity figure real (19 Nov)
+        return market_flows_check(r2)
     if syms == ['MCAP_GAP']:     # why a BSE-only row is still on the latest market cap: no shares, or no BSE close
         return mcap_gap(r2)
     if syms == ['MCAP_BASIS']:   # how each row's market cap was dated, and BSE-only examples of the new basis
