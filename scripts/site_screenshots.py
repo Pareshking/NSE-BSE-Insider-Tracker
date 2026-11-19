@@ -65,7 +65,8 @@ async def main(base: str, out: Path) -> int:
                     problems.append({'page': name, 'width': label, 'error': 'page still running after 90 s'})
                 if name in CLICK:
                     try:
-                        await page.get_by_role('button', name=CLICK[name], exact=True).first.click()
+                        # by its text: Streamlit 1.67 gives a segmented control's options role="radio", not "button"
+                        await page.locator('button', has_text=CLICK[name]).first.click()
                         await page.wait_for_timeout(1000)
                         await page.wait_for_function(RUN_FINISHED, timeout=90_000)
                         await page.wait_for_timeout(1500)
