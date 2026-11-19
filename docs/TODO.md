@@ -4,6 +4,20 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Price jumps, 19 Nov 2026 (branch `price-jumps`, draft PR)
+
+IIFL Finance's line showed ~330 -> ~600 on 30 Jul 2026 ("Up 131.7% in a year"): NSE's block window series (BL,
+base 334.25) beat EQ as the day's most traded and its 0.5617 passed for a 5:4 bonus. Fixed in `adjust.py` / `slim.py`
+with the other faults the new audit found (`docs/CLEAN_LAYER.md`, "Price jumps audit"): side-window series left out,
+no factor across a session the layer lacks (1 Feb 2025, 1 Feb 2026, 8 Nov 2026 are not in `prices/daily/`), filed
+splits on a new ISIN or after a gap applied, BSE keeps its factor where NSE did not print. With this code (read-only
+peek, 19 Nov): IIFL +17.1% a year, no factor applied; ratio guesses applied fell from 247 to 10; 0 moves made by
+adjustment; in the study universe 33 unexplained 40% moves (31 companies), 9 on a filed rights or dividend not
+adjusted, 1 across a missing session, 116 adjusted. **Next, after merge:** Price backfill for 2025-02-01, 2026-02-01
+and 2026-11-08 (NSE, BSE, NSE_PR, NSE_IDX), then Precompute slim assets (writes the lines and
+`clean/reports/price_jumps.json`). Open: the unexplained are mostly splits and bonuses with no action in our tables
+and demergers (VEDL, SKFINDIA, TMPV); collecting NSE's scheme/demerger actions is a separate piece of work.
+
 ## Fund houses set E, 19 Nov 2026 (branch `mf-houses-e`, draft PR)
 
 Added: Mahindra Manulife (`mahindra`: the downloads list shows after the "I am NOT a US person / resident of Canada"
