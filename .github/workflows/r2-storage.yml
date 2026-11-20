@@ -264,7 +264,7 @@ jobs:
       - name: BSE SAST, corporate actions, board meetings and shareholding, last 30 days
         if: always()
         continue-on-error: true
-        # About 170 BSE calls at 4-6 s (150 shareholding XBRLs at most); a stall cannot hold up the clean step.
+        # About 170 BSE calls (150 shareholding XBRLs at most, 4 side by side: XBRL_WORKERS); a stall cannot hold up the clean step.
         timeout-minutes: 30
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
