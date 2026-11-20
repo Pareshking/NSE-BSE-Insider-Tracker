@@ -13,7 +13,9 @@ on the same day) and balance-sheet instants. Values are rupees as filed (the `de
 were rounded). The file has no prior-year quarter: year-on-year comparisons come from our own history.
 
 Kept as filed: every fact in `xbrl_json`; a few lines that the INDAS layout names (SUMMARY) as columns, blank
-where a layout (banks, insurers) names them otherwise. Nothing is derived or guessed here.
+where a layout (banks, insurers) names them otherwise. Revenue and profit are read under each layout's own names
+(TOP_LINE, PROFIT; 20 Nov 2026) and the revenue line says which one it is (`revenue_basis`). Nothing is derived or
+guessed here.
 """
 from __future__ import annotations
 
@@ -47,6 +49,40 @@ SUMMARY = {'revenue': 'RevenueFromOperations', 'other_income': 'OtherIncome', 't
            'profit_owners': 'ProfitOrLossAttributableToOwnersOfParent',
            'eps_basic': 'BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations',
            'eps_diluted': 'DilutedEarningsLossPerShareFromContinuingAndDiscontinuedOperations'}
+# Revenue and profit under each layout's own names (20 Nov 2026, scripts/clean_peek.py RESULTS_TAGS on the 2026
+# archive: HDFC Bank, SBI, ICICI Bank, Kotak (BANKING), Bajaj Finance (NBFC_INDAS), LIC, HDFC Life (LI), ICICI Lombard
+# (GI)). The Results page showed "No revenue line" for banks and insurers: they file no RevenueFromOperations.
+#   INDAS, NBFC_INDAS: RevenueFromOperations (Schedule III; NBFCs' Division III includes interest earned in it, Bajaj
+#     Finance Sep 2026 standalone Rs 20,890.66 Cr), profit ProfitLossForPeriod.
+#   NONINDAS (old Indian GAAP layout, 24 companies in 2026): RevenueFromOperations, profit ProfitLossForThePeriod.
+#   BANKING: `Income`, the bank's total income = InterestEarned + OtherIncome (HDFC Bank Sep 2026 standalone:
+#     83,426.60 + 13,831.02 = 97,257.62 Cr), chosen over InterestEarned alone because a bank's fees, commissions and
+#     treasury income are its operations too and the banks' own segment note reports this figure as revenue from
+#     operations (SegmentRevenueFromOperations = Income in every bank read). Profit ProfitLossForThePeriod (net
+#     profit after tax, before minority interest, as ProfitLossForPeriod is for companies); owners' share
+#     ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates.
+#   LI (life insurers): NetPremiumIncome (premium net of reinsurance). Their `Income` adds investment income, which
+#     swings with the market (LIC Sep 2026: Rs 1,14,983.77 Cr of investment income on Rs 1,47,018.18 Cr of net
+#     premium), so it is not the top line. Profit ProfitLossAfterTaxAndExtraordinaryItems.
+#   GI (general insurers): PremiumEarned (net premium earned), profit ProfitLossAfterTax.
+# A filing with no layout in its file name (9 filings of 3 companies in 2026, Ind AS 117 InsuranceRevenue) is read
+# as INDAS and keeps a blank revenue: not mapped until its layout is known.
+TOP_LINE = {'INDAS': ('ind_as_revenue', 'RevenueFromOperations'), 'NBFC_INDAS': ('ind_as_revenue', 'RevenueFromOperations'),
+            'NONINDAS': ('igaap_revenue', 'RevenueFromOperations'), 'BANKING': ('bank_total_income', 'Income'),
+            'LI': ('insurer_net_premium', 'NetPremiumIncome'), 'GI': ('insurer_premium_earned', 'PremiumEarned')}
+PROFIT = {'NONINDAS': 'ProfitLossForThePeriod', 'BANKING': 'ProfitLossForThePeriod',
+          'LI': 'ProfitLossAfterTaxAndExtraordinaryItems', 'GI': 'ProfitLossAfterTax'}
+PROFIT_OWNERS = {'BANKING': 'ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates'}
+# What the site calls each basis (the revenue column is "Revenue" for companies).
+BASIS_LABEL = {'ind_as_revenue': 'Revenue', 'igaap_revenue': 'Revenue', 'bank_total_income': 'Total income (bank)',
+               'insurer_net_premium': 'Net premium (life insurer)',
+               'insurer_premium_earned': 'Net premium earned (general insurer)'}
+
+
+def basis_label(basis) -> str:
+    return BASIS_LABEL.get(basis, 'Revenue') if isinstance(basis, str) else 'Revenue'
+
+
 META = {'isin': 'ISIN', 'bse_code': 'ScripCode', 'xbrl_symbol': 'Symbol', 'rounding': 'LevelOfRounding',
         'reporting_quarter': 'ReportingQuarter', 'period_type': 'TypeOfReportingPeriod',
         'period_start': 'DateOfStartOfReportingPeriod', 'board_meeting': 'DateOfBoardMeetingWhenFinancialResultsWereApproved',
@@ -166,9 +202,10 @@ def _days(c: dict) -> int:
         return 0
 
 
-def summary(parsed: dict) -> dict:
+def summary(parsed: dict, kind: str | None = None) -> dict:
     """The filing's identity and the SUMMARY lines for the quarter and the year to date (blank when not filed
-    under those names)."""
+    under those names); revenue and profit under the layout's own names (TOP_LINE, PROFIT), `revenue_basis` naming
+    the revenue line (blank when the filing has none)."""
     quarter, ytd = periods(parsed)
     facts = parsed['facts']
     # the identity is on the quarter, or on the year to date when the filing has no quarter (a half year): its ISIN
@@ -177,11 +214,15 @@ def summary(parsed: dict) -> dict:
     meta = facts.get(home, {}) if home else {}
     out = {k: (v if isinstance(v := meta.get(t), str) else None) for k, t in META.items()}
     out['period_end_xbrl'] = meta.get('DateOfEndOfReportingPeriod')
+    basis, top_tag = TOP_LINE.get(kind, TOP_LINE['INDAS'])
     for prefix, ctx in (('quarter', quarter), ('ytd', ytd)):
         row = facts.get(ctx, {}) if ctx else {}
-        for name, tag in SUMMARY.items():
+        tags = {**SUMMARY, 'revenue': top_tag, 'profit': PROFIT.get(kind, SUMMARY['profit']),
+                'profit_owners': PROFIT_OWNERS.get(kind, SUMMARY['profit_owners'])}
+        for name, tag in tags.items():
             v = row.get(tag)
             out[f'{prefix}_{name}'] = v if isinstance(v, float) else None
+    out['revenue_basis'] = basis if out['quarter_revenue'] is not None or out['ytd_revenue'] is not None else None
     out['ytd_start'] = parsed['contexts'][ytd]['start'] if ytd else None
     return out
 
@@ -195,7 +236,7 @@ def clean(filings: pd.DataFrame) -> pd.DataFrame:
         s = {}
         if r.get('xbrl_status') == 'ok' and r.get('xbrl_json'):
             try:
-                s = summary(json.loads(r['xbrl_json']))
+                s = summary(json.loads(r['xbrl_json']), r.get('kind'))
             except (ValueError, KeyError, TypeError):
                 s = {}
         rows.append({**{k: v for k, v in r.items() if k != 'xbrl_json'}, **s})
@@ -229,10 +270,12 @@ def derive_quarters(df: pd.DataFrame) -> pd.DataFrame:
         return df
     live = ~df['superseded'].astype('boolean').fillna(False) if 'superseded' in df else pd.Series(True, index=df.index)
     basis = df['consolidated'].astype(str).str.strip().str.lower()
+    # and the same revenue line (results.TOP_LINE): a bank's total income is never set against a company revenue
+    top = df['revenue_basis'].fillna('').astype(str) if 'revenue_basis' in df else pd.Series('', index=df.index)
     sym = df['symbol'].astype(str).str.upper()
     for i in df.index[todo]:
         lo, hi = end[i] - pd.Timedelta(days=95), end[i] - pd.Timedelta(days=85)
-        cand = df.index[live & (sym == sym[i]) & (basis == basis[i]) & end.between(lo, hi)]
+        cand = df.index[live & (sym == sym[i]) & (basis == basis[i]) & (top == top[i]) & end.between(lo, hi)]
         prior = None
         for j in cand:
             if ystart[j] == ystart[i]:

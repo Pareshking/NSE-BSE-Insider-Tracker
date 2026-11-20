@@ -349,10 +349,13 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
     # year-ago match ignored basis, so a consolidated quarter could be set against last year's standalone one). Both
     # bases are kept until the comparisons are made; one per company is chosen at the end.
     r = r.sort_values('_at').drop_duplicates(['isin', '_end', '_cons'], keep='last')
+    # ...and the same revenue line (20 Nov 2026, insiders_clean/results.TOP_LINE): a bank's total income, an insurer's
+    # net premium and a company's revenue from operations are each compared only with their like
+    r['_basis'] = r['revenue_basis'].fillna('').astype(str) if 'revenue_basis' in r else ''
     for c in ('quarter_revenue', 'quarter_profit'):
         r[c] = pd.to_numeric(r[c], errors='coerce')
-    r = r.dropna(subset=['isin', '_end']).sort_values(['isin', '_cons', '_end'])
-    prev = r.groupby(['isin', '_cons'])[['_end', 'quarter_revenue', 'quarter_profit']].shift(1)
+    r = r.dropna(subset=['isin', '_end']).sort_values(['isin', '_cons', '_basis', '_end'])
+    prev = r.groupby(['isin', '_cons', '_basis'])[['_end', 'quarter_revenue', 'quarter_profit']].shift(1)
     gap = (r['_end'] - prev['_end']).dt.days
     near = gap.between(80, 100)    # the quarter before, not an older one
     r['rev_qoq'] = ((r['quarter_revenue'] / prev['quarter_revenue'] - 1) * 100).where(near & prev['quarter_revenue'].gt(0))
@@ -360,10 +363,10 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
     # Year on year: the same company's quarter about a year earlier, same basis, where our history holds it (the XBRL has
     # no year-ago column. Backfilled from Apr 2025 broadcasts (13 Nov: 1,822 of 1,953 companies with a Sep 2026 quarter
     # have the Sep 2025 one, TODO D1); elsewhere a dash).
-    year = r[['isin', '_cons', '_end', 'quarter_revenue', 'quarter_profit']].rename(columns={'_end': '_yend', 'quarter_revenue': '_yrev', 'quarter_profit': '_yprof'})
+    year = r[['isin', '_cons', '_basis', '_end', 'quarter_revenue', 'quarter_profit']].rename(columns={'_end': '_yend', 'quarter_revenue': '_yrev', 'quarter_profit': '_yprof'})
     year['_key'] = year['_yend'] + pd.DateOffset(years=1)
     r['_key'] = r['_end']
-    r = pd.merge_asof(r.sort_values('_key'), year.sort_values('_key'), on='_key', by=['isin', '_cons'], direction='nearest',
+    r = pd.merge_asof(r.sort_values('_key'), year.sort_values('_key'), on='_key', by=['isin', '_cons', '_basis'], direction='nearest',
                       tolerance=pd.Timedelta(days=12))
     ok = r['_yrev'].gt(0) & r['_yend'].notna()
     r['rev_yoy'] = ((r['quarter_revenue'] / r['_yrev'] - 1) * 100).where(ok)
@@ -376,10 +379,10 @@ def _latest_results(ctx, days: int) -> pd.DataFrame:
             if c in r:
                 r[c] = pd.to_numeric(r[c], errors='coerce')
         r['_ylen'] = (r['_end'] - pd.to_datetime(r['ytd_start'], errors='coerce')).dt.days
-        ya = r[['isin', '_cons', '_end', '_ylen', 'ytd_revenue'] + (['ytd_profit'] if 'ytd_profit' in r else [])].rename(
+        ya = r[['isin', '_cons', '_basis', '_end', '_ylen', 'ytd_revenue'] + (['ytd_profit'] if 'ytd_profit' in r else [])].rename(
             columns={'_end': '_hend', '_ylen': '_hlen', 'ytd_revenue': '_hrev', 'ytd_profit': '_hprof'})
         ya['_key'] = ya['_hend'] + pd.DateOffset(years=1)
-        r = pd.merge_asof(r.sort_values('_key'), ya.dropna(subset=['_key']).sort_values('_key'), on='_key', by=['isin', '_cons'],
+        r = pd.merge_asof(r.sort_values('_key'), ya.dropna(subset=['_key']).sort_values('_key'), on='_key', by=['isin', '_cons', '_basis'],
                           direction='nearest', tolerance=pd.Timedelta(days=12))
         same = (r['_ylen'] - r['_hlen']).abs().le(10) & r['_ylen'].gt(100)   # a half year (or nine months) with its like
         half = r['quarter_revenue'].isna() & r['ytd_revenue'].notna() & same & r['_hrev'].gt(0)

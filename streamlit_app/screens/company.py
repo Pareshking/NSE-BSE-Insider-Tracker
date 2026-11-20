@@ -18,6 +18,7 @@ from ui.kit import esc
 from ui.table import facts
 
 from insiders_clean import evidence, ideas, ownership, participants, public_holders, signals
+from insiders_clean.results import basis_label
 from screens import buybacks
 from screens import company_glance as cg
 from ui import charts as cg_charts
@@ -239,9 +240,11 @@ def _timeline(ctx, sym, t, d, raises) -> pd.DataFrame:
             # NSE's `consolidated` is text ("Consolidated" / "Non-Consolidated"): both read as true (audit 22 Oct).
             basis = 'consolidated' if str(r.get('consolidated') or '').strip().lower().startswith('consolidated') else 'standalone'
             months = _months(r.get('ytd_start'), r.get('period_end'))
-            q = (f'quarter: revenue {kit.rupees(r.get("quarter_revenue"))} · profit {kit.rupees(r.get("quarter_profit"))}'
+            top = basis_label(r.get('revenue_basis'))
+            top = 'revenue' if top == 'Revenue' else top.lower()   # a bank's total income, an insurer's premium (20 Nov)
+            q = (f'quarter: {top} {kit.rupees(r.get("quarter_revenue"))} · profit {kit.rupees(r.get("quarter_profit"))}'
                  if kit._finite(r.get('quarter_revenue')) is not None else '')
-            ytd = (f'{months} months: revenue {kit.rupees(r.get("ytd_revenue"))} · profit {kit.rupees(r.get("ytd_profit"))}'
+            ytd = (f'{months} months: {top} {kit.rupees(r.get("ytd_revenue"))} · profit {kit.rupees(r.get("ytd_profit"))}'
                    if months and months > 3 and kit._finite(r.get('ytd_revenue')) is not None else '')
             more = [('Year to date', ytd)] if q and ytd else []
             if r.get('ytd_disagrees') == True:   # noqa: E712 -- insiders_clean/results.ytd_disagrees
