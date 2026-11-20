@@ -161,7 +161,11 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
         rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         if rows.empty or not mf_holdings.is_equity(rows['isin']).any():
             res['found'] = False
-            res['why'] = 'file(s) read but no equity holding lines' if frames else 'no file downloaded and parsed'
+            if frames:
+                res['why'] = 'file(s) read but no equity holding lines'
+            else:   # each file's own answer (an HTTP 404 from the house's server, a parse error ...), as the report has it
+                errs = sorted({r['error'] for r in reports if r.get('error')})
+                res['why'] = 'no file downloaded and parsed' + (f' ({"; ".join(errs)})' if errs else '')
         else:
             res['rows'] = rows
         out.append(res)
@@ -184,6 +188,27 @@ def add_up(sc: pd.DataFrame, hold: pd.DataFrame) -> int:
     a = sc.groupby('isin')['shares'].sum() if len(sc) else pd.Series(dtype=float)
     b = hold.groupby('isin')['shares'].sum() if len(hold) else pd.Series(dtype=float)
     return int((a.sub(b, fill_value=0).abs() > ADD_UP_TOLERANCE).sum())
+
+
+def add_up_detail(sc: pd.DataFrame, hold: pd.DataFrame, files: list | None = None) -> dict:
+    """What differs when scheme rows do not add up (nothing is forced): ISINs on one side only, the shares ratio over
+    the ISINs on both, how many ISINs are off by a whole multiple (a file read twice), and the files and schemes read."""
+    a = sc.groupby('isin')['shares'].sum() if len(sc) else pd.Series(dtype=float)
+    b = hold.groupby('isin')['shares'].sum() if hold is not None and len(hold) else pd.Series(dtype=float)
+    both = a.index.intersection(b.index)
+    ratio = (a[both] / b[both].where(b[both] != 0)).dropna()
+    off = ratio[(ratio - 1).abs() > 1e-6]
+    names = [u.split('?')[0].rsplit('/', 1)[-1] for u in files or []]
+    return {'scheme_isins': int(len(a)), 'house_isins': int(len(b)), 'only_schemes': int(len(a.index.difference(b.index))),
+            'only_house': int(len(b.index.difference(a.index))), 'both_differ': int(len(off)),
+            'ratio_median': round(float(off.median()), 4) if len(off) else None,
+            'whole_multiple': int(((off - off.round()).abs() < 1e-6).sum()) if len(off) else 0,
+            'scheme_shares': float(a.sum()), 'house_shares': float(b.sum()),
+            'files': len(names), 'file_names_twice': len(names) - len(set(names)),
+            'schemes': int(sc['scheme_key'].nunique()) if len(sc) else 0}
+
+
+RAW_FILES: dict = {}   # (house, month) -> the raw addresses raw_rows read, for add_up_detail
 
 
 def raw_rows(r2, house, months: set) -> dict:
@@ -216,6 +241,7 @@ def raw_rows(r2, house, months: set) -> dict:
                 print(f'{house.key} {m}: raw {u[:100]} not parsed ({type(exc).__name__})')
         if frames:
             out[m] = pd.concat([f for f in frames if len(f)] or frames[:1], ignore_index=True)
+            RAW_FILES[(house.key, m)] = list(urls)
     return out
 
 
@@ -249,8 +275,24 @@ def backfill_schemes(r2, houses, browser=None, fetch: bool = True) -> dict:
             hold = read_parquet(r2, f'{ARCHIVE}month={m}/{h.key}.parquet')
             sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
             bad = add_up(sc, hold)
+            if bad and how == 'from_raw' and fetch:
+                # The raw store can hold more than the archived set (a file fetched again at a new address, say):
+                # the house's current files are the other copy; kept only if they add up, as any fetch.
+                r.setdefault('differs', {})[f'{m} from_raw'] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)))
+                res = next(iter(collect_house(h, [m], browser)), {})
+                if 'rows' in res:
+                    how, rows = 'fetched', res['rows']
+                    sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
+                    bad2 = add_up(sc, hold)
+                    if bad2:
+                        r['differs'][f'{m} fetched'] = add_up_detail(sc, hold, res.get('files'))
+                        bad = f'{bad} (from raw), {bad2} (fetched again)'
+                    else:
+                        bad = 0
             if bad:
                 r['not_written'][m] = f'{how}: {bad} ISINs do not add up to the archived house rows'
+                if not any(k.startswith(m) for k in r.get('differs', {})):
+                    r.setdefault('differs', {})[m] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)) if how == 'from_raw' else None)
                 continue
             put_schemes(r2, h, m, rows)
             r[how].append(m)
@@ -433,13 +475,9 @@ def main(argv=None) -> int:
     if not a.dry_run:
         from r2_writer import r2_client
         r2 = r2_client()
-    browser = pw = None
-    if any(h.render for h in houses):
-        from playwright.sync_api import sync_playwright
-        pw = sync_playwright().start()
-        import os
-        exe = os.environ.get('CHROMIUM_PATH')   # a browser installed apart from the Python package (local runs)
-        browser = pw.chromium.launch(**({'executable_path': exe, 'args': ['--no-sandbox']} if exe else {}))
+    # One browser for the whole run, shared with the list readers that drive a page (apis2): Playwright's sync API
+    # allows one started instance per thread (find.shared_browser).
+    browser = find.shared_browser() if any(h.render or h.browser_fetch for h in houses) else None
     report = {'run_date': datetime.now(IST).date().isoformat(), 'months': months, 'houses': {}}
     have = set()
     if r2 is not None and not a.refetch:
@@ -473,9 +511,7 @@ def main(argv=None) -> int:
             arch = sorted({k[len(ARCHIVE):].split('/')[0][6:] for k in list_keys(r2, ARCHIVE) if k.endswith('.parquet')})
             report['amfi'] = backfill_amfi(r2, arch)
     finally:
-        if browser is not None:
-            browser.close()
-            pw.stop()
+        find.close_browser()
     if r2 is not None:
         from clean_writer import put
         report['clean'] = rebuild(r2)

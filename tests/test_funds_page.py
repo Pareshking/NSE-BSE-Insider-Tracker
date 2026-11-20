@@ -51,7 +51,7 @@ funds.render()
     assert 'Where did houses open a new position?' in html
     assert 'This month so far: what did funds buy and sell in bulk and block deals?' in html
     assert 'How is each house positioning?' in html
-    assert 'Is this complete?' in html and 'Kotak Mahindra Mutual Fund (its file list' in html
+    assert 'Is this complete?' in html and 'Kotak Mahindra Mutual Fund (its pages send' in html
     assert '2 fund houses compared' in html
 
 

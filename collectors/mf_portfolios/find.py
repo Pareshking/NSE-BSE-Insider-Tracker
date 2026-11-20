@@ -42,6 +42,8 @@ class House:
     pages: Callable[[str], list] | None = None   # month -> page addresses, for a page that lists one month at a time
                                  # (its links name no month, so the month is added to their text)
     browser_fetch: bool = False  # download through the browser (a site whose certificate chain only a browser completes)
+    needs_india_runner: bool = False   # the site answers machines in India only (geography, not a bot check): left out
+                                 # of the default run; read by hand with --house from a runner located in India
 
 
 def month_tokens(month: str) -> re.Pattern:
@@ -91,12 +93,27 @@ def candidates(links: list[tuple[str, str]], month: str, house: House) -> list[s
     return out
 
 
+def refused_hint(server: str | None, body: str) -> str:
+    """Who answered a refusal and what its page says ('server cloudflare, title "Just a moment..."'), so a report
+    tells a bot check from a plain block without a second visit."""
+    m = re.search(r'<title[^>]*>(.*?)</title>', (body or '')[:20000], re.I | re.S)
+    title = ' '.join(m.group(1).split())[:80] if m else ''
+    return f"server {server or '?'}" + (f', title "{title}"' if title else '')
+
+
+def raise_for_status(r) -> None:
+    """requests' raise_for_status, with `refused_hint` in the message (before the address, which can be long)."""
+    if r.status_code >= 400:
+        r.reason = f'{r.reason} ({refused_hint(r.headers.get("Server"), r.text)})'
+    r.raise_for_status()
+
+
 def links_plain(url: str, session=None, timeout: int = 60) -> list[tuple[str, str]]:
     import requests
     from bs4 import BeautifulSoup
     s = session or requests.Session()
     r = s.get(url, headers={'User-Agent': UA}, timeout=timeout)
-    r.raise_for_status()
+    raise_for_status(r)
     soup = BeautifulSoup(r.text, 'lxml')
     out = [(a.get_text(' ', strip=True), urljoin(r.url, a['href'])) for a in soup.find_all('a', href=True)]
     # Links in script data (JSON) rather than anchors
@@ -104,11 +121,47 @@ def links_plain(url: str, session=None, timeout: int = 60) -> list[tuple[str, st
     return out
 
 
+# The process's one headless browser. Playwright's sync API runs its event loop on the calling thread, so a second
+# sync_playwright() while one is started raises "It looks like you are using Playwright Sync API inside the asyncio
+# loop": the collector's browser (render=True houses) and the list readers that drive a page (Edelweiss, Bandhan,
+# Mahindra Manulife in apis2.py) must share one, never start their own beside it.
+_PW: dict = {}
+
+
+def shared_browser():
+    """The shared headless Chromium, started on first use (CHROMIUM_PATH: a browser installed apart from the
+    Python package, for local runs). Closed by `close_browser`."""
+    if 'browser' not in _PW:
+        import os
+        from playwright.sync_api import sync_playwright
+        pw = sync_playwright().start()
+        exe = os.environ.get('CHROMIUM_PATH')
+        try:
+            _PW['browser'] = pw.chromium.launch(**({'executable_path': exe, 'args': ['--no-sandbox']} if exe else {}))
+        except Exception:
+            pw.stop()
+            raise
+        _PW['pw'] = pw
+    return _PW['browser']
+
+
+def close_browser() -> None:
+    b, pw = _PW.pop('browser', None), _PW.pop('pw', None)
+    try:
+        if b is not None:
+            b.close()
+    finally:
+        if pw is not None:
+            pw.stop()
+
+
 def links_rendered(url: str, browser, click: list | None = None, wait_ms: int = 5000) -> list[tuple[str, str]]:
     ctx = browser.new_context(user_agent=UA, accept_downloads=False)
     page = ctx.new_page()
     seen: list[tuple[str, str]] = []
     page.on('request', lambda r: seen.append(('', r.url)) if FILE.search(r.url) else None)
+    first: list = []   # the page's own answer (its first document response)
+    page.on('response', lambda r: first.append(r) if not first and r.request.resource_type == 'document' else None)
     try:
         try:
             page.goto(url, wait_until='networkidle', timeout=90000)
@@ -136,6 +189,11 @@ def links_rendered(url: str, browser, click: list | None = None, wait_ms: int = 
         html += page.content()
     finally:
         ctx.close()
+    if not any(h for _, h in anchors):
+        # A page with no link at all was refused or never drawn (Bajaj on a GitHub runner, 19-20 Nov 2026): say who
+        # answered and with what, rather than 'no file for the month on the page'.
+        status, server = (first[0].status, first[0].headers.get('server')) if first else ('none', None)
+        raise RuntimeError(f'the page drew no links (HTTP {status}, {refused_hint(server, html)}) for {url}')
     out = [(t.strip(), h) for t, h in anchors if h]
     out += [('', urljoin(url, m)) for m in re.findall(r'["\']([^"\'\s<>]+\.(?:xlsx|xls|xlsm|zip))["\']', html, re.I)]
     return out + seen

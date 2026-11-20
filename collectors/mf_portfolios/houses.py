@@ -92,7 +92,6 @@ HOUSES = [
           must=r'monthly_portfolio_disclosure'),
     House('oldbridge', 'Old Bridge Mutual Fund', 'https://oldbridgemf.com/statutory-disclosures.html', mode='all',
           must=r'_portfolio_', exclude=r'notice|overlap'),
-    House('angelone', 'Angel One Mutual Fund', 'https://www.angelonemf.com/downloads', mode='all', must=r'monthly-portfolio'),
     House('abakkus', 'Abakkus Mutual Fund', 'https://www.abakkusmf.com/statutory-disclosures.html',
           must=r'/uploads/(?:\S*monthly_port|abakkus_mf_[a-z]+_\d\d_20\d\d)'),   # links in script data, names vary month to month
     House('jmf', 'JM Financial Mutual Fund', 'https://www.jmfinancialmf.com/downloads/Portfolio-Disclosure', render=True,
@@ -124,11 +123,6 @@ HOUSES = [
           must=r'/mp-unifi-|-monthly(?:-\d)?\.xlsx?'),
     House('zerodha', 'Zerodha Mutual Fund', 'https://www.zerodhacasefunds.com/resources/disclosures/portfolio-disclosures',
           mode='all', must=r'monthly portfolio', api=_zerodha),
-    # Portfolio tab, then the Monthly Portfolio year and month lists (the 28th and 29th <select> on the page): this
-    # financial year's and last year's, each month in turn; each pick draws that month's one file.
-    House('bajaj', 'Bajaj Finserv Mutual Fund', 'https://www.bajajamc.com/downloads', render=True, must=r'monthly-portfolio',
-          click=["css=a:text-is('Portfolio')"] + [c for fy in (_FY, _FY - 1) for c in
-                 [f'select:27:{fy}-{(fy + 1) % 100:02d}'] + [f'select:28:{calendar.month_name[(i + 3) % 12 + 1]}' for i in range(12)]]),
     # Houses whose page draws its list from a service (collectors/mf_portfolios/apis2.py); `page` is where a person looks.
     House('franklin', 'Franklin Templeton Mutual Fund', 'https://www.franklintempletonindia.com/reports',
           must=r'monthly-portfolio', api=apis2.franklin),
@@ -138,15 +132,12 @@ HOUSES = [
           mode='all', api=apis2.invesco),
     House('quant', 'quant Mutual Fund', 'https://quantmutual.com/statutory-disclosures', must=r'monthly_portfolio',
           api=apis2.quant),
-    House('edelweiss', 'Edelweiss Mutual Fund', apis2.EDELWEISS, must=r'monthly', api=apis2.edelweiss),
     House('sundaram', 'Sundaram Mutual Fund', apis2.SUNDARAM, mode='all', must=r'monthly portfolio disclosure',
           exclude=r'fixed income', api=apis2.sundaram),
     House('lic', 'LIC Mutual Fund', 'https://www.licmf.com/downloads/monthly-portfolio', mode='all', must=r'monthly',
           api=apis2.lic),
     House('pgim', 'PGIM India Mutual Fund', 'https://www.pgimindia.com/mutual-funds/disclosures/Portfolios/Monthly-Portfolio',
           mode='all', api=apis2.pgim),
-    House('whiteoak', 'WhiteOak Capital Mutual Fund', 'https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios',
-          mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
     House('bandhan', 'Bandhan Mutual Fund', apis2.BANDHAN, mode='all', api=apis2.bandhan),
     House('one360', '360 ONE Mutual Fund', apis2.ONE360, must=r'monthly_portfolio', exclude=r'overlap', api=apis2.one360),
     # The downloads list shows only after the visitor declares "I am NOT a US person / resident of Canada"; the owner
@@ -203,14 +194,56 @@ PENSION = [
 # cloud machine; none is worked around (no CAPTCHA or bot check is solved). .github/workflows/mf-probe.yml asks the
 # blocked ones again from a GitHub runner.
 NOT_COLLECTED = [
-    ('Kotak Mahindra Mutual Fund', 'its file list is behind a CAPTCHA (Radware bot check)'),
-    ('Navi Mutual Fund', 'its site answers a Cloudflare bot check'),
-    ('Union Mutual Fund', 'its site refuses connections from outside India'),
+    ('Kotak Mahindra Mutual Fund', 'its pages send a plain request, and a browser visit from a GitHub runner, to a '
+                                   'Radware CAPTCHA (validate.perfdrive.com; probe 44666019308)'),
+    ('Navi Mutual Fund', 'its downloads page answers a Cloudflare challenge ("Just a moment..."), to a plain request '
+                         'and to a browser visit from a GitHub runner (probe 44663322178)'),
+    ('Union Mutual Fund', 'its site refuses connections from outside India (a GitHub runner too); a collector waits '
+                          'for a runner in India (needs_india_runner, not yet verified)'),
     ('ASK Mutual Fund', 'a liquid fund only so far: no equity'),
     ('Monarch Mutual Fund', 'an overnight fund only: no equity'),
     ('Carnelian Mutual Fund', 'a liquid fund only so far: no equity'),
     ('IL&FS Mutual Fund (IDF)', 'an infrastructure debt fund: no equity'),
+    ('Angel One Mutual Fund', 'its site answers HTTP 403 (AWS load balancer, "403 Forbidden") to the GitHub runners the '
+                              'collector runs on, to a plain request and to a browser visit'),
+    ('WhiteOak Capital Mutual Fund', 'its page and file list service answer HTTP 403 (CloudFront, "The request could not '
+                                     'be satisfied") to the GitHub runners the collector runs on, also to a browser visit'),
+    ('Edelweiss Mutual Fund', 'its portfolio page answers HTTP 403 "Access Denied" to a browser visit from the GitHub '
+                              'runners the collector runs on (probe 44666019308)'),
+    ('Bajaj Finserv Mutual Fund', 'its downloads page answers HTTP 403 (CloudFront, "The request could not be '
+                                  'satisfied") to the GitHub runners the collector runs on, also to a browser visit'),
+]
+
+# Houses whose page or list service refuses the GitHub runners the collector runs on. Angel One, WhiteOak and Bajaj
+# answered HTTP 403 in every Mutual fund portfolios run since 19 Nov 2026 (44514251606, 44654006211); all four answer
+# 403 to an ordinary browser visit from a runner too (probes 44663322178 and 44666019308, 20 Nov 2026: Angel One from an
+# AWS load balancer, WhiteOak and Bajaj from CloudFront, Edelweiss "Access Denied"). The same requests are answered from
+# a cloud machine elsewhere (20 Nov 2026), so nothing in the request is wrong: the runners' addresses are refused.
+# Nothing is worked around. Listed in NOT_COLLECTED, left out of the default run, and kept here so `--house bajaj` reads
+# them by hand from a machine they answer; mf-probe.yml asks them again from a runner. Access requests:
+# docs/MF_ACCESS_REQUESTS.md.
+RUNNER_BLOCKED = [
+    House('angelone', 'Angel One Mutual Fund', 'https://www.angelonemf.com/downloads', mode='all', must=r'monthly-portfolio'),
+    House('whiteoak', 'WhiteOak Capital Mutual Fund', 'https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios',
+          mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
+    # Edelweiss: read in a browser (apis2.edelweiss); until 20 Nov 2026 it also failed on the nested-Playwright error.
+    House('edelweiss', 'Edelweiss Mutual Fund', apis2.EDELWEISS, must=r'monthly', api=apis2.edelweiss),
+    # Portfolio tab, then the Monthly Portfolio year and month lists (the 28th and 29th <select> on the page): this
+    # financial year's and last year's, each month in turn; each pick draws that month's one file.
+    House('bajaj', 'Bajaj Finserv Mutual Fund', 'https://www.bajajamc.com/downloads', render=True, must=r'monthly-portfolio',
+          click=["css=a:text-is('Portfolio')"] + [c for fy in (_FY, _FY - 1) for c in
+                 [f'select:27:{fy}-{(fy + 1) % 100:02d}'] + [f'select:28:{calendar.month_name[(i + 3) % 12 + 1]}' for i in range(12)]]),
+]
+
+# Union refuses connections from outside India (geography, not a bot check): every machine we have (a cloud machine,
+# GitHub runners) is refused at the connection, so its page has never been seen and this reading of it is NOT
+# verified: the disclosure page as AMFI's list and the probe name it, read in a browser, the month's file picked by the
+# month and file rules alone (no house-specific pattern, since none could be checked). To be checked, and given a
+# `must` pattern, on the first run from a runner in India: python scripts/mf_portfolios.py --house union --dry-run.
+INDIA_ONLY = [
+    House('union', 'Union Mutual Fund', 'https://www.unionmf.com/downloads/disclosures/portfolio-disclosure', render=True,
+          needs_india_runner=True),
 ]
 
 HOUSES = HOUSES + PENSION
-BY_KEY = {h.key: h for h in HOUSES}
+BY_KEY = {h.key: h for h in HOUSES + RUNNER_BLOCKED + INDIA_ONLY}
