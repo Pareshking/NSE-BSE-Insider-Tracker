@@ -187,14 +187,23 @@ CA_COLUMNS = ['event_id', 'symbol', 'isin', 'company', 'series', 'purpose', 'sub
               'ratio', 'face_value', 'rights_premium', 'rights_issue_price', 'dividend_per_share', 'face_value_from', 'face_value_to', 'needs_price_gap',
               'broadcast_date', 'raw_json']
 # Order matters: 'Scheme Of Arrangement - Bonus' is a bonus, not a scheme to skip.
+# Demergers, schemes and capital reductions are kept since 20 Nov 2026 (price-jump audit): BSE writes 'Spin Off',
+# 'Scheme of Arrangement', 'Amalgamation', 'Reduction of Capital' (raw_v2/bse/corporate_actions, Oct 2025 - Nov 2026:
+# 30 such rows, every one dropped, among them VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV 14 Oct 2025, ALLCARGO
+# 12 Nov 2025, INDIAGLYCO 02 Sep 2026, VERANDA 06 Oct 2026 and BHAGYANGR 08 Oct 2026, each a 40-91% one-day fall on
+# the site's line). They classify a price move (insiders_clean/adjust.py, price_jumps.py); no factor is read from them.
 _PURPOSES = [
     (r'buy\s*-?\s*back', 'buyback'),
     (r'\bbonus\b', 'bonus'),
     (r'split|sub-?division', 'split'),
+    (r'spin\s*-?\s*off|de-?merger', 'demerger'),
+    (r'reduction\s+of\s+(?:share\s+)?capital|capital\s+reduction', 'capital_reduction'),
+    (r'scheme\s+of\s+arrangement|amalgamation', 'scheme'),
     (r'\brights?\b', 'rights'),
     (r'dividend', 'dividend'),
 ]
 KEPT_PURPOSES = {p for _, p in _PURPOSES}
+SCHEME_PURPOSES = ('demerger', 'capital_reduction', 'scheme')
 
 
 def action_purpose(subject) -> str | None:
@@ -206,9 +215,10 @@ def action_purpose(subject) -> str | None:
 
 
 def parse_corporate_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
-    """(kept actions, number dropped). Kept: buyback, bonus, split, rights,
-    dividend. Dropped: interest payments, unit distributions, demergers and
-    other schemes (counted, not silently lost)."""
+    """(kept actions, number dropped). Kept: buyback, bonus, split, demerger,
+    capital reduction, scheme of arrangement or amalgamation, rights, dividend.
+    Dropped: interest payments, unit distributions and the like (counted, not
+    silently lost)."""
     out, dropped = [], 0
     for r in rows or []:
         subject = str(r.get('subject') or '').strip()

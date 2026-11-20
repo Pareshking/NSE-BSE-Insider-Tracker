@@ -726,9 +726,34 @@ def symbol_prices(r2, sym: str, start: str, end: str) -> int:
     return 0
 
 
-def price_jump_audit(r2, check=()) -> int:
+def bse_raw_actions(r2) -> pd.DataFrame:
+    """Every corporate action kept in raw_v2/bse/corporate_actions, parsed with this branch's parser, with the ISIN of
+    its BSE code from clean securities: what bse_actions will hold once BSE's history is fetched again."""
+    import json
+    from clean_writer import get_blob, list_keys
+    from collectors.bse import parsers as bse_parsers
+    rows = []
+    for k in sorted({k[:-3] if k.endswith('.gz') else k for k in list_keys(r2, 'raw_v2/bse/corporate_actions/blobs/')}):
+        b = get_blob(r2, k)
+        try:
+            j = json.loads(b.decode('utf-8', errors='replace')) if b is not None else []
+        except ValueError:
+            continue
+        j = j.get('Table', []) if isinstance(j, dict) else j
+        rows += [r for r in j if isinstance(r, dict)]
+    df, dropped = bse_parsers.parse_actions(rows)
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    code = sec.dropna(subset=['bse_code']).assign(_c=lambda d: d['bse_code'].astype(str).str.split('.').str[0])
+    df['isin'] = df['bse_code'].astype(str).map(code.drop_duplicates('_c').set_index('_c')['isin'])
+    print(f'BSE raw actions reparsed: {len(df)} kept, {dropped} dropped, {int(df["isin"].notna().sum())} with an ISIN; purposes',
+          df['purpose'].value_counts().to_dict())
+    return df
+
+
+def price_jump_audit(r2, check=(), reparse_bse=False) -> int:
     """PRICE_JUMPS: the price-jump audit (insiders_clean/price_jumps.py) on the whole price layer with this branch's
-    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only."""
+    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only.
+    PRICE_JUMPS_BSE_RAW: the same with BSE's raw actions reparsed by this branch (bse_raw_actions) added."""
     from insiders_clean import adjust, price_jumps, slim
     from insiders_clean.pipeline import PRODUCT_START
     from price_coverage import load_prefix
@@ -739,6 +764,8 @@ def price_jump_audit(r2, check=()) -> int:
     print('rows by exchange and series (top 40):')
     print(px.groupby(['exchange', 'series']).size().sort_values(ascending=False).head(40).to_string())
     acts = [a for a in (read_parquet(r2, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions')) if a is not None and len(a)]
+    if reparse_bse:
+        acts.append(bse_raw_actions(r2))
     acts = pd.concat(acts, ignore_index=True) if acts else None
     left_out = adjust.side_series_rows(px)
     print('side-window rows left out:', left_out)
@@ -1149,6 +1176,8 @@ def main() -> int:
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
         _, code, day = syms[0].split(':')
         return raw_deal_legs(r2, code, day)
+    if syms == ['PRICE_JUMPS_BSE_RAW']:   # the audit with BSE's raw actions reparsed by this branch (20 Nov)
+        return price_jump_audit(r2, [], reparse_bse=True)
     if syms and syms[0].split(':')[0] == 'PRICE_JUMPS':   # every 40% one-day move on the site's lines (19 Nov); PRICE_JUMPS:SYM,SYM2 also prints those lines
         return price_jump_audit(r2, [syms[0].split(':', 1)[1]] + syms[1:] if ':' in syms[0] else [])
     if syms == ['ACTIONS_COVERAGE']:   # the action tables by ex-date month and purpose (20 Nov)

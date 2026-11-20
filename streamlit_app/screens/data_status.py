@@ -79,9 +79,10 @@ def _checks(it: dict, layer: dict) -> None:
 
 JUMP_STATUS = {'made_by_adjustment': 'made by our adjustment', 'unexplained': 'unexplained',
                'exchange_reset_not_adjusted': 'exchange reset its base price, no action filed, not adjusted',
+               'scheme_not_adjusted': 'a demerger or scheme filed, the exchange did not reset its price, not adjusted',
                'action_not_adjusted': 'a corporate action filed, not adjusted',
                'missing_session': 'across a session our price layer lacks', 'after_gap': 'after a gap in trading',
-               'adjusted': 'split or bonus, adjusted'}
+               'adjusted': 'split, bonus or demerger, adjusted'}
 
 
 def _price_jumps(pj: dict) -> None:

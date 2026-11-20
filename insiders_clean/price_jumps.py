@@ -7,6 +7,11 @@ draws), on the prices as printed (`raw_move`) and as adjusted for splits and bon
 - `adjusted`: the print moved 40% or more and the adjusted line does not: a split or bonus was applied that day.
 - `made_by_adjustment`: the print did not move 40% but the adjusted line does: an applied factor that is wrong.
   Added after IIFL Finance (19 Nov 2026, insiders_clean/adjust.py SIDE_SERIES); should stay at zero.
+- `scheme_not_adjusted`: the adjusted line moves 40% or more and a demerger, scheme of arrangement, amalgamation or
+  capital reduction is filed for it in the same window (NSE 'Demerger', BSE 'Spin Off' / 'Scheme of Arrangement' /
+  'Reduction of Capital'; kept since 20 Nov 2026, SCHEME_PURPOSES). Its factor is applied only where the exchange
+  reset the base price on the ex-date (adjust.py `action_base_price`); in the product window it never did (VEDL
+  30 Apr 2026), and no ratio is read from the move, so the line keeps the fall.
 - `action_not_adjusted`: the adjusted line moves 40% or more and a corporate action is filed for the ISIN with an
   ex-date after the previous print and on or before this one, matched by ISIN or NSE symbol (rights, dividend,
   buyback, or a bonus or split whose factor did not match: adjust.py applies splits and bonuses only).
@@ -29,8 +34,9 @@ import pandas as pd
 JUMP = 0.40
 GAP_DAYS = 10
 MAX_ROWS = 3000
-STATUSES = ('made_by_adjustment', 'unexplained', 'exchange_reset_not_adjusted', 'action_not_adjusted', 'missing_session',
-            'after_gap', 'adjusted')
+STATUSES = ('made_by_adjustment', 'unexplained', 'exchange_reset_not_adjusted', 'scheme_not_adjusted',
+            'action_not_adjusted', 'missing_session', 'after_gap', 'adjusted')
+SCHEME_PURPOSES = frozenset({'demerger', 'scheme', 'capital_reduction'})   # collectors/nse_events/parsers.py
 ROW_COLUMNS = ['isin', 'symbol', 'name', 'date', 'prev_date', 'gap_days', 'prev_close', 'close', 'raw_move',
                'adj_move', 'factor', 'kind', 'kind_basis', 'actions', 'in_universe', 'status']
 
@@ -80,6 +86,7 @@ def jumps(raw: pd.DataFrame, adj: pd.DataFrame, factors: pd.DataFrame | None = N
         m['symbol'] = m['isin'].map(mm['symbol']) if 'symbol' in mm else None
         m['name'] = m['isin'].map(mm['name']) if 'name' in mm else None
     m['actions'] = ''
+    scheme = pd.Series(False, index=m.index)
     if actions is not None and len(actions) and {'isin', 'purpose', 'ex_date'} <= set(actions.columns):
         ac = actions[['isin', 'purpose', 'ex_date'] + (['symbol'] if 'symbol' in actions else [])].copy()
         ac['ex_date'] = pd.to_datetime(ac['ex_date'], errors='coerce').dt.normalize()
@@ -96,12 +103,14 @@ def jumps(raw: pd.DataFrame, adj: pd.DataFrame, factors: pd.DataFrame | None = N
         if len(x):
             lab = x.groupby('index')['purpose'].agg(lambda s: ','.join(sorted(set(s.astype(str)))))
             m.loc[lab.index, 'actions'] = lab.values
+            sch = x.groupby('index')['purpose'].agg(lambda s: bool(set(s.astype(str).str.lower()) & SCHEME_PURPOSES))
+            scheme.loc[sch.index] = sch.values.astype(bool)
     big_raw, big_adj = m['raw_move'].abs() >= threshold, m['adj_move'].abs() >= threshold
     m['status'] = np.select(
-        [~big_adj, ~big_raw, m['actions'].ne(''), m['kind_basis'].eq('previous_session_missing'),
+        [~big_adj, ~big_raw, scheme, m['actions'].ne(''), m['kind_basis'].eq('previous_session_missing'),
          m['kind'].eq('other_large'), m['gap_days'] > gap_days],
-        ['adjusted', 'made_by_adjustment', 'action_not_adjusted', 'missing_session', 'exchange_reset_not_adjusted',
-         'after_gap'],
+        ['adjusted', 'made_by_adjustment', 'scheme_not_adjusted', 'action_not_adjusted', 'missing_session',
+         'exchange_reset_not_adjusted', 'after_gap'],
         'unexplained')
     m['in_universe'] = m['isin'].isin(universe) if universe is not None else None
     order = {s: i for i, s in enumerate(STATUSES)}

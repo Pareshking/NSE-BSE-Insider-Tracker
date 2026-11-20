@@ -105,8 +105,14 @@ def test_sast_keeps_reg29_counts_the_rest_and_reads_ranges():
 def test_actions_purposes_dividend_split_bonus():
     df, dropped = parsers.parse_actions(js('actions_20251008_20251015.json'))
     raw = js('actions_20251008_20251015.json')
-    assert dropped + len(df) == len(raw) and dropped >= 3  # spin-offs, income distribution
-    assert set(df['purpose']) <= {'buyback', 'bonus', 'split', 'rights', 'dividend'}
+    assert dropped + len(df) == len(raw) and dropped >= 1  # income distribution
+    assert set(df['purpose']) <= {'buyback', 'bonus', 'split', 'rights', 'dividend', 'demerger', 'scheme',
+                                  'capital_reduction'}
+    # BSE's 'Spin Off ' rows are demergers, kept since 20 Nov 2026 (TMPV 14 Oct 2025, SKFINDIA 15 Oct 2025: the
+    # price-jump audit's -40% and -55% days).
+    spin = df[df['purpose'] == 'demerger'].sort_values('ex_date')
+    assert spin['bse_code'].tolist() == ['500570', '500472']
+    assert [str(d) for d in spin['ex_date']] == ['2025-10-14', '2025-10-15']
     bonus = df[df['subject'] == 'Bonus issue 1:2'].iloc[0]
     assert bonus['ratio'] == '1:2' and bonus['bse_code'] == '540829' and str(bonus['ex_date']) == '2025-10-09'
     split = df[df['purpose'] == 'split'].iloc[0]

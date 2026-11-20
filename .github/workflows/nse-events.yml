@@ -21,7 +21,7 @@ on:
         required: false
         default: 'all'
       from:
-        description: 'Board meetings backfill (dataset=meetings only): first day to fetch, YYYY-MM-DD, one month per call; empty = the usual window'
+        description: 'Backfill (dataset=meetings or actions only): first day to fetch, YYYY-MM-DD, one month per call; empty = the usual window'
         required: false
         default: ''
       chain:

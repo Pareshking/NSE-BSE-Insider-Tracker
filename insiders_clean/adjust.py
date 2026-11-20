@@ -9,9 +9,11 @@ way as NSE ones. An action feed (NSE `bc` files, NSE API, later BSE) classifies 
 Adjusted price at t = close_t x product of f_s for every later session s. A feature at signal time T must only use
 factors with s <= T: `adjust_as_of` does this, so a past signal never sees a later split.
 A reset that matches a filed bonus or split (NSE's and BSE's corporate actions, `expected_factors`) or, where none is
-filed, a reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` and is the ONLY kind
-applied (`kind_basis` says which). Other large resets (`other_large`: rights, demergers, relistings, series moves,
-special dividends) and small ones (`minor`, mostly cash dividends) are counted, never applied.
+filed, a reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` (`kind_basis` says
+which). A reset by the exchange on the ex-date of a filed demerger or scheme of arrangement is `demerger` (basis
+`action_base_price`). Those two are the only kinds applied (KIND_ADJUSTED). Other large resets (`other_large`:
+rights, unfiled demergers, relistings, series moves, special dividends) and small ones (`minor`, mostly cash
+dividends) are counted, never applied.
 
 Audit 22 Oct 2026: in the UDiFF files the base price is in fact NOT reset for bonuses and splits (HDFCAMC 1:1 bonus,
 NSE 26 Nov 2025: PrvsClsgPric 5,336.50 = the day before's close), and a split comes with a new ISIN (BLSE INE0NLT01010
@@ -27,7 +29,15 @@ import pandas as pd
 STRUCTURAL = 0.05      # |f - 1| above this = a large base-price reset (config)
 MINOR = 0.001          # |f - 1| above this but below STRUCTURAL = minor
 RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts as one
-KIND_ADJUSTED = ('split_bonus',)   # the only kind applied to prices (owner directive: splits and bonuses only)
+# The kinds applied to prices: splits and bonuses (owner directive), and a demerger or scheme of arrangement only
+# where it is filed (NSE 'Demerger', BSE 'Spin Off' / 'Scheme of Arrangement') AND the exchange itself reset the
+# base price on its ex-date, so the factor is the exchange's own base price over our previous close (basis
+# `action_base_price`), never one read from the day's move. Audit 20 Nov 2026: in the UDiFF files NSE and BSE did
+# not reset the base price for any demerger in the product window (VEDL 30 Apr 2026: PrvsClsgPric 773.60 = 29 Apr's
+# close on NSE, 773.25 on BSE; it closed 271.55), so none is applied yet; they are named in the price-jump audit
+# (`scheme_not_adjusted`).
+KIND_ADJUSTED = ('split_bonus', 'demerger')
+SCHEME_PURPOSES = ('demerger', 'scheme')   # filed purposes whose base-price reset is applied (collectors parsers)
 MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
 BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
 # Series printed beside a security's own market that are not its price: NSE's block deal window ('BL') and its T+0
@@ -79,9 +89,10 @@ def _ratio_factor(ratio) -> float:
 def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
     """Filed corporate actions (clean `actions` / `bse_actions`: isin, purpose, ex_date, ratio, face_value_from,
     face_value_to) -> one row per ISIN and ex-date: `expected` = the product of the factors of its bonuses
-    (h/(h+n)) and splits (to/from face value), NaN when the date has no bonus or split, and `split_bonus` (bool).
-    A date with only a dividend, rights or buyback is kept: it says the reset that day is not a bonus or split."""
-    cols = ['isin', 'ex_date', 'expected', 'split_bonus']
+    (h/(h+n)) and splits (to/from face value), NaN when the date has no bonus or split, `split_bonus` (bool) and
+    `scheme` (a demerger or scheme of arrangement filed that day, SCHEME_PURPOSES). A date with only a dividend,
+    rights or buyback is kept: it says the reset that day is not a bonus or split."""
+    cols = ['isin', 'ex_date', 'expected', 'split_bonus', 'scheme']
     if actions is None or actions.empty or not {'isin', 'purpose', 'ex_date'} <= set(actions.columns):
         return pd.DataFrame(columns=cols)
     a = actions.copy()
@@ -95,11 +106,12 @@ def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
     a['_f'] = np.where(purpose.eq('bonus'), ratio.map(_ratio_factor),
                        np.where(purpose.eq('split'), fv_to / fv_from, np.nan))
     a['_sb'] = purpose.isin(['bonus', 'split'])
+    a['_sch'] = purpose.isin(SCHEME_PURPOSES)
     # One filing seen twice (NSE and BSE, or two captures) counts once per purpose.
     a = a.drop_duplicates(['isin', 'ex_date', 'purpose', '_f'])
     g = a.groupby(['isin', 'ex_date'])
     out = pd.DataFrame({'expected': g['_f'].apply(lambda s: s.prod() if s.notna().any() else np.nan),
-                        'split_bonus': g['_sb'].any()}).reset_index()
+                        'split_bonus': g['_sb'].any(), 'scheme': g['_sch'].any()}).reset_index()
     out.loc[~out['split_bonus'], 'expected'] = np.nan
     return out[cols]
 
@@ -178,8 +190,9 @@ def bridge_isins(prices: pd.DataFrame, max_gap_days: int = BRIDGE_GAP_DAYS) -> t
 
 def _action_on_session(s: pd.DataFrame, exp: pd.DataFrame) -> pd.DataFrame:
     """Per session row: the filed action whose ex-date falls after the previous print and on or before this one
-    (an illiquid stock may not trade on the ex-date itself). Columns `expected`, `split_bonus`, `has_action`."""
-    out = pd.DataFrame({'expected': np.nan, 'split_bonus': False, 'has_action': False}, index=s.index)
+    (an illiquid stock may not trade on the ex-date itself). Columns `expected`, `split_bonus`, `scheme`,
+    `has_action`."""
+    out = pd.DataFrame({'expected': np.nan, 'split_bonus': False, 'scheme': False, 'has_action': False}, index=s.index)
     if exp.empty:
         return out
     left = s[['isin', 'date', 'last_date']].assign(_i=np.arange(len(s)))
@@ -192,6 +205,8 @@ def _action_on_session(s: pd.DataFrame, exp: pd.DataFrame) -> pd.DataFrame:
     rows = s.index[m['_i'].to_numpy()]
     out.loc[rows, 'expected'] = m['expected'].to_numpy()
     out.loc[rows, 'split_bonus'] = m['split_bonus'].to_numpy().astype(bool)
+    if 'scheme' in m:
+        out.loc[rows, 'scheme'] = m['scheme'].fillna(False).to_numpy().astype(bool)
     out.loc[rows, 'has_action'] = True
     return out
 
@@ -203,7 +218,8 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     even under the 5% line: a 1:20 bonus moves the price 4.8%), and not adjusted when it differs
     (`action_mismatch`); a large reset on a date with only a dividend, rights or buyback filed is never taken for
     a bonus (`action_not_split_bonus`: a 20% special dividend is 0.8, the factor of a 1:4 bonus). Where no action
-    is filed (BSE-only names, dates before the action history), the clean-ratio guess decides (`ratio`)."""
+    is filed (BSE-only names, dates before the action history), the clean-ratio guess decides (`ratio`). A filed
+    demerger or scheme with a base-price reset by the exchange is `demerger` (basis `action_base_price`)."""
     s = session_frame(prices).sort_values(['exchange', 'isin', 'date'])
     g = s.groupby(['exchange', 'isin'], sort=False)
     s['last_close'] = g['close'].shift(1)
@@ -236,6 +252,13 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     s.loc[mismatch, 'kind'], s.loc[mismatch, 'kind_basis'] = 'other_large', 'action_mismatch'
     other = has & ~sb & big
     s.loc[other, 'kind'], s.loc[other, 'kind_basis'] = 'other_large', 'action_not_split_bonus'
+    # A filed demerger or scheme of arrangement (SCHEME_PURPOSES) whose ex-date the exchange marked by resetting the
+    # base price (more than STRUCTURAL off our previous close, and the close moving with it): the factor is the
+    # exchange's base price over the previous close, `demerger`, basis `action_base_price`. A move with no reset of
+    # the base price gives no factor: the ratio is never read from the day's move (price_jumps `scheme_not_adjusted`).
+    sch = act['scheme'].to_numpy(dtype=bool)
+    demerged = has & sch & ~sb & big & follows
+    s.loc[demerged, 'kind'], s.loc[demerged, 'kind_basis'] = 'demerger', 'action_base_price'
     # The UDiFF bhavcopy does NOT reset the base price on a bonus or split ex-date (audit 22 Oct: NSE's file of
     # 26 Nov 2025 prints HDFCAMC's PrvsClsgPric 5,336.50, the close before its 1:1 bonus, and closes it at 2,679;
     # Thyrocare 1,475.10 then 495.70 on its 1:2 bonus of 28 Nov 2025). So where the base price was not reset, a
@@ -295,6 +318,7 @@ def adjust_as_of(factors: pd.DataFrame, closes: pd.DataFrame, as_of, kinds=KIND_
 def coverage(factors: pd.DataFrame) -> dict:
     return {'sessions': int(len(factors)), 'with_factor': int(factors['factor'].notna().sum()),
             'split_bonus': int((factors['kind'] == 'split_bonus').sum()),
+            'demerger': int((factors['kind'] == 'demerger').sum()),
             'other_large_not_adjusted': int((factors['kind'] == 'other_large').sum()), 'minor': int((factors['kind'] == 'minor').sum()),
             'unknown': int((factors['kind'] == 'unknown').sum()),
             'by_basis': ({str(k): int(v) for k, v in factors.loc[factors['kind_basis'] != '', 'kind_basis']
