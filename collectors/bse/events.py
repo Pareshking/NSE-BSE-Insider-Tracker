@@ -61,6 +61,8 @@ import hashlib
 import io
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -85,7 +87,13 @@ TILE_DAYS, TILE_SHIFT = 7, 3
 AHEAD_DAYS = 60    # board meetings, as NSE's collector
 MEETING_PIECE_DAYS = 15   # board meetings are read whole and in pieces of this size (meetings_window)
 SHP_FLAG_NIGHTLY, SHP_FLAG_HISTORY = 3, 6   # BSE's periods: 15 days, one year
-MAX_XBRL_PER_RUN = 150                      # ~5 s each: about 13 minutes
+MAX_XBRL_PER_RUN = 150                      # ~5 s each one at a time: about 13 minutes; XBRL_WORKERS side by side
+# BSE is slow to answer, not slow to allow (industry speed test 20 Nov 2026, PR #313/#315: 3.5 s an answer one at a
+# time, 0.13 s four at a time, no refusal). The nightly spent ~25 of its 37 minutes here, holding the r2-archive-writes
+# group. The XBRL files are fetched by XBRL_WORKERS clients side by side (each its own session, XBRL_WORKER_PACE pause,
+# no browser fallback); the first refusal stops them all; the files are then read in the same order as before.
+XBRL_WORKERS = 4
+XBRL_WORKER_PACE = (1.0, 2.0)
 GROUP_BATCHES = 'archive/bse_events/promoter_group/'
 NSE_SHAREHOLDING = 'clean/current/shareholding.parquet'
 # Columns read from a filing's XBRL, as NSE's collector reads them (collectors/nse_events/run_daily.py): pledges and
@@ -251,9 +259,50 @@ def _read(prev: pd.DataFrame | None, eid) -> bool:
     return isinstance(c, str) and (c == 'ok' or c.startswith('failed'))
 
 
+def fetch_xbrls(bse, todo: list, workers: int | None = None, client_factory=None) -> dict:
+    """{row index: ('ok', body) | ('failed', exc) | ('blocked', exc)} for `todo` [(index, url, covers)]. A real
+    BSEClient with XBRL_WORKERS > 1 is helped by that many clients side by side (same raw store); anything else
+    (a test double) is asked one file at a time, in order. After a refusal nothing more is asked (those files are
+    missing from the answer: still pending)."""
+    workers = XBRL_WORKERS if workers is None else workers
+    if client_factory is None and isinstance(bse, BSEClient) and workers > 1:
+        client_factory = lambda: BSEClient(raw=bse.raw, pace=XBRL_WORKER_PACE, allow_in_page=False)  # noqa: E731
+    out, stop = {}, threading.Event()
+
+    def one(client, item):
+        i, url, covers = item
+        if stop.is_set():
+            return
+        try:
+            out[i] = ('ok', client.shareholding_xbrl(url, covers))
+        except Blocked as exc:
+            out[i] = ('blocked', exc)
+            stop.set()
+        except Failed as exc:
+            out[i] = ('failed', exc)
+
+    if client_factory is None or workers <= 1 or len(todo) <= 1:
+        for item in todo:
+            one(bse, item)
+        return out
+    clients = [client_factory() for _ in range(workers)]
+    try:
+        def lane(w):
+            for item in todo[w::workers]:
+                if stop.is_set():
+                    break
+                one(clients[w], item)
+        with ThreadPoolExecutor(workers) as pool:
+            list(pool.map(lane, range(workers)))
+    finally:
+        for c in clients:
+            c.close()
+    return out
+
+
 def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | None, stats: dict,
                       max_xbrl: int, members: list, run_date: str,
-                      nse_isins: frozenset = frozenset()) -> tuple[pd.DataFrame, bool]:
+                      nse_isins: frozenset = frozenset(), workers: int | None = None) -> tuple[pd.DataFrame, bool]:
     """(rows with their XBRL facts, refused). Facts already parsed are carried
     over; archive rows still `pending` are retried even when tonight's list no
     longer holds them (unless NSE's shareholding table has the company by
@@ -284,6 +333,7 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
         for c in ('xbrl_status', 'members_status', 'categories_status'):
             rows.at[i, c] = status
 
+    todo = []   # (row index, url, covers), in the order they are read
     for i, r in order.sort_values(['_q', '_s'], ascending=False, kind='stable').iterrows():
         eid = r['event_id']
         if _read(prev, eid):
@@ -300,21 +350,29 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
         if eid not in newest:
             rows.at[i, 'xbrl_status'] = 'superseded'
             continue
-        if blocked or fetched >= max_xbrl:
+        if len(todo) >= max_xbrl:
+            mark(i, 'pending')
+            continue
+        todo.append((i, r['xbrl_url'], {'bse_code': r['bse_code'], 'quarter_end': str(r['quarter_end'])[:10]}))
+    got_files = fetch_xbrls(bse, todo, workers)
+    for i, url, covers in todo:
+        res = got_files.get(i)
+        if res is None:   # not asked: another file was refused first
             mark(i, 'pending')
             continue
         fetched += 1
-        try:
-            body = bse.shareholding_xbrl(r['xbrl_url'], {'bse_code': r['bse_code'], 'quarter_end': str(r['quarter_end'])[:10]})
-        except Blocked as exc:
+        kind, val = res
+        if kind == 'blocked':
             mark(i, 'pending')
+            if not blocked:
+                stats['stopped_at'] = {'chunk': f'xbrl {covers["bse_code"]}', 'reason': str(val)}
             blocked = True
-            stats['stopped_at'] = {'chunk': f'xbrl {r["bse_code"]}', 'reason': str(exc)}
             continue
-        except Failed as exc:   # one bad file must not stop the rest (a 404 is Missing)
-            mark(i, f'failed: {type(exc).__name__}')
-            rows.at[i, 'xbrl_error'] = str(exc)[:120]
+        if kind == 'failed':   # one bad file must not stop the rest (a 404 is Missing)
+            mark(i, f'failed: {type(val).__name__}')
+            rows.at[i, 'xbrl_error'] = str(val)[:120]
             continue
+        body = val
         facts = parsers.ixbrl_facts(body.decode('utf-8', errors='replace'))
         set_categories(rows, i, facts)
         try:

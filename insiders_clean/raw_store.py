@@ -26,6 +26,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import threading
 import os
 from datetime import datetime, timezone
 
@@ -103,6 +104,7 @@ class RawStore:
         self.written = 0
         self.reused = 0
         self.suspect = 0
+        self._count_lock = threading.Lock()   # several fetch threads may share one store (bse XBRL, industry)
 
     def _exists(self, key: str) -> bool:
         try:
@@ -138,12 +140,15 @@ class RawStore:
         blob_key = f'{PREFIX}/{source}/{dataset}/blobs/{digest[:2]}/{digest}.{ext}'
         packed = ext in GZIP_EXT and len(body) >= GZIP_MIN_BYTES
         if packed and self._exists(blob_key):          # stored plain before compression began: same bytes by name
-            self.reused += 1
-        elif self._put_once(blob_key + '.gz', gz(body), 'application/gzip') if packed else \
-                self._put_once(blob_key, body, content_type or 'application/octet-stream'):
-            self.written += 1
+            new = False
         else:
-            self.reused += 1
+            new = self._put_once(blob_key + '.gz', gz(body), 'application/gzip') if packed else \
+                self._put_once(blob_key, body, content_type or 'application/octet-stream')
+        with self._count_lock:
+            if new:
+                self.written += 1
+            else:
+                self.reused += 1
         record = {
             'source': source, 'dataset': dataset, 'url': url, 'params': params or {}, 'http_status': status,
             'content_type': content_type, 'fetched_at_utc': now.isoformat(), 'bytes': len(body),
@@ -154,7 +159,8 @@ class RawStore:
         if packed:
             record['stored_as'] = 'gzip'
         if record['content_check']:
-            self.suspect += 1
+            with self._count_lock:
+                self.suspect += 1
         fetch_key = (f'{PREFIX}/{source}/{dataset}/fetches/{now:%Y-%m-%d}/'
                      f'{now:%Y%m%dT%H%M%S%fZ}_{digest[:12]}.json')
         self._put_once(fetch_key, json.dumps(record, sort_keys=True).encode(), 'application/json')
