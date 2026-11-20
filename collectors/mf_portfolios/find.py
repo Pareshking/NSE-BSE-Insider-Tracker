@@ -130,7 +130,11 @@ _PW: dict = {}
 
 def shared_browser():
     """The shared headless Chromium, started on first use (CHROMIUM_PATH: a browser installed apart from the
-    Python package, for local runs). Closed by `close_browser`."""
+    Python package, for local runs). Closed by `close_browser`. Playwright's sync API answers only on the thread
+    that started it: a call from another thread raises here (the house is reported, the browser is not disturbed)."""
+    import threading
+    if 'browser' in _PW and _PW.get('thread') != threading.get_ident():
+        raise RuntimeError('the shared browser was asked for from a thread other than the one that started it')
     if 'browser' not in _PW:
         import os
         from playwright.sync_api import sync_playwright
@@ -142,11 +146,13 @@ def shared_browser():
             pw.stop()
             raise
         _PW['pw'] = pw
+        _PW['thread'] = threading.get_ident()
     return _PW['browser']
 
 
 def close_browser() -> None:
     b, pw = _PW.pop('browser', None), _PW.pop('pw', None)
+    _PW.pop('thread', None)
     try:
         if b is not None:
             b.close()

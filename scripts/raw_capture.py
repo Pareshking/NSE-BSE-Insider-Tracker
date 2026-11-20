@@ -17,15 +17,25 @@ import hashlib
 import json
 import os
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
 DIR = Path(os.environ.get('RAW_CAPTURE_DIR', 'artifacts/raw_capture'))
 _failures = 0
+# Collectors that fetch side by side (scripts/mf_portfolios.py: a thread per fund house) capture from several threads:
+# one at a time, so two captures never share a name and the failure count is exact.
+_LOCK = threading.Lock()
 
 
 def capture(source: str, dataset: str, body, *, url: str, params: dict | None = None, status: int = 200,
             content_type: str | None = None, covers: dict | None = None) -> str | None:
+    with _LOCK:
+        return _capture(source, dataset, body, url=url, params=params, status=status, content_type=content_type,
+                        covers=covers)
+
+
+def _capture(source, dataset, body, *, url, params, status, content_type, covers) -> str | None:
     global _failures
     try:
         if body is None:

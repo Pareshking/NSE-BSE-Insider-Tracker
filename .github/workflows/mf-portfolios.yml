@@ -64,7 +64,7 @@ jobs:
           python -u scripts/mf_portfolios.py $args | tee mf.log
       - name: Store raw responses (write-once)
         if: always()
-        run: python scripts/raw_flush.py
+        run: python scripts/raw_flush.py --workers 16   # our own bucket; one at a time took 47 min for 1705 files (run 44514251606)
       - name: Summary
         if: always()
         run: |

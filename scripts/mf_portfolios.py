@@ -38,6 +38,11 @@ The NPS pension fund managers (houses with kind='pension', keys nps_...) are col
 same tables, marked by kind, so the Funds page can keep them apart from mutual funds.
 
 --dry-run fetches and parses and prints counts; it writes nothing to R2.
+
+Houses are read side by side, each house a different site: the houses that use the browser one after another on the
+main thread, the others in a pool of MF_HOUSE_WORKERS threads (default 6; 1 = one house at a time, as before). Each
+house's own requests stay one after another with their pacing as before. The report lists houses in the houses
+list's order whatever order they finish in; a line is printed per house-month as it finishes.
 """
 from __future__ import annotations
 
@@ -45,6 +50,7 @@ import argparse
 import io
 import json
 import sys
+import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -93,6 +99,65 @@ def expand(spec: str) -> list[str]:
         else:
             out.append(str(pd.Period(part, 'M')))
     return sorted(set(out))
+
+
+def uses_browser(house) -> bool:
+    """A house read or downloaded in the shared browser: a rendered page, a browser download, or a list reader that
+    drives a page (apis2.BROWSER_READERS)."""
+    from collectors.mf_portfolios import apis2
+    return bool(house.render or house.browser_fetch or house.api in apis2.BROWSER_READERS)
+
+
+def house_workers() -> int:
+    """How many plain-HTTP houses are read side by side (MF_HOUSE_WORKERS, default 6; 1 = one house at a time)."""
+    import os
+    try:
+        return max(1, int(os.environ.get('MF_HOUSE_WORKERS', '6')))
+    except ValueError:
+        return 6
+
+
+_PRINT = threading.Lock()
+
+
+def _log(obj, limit: int | None = 400) -> None:
+    """One whole line per call, from any thread (cut to `limit` characters)."""
+    line = json.dumps(obj, default=str)
+    with _PRINT:
+        print(line[:limit] if limit else line, flush=True)
+
+
+def run_houses(houses, work, workers: int | None = None) -> list:
+    """work(house) for every house, once; returns the results in the order of `houses`, whatever order they finish in.
+
+    Each house is a different site, so houses run side by side while each house's own requests stay one after another
+    as before (no site is asked more often than now). Houses that use the shared browser (`uses_browser`) run on the
+    calling thread, one after another, since Playwright's sync API answers only on the thread that started it; the
+    others go to a pool of `workers` threads meanwhile. `work` reports its own failures; an exception it lets out is
+    returned in that house's place (an Exception object), so one house never stops the others."""
+    from concurrent.futures import ThreadPoolExecutor
+    workers = house_workers() if workers is None else max(1, workers)
+    out: dict = {}
+
+    def one(h):
+        try:
+            return work(h)
+        except Exception as exc:  # noqa: BLE001 - the house is reported, the run goes on
+            return exc
+
+    plain = [h for h in houses if not uses_browser(h)]
+    if workers == 1:   # one house at a time, in order, as before
+        for h in houses:
+            out[h.key] = one(h)
+    else:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='mf-house') as pool:
+            futs = {h.key: pool.submit(one, h) for h in plain}
+            for h in houses:
+                if uses_browser(h):
+                    out[h.key] = one(h)
+            for k, f in futs.items():
+                out[k] = f.result()
+    return [(h, out[h.key]) for h in houses]
 
 
 def _download(url: str, timeout: int = 180) -> tuple[bytes, str | None, int]:
@@ -169,6 +234,43 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
         else:
             res['rows'] = rows
         out.append(res)
+    return out
+
+
+def _house_failed(house, months: list[str], done: list[dict], exc: Exception) -> list[dict]:
+    """The results so far, and every month not yet reported marked not found with the error: nothing filled in."""
+    why = f'collector error ({type(exc).__name__}: {exc})'[:300]
+    seen = {r['month'] for r in done}
+    left = [{'house': house.key, 'month': m, 'found': False, 'why': why} for m in months if m not in seen]
+    for res in left:
+        _log(res)
+    return done + left
+
+
+def run_house(house, months: list[str], browser=None, r2=None) -> list[dict]:
+    """Collect one house's months, archive each one found (unless `r2` is None, a dry run), print a line per month,
+    and return the report's results for the house. An error stops this house only: the months it did not reach are
+    reported with it (`_house_failed`)."""
+    out: list[dict] = []
+    try:
+        for res in collect_house(house, months, browser):
+            rows = res.pop('rows', None)
+            if rows is not None:
+                hold = mf_holdings.holdings(rows, house.key, res['month']).assign(kind=house.kind)
+                res['isins'] = int(len(hold))
+                res['value_cr'] = round(float(hold['value_lakh'].sum()) / 100, 1)
+                sl = mf_holdings.scheme_list(rows, house.key, res['month'], house.name)
+                eq = sl[sl['equity_lines'].gt(0)]
+                res['schemes'] = {'read': int(len(sl)), 'equity': int(len(eq)),
+                                  'active_equity': int((~eq['passive'].astype(bool)).sum())}
+                if r2 is not None:
+                    from clean_writer import put_parquet
+                    put_parquet(r2, f'{ARCHIVE}month={res["month"]}/{house.key}.parquet', hold)
+                    put_schemes(r2, house, res['month'], rows)
+            out.append(res)
+            _log({k: v for k, v in res.items() if k not in ('parse',)})
+    except Exception as exc:  # noqa: BLE001 - this house is reported, the others go on
+        return _house_failed(house, months, out, exc)
     return out
 
 
@@ -250,54 +352,76 @@ def backfill_schemes(r2, houses, browser=None, fetch: bool = True) -> dict:
     `fetch`) downloaded again from the house's page (stored raw as any fetch). Written only when they add up to the
     archived house rows (`add_up`): a file that differs from the one archived is reported, never mixed in. The house
     archive is not touched. Returns per house: months written, from raw or fetched, and why the others were not."""
-    from clean_writer import list_keys, read_parquet
+    from clean_writer import list_keys
     arch = {k[len(ARCHIVE):] for k in list_keys(r2, ARCHIVE) if k.endswith('.parquet')}
     have = {k[len(SCHEME_ARCHIVE):] for k in list_keys(r2, SCHEME_ARCHIVE) if k.endswith('.parquet')}
+    todo ={h.key: sorted(k.split('/')[0][6:] for k in arch - have if k.endswith(f'/{h.key}.parquet')) for h in houses}
     rep = {}
-    for h in houses:
-        todo = sorted(k.split('/')[0][6:] for k in arch - have if k.endswith(f'/{h.key}.parquet'))
-        if not todo:
-            continue
-        r = rep.setdefault(h.key, {'from_raw': [], 'fetched': [], 'not_written': {}})
-        got = {m: ('from_raw', rows) for m, rows in raw_rows(r2, h, set(todo)).items()}
-        left = [m for m in todo if m not in got]
-        if left and fetch:
-            for res in collect_house(h, left, browser):
-                if 'rows' in res:
-                    got[res['month']] = ('fetched', res['rows'])
-                else:
-                    r['not_written'][res['month']] = res.get('why', 'not found')
-        for m in todo:
-            if m not in got:
-                r['not_written'].setdefault(m, 'no raw file and not fetched')
-                continue
-            how, rows = got[m]
-            hold = read_parquet(r2, f'{ARCHIVE}month={m}/{h.key}.parquet')
-            sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
-            bad = add_up(sc, hold)
-            if bad and how == 'from_raw' and fetch:
-                # The raw store can hold more than the archived set (a file fetched again at a new address, say):
-                # the house's current files are the other copy; kept only if they add up, as any fetch.
-                r.setdefault('differs', {})[f'{m} from_raw'] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)))
-                res = next(iter(collect_house(h, [m], browser)), {})
-                if 'rows' in res:
-                    how, rows = 'fetched', res['rows']
-                    sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
-                    bad2 = add_up(sc, hold)
-                    if bad2:
-                        r['differs'][f'{m} fetched'] = add_up_detail(sc, hold, res.get('files'))
-                        bad = f'{bad} (from raw), {bad2} (fetched again)'
-                    else:
-                        bad = 0
-            if bad:
-                r['not_written'][m] = f'{how}: {bad} ISINs do not add up to the archived house rows'
-                if not any(k.startswith(m) for k in r.get('differs', {})):
-                    r.setdefault('differs', {})[m] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)) if how == 'from_raw' else None)
-                continue
-            put_schemes(r2, h, m, rows)
-            r[how].append(m)
-        print(json.dumps({h.key: r}))
+    # House by house side by side (run_houses): each house's raw reads, fetches and writes are its own.
+    for h, r in run_houses([h for h in houses if todo[h.key]],
+                           lambda h: _backfill_house(r2, h, todo[h.key], browser, fetch)):
+        if isinstance(r, Exception):
+            why = f'collector error ({type(r).__name__}: {r})'[:300]
+            r = {'from_raw': [], 'fetched': [], 'not_written': {m: why for m in todo[h.key]}}
+            _log({h.key: r})
+        rep[h.key] = r
     return rep
+
+
+def _backfill_house(r2, h, todo: list[str], browser=None, fetch: bool = True) -> dict:
+    """backfill_schemes for one house's months; returns its report entry (and prints it). An error stops this house
+    only: the months it had not written are reported with it."""
+    r = {'from_raw': [], 'fetched': [], 'not_written': {}}
+    try:
+        _backfill_months(r2, h, todo, browser, fetch, r)
+    except Exception as exc:  # noqa: BLE001 - this house is reported, the others go on
+        why = f'collector error ({type(exc).__name__}: {exc})'[:300]
+        for m in todo:
+            if m not in r['from_raw'] and m not in r['fetched']:
+                r['not_written'].setdefault(m, why)
+    _log({h.key: r}, limit=None)
+    return r
+
+
+def _backfill_months(r2, h, todo: list[str], browser, fetch: bool, r: dict) -> None:
+    from clean_writer import read_parquet
+    got ={m: ('from_raw', rows) for m, rows in raw_rows(r2, h, set(todo)).items()}
+    left = [m for m in todo if m not in got]
+    if left and fetch:
+        for res in collect_house(h, left, browser):
+            if 'rows' in res:
+                got[res['month']] = ('fetched', res['rows'])
+            else:
+                r['not_written'][res['month']] = res.get('why', 'not found')
+    for m in todo:
+        if m not in got:
+            r['not_written'].setdefault(m, 'no raw file and not fetched')
+            continue
+        how, rows = got[m]
+        hold = read_parquet(r2, f'{ARCHIVE}month={m}/{h.key}.parquet')
+        sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
+        bad = add_up(sc, hold)
+        if bad and how == 'from_raw' and fetch:
+            # The raw store can hold more than the archived set (a file fetched again at a new address, say):
+            # the house's current files are the other copy; kept only if they add up, as any fetch.
+            r.setdefault('differs', {})[f'{m} from_raw'] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)))
+            res = next(iter(collect_house(h, [m], browser)), {})
+            if 'rows' in res:
+                how, rows = 'fetched', res['rows']
+                sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
+                bad2 = add_up(sc, hold)
+                if bad2:
+                    r['differs'][f'{m} fetched'] = add_up_detail(sc, hold, res.get('files'))
+                    bad = f'{bad} (from raw), {bad2} (fetched again)'
+                else:
+                    bad = 0
+        if bad:
+            r['not_written'][m] = f'{how}: {bad} ISINs do not add up to the archived house rows'
+            if not any(k.startswith(m) for k in r.get('differs', {})):
+                r.setdefault('differs', {})[m] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)) if how == 'from_raw' else None)
+            continue
+        put_schemes(r2, h, m, rows)
+        r[how].append(m)
 
 
 def amfi_list(month: str, tries: int = 3) -> tuple[pd.DataFrame, dict]:
@@ -470,13 +594,14 @@ def main(argv=None) -> int:
     months = sorted(set(a.month) | set(latest_months(a.latest, datetime.now(IST).date()) if a.latest else set()))
     if not months:
         ap.error('give --month or --latest')
-    houses = [BY_KEY[k] for k in a.house] if a.house else HOUSES
+    houses = [BY_KEY[k] for k in dict.fromkeys(a.house)] if a.house else HOUSES
     r2 = None
     if not a.dry_run:
         from r2_writer import r2_client
         r2 = r2_client()
-    # One browser for the whole run, shared with the list readers that drive a page (apis2): Playwright's sync API
-    # allows one started instance per thread (find.shared_browser).
+    # One browser for the whole run, started on this thread and shared with the list readers that drive a page (apis2):
+    # Playwright's sync API allows one started instance per thread and answers only on that thread, so every house
+    # that uses it runs here (run_houses) while the plain-HTTP houses are read side by side in a pool.
     browser = find.shared_browser() if any(h.render or h.browser_fetch for h in houses) else None
     report = {'run_date': datetime.now(IST).date().isoformat(), 'months': months, 'houses': {}}
     have = set()
@@ -484,26 +609,13 @@ def main(argv=None) -> int:
         from clean_writer import list_keys
         have = {k[len(ARCHIVE):] for k in list_keys(r2, ARCHIVE)}
     try:
-        for h in houses:
-            todo = [mth for mth in months if f'month={mth}/{h.key}.parquet' not in have]
-            if not todo:
-                continue
-            for res in collect_house(h, todo, browser):
-                rows = res.pop('rows', None)
-                if rows is not None:
-                    hold = mf_holdings.holdings(rows, h.key, res['month']).assign(kind=h.kind)
-                    res['isins'] = int(len(hold))
-                    res['value_cr'] = round(float(hold['value_lakh'].sum()) / 100, 1)
-                    sl = mf_holdings.scheme_list(rows, h.key, res['month'], h.name)
-                    eq = sl[sl['equity_lines'].gt(0)]
-                    res['schemes'] = {'read': int(len(sl)), 'equity': int(len(eq)),
-                                      'active_equity': int((~eq['passive'].astype(bool)).sum())}
-                    if r2 is not None:
-                        from clean_writer import put_parquet
-                        put_parquet(r2, f'{ARCHIVE}month={res["month"]}/{h.key}.parquet', hold)
-                        put_schemes(r2, h, res['month'], rows)
-                report['houses'].setdefault(h.key, []).append(res)
-                print(json.dumps({k: v for k, v in res.items() if k not in ('parse',)}, default=str)[:400])
+        todo = {h.key: [mth for mth in months if f'month={mth}/{h.key}.parquet' not in have] for h in houses}
+        for h, results in run_houses([h for h in houses if todo[h.key]],
+                                     lambda h: run_house(h, todo[h.key], browser, r2)):
+            if isinstance(results, Exception):   # run_house reports its own failures; this is a safety net
+                results = _house_failed(h, todo[h.key], [], results)
+            if results:
+                report['houses'][h.key] = results
         if r2 is not None and a.schemes:
             report['schemes_backfill'] = backfill_schemes(r2, houses, browser)
         if r2 is not None and not a.no_amfi:
