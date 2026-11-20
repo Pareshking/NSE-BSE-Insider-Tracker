@@ -479,3 +479,8 @@ def alphagrep(month: str) -> list[tuple[str, str]]:
         if pg >= (((d.get('meta') or {}).get('pagination') or {}).get('pageCount') or 1):
             break
     return alphagrep_links(entries)
+
+
+# The readers above that drive a page in the shared browser (`_browser`). Playwright's sync API answers only on the
+# thread that started it, so scripts/mf_portfolios.py runs the houses using them on its own thread, one after another.
+BROWSER_READERS = (edelweiss, bandhan, mahindra)
