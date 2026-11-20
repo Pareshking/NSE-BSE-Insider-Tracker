@@ -4,6 +4,18 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Fund houses that failed in run 44654006211, 20 Nov 2026 (branch `mf-house-fixes`, draft PR)
+
+Edelweiss and Bandhan had failed in every run with a browser-read house since #288: their readers started a second
+Playwright beside the collector's ("Sync API inside the asyncio loop"). Now one shared browser
+(`find.shared_browser`); Bandhan reads on a runner (probe 44663322178). Edelweiss, Angel One, WhiteOak and Bajaj
+answer 403 to a GitHub runner, also to an ordinary browser visit, and answer elsewhere: moved to
+`houses.RUNNER_BLOCKED` and `NOT_COLLECTED`. Kotak (Radware CAPTCHA) and Navi (Cloudflare challenge) stay out; Union
+has an unverified collector waiting for a runner in India (`needs_india_runner`). Emails to send:
+`docs/MF_ACCESS_REQUESTS.md`. NPS ABSL October: the house's own link answers 404. HDFC 2025-12 scheme rows: a
+`--schemes` run now tries the house's current files when the raw ones do not add up and reports what differs
+(`differs`); needs a dispatched `--schemes --house hdfc` run to read. Done when that run's report is read.
+
 ## ICICI Prudential and AlphaGrep, 19 Nov 2026 (branch `mf-icici`, draft PR)
 
 The Fund house probe now keeps every answer's body as the run's artifact and makes the sites' own list calls

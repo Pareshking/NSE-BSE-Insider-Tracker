@@ -223,7 +223,7 @@ def edelweiss(month: str) -> list[tuple[str, str]]:
             except Exception:  # noqa: BLE001 - a page that never goes idle still has its links
                 pass
             page.wait_for_timeout(4000)
-            page.get_by_text('Monthly Portfolio and Risk-o-Meter', exact=False).first.click(timeout=60000)   # 15 s timed out on a runner (probe run 44663322178)
+            page.get_by_text('Monthly Portfolio and Risk-o-Meter', exact=False).first.click(timeout=15000)
             page.wait_for_timeout(4000)
             for placeholder, label in (('Select Year', str(y)), ('Select Month', calendar.month_abbr[m])):
                 page.locator(f'mat-select[placeholder="{placeholder}"]').first.click(timeout=15000)
@@ -479,52 +479,3 @@ def alphagrep(month: str) -> list[tuple[str, str]]:
         if pg >= (((d.get('meta') or {}).get('pagination') or {}).get('pageCount') or 1):
             break
     return alphagrep_links(entries)
-
-
-# --- Kotak Mahindra: Information > Forms and Downloads > Portfolios > Consolidated & Fortnightly Portfolio ----------
-# A plain request to kotakmf.com is sent to a Radware bot check (validate.perfdrive.com); an ordinary browser visit
-# from a GitHub runner was served the page itself, no check (probe run 44663322178, 20 Nov 2026). So the page is
-# opened as a person would, the Portfolios list set to 'Consolidated & Fortnightly Portfolio', and the file list read
-# from what the page then shows and fetches. A visit sent to the bot check is reported, never solved.
-KOTAK = 'https://www.kotakmf.com/Information/forms-and-downloads'
-KOTAK_PICK = 'Consolidated & Fortnightly Portfolio'
-_FILE_IN_JSON = re.compile(r'"([^"\s<>]+\.(?:xlsx|xls|xlsm|zip))"', re.I)
-
-
-def kotak_links(anchors: list, bodies: list[str]) -> list[tuple[str, str]]:
-    """(text, address) from the page's links and from file addresses in the JSON answers it fetched (with the
-    preceding 300 characters of the answer as text, where a title sits)."""
-    out = [((t or '').strip(), h) for t, h in anchors if h]
-    for body in bodies:
-        b = body.replace('\\/', '/')
-        for m in _FILE_IN_JSON.finditer(b):
-            out.append((b[max(0, m.start() - 300):m.start()], urljoin('https://www.kotakmf.com/', m.group(1))))
-    return out
-
-
-def kotak(month: str) -> list[tuple[str, str]]:
-    bodies: list[str] = []
-
-    def keep(r):
-        if 'kotakmf.com' in r.url and 'json' in (r.headers.get('content-type') or ''):
-            with contextlib.suppress(Exception):
-                bodies.append(r.text())
-
-    with _browser() as b:
-        ctx = b.new_context(user_agent=UA)
-        page = ctx.new_page()
-        page.on('response', keep)
-        try:
-            with contextlib.suppress(Exception):   # a page that never goes idle still has its lists
-                page.goto(KOTAK, wait_until='networkidle', timeout=90000)
-            page.wait_for_timeout(4000)
-            for step in ('load', 'pick'):
-                if 'perfdrive' in page.url:
-                    raise RuntimeError(f'sent to the Radware bot check at {step} (validate.perfdrive.com); not worked around')
-                if step == 'load':
-                    page.locator('select[aria-label="Portfolios"]').first.select_option(label=KOTAK_PICK, timeout=60000)
-                    page.wait_for_timeout(8000)
-            anchors = page.evaluate("() => [...document.querySelectorAll('a')].map(a => [a.innerText || a.title || '', a.href])")
-        finally:
-            ctx.close()
-    return kotak_links(anchors, bodies)
