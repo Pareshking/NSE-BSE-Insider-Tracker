@@ -1234,6 +1234,30 @@ def actions_coverage(r2) -> int:
     return 0
 
 
+def industry_raw(r2) -> int:
+    """INDUSTRY_RAW (20 Nov): the industry answers R2 already holds: raw_v2/ fetch records per exchange and day, the
+    answers they parse to (scripts/industry.py answers_from_raw, the build's own reader), the archive and the staging
+    checkpoints. Read only."""
+    import json
+
+    import industry as ind
+    report = {}
+    for k in ('nse', 'bse'):
+        a = read_parquet(r2, ind.ARCHIVE[k])
+        print(f'archive {ind.ARCHIVE[k]}: {0 if a is None else len(a)} rows')
+    staged = ind.read_staging(r2, report)
+    print('staging:', json.dumps(report.get('staging')))
+    for k in ('nse', 'bse'):
+        df = ind.answers_from_raw(r2, k, report=report)
+        print(f'--- raw {k}:', json.dumps(report['raw'][k], default=str))
+        if len(df):
+            print(f'    fetched {df["fetched_at"].min()} .. {df["fetched_at"].max()}; with an ISIN: {int(df["isin"].notna().sum())}')
+            print(df[df['status'] == 'ok'].head(5).to_string(index=False))
+        if staged.get(k) is not None:
+            print(f'    staging {k}: {len(staged[k])} rows, status {staged[k]["status"].value_counts().to_dict()}')
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -1292,6 +1316,8 @@ def main() -> int:
         return mf_schemes(r2, *syms[0].split(':')[1:2])
     if syms == ['MF_RAW']:   # raw portfolio fetches per house-month against the archive (19 Nov)
         return mf_raw(r2)
+    if syms == ['INDUSTRY_RAW']:   # industry answers already in raw_v2/, the archive and the checkpoints (20 Nov)
+        return industry_raw(r2)
     if syms == ['FUND_NAMES']:   # the fund names in the deals with no manager line yet (insiders_clean/fund_managers.csv)
         return fund_names(r2)
     sec = read_parquet(r2, 'clean/current/securities.parquet')
