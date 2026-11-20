@@ -14,9 +14,9 @@ import streamlit as st
 from data import store
 
 from insiders_clean import ideas
-from screens import moves
+from screens import moves, page_charts
 from screens.ctx import load, need_data
-from ui import dates, kit
+from ui import charts, dates, kit
 from ui.kit import esc
 
 DAYS = 7
@@ -323,6 +323,7 @@ def _insider_page(r: dates.Range, title: str):
     if d.empty:
         st.html(f'<p class="dt-empty">No open-market insider decisions above the bar, {esc(dates.describe(r))}.</p>')
         return
+    _insider_glance(ctx, r, d, names, v_buy, v_sell)
     sort = _sort_by('dt_ins_sort')
     summary = store.artifact('artifacts/track_summary.parquet')
     for side, q, rec in (('BUY', 'Who is putting money in?', 'Promoter buying'), ('SELL', 'Who is getting out?', 'Promoter selling')):
@@ -342,6 +343,37 @@ def _insider_page(r: dates.Range, title: str):
             '"Since" = last close against the average price paid, adjusted for splits. "First in 12 months": no promoter-group entity (for a director or KMP, the same person) traded this company on this side in the 12 months before; "routine": in 6 or more of those months. An amber "to / from" names the other side when the trade '
             'was one side of a matched bulk or block deal: a negotiated sale or purchase, not the open market; "placed with N buyers" when a promoter\'s sale went to several named buyers at one price that day. Holding Δ = shares traded against the promoter group\'s '
             'stake in the latest shareholding pattern (promoters), or the person\'s own holding before (directors, KMP).</p>')
+
+
+def _insider_glance(ctx, r: dates.Range, d, names, v_buy, v_sell) -> None:
+    """Bought or sold at a glance (owner, 19 Nov 2026): the range's buying against its selling, the net day by day, and
+    the companies with the largest net bets against their size. Promoters, directors and KMP, open market only."""
+    split = charts.buy_sell_split(v_buy, v_sell)
+    daily = page_charts.insider_daily_net(ctx.eligible, r.start_ts, r.end_ts)
+    strip = charts.flow_strip(list(daily['day']), list(daily['net'])) if len(daily) else ''
+    net = page_charts.insider_net_by_company(d, names)
+    bars = charts.diverging_bar(net, 'company', 'net_pct', fmt=page_charts.pct_arrow, tag='tag', limit=15)
+    if not (split or strip or bars):
+        return
+    out = ['<div class="cg-glance"><h2 class="dt-h2">Bought or sold? <span>promoters, directors and KMP · open market · '
+           f'{esc(dates.describe(r))}</span></h2>']
+    if split:
+        out.append(split + '<p class="chart-cap">The decisions past the size bar, in rupees (the figures above).</p>')
+    if strip:
+        days_net = daily.dropna(subset=['net'])
+        hi, lo = days_net.loc[days_net['net'].idxmax()], days_net.loc[days_net['net'].idxmin()]
+        cap = []
+        if hi['net'] > 0:
+            cap.append(f'most bought on {kit.day(hi["day"], with_year=False)} ({kit.rupees(hi["net"], signed=True)})')
+        if lo['net'] < 0:
+            cap.append(f'most sold on {kit.day(lo["day"], with_year=False)} ({kit.rupees(lo["net"], signed=True)})')
+        out.append('<h3>Net buying, day by day <span>by the day the filing was made public; every size, the clubbed ones too</span></h3>'
+                   + strip + (f'<p class="chart-cap">Net {"; ".join(esc(c) for c in cap)}. An empty day had no filing.</p>' if cap else ''))
+    if bars:
+        n = len(net[net['net_pct'].ne(0)])
+        out.append('<h3>Largest net bets against company size <span>% of the company bought less sold'
+                   + (f' · the 15 largest of {n}' if n > 15 else '') + '</span></h3>' + bars)
+    st.html(''.join(out) + '</div>')
 
 
 def insider_why(x: pd.DataFrame, px: dict, ctx, side: str) -> str:
@@ -649,6 +681,34 @@ def _deal_table(rows, names, limit=80, company_col=True, with_year=False) -> str
     return _table(cols, out) if out else '<p class="dt-empty">No deals of ₹1 Cr or more in the period.</p>'
 
 
+def _deal_glance(d, r: dates.Range, names) -> None:
+    """Bought or sold at a glance (owner, 19 Nov 2026): who bought and who sold, by buyer group, and the net rupees per
+    company, over the page's range. Market makers left out; every size counts."""
+    groups = page_charts.deals_by_buyer_group(d)
+    split = charts.split_rows(list(zip(groups['group'], groups['buy'], groups['sell'])),
+                              note=lambda b, s: f'net {kit.rupees(b - s, signed=True)}') if len(groups) else ''
+    net = page_charts.deals_net_by_company(d, names)
+    bars = charts.diverging_bar(net, 'company', 'net', fmt=lambda v: kit.rupees(v, signed=True), tag='tag', limit=15)
+    if not (split or bars):
+        return
+    out = [f'<div class="cg-glance"><h2 class="dt-h2">Who bought, who sold? <span>bulk and block deals · {esc(dates.describe(r))} · '
+           'market makers left out</span></h2>']
+    if split:
+        out.append(charts.buy_sell_split(groups['buy'].sum(), groups['sell'].sum()) + '<h3>By buyer type <span>bar length: '
+                   'the group\'s rupees against the largest group\'s</span></h3>' + split
+                   + '<p class="chart-cap">The type is read from the client\'s name (mutual fund, insurer, foreign investor); a client the '
+                   'exchange marks as the company\'s promoter is a promoter. Others: banks, pension funds, AIFs, companies, individuals and '
+                   'names with no clear type. Deals under ₹1 Cr are counted here, though clubbed in the list.</p>')
+    if bars:
+        n = len(net[net['net'].ne(0)])
+        out.append('<h3>Net bought or sold, by company <span>bought less sold in the deals'
+                   + (f' · the 15 largest of {n}' if n > 15 else '') + '</span></h3>' + bars
+                   + '<p class="chart-cap">Only the clients the exchange names are in a deal list, so a block sold to many small buyers '
+                   'reads as net selling, and a block whose buyers are all named nets out (the largest blocks are in the answers '
+                   'above and the list below).</p>')
+    st.html(''.join(out) + '</div>')
+
+
 def deals():
     ctx = load()
     if not need_data(ctx):
@@ -674,7 +734,8 @@ def deals():
     _qa('Are promoters selling through deals?', (f'Yes: {_names_list([str(names.get(x["isin"]) or x["company"]) for x in prom], 3)}'
                                                  if prom else 'No promoter sale in a bulk or block deal'),
         f'{len(prom)} promoter {"sale" if len(prom) == 1 else "sales"} in deals, {kit.rupees(sum(x["_v"] or 0 for x in prom))} in all.' if prom else '')
-    st.html('<h2 class="dt-h2">Every deal <span>largest first</span></h2>')
+    _deal_glance(d, r, names)
+    st.html('<h2 class="dt-h2">Every deal <span>largest first · a block bought or sold by three or more clients at one price is one line</span></h2>')
     st.html(_deal_table(rows, names))
     note = '' if 'matched_pair' in ctx.deals else ' Matched pairs show as one line once the nightly clean has run with the new rule.'
     st.html(f'<p class="dt-foot">A group transfer is a matched buyer and seller who are both the company\'s promoters; a negotiated cross is '
@@ -751,6 +812,33 @@ def _sast_rows(sa, names, with_year=False):
     return rows, inter, tiny
 
 
+def _stake_glance(sa, r: dates.Range, names) -> None:
+    """Up or down at a glance (owner, 19 Nov 2026): the largest stake moves in points either way, and how many filings
+    went through each threshold, up and down. The same filings as the table (inter-se, under 0.1% and held back out)."""
+    mv = page_charts.stake_moves(sa, names)
+    if mv.empty:
+        return
+    mv['tag'] = [' · '.join(x for x in (str(h)[:34], _crossed(b, a), 'promoter' if p else '') if x)
+                 for h, b, a, p in zip(mv['holder'], mv['before'], mv['after'], mv['promoter'])]
+    bars = charts.diverging_bar(mv, 'company', 'moved', tag='tag', limit=15)
+    cnt = page_charts.crossing_counts(mv, THRESHOLDS)
+    hit = cnt[(cnt['up'] + cnt['down']) > 0]
+    tally = charts.split_rows([(f'{t}%', u, dn) for t, u, dn in zip(hit['threshold'], hit['up'], hit['down'])],
+                              fmt=lambda v: f'{int(v):,}', what=('crossed up', 'fell below'), tight=True) if len(hit) else ''
+    up, dn = int((mv['moved'] > 0).sum()), int((mv['moved'] < 0).sum())
+    out = [f'<div class="cg-glance"><h2 class="dt-h2">Up or down? <span>SAST Reg 29 · {esc(dates.describe(r))}</span></h2>',
+           charts.split_bar(up, dn, fmt=lambda v: f'{int(v):,} filings', what=('Raised a stake', 'Cut a stake'))]
+    if bars:
+        out.append('<h3>Largest stake moves <span>points of the company, bought or sold in the filing'
+                   + (f' · the 15 largest of {len(mv)}' if len(mv) > 15 else '') + '</span></h3>' + bars)
+    out.append('<h3>Thresholds crossed <span>filings that went through each line, up or down</span></h3>'
+               + (tally + (f'<p class="chart-cap">No filing crossed {", ".join(f"{t}%" for t in cnt.loc[(cnt["up"] + cnt["down"]) == 0, "threshold"])}.</p>'
+                           if len(hit) < len(cnt) else '')
+                  if tally else '<p class="chart-cap">No filing in the range crossed 5, 10, 15, 20, 25, 50 or 75%.</p>'))
+    out.append('<p class="chart-cap">The stake before is derived (after less the move): NSE files the stake after and the move.</p>')
+    st.html(''.join(out) + '</div>')
+
+
 def stakes():
     ctx = load()
     if not need_data(ctx):
@@ -768,6 +856,7 @@ def stakes():
         sa = sa.assign(_f=pd.to_datetime(sa['broadcast_ts'], errors='coerce', format='mixed'))
         sa = sa[r.mask(sa['_f'])]
         rows, inter, tiny = _sast_rows(sa, names)
+    _stake_glance(sa, r, names)
     st.html('<h2 class="dt-h2">Stake changes <span>SAST Reg 29 · inter-se transfers and moves under 0.1% clubbed</span></h2>')
     st.html(_table(SAST_COLS, rows[:80]) if rows else f'<p class="dt-empty">No SAST Reg 29 filings in the period.{_unconfirmed("sast")}</p>')
     st.html(f'<p class="dt-foot">Clubbed: <b>{inter}</b> inter-se transfers within promoter groups, <b>{tiny}</b> moves under 0.1% of the company. '
