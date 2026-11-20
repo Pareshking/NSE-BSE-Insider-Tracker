@@ -2,8 +2,10 @@ name: Fund house probe
 
 # By hand only: asks, from a GitHub runner, the fund-house addresses that refuse or challenge requests from the cloud
 # machine the collectors were written on (collectors/mf_portfolios/houses.py NOT_COLLECTED), with verbose curl output,
-# so we can see whether a runner gets the files. Nothing is stored and nothing is worked around: a CAPTCHA or bot check
-# in an answer means the house stays not collected.
+# so we can see whether a runner gets the files. Every answer's body and headers are kept as the run's artifact
+# ('probe', read by hand; nothing goes to R2), with the follow-up calls the sites' own pages make
+# (scripts/mf_probe_follow.py). Nothing is worked around: a CAPTCHA or bot check in an answer means the house stays
+# not collected.
 on:
   workflow_dispatch:
     inputs:
@@ -20,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v4
       - name: Probe
         env:
           EXTRA: ${{ inputs.extra }}
@@ -40,7 +43,10 @@ jobs:
           echo '### Fund house probe' >> "$GITHUB_STEP_SUMMARY"
           echo '| address | HTTP | bytes | type | ends at | error |' >> "$GITHUB_STEP_SUMMARY"
           echo '|---|---|---|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p probe/curl
+          i=0
           for u in $urls; do
+            i=$((i+1))
             echo "::group::$u"
             out=$(curl -sS -v -L --max-time 60 -A "$UA" -H 'Accept-Language: en-IN,en;q=0.9' -o body.bin \
                   -w '%{http_code}|%{size_download}|%{content_type}|%{url_effective}' "$u" 2>curl.err) || true
@@ -51,5 +57,17 @@ jobs:
             err=$(grep -o 'curl: ([0-9]*) .*' curl.err | head -1)
             IFS='|' read -r code size ctype final <<< "$out"
             echo "| $u | ${code:-none} | ${size:-0} | ${ctype:-} | ${final:-} | $err |" >> "$GITHUB_STEP_SUMMARY"
+            cp body.bin "probe/curl/$(printf %02d $i).body" 2>/dev/null || true
+            { echo "$u"; echo "result: $out"; grep -v '^[{}] ' curl.err; } > "probe/curl/$(printf %02d $i).txt"
             rm -f body.bin curl.err
           done
+      - name: Follow-up calls (the sites' own list calls)
+        run: |
+          pip install requests selenium
+          python -u scripts/mf_probe_follow.py probe/follow
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe
+          path: probe/
+          retention-days: 14

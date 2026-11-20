@@ -387,3 +387,100 @@ def _mahindra_listing() -> str:
 
 def mahindra(month: str) -> list[tuple[str, str]]:
     return mahindra_links(json.loads(_mahindra_listing()))
+
+
+# --- ICICI Prudential: Downloads > Other Scheme Disclosures > Monthly Portfolio Disclosures --------------------------
+# The page's own calls (www.icicipruamc.com static/js, read 19 Nov 2026): the category list, then the files list for
+# the Monthly Portfolio Disclosures sub-category, 20 a page, newest first. Each month is one zip of a workbook per
+# scheme, at www.icicipruamc.com/blob + its url. The service answers JSON only with the header the site's request code
+# sends on every call (env: api); without it the gateway answers the site's 404 page, and a call without a JSON Accept
+# gets an F5 "Please enable JavaScript" page, which is not worked around. apimf.icicipruamc.com resets connections
+# from outside India, so the list is read on a GitHub runner (the Mutual fund portfolios workflow).
+ICICI = ('https://www.icicipruamc.com/media-center/downloads?currentTabFilter=Disclosures'
+         '&subCatTabFilter=MonthlyPortfolioDisclosures')
+ICICI_API = 'https://apimf.icicipruamc.com/nms/v1/downloads/'
+ICICI_BLOB = 'https://www.icicipruamc.com/blob'
+ICICI_MONTHLY = 'MONTHLY_PORTFOLIO_DISCSLO_DWND'
+
+
+def _icici_headers() -> dict:
+    import uuid
+    return {'User-Agent': UA, 'Accept': 'application/json, text/plain, */*', 'Origin': 'https://www.icicipruamc.com',
+            'Referer': 'https://www.icicipruamc.com/', 'Content-type': 'application/json', 'env': 'api',
+            'requestAPIId': str(uuid.uuid4())}
+
+
+def _ist_day(ms: int) -> date:
+    from datetime import datetime, timezone
+    return datetime.fromtimestamp(ms / 1000, timezone(timedelta(hours=5, minutes=30))).date()
+
+
+def icici_links(files: list[dict]) -> list[tuple[str, str]]:
+    """(title, address) for each entry of the files list."""
+    return [((f.get('title') or {}).get('text') or '', ICICI_BLOB + f['url']) for f in files if f.get('url')]
+
+
+def icici(month: str, max_pages: int = 10) -> list[tuple[str, str]]:
+    s = _session()
+    r = s.get(ICICI_API + 'categories', params={'userType': 'Investor'}, headers=_icici_headers(), timeout=TIMEOUT)
+    r.raise_for_status()
+    cat = sub = None
+    for c in (r.json().get('success') or {}).get('data') or []:
+        for sc in c.get('subCategory') or []:
+            if (sc.get('title') or {}).get('code') == ICICI_MONTHLY:
+                cat, sub = c, sc
+    if sub is None:
+        raise ValueError(f'no {ICICI_MONTHLY} sub-category in the categories list')
+    y, m = _ym(month)
+    out: list[tuple[str, str]] = []
+    for pg in range(1, max_pages + 1):
+        r = s.post(ICICI_API + 'files', headers=_icici_headers(), timeout=TIMEOUT,
+                   json={'categoryId': sub['id'], 'schemeCategory': '', 'userType': 'Investor', 'fileType': 'All',
+                         'page': str(pg), 'size': '20', 'filter': [],
+                         'categoryName': (cat.get('title') or {}).get('code')})
+        r.raise_for_status()
+        data = (r.json().get('success') or {}).get('data') or {}
+        files = data.get('files') or []
+        out += icici_links(files)
+        oldest = min((f.get('applicableMonth') or 0 for f in files), default=0)   # ms: the month-end, IST midnight
+        if not data.get('isNext') or not files or (oldest and _ist_day(oldest) < date(y, m, 1)):
+            break
+    return out
+
+
+# --- AlphaGrep: Disclosures > Portfolio Disclosure, drawn from its content service (Strapi) ------------------------
+# www.alphagrepmf.ai is an Angular page; its script reads cmsweb.alphagrepmf.ai/api/portfolios (each entry: a scheme,
+# the accordion it sits in - Monthly - a title such as 'October Report', and the workbook). A workbook per scheme.
+# The site and the service are behind the CAMS firewall, which blocks machines outside India; a GitHub runner is
+# answered (mf-probe, 19 Nov 2026).
+ALPHAGREP = 'https://www.alphagrepmf.ai/disclosures'
+ALPHAGREP_CMS = 'https://cmsweb.alphagrepmf.ai'
+
+
+def alphagrep_links(entries: list[dict]) -> list[tuple[str, str]]:
+    """(scheme, accordion, title and file name; address) for each entry of /api/portfolios."""
+    out = []
+    for e in entries:
+        f = e.get('file') or {}
+        if not f.get('url'):
+            continue
+        acc = (e.get('accordian_name') or {}).get('Name') or ''
+        text = f"{(e.get('scheme') or {}).get('Name') or ''} {acc} portfolio {e.get('title') or ''} {f.get('name') or ''}"
+        out.append((' '.join(text.split()), urljoin(ALPHAGREP_CMS, f['url'])))
+    return out
+
+
+def alphagrep(month: str) -> list[tuple[str, str]]:
+    s = _session()
+    s.headers.update({'Accept': 'application/json, text/plain, */*', 'Origin': 'https://www.alphagrepmf.ai',
+                      'Referer': 'https://www.alphagrepmf.ai/'})
+    entries: list[dict] = []
+    for pg in range(1, 20):
+        r = s.get(f'{ALPHAGREP_CMS}/api/portfolios', timeout=TIMEOUT,
+                  params={'populate': '*', 'pagination[pageSize]': 100, 'pagination[page]': pg})
+        r.raise_for_status()
+        d = r.json()
+        entries += d.get('data') or []
+        if pg >= (((d.get('meta') or {}).get('pagination') or {}).get('pageCount') or 1):
+            break
+    return alphagrep_links(entries)
