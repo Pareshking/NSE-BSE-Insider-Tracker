@@ -1093,6 +1093,32 @@ def raw_actions(r2, syms: list[str]) -> int:
     return 0
 
 
+def actions_coverage(r2) -> int:
+    """ACTIONS_COVERAGE: what the action tables hold, by ex-date month and purpose (NSE archive, clean actions,
+    clean bse_actions), when the NSE rows were first seen, and how many rows have an ISIN. Read only (20 Nov)."""
+    from clean_writer import list_keys
+    arch = [read_parquet(r2, k) for k in list_keys(r2, 'archive/nse_events/actions/') if k.endswith('.parquet')]
+    arch = [a for a in arch if a is not None and len(a)]
+    tabs = {'archive/nse_events/actions': pd.concat(arch, ignore_index=True) if arch else pd.DataFrame()}
+    for t in ('actions', 'bse_actions'):
+        tabs[f'clean/current/{t}'] = read_parquet(r2, f'clean/current/{t}.parquet')
+    for name, d in tabs.items():
+        if d is None or d.empty:
+            print(f'--- {name}: empty')
+            continue
+        ex = pd.to_datetime(d['ex_date'], errors='coerce')
+        print(f'--- {name}: {len(d)} rows, ex-dates {ex.min()} .. {ex.max()}; columns {list(d.columns)}')
+        if 'first_seen' in d:
+            fs = pd.to_datetime(d['first_seen'], errors='coerce')
+            print('  first_seen by month:', fs.dt.to_period('M').astype(str).value_counts().sort_index().to_dict())
+        if 'isin' in d:
+            print(f'  rows with an ISIN: {int(d["isin"].notna().sum())}')
+        if 'series' in d:
+            print('  series:', d['series'].astype(str).value_counts().head(15).to_dict())
+        print(pd.crosstab(ex.dt.to_period('M').astype(str), d['purpose'].astype(str)).to_string())
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -1125,6 +1151,8 @@ def main() -> int:
         return raw_deal_legs(r2, code, day)
     if syms and syms[0].split(':')[0] == 'PRICE_JUMPS':   # every 40% one-day move on the site's lines (19 Nov); PRICE_JUMPS:SYM,SYM2 also prints those lines
         return price_jump_audit(r2, [syms[0].split(':', 1)[1]] + syms[1:] if ':' in syms[0] else [])
+    if syms == ['ACTIONS_COVERAGE']:   # the action tables by ex-date month and purpose (20 Nov)
+        return actions_coverage(r2)
     if syms and syms[0].startswith('RAW_ACTIONS:'):   # every raw action row of these companies, any purpose (20 Nov)
         return raw_actions(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms and syms[0].startswith('PRICES:'):  # one company's prints, factors, site line and actions (19 Nov)
