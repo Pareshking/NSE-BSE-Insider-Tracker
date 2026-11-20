@@ -11,7 +11,7 @@ factors with s <= T: `adjust_as_of` does this, so a past signal never sees a lat
 A reset that matches a filed bonus or split (NSE's and BSE's corporate actions, `expected_factors`) or, where none is
 filed, a reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` (`kind_basis` says
 which). A reset by the exchange on the ex-date of a filed demerger or scheme of arrangement is `demerger` (basis
-`action_base_price`). Those two are the only kinds applied (KIND_ADJUSTED). Other large resets (`other_large`:
+`action_base_price`). Only split_bonus is applied (KIND_ADJUSTED; owner directive, splits and bonuses only): a demerger is recorded and flagged, never applied. Other large resets (`other_large`:
 rights, unfiled demergers, relistings, series moves, special dividends) and small ones (`minor`, mostly cash
 dividends) are counted, never applied.
 
@@ -36,7 +36,7 @@ RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts
 # not reset the base price for any demerger in the product window (VEDL 30 Apr 2026: PrvsClsgPric 773.60 = 29 Apr's
 # close on NSE, 773.25 on BSE; it closed 271.55), so none is applied yet; they are named in the price-jump audit
 # (`scheme_not_adjusted`).
-KIND_ADJUSTED = ('split_bonus', 'demerger')
+KIND_ADJUSTED = ('split_bonus',)   # owner directive: splits and bonuses only; a demerger is flagged (kind 'demerger'), never applied (20 Nov 2026)
 SCHEME_PURPOSES = ('demerger', 'scheme')   # filed purposes whose base-price reset is applied (collectors parsers)
 MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
 BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
