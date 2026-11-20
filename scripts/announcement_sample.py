@@ -364,15 +364,16 @@ def _page_needs_ocr(text: str) -> bool:
     return bad >= 8 and bad >= 0.08 * max(1, len(toks))
 
 
-def render_page(data: bytes, page: int, out_dir: Path, dpi: int = 200) -> Path | None:
-    """The page as a PNG: pdftoppm first, PyMuPDF when pdftoppm leaves nothing (PARIN, 17 Oct: a 3.6 MB scan pdftoppm could not draw)."""
+def render_page(data: bytes, page: int, out_dir: Path, dpi: int = 200, fmt: str = 'png') -> Path | None:
+    """The page as a PNG (fmt='ppm': the same pixels uncompressed): pdftoppm first, PyMuPDF when pdftoppm leaves nothing (PARIN, 17 Oct: a
+    3.6 MB scan pdftoppm could not draw)."""
     src = out_dir / 'f.pdf'
     if not src.exists():
         src.write_bytes(data)
-    png = out_dir / f'p{page}.png'
+    png = out_dir / f'p{page}.{fmt}'
     try:
-        subprocess.run(['pdftoppm', '-r', str(dpi), '-png', '-singlefile', '-f', str(page), '-l', str(page), str(src), str(out_dir / f'p{page}')],
-                       capture_output=True, timeout=180, check=False)
+        subprocess.run(['pdftoppm', '-r', str(dpi), *(['-png'] if fmt == 'png' else []), '-singlefile', '-f', str(page), '-l', str(page), str(src),
+                        str(out_dir / f'p{page}')], capture_output=True, timeout=180, check=False)
     except (OSError, subprocess.SubprocessError):
         pass
     if png.exists():
@@ -386,14 +387,29 @@ def render_page(data: bytes, page: int, out_dir: Path, dpi: int = 200) -> Path |
     return png if png.exists() else None
 
 
+def _ocr_slots() -> int:
+    try:
+        return max(1, int(os.environ.get('OCR_SLOTS') or 0) or os.cpu_count() or 4)
+    except ValueError:
+        return max(1, os.cpu_count() or 4)
+
+
+# Pages drawn and OCR'd at once in this process, whatever thread asks: one per CPU (OCR_SLOTS overrides). The filing text step reads 4 filings
+# at once and each OCRs 4 pages at once: without this, 16 tesseracts shared 4 vCPUs and a page could pass tesseract's 90 s limit and be lost
+# (3 pages on the 14 Nov 2026 run). The same work, done a page per core, finishes no later and leaves no page to the time limit by crowding.
+_OCR_SEM = threading.BoundedSemaphore(_ocr_slots())
+
+
 def ocr_page(data: bytes, page: int, dpi: int = 200) -> str:
-    """Tesseract's text of one page (1-based); '' when tesseract is not installed or fails."""
-    with tempfile.TemporaryDirectory() as d:
-        png = render_page(data, page, Path(d), dpi)
+    """Tesseract's text of one page (1-based); '' when tesseract is not installed or fails. The page goes to tesseract as an uncompressed
+    PPM with its resolution given (--dpi): the same pixels and resolution as the PNG it used to be, without the PNG compression (about
+    half the drawing time; the text compared equal on the 105 filings of the 14 Nov 2026 sample)."""
+    with _OCR_SEM, tempfile.TemporaryDirectory() as d:
+        png = render_page(data, page, Path(d), dpi, fmt='ppm')
         if png is None:
             return ''
         try:
-            out = subprocess.run(['tesseract', str(png), '-', '--psm', '6'], capture_output=True, timeout=90, check=False,
+            out = subprocess.run(['tesseract', str(png), '-', '--dpi', str(dpi), '--psm', '6'], capture_output=True, timeout=90, check=False,
                                  env={**os.environ, 'OMP_THREAD_LIMIT': '1', 'OMP_NUM_THREADS': '1'})   # one thread each: several tesseracts on OpenMP timed out at 420 s a page (17 Oct live run)
         except (OSError, subprocess.SubprocessError) as exc:
             log(f'ocr page {page}: {type(exc).__name__}: {str(exc)[:120]}')
