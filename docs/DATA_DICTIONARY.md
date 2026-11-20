@@ -138,12 +138,14 @@ filings don't; promoters appear too (`is_promoter`).
 
 ### actions — corporate actions
 
-Kept: buyback, bonus, split, rights, dividend. Dropped and counted in the
-report: interest payments, unit distributions, demergers, other schemes.
+Kept: buyback, bonus, split, demerger, capital reduction, scheme of
+arrangement or amalgamation, rights, dividend (demergers and schemes since
+20 Nov 2026). Dropped and counted in the report: interest payments, unit
+distributions and the like. Same purposes on `bse_actions`.
 
 | Column | Meaning |
 |---|---|
-| `purpose` | `buyback`, `bonus`, `split`, `rights`, `dividend` |
+| `purpose` | `buyback`, `bonus`, `split`, `demerger` (NSE `Demerger`, BSE `Spin Off`), `capital_reduction` (BSE `Reduction of Capital`), `scheme` (`Scheme of Arrangement`, `Amalgamation`), `rights`, `dividend` |
 | `subject` | NSE's text, e.g. `Rights 3:5 @ Premium Rs 45/-` |
 | `ex_date`, `record_date`, `broadcast_date` | As filed |
 | `ratio` | Bonus and rights ratio, e.g. `3:5` |

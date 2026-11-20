@@ -49,6 +49,18 @@ and 2026-11-08 (NSE, BSE, NSE_PR, NSE_IDX), then Precompute slim assets (writes 
 `clean/reports/price_jumps.json`). Open: the unexplained are mostly splits and bonuses with no action in our tables
 and demergers (VEDL, SKFINDIA, TMPV); collecting NSE's scheme/demerger actions is a separate piece of work.
 
+**Demergers and missing splits, 20 Nov 2026 (branch `price-demergers`, draft PR).** BSE's raw action feed had every
+demerger (`Spin Off`) and the parsers dropped them; kept now, and the audit names the 10 study-universe moves on
+them `scheme_not_adjusted` (no exchange-published factor: the base price was not reset; `docs/CLEAN_LAYER.md`). The
+splits with no filing (E2E, TEMBO, SIKKO, VMARCIND, likely most of the other 23 unexplained) are NSE-only at their
+ex-date and NSE's action archive starts 28 Sep 2026. **After merge, in order:** NSE Corporate Events
+`dataset=actions`, `from=2025-10-08` (NSE's action history, a month per call; rebuilds `clean/current/actions`);
+BSE History Backfill `dataset=actions`, `from=2025-10-08`, `redo=true` (re-reads BSE's history with the new parser
+and links it to NSE's table; rebuilds `bse_actions`); then Precompute slim assets (lines and
+`clean/reports/price_jumps.json`). Expected: unexplained in the study universe
+33 -> 23 from the BSE rows alone, lower once NSE's history is in. Open: SME companies (VMARCIND) if NSE's
+`index=equities` leaves them out.
+
 ## Fund houses set E, 19 Nov 2026 (branch `mf-houses-e`, draft PR)
 
 Added: Mahindra Manulife (`mahindra`: the downloads list shows after the "I am NOT a US person / resident of Canada"

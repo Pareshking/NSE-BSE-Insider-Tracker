@@ -174,3 +174,105 @@ def test_action_matched_by_symbol():
     acts = pd.DataFrame({'isin': ['INE00000N011'], 'symbol': ['newco'], 'purpose': ['split'], 'ex_date': ['2026-01-02']})
     out = price_jumps.jumps(raw, raw, None, acts, meta=meta)
     assert out['status'].item() == 'action_not_adjusted' and out['actions'].item() == 'split'
+
+
+def vedl():
+    """Real prints of Vedanta (INE205A01025), NSE and BSE, 28 Apr - 4 May 2026: the demerger's ex-date (30 Apr, BSE
+    'Spin Off') with the base price NOT reset (773.60 on NSE, 773.25 on BSE: the day before's closes)."""
+    i = 'INE205A01025'
+    return pd.DataFrame([
+        _row('2026-04-28', 739.30, 742.50, isin=i, sym='VEDL'), _row('2026-04-28', 739.20, 742.60, ex='BSE', series='A', isin=i, sym='VEDL'),
+        _row('2026-04-29', 773.60, 739.30, isin=i, sym='VEDL'), _row('2026-04-29', 773.25, 739.20, ex='BSE', series='A', isin=i, sym='VEDL'),
+        _row('2026-04-30', 271.55, 773.60, isin=i, sym='VEDL'), _row('2026-04-30', 271.60, 773.25, ex='BSE', series='A', isin=i, sym='VEDL'),
+        _row('2026-05-04', 294.65, 271.55, isin=i, sym='VEDL'), _row('2026-05-04', 294.80, 271.60, ex='BSE', series='A', isin=i, sym='VEDL'),
+    ])
+
+
+def test_bse_spin_off_and_schemes_are_kept():
+    from collectors.bse import parsers as bse_parsers
+    from collectors.nse_events.parsers import action_purpose
+    raw = [{'scrip_code': 500295, 'long_name': 'Vedanta Ltd', 'Ex_date': '30 Apr 2026', 'Purpose': 'Spin Off ',
+            'RD_Date': '01 May 2026'},
+           {'scrip_code': 520056, 'long_name': 'TVS Holdings Ltd', 'Ex_date': '08 Sep 2026',
+            'Purpose': 'Scheme of Arrangement', 'RD_Date': '08 Sep 2026'},
+           {'scrip_code': 531775, 'long_name': 'CISTRO Telelink Ltd', 'Ex_date': '06 Mar 2026',
+            'Purpose': 'Reduction of Capital', 'RD_Date': '06 Mar 2026'},
+           {'scrip_code': 514010, 'long_name': 'Rudra Ecovation Ltd', 'Ex_date': '06 Nov 2026',
+            'Purpose': 'Amalgamation', 'RD_Date': '06 Nov 2026'}]
+    df, dropped = bse_parsers.parse_actions(raw)
+    assert dropped == 0
+    assert df['purpose'].tolist() == ['demerger', 'scheme', 'capital_reduction', 'scheme']
+    assert action_purpose('Scheme Of Arrangement - Bonus 1:1') == 'bonus'   # still a bonus
+    assert action_purpose('Demerger') == 'demerger'
+
+
+def test_demerger_with_no_base_reset_is_named_not_adjusted():
+    # VEDL 30 Apr 2026: a filed demerger, the exchanges did not reset the base price, so no exchange-published factor
+    # exists; the move is not read as a ratio. The audit names it scheme_not_adjusted instead of unexplained.
+    acts = pd.DataFrame({'isin': ['INE205A01025'], 'symbol': ['500295'], 'purpose': ['demerger'],
+                         'ex_date': ['2026-04-30']})
+    close, _, f, raw = slim.adjusted_and_raw(vedl(), actions=acts)
+    assert not (f['kind'] == 'demerger').any()
+    assert close.loc['2026-04-29', 'INE205A01025'] == 773.60
+    meta = vedl()[['isin', 'symbol', 'name']]
+    out = price_jumps.jumps(raw, close, f, acts, universe={'INE205A01025'}, meta=meta)
+    assert out['status'].tolist() == ['scheme_not_adjusted'] and out['actions'].item() == 'demerger'
+    rep = price_jumps.report(out, raw)
+    assert rep['in_universe']['scheme_not_adjusted'] == {'moves': 1, 'companies': 1}
+    assert rep['in_universe']['unexplained']['moves'] == 0
+    # Without the filed demerger (the feed as parsed before 20 Nov 2026) the same move is unexplained.
+    out0 = price_jumps.jumps(raw, close, f, None, universe={'INE205A01025'}, meta=meta)
+    assert out0['status'].tolist() == ['unexplained']
+
+
+def test_demerger_with_an_exchange_base_reset_is_applied():
+    # A filed demerger whose ex-date base price the exchange reset (0.36, not a clean ratio): the factor is the
+    # exchange's base over our previous close, applied with basis action_base_price.
+    i = 'INE00000Q011'
+    rows = [_row('2026-01-01', 100, 99, isin=i, sym='Q'), _row('2026-01-02', 37, 36, isin=i, sym='Q'),
+            _row('2026-01-05', 38, 37, isin=i, sym='Q')]
+    acts = pd.DataFrame({'isin': [i], 'purpose': ['demerger'], 'ex_date': ['2026-01-02']})
+    close, _, f, raw = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
+    d = f[f['date'] == '2026-01-02'].iloc[0]
+    assert d['kind'] == 'demerger' and d['kind_basis'] == 'action_base_price' and np.isclose(d['factor'], 0.36)
+    assert np.isclose(close.loc['2026-01-01', i], 36.0)
+    assert price_jumps.jumps(raw, close, f, acts)['status'].tolist() == ['adjusted']
+    assert adjust.coverage(f)['demerger'] == 1
+    # The same reset with no demerger filed is not applied.
+    close0, _, f0, _ = slim.adjusted_and_raw(pd.DataFrame(rows))
+    assert close0.loc['2026-01-01', i] == 100 and (f0['kind'] != 'demerger').all()
+    # A filed demerger whose base price moved while the close did not is not applied either.
+    rows[1] = _row('2026-01-02', 99, 36, isin=i, sym='Q')
+    _, _, f1, _ = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
+    assert (f1['kind'] != 'demerger').all()
+
+
+def test_nse_actions_backfill_goes_month_by_month():
+    from datetime import date
+
+    from collectors.nse_events import run_daily
+
+    class FakeNSE:
+        on_response = None
+
+        def __init__(self):
+            self.calls = []
+
+        def corporate_actions(self, a, b):
+            self.calls.append((a, b))
+            if a.month == 6:
+                return [{'symbol': 'SPLITCO', 'series': 'EQ', 'isin': 'INE000S01019', 'exDate': '05-Jun-2026',
+                         'subject': 'Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 1/- Per Share',
+                         'recDate': '05-Jun-2026', 'faceVal': '10', 'comp': 'Split Co Limited'}]
+            return [{'symbol': 'X', 'series': 'EQ', 'isin': 'INE000X01011', 'subject': 'Interest Payment',
+                     'exDate': '01-Jul-2026'}]
+
+    nse = FakeNSE()
+    df, dropped = run_daily.fetch_actions(nse, date(2026, 7, 24), date(2026, 8, 3), backfill_from=date(2026, 6, 1))
+    assert nse.calls == [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31)),
+                         (date(2026, 8, 1), date(2026, 8, 3))]
+    assert dropped == 2 and df['purpose'].tolist() == ['split']
+    assert (df['face_value_from'].item(), df['face_value_to'].item()) == (10.0, 1.0)
+    nse2 = FakeNSE()
+    run_daily.fetch_actions(nse2, date(2026, 7, 24), date(2026, 8, 3))
+    assert nse2.calls == [(date(2026, 7, 24), date(2026, 8, 3))]
