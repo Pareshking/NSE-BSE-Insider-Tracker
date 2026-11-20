@@ -347,11 +347,13 @@ def heatmap(df: pd.DataFrame, x: str = 'month_label', y: str = 'house', value: s
 # or sold"). HTML like the builders above, so a 390 px phone keeps the full width with no horizontal scroll.
 
 def split_rows(rows: list[tuple[str, float, float]], fmt: Callable[[float], str] = rupees,
-               what: tuple[str, str] = ('bought', 'sold'), note: Callable[[float, float], str] | None = None) -> str:
+               what: tuple[str, str] = ('bought', 'sold'), note: Callable[[float, float], str] | None = None,
+               tight: bool = False) -> str:
     """One bar per group (label, bought, sold): the bar's length is the group's total against the largest group's, green
     for the bought part from the left and red for the sold part after it, both figures written beside the name. So
     which group moved most and which way it leaned read at once. `note(b, s)` adds a muted figure after the two (the
-    net). Rows with nothing either way are left out; '' when no row is left."""
+    net). `tight`: short labels ("5%"), so on a phone the label and the figures share a line over the bar. Rows with
+    nothing either way are left out; '' when no row is left."""
     rows = [(str(lab), max(_finite(b) or 0.0, 0.0), max(_finite(s) or 0.0, 0.0)) for lab, b, s in rows]
     rows = [r for r in rows if r[1] + r[2] > 0]
     if not rows:
@@ -365,7 +367,7 @@ def split_rows(rows: list[tuple[str, float, float]], fmt: Callable[[float], str]
                    f'<span class="down">{esc(fmt(s))} {esc(what[1])}</span>{extra}</span>'
                    f'<span class="cg-srbar"><i class="up" style="width:{b / top * 100:.2f}%"></i>'
                    f'<i class="down" style="width:{s / top * 100:.2f}%"></i></span></div>')
-    return '<div class="cg-srows">' + ''.join(out) + '</div>'
+    return f'<div class="cg-srows{" tight" if tight else ""}">' + ''.join(out) + '</div>'
 
 
 def flow_strip(days: list, values: list, fmt: Callable[[float], str] = lambda v: rupees(v, signed=True)) -> str:
@@ -392,5 +394,13 @@ def flow_strip(days: list, values: list, fmt: Callable[[float], str] = lambda v:
         tip = f'{pd.Timestamp(d):%d %b %Y}: {fmt(v)}'
         cols.append(f'<i class="{"p" if v > 0 else "n"}" title="{esc(tip, quote=True)}" style="left:{i * wd + wd * 0.12:.3f}%;'
                     f'width:{max(wd * 0.76, 0.2):.3f}%;top:{top:.2f}%;height:{ht:.2f}%"></i>')
+    # a short range names every day under its column (the day of the month; a Saturday or Sunday muted)
+    ticks = ''
+    if n <= DAY_TICKS:
+        ticks = '<div class="cg-fdays" style="--n:{}">{}</div>'.format(n, ''.join(
+            f'<span class="{"we" if pd.Timestamp(d).dayofweek >= 5 else ""}">{pd.Timestamp(d):%d}</span>' for d in days))
     return (f'<div class="cg-flow"><div class="cg-fplot"><i class="z" style="top:{zero:.2f}%"></i>{"".join(cols)}</div>'
-            f'<div class="cg-faxis"><span>{pd.Timestamp(days[0]):%d %b}</span><span>{pd.Timestamp(days[-1]):%d %b %Y}</span></div></div>')
+            f'{ticks}<div class="cg-faxis"><span>{pd.Timestamp(days[0]):%d %b}</span><span>{pd.Timestamp(days[-1]):%d %b %Y}</span></div></div>')
+
+
+DAY_TICKS = 31   # flow_strip writes each day's date under its column up to a month

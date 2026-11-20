@@ -704,7 +704,8 @@ def _deal_glance(d, r: dates.Range, names) -> None:
         out.append('<h3>Net bought or sold, by company <span>bought less sold in the deals'
                    + (f' · the 15 largest of {n}' if n > 15 else '') + '</span></h3>' + bars
                    + '<p class="chart-cap">Only the clients the exchange names are in a deal list, so a block sold to many small buyers '
-                   'reads as net selling.</p>')
+                   'reads as net selling, and a block whose buyers are all named nets out (the largest blocks are in the answers '
+                   'above and the list below).</p>')
     st.html(''.join(out) + '</div>')
 
 
@@ -823,7 +824,7 @@ def _stake_glance(sa, r: dates.Range, names) -> None:
     cnt = page_charts.crossing_counts(mv, THRESHOLDS)
     hit = cnt[(cnt['up'] + cnt['down']) > 0]
     tally = charts.split_rows([(f'{t}%', u, dn) for t, u, dn in zip(hit['threshold'], hit['up'], hit['down'])],
-                              fmt=lambda v: f'{int(v):,}', what=('crossed up', 'fell below')) if len(hit) else ''
+                              fmt=lambda v: f'{int(v):,}', what=('crossed up', 'fell below'), tight=True) if len(hit) else ''
     up, dn = int((mv['moved'] > 0).sum()), int((mv['moved'] < 0).sum())
     out = [f'<div class="cg-glance"><h2 class="dt-h2">Up or down? <span>SAST Reg 29 · {esc(dates.describe(r))}</span></h2>',
            charts.split_bar(up, dn, fmt=lambda v: f'{int(v):,} filings', what=('Raised a stake', 'Cut a stake'))]

@@ -133,3 +133,12 @@ def test_stake_moves_leave_out_inter_se_small_and_held_back_rows():
     assert mv['before'].tolist() == [5.0, 51.0] and mv['promoter'].tolist() == [False, True]
     c = P.crossing_counts(mv, (5, 10, 50)).set_index('threshold')
     assert c.loc[5, 'up'] == 0 and c.loc[50, 'down'] == 1   # 5.0 -> 7.5 starts at the line, it does not go through it
+
+
+def test_flow_strip_names_each_day_in_a_short_range_only():
+    week = list(pd.date_range('2026-11-12', periods=7))   # Thu to Wed: 14 and 15 Nov are the weekend
+    html = charts.flow_strip(week, [1e7] * 7)
+    assert 'cg-fdays' in html and '<span class="we">14</span>' in html and '<span class="">12</span>' in html
+    year = list(pd.date_range('2026-01-01', periods=60))
+    assert 'cg-fdays' not in charts.flow_strip(year, [1e7] * 60)
+    assert 'cg-srows tight' in charts.split_rows([('5%', 3, 1)], fmt=str, tight=True)
