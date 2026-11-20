@@ -65,7 +65,7 @@ jobs:
           python -u scripts/mf_portfolios.py $args | tee mf.log
       - name: Store raw responses (write-once)
         if: always()
-        run: python scripts/raw_flush.py
+        run: python scripts/raw_flush.py --workers 16   # our own bucket, as mf-portfolios.yml
       - name: Summary
         if: always()
         run: |
