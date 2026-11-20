@@ -1,0 +1,73 @@
+name: Mutual fund portfolios (own runner)
+
+# The fund houses that refuse GitHub's runners (collectors/mf_portfolios/houses.py RUNNER_BLOCKED: Angel One, WhiteOak,
+# Edelweiss, Bajaj) and Union (INDIA_ONLY), collected on a self-hosted runner with the label 'mf': the owner's own
+# computer or a small machine in India. Same script, same write-once raw store and archive as mf-portfolios.yml; a
+# normal visit from an address the house serves, nothing worked around. Runs a quarter of an hour after the
+# GitHub-hosted collection, the same days (SEBI: published by the 10th).
+on:
+  schedule:
+    - cron: '47 4 11-16 * *'
+  workflow_dispatch:
+    inputs:
+      months:
+        description: 'Months, space-separated (2026-09 2026-10) or a range (2025-10..2026-10); blank = the last 2 published'
+        required: false
+        default: ''
+      houses:
+        description: 'House keys; blank = angelone whiteoak edelweiss bajaj union'
+        required: false
+        default: ''
+      schemes:
+        description: 'Archive scheme by scheme every archived house-month not yet'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-archive-writes
+  cancel-in-progress: false
+
+jobs:
+  portfolios:
+    # A machine of the owner's (Settings > Actions > Runners > New self-hosted runner, label 'mf'): the houses below
+    # refuse GitHub's own runners by address (20 Nov 2026), and Union refuses any machine outside India.
+    runs-on: [self-hosted, mf]
+    timeout-minutes: ${{ inputs.schemes && 330 || 120 }}   # a scheme backfill re-reads every house-month (19 Nov 2026: 120 cut it off; it resumes where it stopped)
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt playwright
+      - run: python -m playwright install chromium
+      - name: Portfolios
+        env:
+          MONTHS: ${{ inputs.months }}
+          HOUSES: ${{ inputs.houses || 'angelone whiteoak edelweiss bajaj union' }}
+          SCHEMES: ${{ inputs.schemes }}
+        run: |
+          args=""
+          if [ "$SCHEMES" = "true" ]; then args="--schemes"; fi
+          if [ -z "$MONTHS" ]; then args="$args --latest 2"; else
+            for m in $(python scripts/mf_portfolios.py --expand "$MONTHS"); do args="$args --month $m"; done
+          fi
+          for h in $HOUSES; do args="$args --house $h"; done
+          python -u scripts/mf_portfolios.py $args | tee mf.log
+      - name: Store raw responses (write-once)
+        if: always()
+        run: python scripts/raw_flush.py
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Mutual fund portfolios' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' mf.log >> "$GITHUB_STEP_SUMMARY" || true
