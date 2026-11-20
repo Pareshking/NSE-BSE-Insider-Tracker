@@ -76,7 +76,7 @@ class RawCapture:
 
 def _save(rows: list, columns, path: Path | None):
     if path is not None:
-        pd.DataFrame(rows, columns=columns).to_parquet(path, index=False)
+        pd.DataFrame(rows, columns=columns).to_parquet(path, index=False, compression='zstd')
 
 
 def nse_warm(nse: NSEClient, host: str, symbol: str | None):

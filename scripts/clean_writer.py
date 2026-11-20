@@ -95,7 +95,7 @@ def put(client, key, body: bytes, content_type: str):
 
 def put_parquet(client, key, df: pd.DataFrame):
     buf = io.BytesIO()
-    df.to_parquet(buf, index=False)
+    df.to_parquet(buf, index=False, compression='zstd')
     put(client, key, buf.getvalue(), 'application/octet-stream')
 
 
