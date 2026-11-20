@@ -232,5 +232,10 @@ INDIA_ONLY = [
           needs_india_runner=True),
 ]
 
+# Being checked on a runner (mf-probe.yml dry run) before it joins HOUSES: read by hand with --house.
+TRYING = [
+    House('kotak', 'Kotak Mahindra Mutual Fund', apis2.KOTAK, api=apis2.kotak),
+]
+
 HOUSES = HOUSES + PENSION
-BY_KEY = {h.key: h for h in HOUSES + RUNNER_BLOCKED + INDIA_ONLY}
+BY_KEY = {h.key: h for h in HOUSES + RUNNER_BLOCKED + INDIA_ONLY + TRYING}

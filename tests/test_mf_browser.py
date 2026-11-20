@@ -108,3 +108,18 @@ def test_real_playwright_reader_beside_collector(monkeypatch):
 def test_refusal_hint():
     assert find.refused_hint('cloudflare', '<html><title>Just a\n moment...</title>') == 'server cloudflare, title "Just a moment..."'
     assert find.refused_hint(None, '') == 'server ?'
+
+
+def test_add_up_detail_names_a_file_read_twice():
+    """What differs when scheme rows do not add up (HDFC 2025-12, run 44654006211): a file read twice doubles every
+    ISIN of its scheme; the detail says so rather than forcing the rows in."""
+    import pandas as pd
+
+    import mf_portfolios as mp
+    sc = pd.DataFrame({'scheme_key': ['a', 'a', 'b'], 'isin': ['INE1', 'INE2', 'INE3'], 'shares': [20.0, 10.0, 5.0]})
+    hold = pd.DataFrame({'isin': ['INE1', 'INE2', 'INE4'], 'shares': [10.0, 10.0, 7.0]})
+    d = mp.add_up_detail(sc, hold, ['https://x/2026-01/A.xlsx', 'https://x/2026-02/A.xlsx', 'https://x/2026-01/B.xlsx'])
+    assert d['only_schemes'] == 1 and d['only_house'] == 1 and d['both_differ'] == 1
+    assert d['ratio_median'] == 2.0 and d['whole_multiple'] == 1
+    assert d['files'] == 3 and d['file_names_twice'] == 1
+    assert mp.add_up(sc, hold) == 3
