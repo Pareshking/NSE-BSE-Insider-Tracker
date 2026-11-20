@@ -39,7 +39,11 @@ def capture(source: str, dataset: str, body, *, url: str, params: dict | None = 
         meta = {'source': source, 'dataset': dataset, 'url': url, 'params': params or {}, 'status': status,
                 'content_type': content_type, 'fetched_at_utc': now.isoformat(), 'sha256': digest,
                 'bytes': len(data), 'covers': covers or {}}
-        (DIR / f'{name}.json').write_text(json.dumps(meta, sort_keys=True))
+        # the .json last and renamed into place: a flush running while the collector still captures
+        # (scripts/industry.py) lists *.json, so it never sees a half-written record or a record without its body
+        tmp = DIR / f'{name}.json.part'
+        tmp.write_text(json.dumps(meta, sort_keys=True))
+        os.replace(tmp, DIR / f'{name}.json')
         return name
     except Exception as e:  # noqa: BLE001
         _failures += 1

@@ -10,6 +10,12 @@ name: Industry classification (NSE + BSE, four levels)
 # r2-archive-writes group, for a minute or two. A full run in the group would hold the nightly R2 Storage Write
 # for hours.
 #
+# Saved as it goes: the fetch stores its raw captures and a checkpoint of its answers (staging/industry/{run}/) in R2
+# every 200 answers or 10 minutes, without the lock (raw is write-once, the staging key is the run's own). 19 and
+# 20 Nov 2026 two full runs lost everything when the end-of-run flush was cancelled. The next run skips what any
+# earlier run answered, so runs that are each cut off converge; the build reads the archive, every checkpoint, and
+# (when neither exists) the answers already in raw_v2/.
+#
 # First run: Run workflow with `full` ticked (every symbol and scrip due, up to 5.5 hours). Nightly after that.
 # On a pull request that touches the collector: a probe of a few symbols on both exchanges, printed, nothing stored.
 on:
@@ -30,6 +36,11 @@ on:
         description: 'Comma list of nse, bse'
         required: false
         default: 'nse,bse'
+      build_only:
+        description: 'Ask no exchange: rebuild the table from what R2 holds (archive, checkpoints, raw)'
+        type: boolean
+        required: false
+        default: false
   pull_request:
     paths:
       - 'scripts/industry.py'
@@ -63,7 +74,7 @@ jobs:
           retention-days: 7
 
   fetch:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !inputs.build_only
     runs-on: ubuntu-latest
     timeout-minutes: ${{ inputs.full && 350 || 100 }}
     env:
@@ -92,10 +103,11 @@ jobs:
           if [ "$FULL" = "true" ]; then args=(--limit 0 --minutes 290); else args=(--limit "${LIMIT:-400}" --minutes 75); fi
           mkdir -p artifacts
           python -u scripts/industry.py fetch --out artifacts/industry --sources "$SOURCES" "${args[@]}" | tee artifacts/industry_fetch.log
-      # raw_v2 is write-once and named by content, so this needs no lock (thousands of objects on a full run)
+      # raw_v2 is write-once and named by content, so this needs no lock. The fetch has stored all but its last few
+      # minutes already; this catches what a fetch killed mid-way left on disk.
       - name: Store raw responses (write-once)
         if: always()
-        run: python scripts/raw_flush.py
+        run: python scripts/raw_flush.py --workers 16
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,9 +119,9 @@ jobs:
 
   build:
     needs: fetch
-    if: always() && needs.fetch.result != 'skipped'
+    if: always() && github.event_name != 'pull_request' && (needs.fetch.result != 'skipped' || inputs.build_only)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45   # the first build after 19-20 Nov 2026 parses the answers in raw_v2/ (thousands of objects)
     concurrency:
       group: r2-archive-writes
       cancel-in-progress: false
@@ -126,7 +138,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - uses: actions/download-artifact@v4
-        continue-on-error: true   # a fetch that died before its upload: rebuild from the archive alone
+        continue-on-error: true   # a fetch that died before its upload: its checkpoints in R2 stand in
         with:
           name: industry-fetch
           path: artifacts/

@@ -19,6 +19,7 @@ NSE wins when both exchanges classify an ISIN. Nothing is inferred between level
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -94,6 +95,46 @@ def parse_bse_list(payload) -> pd.DataFrame:
             out.append({'bse_code': code, 'isin': isin, 'bse_symbol': _v(r.get('scrip_id')),
                         'name': _v(r.get('Scrip_Name')), 'bse_group': _v(r.get('GROUP'))})
     return pd.DataFrame(out, columns=['bse_code', 'isin', 'bse_symbol', 'name', 'bse_group']).drop_duplicates('bse_code')
+
+
+# raw_v2 datasets that hold the answers (scripts/industry.py stores every answer there, write-once)
+RAW_DATASETS = {'nse': ('nse', 'quote_equity'), 'bse': ('bse', 'comheadernew')}
+
+
+def _key_from_url(url: str, name: str) -> str | None:
+    from urllib.parse import parse_qs, urlsplit
+    vals = parse_qs(urlsplit(url or '').query).get(name)
+    return vals[0] if vals else None
+
+
+def parse_raw(exchange: str, record: dict, body: bytes | None) -> dict | None:
+    """One raw_v2 fetch record and the bytes it names -> an archive row (with fetched_at), the same row the fetch
+    made when the answer arrived; None when the record is not an answer for one symbol or scrip (not HTTP 200, no
+    symbol, or the bytes are missing). Used to rebuild archive/industry/ from raw after a run that was cut off before
+    its answers reached the archive (19 and 20 Nov 2026)."""
+    if not isinstance(record, dict) or body is None or int(record.get('http_status') or 0) != 200:
+        return None
+    covers = record.get('covers') if isinstance(record.get('covers'), dict) else {}
+    params = record.get('params') if isinstance(record.get('params'), dict) else {}
+    try:
+        payload = json.loads(body.decode('utf-8', errors='replace'))
+    except ValueError:
+        payload = None   # an HTML page where JSON was due: the fetch recorded it as `error` too
+    if exchange == 'nse':
+        if '/api/quote-equity' not in str(record.get('url') or ''):
+            return None
+        key = _v(covers.get('symbol')) or _v(_key_from_url(record.get('url'), 'symbol'))
+        row = parse_nse(payload, key) if key else None
+    else:
+        key = _v(covers.get('scripcode')) or _v(params.get('scripcode')) or _v(_key_from_url(record.get('url'), 'scripcode'))
+        row = parse_bse(payload, key) if key else None
+    if row is None:
+        return None
+    at = pd.to_datetime(record.get('fetched_at_utc'), errors='coerce', utc=True)
+    if pd.isna(at):
+        return None
+    row['fetched_at'] = at.tz_convert(None).to_pydatetime()
+    return row
 
 
 def due(keys, archive: pd.DataFrame | None, key: str, now: datetime, limit: int | None,

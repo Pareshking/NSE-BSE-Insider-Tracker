@@ -655,7 +655,13 @@ ISIN, so pages can filter by industry. `scripts/industry.py`, parsers in `inside
 ticked for the first run). Raw answers in `raw_v2/nse/quote_equity/`, `raw_v2/bse/comheadernew/`,
 `raw_v2/bse/scrip_list/`; the latest answer per symbol in `archive/industry/{nse,bse}.parquet` (with `status`:
 `ok`, `no_industry`, `not_found`, `error`, and `fetched_at`). An answer is fetched again after 30 days (`ok`) or 7
-(anything else); a symbol never fetched comes first.
+(anything else); a symbol never fetched comes first. While it runs, the fetch stores its raw answers and a
+checkpoint of its answers so far, `staging/industry/{run}/{nse,bse}.parquet`, every 200 answers or 10 minutes (no
+lock: raw is write-once, the key is the run's own); the next fetch skips what any checkpoint or the archive holds, and
+the build merges every checkpoint into the archive (deleting checkpoints older than two days). With neither an archive
+nor a checkpoint, both re-read the answers already in `raw_v2/` (19 and 20 Nov 2026: two full runs were cancelled
+during their end-of-run flush and the table fell back to the VR export alone). `build_only` rebuilds without asking
+an exchange.
 
 | Source (`source`) | Where | Levels |
 |---|---|---|

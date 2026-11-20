@@ -14,13 +14,22 @@ their age (an `ok` after 30 days, anything else after 7), at most `--limit` per 
 BSE is asked first for scrips NSE cannot cover (no NSE symbol for the ISIN, or NSE gave no classification), then for
 the rest: NSE refused its quote API from GitHub's runners on 19 Nov 2026 (HTTP 403 on www.nseindia.com and
 www.nseindia.in), so until it answers BSE's classification stands for every company. NSE wins whenever it has one. NSE and BSE run side by side, each at its own client's pace (NSE 3-5 s a call, BSE 4-6 s); a refusal
-(401/403/429) stops that exchange for the run. New answers go to DIR/{nse,bse}.parquet, rewritten every 25 answers
-so a stopped run keeps what it read.
+(401/403/429) stops that exchange for the run. New answers go to DIR/{nse,bse}.parquet, rewritten every 25 answers.
 
-`build` lays DIR's answers over archive/industry/ (the later answer for a symbol wins), writes the archive back,
-and rebuilds clean/current/industry.parquet (NSE, else BSE, else the VR export, labelled in `source`) and
-clean/reports/industry/{date}.json. It is the only step that writes archive/ and clean/, so the workflow runs it
-alone in the r2-archive-writes group; `fetch` (hours on a full run) holds no lock.
+Saved as it goes (19 and 20 Nov 2026 two full runs lost every answer: the raw flush and the artifact upload ran only
+at the end, and the timeout cancelled them): every 200 answers or 10 minutes the fetch stores its raw captures so far
+in raw_v2/ (16 side by side) and this run's answers in staging/industry/{run}/{nse,bse}.parquet. Neither needs the
+r2-archive-writes lock (raw is write-once and named by content; the staging key is the run's own).
+
+Resumes: what is due is decided against the archive with every run's checkpoint laid over it, so repeated runs that
+are each cut off converge. When R2 holds neither an archive nor a checkpoint for an exchange, the answers already in
+raw_v2/ (nse/quote_equity, bse/comheadernew) are parsed again first.
+
+`build` lays all of that (archive, every checkpoint, raw when neither exists, DIR if given) together (the later
+answer for a symbol wins), writes the archive back, and rebuilds clean/current/industry.parquet (NSE, else BSE, else
+the VR export, labelled in `source`) and clean/reports/industry/{date}.json, then deletes checkpoints older than two
+days. It is the only step that writes archive/ and clean/, so the workflow runs it alone in the r2-archive-writes
+group; `fetch` (hours on a full run) holds no lock.
 """
 from __future__ import annotations
 
@@ -56,7 +65,13 @@ CLEAN_KEY = 'clean/current/industry.parquet'
 SECURITIES_KEY = 'clean/current/securities.parquet'
 VR_PATH = ROOT / 'reference_data' / 'security_master_20260901.csv'
 IST = timezone(timedelta(hours=5, minutes=30))
-CHECKPOINT = 25
+CHECKPOINT = 25          # the local folder (the run's artifact) is rewritten every this many answers
+STAGING_PREFIX = 'staging/industry/'   # {run}/{nse,bse}.parquet: each run's answers so far (Saver), read by the build
+SAVE_EVERY = 200         # answers between two pushes to R2 while fetching
+SAVE_MINUTES = 10        # ... or minutes, whichever comes first
+FLUSH_WORKERS = 16       # raw captures stored side by side
+STAGING_KEEP_DAYS = 2    # a checkpoint older than this is deleted by the build once merged (a run lasts < 6 hours)
+EXCHANGES = (('nse', I.NSE_ARCHIVE_COLUMNS, 'nse_symbol'), ('bse', I.BSE_ARCHIVE_COLUMNS, 'bse_code'))
 STOP_AFTER_ERRORS = 10   # unreadable answers in a row: the exchange is sending something else; stop it
 
 
@@ -76,7 +91,7 @@ class RawCapture:
 
 def _save(rows: list, columns, path: Path | None):
     if path is not None:
-        pd.DataFrame(rows, columns=columns).to_parquet(path, index=False, compression='zstd')
+        pd.DataFrame(list(rows), columns=columns).to_parquet(path, index=False, compression='zstd')
 
 
 def nse_warm(nse: NSEClient, host: str, symbol: str | None):
@@ -91,7 +106,8 @@ def nse_warm(nse: NSEClient, host: str, symbol: str | None):
 
 
 def fetch_nse(symbols, report: dict, deadline: float, out: Path | None = None, nse: NSEClient | None = None,
-              echo: bool = False, host: str | None = None, key: str = 'nse') -> pd.DataFrame:
+              echo: bool = False, host: str | None = None, key: str = 'nse', rows: list | None = None) -> pd.DataFrame:
+    """`rows`: the list the answers are appended to as they arrive (fetch's Saver reads it while this runs)."""
     host = host or NSE_HOST
     nse = nse or NSEClient()
     if symbols and not nse._warm:
@@ -104,7 +120,8 @@ def fetch_nse(symbols, report: dict, deadline: float, out: Path | None = None, n
         if echo:
             print(f'--- {url} ({len(r.content)} bytes)\n{r.text[:3000]}')
     nse.on_response = hook
-    rows, errors, rep = [], 0, report.setdefault(key, {'asked': len(symbols)})
+    rows = [] if rows is None else rows
+    errors, rep = 0, report.setdefault(key, {'asked': len(symbols)})
     rep['host'] = host
     for n, sym in enumerate(symbols):
         if time.monotonic() > deadline:
@@ -130,7 +147,7 @@ def fetch_nse(symbols, report: dict, deadline: float, out: Path | None = None, n
         if len(rows) % CHECKPOINT == 0:
             _save(rows, I.NSE_ARCHIVE_COLUMNS, out)
     _save(rows, I.NSE_ARCHIVE_COLUMNS, out)
-    df = pd.DataFrame(rows, columns=I.NSE_ARCHIVE_COLUMNS)
+    df = pd.DataFrame(list(rows), columns=I.NSE_ARCHIVE_COLUMNS)
     rep.update(fetched=int(len(df)), calls=nse.calls, status=df['status'].value_counts().to_dict())
     return df
 
@@ -148,9 +165,10 @@ def bse_list(bse: BSEClient, report: dict) -> pd.DataFrame:
 
 
 def fetch_bse(codes, report: dict, deadline: float, out: Path | None = None, bse: BSEClient | None = None,
-              echo: bool = False) -> pd.DataFrame:
+              echo: bool = False, rows: list | None = None) -> pd.DataFrame:
     bse = bse or BSEClient(raw=RawCapture())
-    rows, errors, rep = [], 0, report.setdefault('bse', {})
+    rows = [] if rows is None else rows
+    errors, rep = 0, report.setdefault('bse', {})
     rep['asked'] = len(codes)
     for n, code in enumerate(codes):
         if time.monotonic() > deadline:
@@ -180,7 +198,7 @@ def fetch_bse(codes, report: dict, deadline: float, out: Path | None = None, bse
         if len(rows) % CHECKPOINT == 0:
             _save(rows, I.BSE_ARCHIVE_COLUMNS, out)
     _save(rows, I.BSE_ARCHIVE_COLUMNS, out)
-    df = pd.DataFrame(rows, columns=I.BSE_ARCHIVE_COLUMNS)
+    df = pd.DataFrame(list(rows), columns=I.BSE_ARCHIVE_COLUMNS)
     rep.update(fetched=int(len(df)), calls=bse.calls, via=bse.via, status=df['status'].value_counts().to_dict())
     return df
 
@@ -224,25 +242,207 @@ def bse_due(scrips: pd.DataFrame, sec, nse_archive, bse_archive, now, limit) -> 
     return todo if limit is None else todo[:max(0, int(limit))]
 
 
+# ---- what is already on file: archive, staging checkpoints, raw ---------------------------------
+
+def run_name() -> str:
+    """The run's own staging folder: GitHub's run id and attempt, else the UTC time."""
+    rid = os.environ.get('GITHUB_RUN_ID', '').strip()
+    if rid:
+        return f"{rid}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1').strip() or '1'}"
+    return now_utc().strftime('local-%Y%m%dT%H%M%S')
+
+
+def staging_objects(r2) -> list[dict]:
+    """[{'Key', 'LastModified'?}] under staging/industry/ (LastModified absent in the test double)."""
+    from clean_writer import BUCKET
+    out, token = [], None
+    while True:
+        kw = {'Bucket': BUCKET, 'Prefix': STAGING_PREFIX}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        out += resp.get('Contents', [])
+        if not resp.get('IsTruncated'):
+            return out
+        token = resp['NextContinuationToken']
+
+
+def read_staging(r2, report: dict | None = None) -> dict:
+    """Every run's checkpoint (staging/industry/{run}/{nse,bse}.parquet), merged per exchange: the later answer for a
+    symbol wins. {'nse': df|None, 'bse': df|None}."""
+    from clean_writer import read_parquet
+    objs = [o for o in staging_objects(r2) if o['Key'].endswith(('/nse.parquet', '/bse.parquet'))]
+    frames = {'nse': [], 'bse': []}
+    for o in objs:
+        df = read_parquet(r2, o['Key'])
+        if df is not None and not df.empty:
+            frames[o['Key'].rsplit('/', 1)[1].split('.')[0]].append(df)
+    out = {k: I.merge(None, pd.concat(frames[k], ignore_index=True), key, cols) if frames[k] else None
+           for k, cols, key in EXCHANGES}
+    if report is not None:
+        report['staging'] = {'objects': len(objs), **{k: 0 if v is None else int(len(v)) for k, v in out.items()}}
+    return out
+
+
+def answers_from_raw(r2, exchange: str, workers: int = FLUSH_WORKERS, report: dict | None = None) -> pd.DataFrame:
+    """Every industry answer kept in raw_v2/ (write-once, from every run that reached its raw flush, even one cut off
+    halfway: 19 and 20 Nov 2026), parsed again exactly as the fetch parsed it, the later answer per symbol kept."""
+    import gzip
+    from concurrent.futures import ThreadPoolExecutor
+
+    from clean_writer import get, get_blob, list_keys
+    src, ds = I.RAW_DATASETS[exchange]
+    cols, key = {k: (c, kk) for k, c, kk in EXCHANGES}[exchange]
+    keys = [k for k in list_keys(r2, f'raw_v2/{src}/{ds}/fetches/') if k.endswith('.json')]
+    blobs: dict[str, bytes | None] = {}
+
+    def one(k):
+        try:
+            rec = json.loads(get(r2, k) or b'null')
+            bk = rec.get('blob_key') if isinstance(rec, dict) else None
+            if not bk:
+                return None, 'no record'
+            if bk not in blobs:
+                packed = get(r2, bk + '.gz') if rec.get('stored_as') == 'gzip' else None
+                blobs[bk] = gzip.decompress(packed) if packed is not None else get_blob(r2, bk)
+            row = I.parse_raw(exchange, rec, blobs[bk])
+            return row, None if row is not None else 'not an answer'
+        except Exception as exc:  # noqa: BLE001 -- one unreadable record is counted, not fatal
+            return None, f'unreadable ({type(exc).__name__})'
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        results = list(pool.map(one, keys))
+    rows = [r for r, _ in results if r is not None]
+    skipped: dict[str, int] = {}
+    for _, why in results:
+        if why:
+            skipped[why] = skipped.get(why, 0) + 1
+    df = I.merge(None, pd.DataFrame(rows, columns=cols), key, cols) if rows else pd.DataFrame(columns=cols)
+    if report is not None:
+        days: dict[str, int] = {}
+        for k in keys:
+            d = k.split('/fetches/')[1][:10]
+            days[d] = days.get(d, 0) + 1
+        report.setdefault('raw', {})[exchange] = {
+            'fetch_records': len(keys), 'answers': len(rows), 'skipped': skipped, 'fetch_days': days,
+            'symbols': int(len(df)), 'status': df['status'].value_counts().to_dict() if len(df) else {}}
+    return df
+
+
+def on_file(r2, report: dict, workers: int = FLUSH_WORKERS) -> tuple[dict, dict, dict]:
+    """What R2 already holds per exchange: (archive, staging, from raw). Raw is parsed only for an exchange with
+    neither an archive nor a checkpoint (the first run after 19-20 Nov 2026's lost runs)."""
+    from clean_writer import read_parquet
+    arch = {k: read_parquet(r2, ARCHIVE[k]) for k in ARCHIVE}
+    for k, a in arch.items():
+        report[f'{k}_archive_rows'] = 0 if a is None else int(len(a))
+    staged = read_staging(r2, report)
+    raw = {}
+    for k, _, _ in EXCHANGES:
+        nothing = (arch[k] is None or arch[k].empty) and (staged[k] is None or staged[k].empty)
+        raw[k] = answers_from_raw(r2, k, workers, report) if nothing else None
+    return arch, staged, raw
+
+
+def known_answers(arch: dict, *layers: dict) -> dict:
+    """The archive with the checkpoints, raw and a local fetch folder laid over it (the later answer wins)."""
+    out = {}
+    for k, cols, key in EXCHANGES:
+        new = [d.get(k) for d in layers if d.get(k) is not None and not d.get(k).empty]
+        out[k] = I.merge(arch.get(k), pd.concat(new, ignore_index=True) if new else None, key, cols)
+    return out
+
+
+class Saver:
+    """Pushes a running fetch to R2 as it goes, so a run cut off by its timeout or a cancel keeps its work (19 and 20
+    Nov 2026 lost every answer: the raw flush and the artifact upload ran only at the end). Every `every` new answers
+    or `minutes` minutes: the raw captures so far go to raw_v2/ (write-once, `workers` side by side), then every answer
+    of this run to staging/industry/{run}/{nse,bse}.parquet, which the build and the next fetch read. Neither write
+    needs the r2-archive-writes lock: raw is write-once and named by content, and the staging key is this run's own.
+    A failed save is counted and tried again at the next one; it never stops the fetch."""
+
+    def __init__(self, r2, run: str, live: dict | None = None, every: int = SAVE_EVERY,
+                 minutes: float = SAVE_MINUTES, workers: int = FLUSH_WORKERS, raw_dir: Path | None = None,
+                 clock=time.monotonic):
+        self.r2, self.run, self.live, self.every, self.seconds = r2, run, live or {}, every, minutes * 60
+        self.workers, self.raw_dir, self.clock = workers, raw_dir, clock
+        self.saved_answers, self.last = 0, clock()
+        self.stats = {'saves': 0, 'failed_saves': 0, 'raw_stored': 0, 'raw_left': 0, 'errors': []}
+
+    def answers(self) -> int:
+        return sum(len(v) for v in self.live.values())
+
+    def due(self) -> bool:
+        n = self.answers()
+        return n > self.saved_answers and (n - self.saved_answers >= self.every or
+                                           self.clock() - self.last >= self.seconds)
+
+    def key(self, exchange: str) -> str:
+        return f'{STAGING_PREFIX}{self.run}/{exchange}.parquet'
+
+    def save(self, report: dict | None = None) -> dict:
+        import raw_capture
+        import raw_flush
+        from clean_writer import BUCKET, put, put_parquet
+        n = self.answers()
+        try:
+            res = raw_flush.flush(self.r2, self.raw_dir or raw_capture.DIR, bucket=BUCKET, commit_label='industry',
+                                  workers=self.workers)
+            self.stats['raw_stored'] += res['stored']
+            self.stats['raw_left'] = res['failed']   # still on disk, tried again at the next save
+            if res['errors']:
+                self.stats['errors'] = (self.stats['errors'] + res['errors'][:2])[-5:]
+            for k, cols, _ in EXCHANGES:
+                rows = list(self.live.get(k) or [])
+                if rows:
+                    put_parquet(self.r2, self.key(k), pd.DataFrame(rows, columns=cols))
+            if report is not None:
+                try:   # the fetch threads may be adding to it right now: skipped this time, written at the next save
+                    text = json.dumps(report, indent=2, default=str)
+                except RuntimeError:
+                    text = None
+                if text is not None:
+                    put(self.r2, f'{STAGING_PREFIX}{self.run}/fetch_report.json', text.encode(), 'application/json')
+            self.stats['saves'] += 1
+            self.saved_answers = n
+        except Exception as exc:  # noqa: BLE001
+            self.stats['failed_saves'] += 1
+            self.stats['errors'] = (self.stats['errors'] + [f'{type(exc).__name__}: {str(exc)[:160]}'])[-5:]
+        self.last = self.clock()
+        print(f'saved {n} answers to R2: {json.dumps(self.stats, default=str)}', flush=True)
+        return self.stats
+
+
 # ---- runs -------------------------------------------------------------------------------------
 
 def fetch(r2, out: Path, sources, limit: int | None, minutes: float, report: dict,
-          nse: NSEClient | None = None, bse: BSEClient | None = None) -> dict:
-    from clean_writer import read_parquet
+          nse: NSEClient | None = None, bse: BSEClient | None = None, saver: Saver | None = None,
+          run: str | None = None) -> dict:
+    """Resumes: what is due is decided against the archive with every run's checkpoint laid over it (and, when R2 has
+    neither, the answers in raw_v2/), so a run cut off halfway is taken up where it stopped by the next one."""
+    from clean_writer import put_parquet, read_parquet
     out.mkdir(parents=True, exist_ok=True)
     now = now_utc()
     deadline = time.monotonic() + minutes * 60
+    run = run or run_name()
+    report['run'] = run
     sec = read_parquet(r2, SECURITIES_KEY)
-    arch = {k: read_parquet(r2, v) for k, v in ARCHIVE.items()}
     report['securities_rows'] = None if sec is None else int(len(sec))
-    for k, a in arch.items():
-        report[f'{k}_archive_rows'] = 0 if a is None else int(len(a))
+    arch, staged, raw = on_file(r2, report)
+    for k, df in raw.items():   # rebuilt from raw: kept as a checkpoint, so neither the build nor the next run redoes it
+        if df is not None and not df.empty:
+            put_parquet(r2, f'{STAGING_PREFIX}{run}-raw/{k}.parquet', df)
+    known = known_answers(arch, staged, raw)
+    report['known_answers'] = {k: int(len(v)) for k, v in known.items()}
+    live = {'nse': [], 'bse': []}
+    saver = saver if saver is not None else Saver(r2, run)
+    saver.live = live
     threads = []
     if 'nse' in sources:
-        todo = nse_due(sec, arch['nse'], now, limit)
+        todo = nse_due(sec, known['nse'], now, limit)
         report['nse'] = {'due': len(todo)}
         report['nse']['asked'] = len(todo)
-        threads.append(threading.Thread(target=fetch_nse, args=(todo, report, deadline, out / 'nse.parquet', nse)))
+        threads.append(threading.Thread(target=fetch_nse, args=(todo, report, deadline, out / 'nse.parquet', nse),
+                                        kwargs={'rows': live['nse']}))
     if 'bse' in sources:
         def run_bse():
             client = bse or BSEClient(raw=RawCapture())
@@ -251,35 +451,43 @@ def fetch(r2, out: Path, sources, limit: int | None, minutes: float, report: dic
             except Exception as exc:  # noqa: BLE001 -- no list, no BSE this run
                 report.setdefault('bse', {})['stopped'] = f'scrip list not fetched ({type(exc).__name__}: {exc})'
                 return
-            todo = bse_due(scrips, sec, arch['nse'], arch['bse'], now, limit)
+            todo = bse_due(scrips, sec, known['nse'], known['bse'], now, limit)
             report['bse']['due'] = len(todo)
             try:
-                fetch_bse(todo, report, deadline, out / 'bse.parquet', client)
+                fetch_bse(todo, report, deadline, out / 'bse.parquet', client, rows=live['bse'])
             finally:
                 client.close()
         threads.append(threading.Thread(target=run_bse))
     for t in threads:
         t.start()
-    for t in threads:
-        t.join()
+    while any(t.is_alive() for t in threads):
+        for t in threads:
+            t.join(timeout=2)
+        if saver.due():
+            saver.save(report)
+    report['saves'] = saver.save(report)
     (out / 'fetch_report.json').write_text(json.dumps(report, indent=2, default=str))
     return report
 
 
 def build(r2, src: Path | None, day, report: dict, dry_run: bool = False) -> dict:
-    from clean_writer import put, put_parquet, read_parquet
-    merged = {}
-    for k, cols, key in (('nse', I.NSE_ARCHIVE_COLUMNS, 'nse_symbol'), ('bse', I.BSE_ARCHIVE_COLUMNS, 'bse_code')):
-        new = None
+    """Rebuilds from everything already in R2 (the archive, every run's checkpoint, and raw_v2/ when neither exists)
+    plus a local fetch folder if there is one. Writes the archive back, then clean/; checkpoints older than
+    STAGING_KEEP_DAYS (their runs long over, their answers now in the archive) are deleted after that."""
+    from clean_writer import BUCKET, put, put_parquet, read_parquet
+    local = {}
+    for k in ARCHIVE:
         f = src / f'{k}.parquet' if src is not None else None
-        if f is not None and f.exists():
-            new = pd.read_parquet(f)
-        old = read_parquet(r2, ARCHIVE[k])
-        merged[k] = I.merge(old, new, key, cols)
-        report[f'{k}_new_answers'] = 0 if new is None else int(len(new))
-        report[f'{k}_archive'] = {'rows': int(len(merged[k])),
+        local[k] = pd.read_parquet(f) if f is not None and f.exists() else None
+        report[f'{k}_new_answers'] = 0 if local[k] is None else int(len(local[k]))
+    arch, staged, raw = on_file(r2, report)
+    merged = known_answers(arch, staged, raw, local)
+    for k, _, _ in EXCHANGES:
+        added = sum(0 if d.get(k) is None else int(len(d[k])) for d in (staged, raw, local))
+        report[f'{k}_archive'] = {'rows_before': 0 if arch[k] is None else int(len(arch[k])),
+                                  'rows': int(len(merged[k])),
                                   'status': merged[k]['status'].value_counts().to_dict() if len(merged[k]) else {}}
-        if not dry_run and new is not None and not new.empty:
+        if not dry_run and added and len(merged[k]):
             put_parquet(r2, ARCHIVE[k], merged[k])
     sec = read_parquet(r2, SECURITIES_KEY)
     vr = pd.read_csv(VR_PATH, dtype=str, keep_default_na=False) if VR_PATH.exists() else None
@@ -291,6 +499,13 @@ def build(r2, src: Path | None, day, report: dict, dry_run: bool = False) -> dic
         put_parquet(r2, CLEAN_KEY, table)
         put(r2, f'clean/reports/industry/{day.isoformat()}.json', json.dumps(report, indent=2, default=str).encode(),
             'application/json')
+        # a checkpoint this old belongs to a run long over; its answers were merged into the archive written above
+        cutoff = pd.Timestamp(now_utc() - timedelta(days=STAGING_KEEP_DAYS), tz='UTC')
+        old = [o['Key'] for o in staging_objects(r2)
+               if o.get('LastModified') is not None and pd.Timestamp(o['LastModified']) < cutoff]
+        for i in range(0, len(old), 1000):   # at most 1,000 keys a call
+            r2.delete_objects(Bucket=BUCKET, Delete={'Objects': [{'Key': k} for k in old[i:i + 1000]]})
+        report['staging_deleted'] = len(old)
     return report
 
 

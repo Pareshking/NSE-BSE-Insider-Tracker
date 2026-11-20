@@ -145,3 +145,220 @@ def test_store_helpers_merge_by_isin():
     out = store.with_industry(df, table=t, prefix='ind_')
     assert list(out['ind_sector'].fillna('-')) == ['Materials', '-', 'Oil', 'Oil']
     assert 'macro' in store.with_industry(df, table=pd.DataFrame())
+
+
+# ---- saved as it goes, resumed, rebuilt from what R2 holds (20 Nov 2026) --------------------------
+
+import io  # noqa: E402
+from datetime import timezone  # noqa: E402
+
+
+class FakeBSE:
+    """BSEClient's surface the fetch uses: the scrip list, then one header per code, each answer captured for raw like
+    the real client's raw hook. `stop_after`: raise KeyboardInterrupt after that many headers (a cancelled job)."""
+
+    def __init__(self, stop_after=None):
+        self.calls, self.via, self.asked, self.stop_after = 0, 'requests', [], stop_after
+
+    def get(self, path, params, dataset, covers=None):
+        import industry as script
+        self.calls += 1
+        if path == script.BSE_LIST:
+            body = (FIX / 'bse_listofscripdata_sample.json').read_bytes()
+        else:
+            code = params['scripcode']
+            if self.stop_after is not None and len(self.asked) >= self.stop_after:
+                raise KeyboardInterrupt
+            self.asked.append(code)
+            f = FIX / f'bse_comheadernew_{code}.json'
+            body = (f if f.exists() else FIX / 'bse_comheadernew_999999.json').read_bytes()
+        script.RawCapture().put('bse', dataset, body, url=script.BSE_API + path, params=params,
+                                content_type='application/json', covers=dict(covers or {}, via=self.via))
+        return body
+
+    def close(self):
+        pass
+
+
+def _r2(tmp_path, monkeypatch):
+    """R2 double: raw keys write-once (OnceR2), every other key overwritable like R2 itself."""
+    import raw_capture
+    from test_raw_store import OnceR2
+    monkeypatch.setattr(raw_capture, 'DIR', tmp_path / 'raw')
+
+    class R2(OnceR2):
+        def put_object(self, Bucket, Key, Body, ContentType=None, IfNoneMatch=None):
+            if Key.startswith('raw_v2/'):
+                return super().put_object(Bucket, Key, Body, ContentType, IfNoneMatch)
+            self.objects[Key] = Body
+    return R2()
+
+
+def _pq(r2, key):
+    return pd.read_parquet(io.BytesIO(r2.objects[key]))
+
+
+def _staged(r2):
+    return {k: _pq(r2, k) for k in r2.objects if k.startswith('staging/industry/') and k.endswith('.parquet')}
+
+
+def test_parse_raw_reads_a_stored_answer_like_the_fetch():
+    body = (FIX / 'bse_comheadernew_500002.json').read_bytes()
+    rec = {'http_status': 200, 'url': 'https://api.bseindia.com/BseIndiaAPI/api/ComHeadernew/w',
+           'params': {'quotetype': 'EQ', 'scripcode': '500002', 'seriesid': ''},
+           'covers': {'scripcode': '500002', 'via': 'requests'}, 'fetched_at_utc': '2026-11-20T05:00:00.000001+00:00'}
+    r = I.parse_raw('bse', rec, body)
+    assert r['bse_code'] == '500002' and r['status'] == 'ok' and r['sector'] == 'Capital Goods'
+    assert r['fetched_at'] == datetime(2026, 11, 20, 5, 0, 0, 1)
+    assert I.parse_raw('bse', {**rec, 'http_status': 403}, body) is None
+    assert I.parse_raw('bse', rec, None) is None
+    assert I.parse_raw('bse', rec, b'<html>')['status'] == 'error'   # what the fetch recorded for an HTML page
+    nse = {'http_status': 200, 'url': 'https://www.nseindia.com/api/quote-equity?symbol=ABB', 'covers': {},
+           'fetched_at_utc': '2026-11-20T05:00:00+00:00'}
+    body = json.dumps(nse_answer({'macro': 'Industrials'})).encode()
+    assert I.parse_raw('nse', nse, body)['nse_symbol'] == 'ABB'
+    assert I.parse_raw('nse', {**nse, 'url': 'https://www.nseindia.com/'}, body) is None
+
+
+def test_flush_side_by_side_stores_everything(tmp_path, monkeypatch):
+    import raw_capture
+    import raw_flush
+    from test_raw_store import OnceR2
+    monkeypatch.setattr(raw_capture, 'DIR', tmp_path)
+    for n in range(40):
+        raw_capture.capture('bse', 'comheadernew', f'{{"n": {n}}}', url='u', covers={'scripcode': str(n)})
+    assert not list(tmp_path.glob('*.part'))
+    r2 = OnceR2()
+    res = raw_flush.flush(r2, tmp_path, bucket='b', workers=8)
+    assert (res['found'], res['stored'], res['failed'], res['blobs_written']) == (40, 40, 0, 40)
+    assert not list(tmp_path.iterdir()) and sum('/fetches/' in k for k in r2.objects) == 40
+
+
+def test_saver_pushes_raw_and_a_checkpoint_every_n_answers(tmp_path, monkeypatch):
+    import raw_capture
+
+    import industry as script
+    r2 = _r2(tmp_path, monkeypatch)
+    live = {'nse': [], 'bse': []}
+    t = [0.0]
+    saver = script.Saver(r2, 'run1', live, every=2, minutes=10, workers=4, clock=lambda: t[0])
+    assert not saver.due()
+    for n, code in enumerate(['500002', '500014', '500012']):
+        raw_capture.capture('bse', 'comheadernew', (FIX / f'bse_comheadernew_{code}.json').read_bytes(), url='u',
+                            covers={'scripcode': code})
+        live['bse'].append({**I.parse_bse(fx(f'bse_comheadernew_{code}.json'), code), 'fetched_at': NOW})
+        if saver.due():
+            saver.save({'run': 'run1'})
+    assert saver.stats['saves'] == 1 and saver.stats['raw_stored'] == 2       # after the second answer
+    assert len(_pq(r2, 'staging/industry/run1/bse.parquet')) == 2
+    assert json.loads(r2.objects['staging/industry/run1/fetch_report.json']) == {'run': 'run1'}
+    t[0] = 601                                                                  # ten minutes on: the third goes too
+    assert saver.due()
+    saver.save()
+    assert saver.stats['raw_stored'] == 3 and len(_pq(r2, 'staging/industry/run1/bse.parquet')) == 3
+    assert not list((tmp_path / 'raw').glob('*.json'))
+    assert not saver.due()                                                      # nothing new since
+
+
+def test_a_failed_save_never_stops_the_fetch(tmp_path, monkeypatch):
+    import industry as script
+    r2 = _r2(tmp_path, monkeypatch)
+
+    def down(**kw):
+        raise RuntimeError('R2 down')
+    r2.put_object = down
+    saver = script.Saver(r2, 'run1', {'bse': [{'bse_code': '1', 'status': 'ok', 'fetched_at': NOW}]}, every=1)
+    stats = saver.save()
+    assert stats['failed_saves'] == 1 and stats['saves'] == 0 and 'R2 down' in stats['errors'][-1]
+    assert saver.due()   # tried again at the next save
+
+
+def test_a_fetch_whose_exchange_dies_mid_way_still_stores_what_it_read(tmp_path, monkeypatch):
+    import threading
+
+    import industry as script
+    r2 = _r2(tmp_path, monkeypatch)
+    saver = script.Saver(r2, 'run1', every=1, minutes=60, workers=4)
+    bse = FakeBSE(stop_after=3)   # the BSE thread dies while asking the fourth scrip
+    hook = threading.excepthook
+    threading.excepthook = lambda args: None
+    try:
+        script.fetch(r2, tmp_path / 'out', ['bse'], None, 60, {}, bse=bse, saver=saver, run='run1')
+    finally:
+        threading.excepthook = hook
+    assert bse.asked == ['500002', '500003', '500008']
+    assert len(_pq(r2, 'staging/industry/run1/bse.parquet')) == 3
+    assert sum(k.startswith('raw_v2/bse/comheadernew/fetches/') for k in r2.objects) == 3
+    assert sum(k.startswith('raw_v2/bse/scrip_list/fetches/') for k in r2.objects) == 1
+
+
+def test_resume_skips_what_an_earlier_run_answered_and_build_merges_the_checkpoints(tmp_path, monkeypatch):
+    import industry as script
+    from clean_writer import put_parquet
+    r2 = _r2(tmp_path, monkeypatch)
+    rows = [{**I.parse_bse(fx('bse_comheadernew_500002.json'), '500002'), 'fetched_at': NOW},
+            {**I.parse_bse(fx('bse_comheadernew_999999.json'), '500003'), 'fetched_at': NOW}]
+    put_parquet(r2, 'staging/industry/run1/bse.parquet', pd.DataFrame(rows, columns=I.BSE_ARCHIVE_COLUMNS))
+    monkeypatch.setattr(script, 'now_utc', lambda: NOW + timedelta(hours=1))
+    bse = FakeBSE()
+    rep = script.fetch(r2, tmp_path / 'out', ['bse'], None, 60, {}, bse=bse,
+                       saver=script.Saver(r2, 'run2', every=1000, minutes=60), run='run2')
+    assert bse.asked == ['500008', '500009']             # 500002 and 500003 answered by run1
+    assert rep['staging'] == {'objects': 1, 'nse': 0, 'bse': 2} and 'bse' not in rep['raw']   # raw only when nothing else
+    assert rep['saves']['saves'] == 1 and len(_pq(r2, 'staging/industry/run2/bse.parquet')) == 2
+    out = script.build(r2, None, NOW.date(), {})
+    assert out['bse_archive']['rows'] == 4 and out['bse_archive']['rows_before'] == 0
+    assert sorted(_pq(r2, script.ARCHIVE['bse'])['bse_code']) == ['500002', '500003', '500008', '500009']
+    assert _pq(r2, script.CLEAN_KEY).set_index('isin').loc['INE117A01022', 'source'] == 'bse'
+    bse3 = FakeBSE()   # a third run asks nothing more: everything is answered and fresh
+    script.fetch(r2, tmp_path / 'out3', ['bse'], None, 60, {}, bse=bse3, saver=script.Saver(r2, 'run3'), run='run3')
+    assert bse3.asked == []
+
+
+def test_with_no_archive_or_checkpoint_the_answers_in_raw_are_read(tmp_path, monkeypatch):
+    import industry as script
+    from insiders_clean.raw_store import RawStore
+    r2 = _r2(tmp_path, monkeypatch)
+    store = RawStore(r2, bucket='b', collector='industry')
+    for n, code in enumerate(['500002', '500014', '999999', '500002']):
+        body = (FIX / f'bse_comheadernew_{code}.json').read_bytes()
+        body += b' ' * (1100 if code == '500014' else 0)   # past raw_store.GZIP_MIN_BYTES: kept gzipped
+        store.put('bse', 'comheadernew', body,
+                  url=script.BSE_API + script.BSE_HEADER, params={'quotetype': 'EQ', 'scripcode': code, 'seriesid': ''},
+                  content_type='application/json', covers={'scripcode': code, 'via': 'requests'},
+                  fetched_at=datetime(2026, 11, 19, 16, n, tzinfo=timezone.utc))
+    assert sum(k.endswith('.json.gz') for k in r2.objects) == 1
+    out = script.build(r2, None, NOW.date(), {})
+    assert out['raw']['bse']['fetch_records'] == 4 and out['raw']['bse']['answers'] == 4
+    assert out['raw']['bse']['status'] == {'ok': 2, 'not_found': 1}   # 500002 twice: the later answer kept
+    assert out['raw']['nse']['fetch_records'] == 0
+    clean = _pq(r2, script.CLEAN_KEY)
+    assert set(clean.loc[clean['source'] == 'bse', 'isin']) == {'INE117A01022', 'INE096A01010'}
+    assert len(_pq(r2, script.ARCHIVE['bse'])) == 3
+    assert 'bse' not in script.build(r2, None, NOW.date(), {})['raw']   # the archive exists now: raw is not read again
+    # a fetch on a bucket with raw only keeps what it parsed as its own checkpoint and asks only the rest
+    r2b = _r2(tmp_path / 'b', monkeypatch)
+    r2b.objects.update({k: v for k, v in r2.objects.items() if k.startswith('raw_v2/')})
+    monkeypatch.setattr(script, 'now_utc', lambda: NOW + timedelta(days=1))
+    bse = FakeBSE()
+    rep = script.fetch(r2b, tmp_path / 'out', ['bse'], None, 60, {}, bse=bse, saver=script.Saver(r2b, 'r'), run='r')
+    assert rep['raw']['bse']['symbols'] == 3 and 'staging/industry/r-raw/bse.parquet' in r2b.objects
+    assert '500002' not in bse.asked and '500003' in bse.asked
+
+
+def test_build_deletes_only_old_checkpoints(tmp_path, monkeypatch):
+    import industry as script
+    from clean_writer import put_parquet
+    r2 = _r2(tmp_path, monkeypatch)
+    row = pd.DataFrame([{**I.parse_bse(fx('bse_comheadernew_500002.json'), '500002'), 'fetched_at': NOW}],
+                       columns=I.BSE_ARCHIVE_COLUMNS)
+    put_parquet(r2, 'staging/industry/old/bse.parquet', row)
+    put_parquet(r2, 'staging/industry/new/bse.parquet', row)
+    stamp = {'staging/industry/old/bse.parquet': datetime.now(timezone.utc) - timedelta(days=3),
+             'staging/industry/new/bse.parquet': datetime.now(timezone.utc)}
+    plain = r2.list_objects_v2
+    r2.list_objects_v2 = lambda **kw: {**plain(**kw), 'Contents': [
+        {**o, 'LastModified': stamp.get(o['Key'])} for o in plain(**kw)['Contents']]}
+    out = script.build(r2, None, NOW.date(), {})
+    assert out['staging_deleted'] == 1 and r2.deleted == ['staging/industry/old/bse.parquet']
+    assert out['bse_archive']['rows'] == 1 and script.ARCHIVE['bse'] in r2.objects
