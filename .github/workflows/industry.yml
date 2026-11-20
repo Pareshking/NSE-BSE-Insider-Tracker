@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       full:
-        description: 'Full run: every due symbol on both exchanges (first run), up to 5.5 hours'
+        description: 'Full run: every due symbol on both exchanges (BSE 4 at a time, about an hour; budget 5.5 hours)'
         type: boolean
         required: false
         default: false
