@@ -52,7 +52,8 @@ KIND_WORDS = {
 }
 FEED_WORDS = {'bulk': 'Bulk deal', 'block': 'Block deal', 'block,bulk': 'Bulk and block deal'}
 REG_WORDS = {'Reg29(1)': 'Stake crossed 5%', 'Reg29(2)': 'Stake moved 2% or more'}
-ACTION_WORDS = {'rights': 'Rights record date', 'bonus': 'Bonus', 'split': 'Split', 'dividend': 'Dividend'}
+ACTION_WORDS = {'rights': 'Rights record date', 'bonus': 'Bonus', 'split': 'Split', 'dividend': 'Dividend',
+                'demerger': 'Demerger', 'scheme': 'Scheme of arrangement', 'capital_reduction': 'Capital reduction'}
 HOLDING_CHECK = {'match': 'matches the shares traded', 'differs': "doesn't match the shares traded",
                  'against_side': 'moves against the side', 'against_side_and_differs': "moves against the side, size doesn't match",
                  'not_filed': 'holding or shares not filed'}

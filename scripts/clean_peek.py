@@ -814,9 +814,34 @@ def symbol_prices(r2, sym: str, start: str, end: str) -> int:
     return 0
 
 
-def price_jump_audit(r2, check=()) -> int:
+def bse_raw_actions(r2) -> pd.DataFrame:
+    """Every corporate action kept in raw_v2/bse/corporate_actions, parsed with this branch's parser, with the ISIN of
+    its BSE code from clean securities: what bse_actions will hold once BSE's history is fetched again."""
+    import json
+    from clean_writer import get_blob, list_keys
+    from collectors.bse import parsers as bse_parsers
+    rows = []
+    for k in sorted({k[:-3] if k.endswith('.gz') else k for k in list_keys(r2, 'raw_v2/bse/corporate_actions/blobs/')}):
+        b = get_blob(r2, k)
+        try:
+            j = json.loads(b.decode('utf-8', errors='replace')) if b is not None else []
+        except ValueError:
+            continue
+        j = j.get('Table', []) if isinstance(j, dict) else j
+        rows += [r for r in j if isinstance(r, dict)]
+    df, dropped = bse_parsers.parse_actions(rows)
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    code = sec.dropna(subset=['bse_code']).assign(_c=lambda d: d['bse_code'].astype(str).str.split('.').str[0])
+    df['isin'] = df['bse_code'].astype(str).map(code.drop_duplicates('_c').set_index('_c')['isin'])
+    print(f'BSE raw actions reparsed: {len(df)} kept, {dropped} dropped, {int(df["isin"].notna().sum())} with an ISIN; purposes',
+          df['purpose'].value_counts().to_dict())
+    return df
+
+
+def price_jump_audit(r2, check=(), reparse_bse=False) -> int:
     """PRICE_JUMPS: the price-jump audit (insiders_clean/price_jumps.py) on the whole price layer with this branch's
-    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only."""
+    code, as Precompute slim assets will write it; the series in the layer; the most suspect moves. Read only.
+    PRICE_JUMPS_BSE_RAW: the same with BSE's raw actions reparsed by this branch (bse_raw_actions) added."""
     from insiders_clean import adjust, price_jumps, slim
     from insiders_clean.pipeline import PRODUCT_START
     from price_coverage import load_prefix
@@ -827,6 +852,8 @@ def price_jump_audit(r2, check=()) -> int:
     print('rows by exchange and series (top 40):')
     print(px.groupby(['exchange', 'series']).size().sort_values(ascending=False).head(40).to_string())
     acts = [a for a in (read_parquet(r2, f'clean/current/{t}.parquet') for t in ('actions', 'bse_actions')) if a is not None and len(a)]
+    if reparse_bse:
+        acts.append(bse_raw_actions(r2))
     acts = pd.concat(acts, ignore_index=True) if acts else None
     left_out = adjust.side_series_rows(px)
     print('side-window rows left out:', left_out)
@@ -1088,6 +1115,125 @@ def mf_schemes(r2, month: str = '2026-10') -> int:
     return 0
 
 
+SCHEME_WORDS = r'demerg|scheme|arrangement|amalgam|capital reduction|reduction of capital|spin'
+
+
+def raw_actions(r2, syms: list[str]) -> int:
+    """RAW_ACTIONS:SYM,SYM2: every corporate-action row the exchanges sent for these companies, as kept in raw_v2/
+    (NSE's API feed raw_v2/nse/actions, BSE's raw_v2/bse/corporate_actions, the `bc` file of NSE's PR zip
+    raw_v2/exchange_files/nse_pr_zip), whatever the purpose, with whether parsers.action_purpose keeps it; and over
+    all of raw, the scheme / demerger rows the parser drops. Read only (20 Nov 2026, price-jump audit)."""
+    import io as _io
+    import json
+    import re
+    import zipfile
+    from clean_writer import get_blob, list_keys
+    from collectors.nse_events.parsers import action_purpose
+    sec = read_parquet(r2, 'clean/current/securities.parquet')
+    s = sec[sec['nse_symbol'].astype(str).str.upper().isin(syms)] if sec is not None else pd.DataFrame()
+    show('securities', s, ['isin', 'nse_symbol', 'bse_code', 'display_name'])
+    isins = set(s['isin'].dropna())
+    codes = {str(c).split('.')[0] for c in s['bse_code'].dropna()} if 'bse_code' in s else set()
+    stems = {i[:9] for i in isins if isinstance(i, str) and len(i) == 12}
+
+    def blobs(prefix):
+        return sorted({k[:-3] if k.endswith('.gz') else k for k in list_keys(r2, prefix + 'blobs/')})
+
+    def json_rows(body):
+        try:
+            j = json.loads(body.decode('utf-8', errors='replace'))
+        except ValueError:
+            return []
+        if isinstance(j, dict):
+            j = next((v for v in j.values() if isinstance(v, list)), [])
+        return [r for r in j if isinstance(r, dict)] if isinstance(j, list) else []
+
+    for label, prefix, sym_f, isin_f, subj_f, ex_f in (
+            ('NSE API', 'raw_v2/nse/actions/', 'symbol', 'isin', 'subject', 'exDate'),
+            ('BSE', 'raw_v2/bse/corporate_actions/', 'scrip_code', None, 'Purpose', 'Ex_date')):
+        keys = blobs(prefix)
+        rows = []
+        for k in keys:
+            b = get_blob(r2, k)
+            rows += json_rows(b) if b is not None else []
+        d = pd.DataFrame(rows)
+        print(f'\n===== {label} raw ({prefix}): {len(keys)} blobs, {len(d)} rows')
+        if d.empty:
+            continue
+        d = d.drop_duplicates([c for c in (sym_f, subj_f, ex_f) if c in d])
+        d['_kept'] = d[subj_f].map(action_purpose)
+        ex = pd.to_datetime(d[ex_f], errors='coerce', dayfirst=True)
+        print(f'  unique rows {len(d)}; ex-dates {ex.min()} .. {ex.max()}; dropped by the parser {int(d["_kept"].isna().sum())}')
+        sch = d[d[subj_f].astype(str).str.contains(SCHEME_WORDS, case=False, regex=True)]
+        print(f'  scheme / demerger rows: {len(sch)} (of them dropped {int(sch["_kept"].isna().sum())})')
+        cols = [c for c in (sym_f, isin_f, 'comp', 'long_name', subj_f, ex_f, 'recDate', 'RD_Date', '_kept') if c and c in d]
+        if len(sch):
+            print(sch[cols].to_string(index=False, max_colwidth=70))
+        m = d[sym_f].astype(str).str.upper().str.split('.').str[0].isin(set(syms) | codes)
+        if isin_f and isin_f in d:
+            m |= d[isin_f].isin(isins) | d[isin_f].astype(str).str[:9].isin(stems)
+        print(f'  -- rows of {syms}: {int(m.sum())}')
+        if m.any():
+            print(d[m][cols].to_string(index=False, max_colwidth=70))
+    keys = blobs('raw_v2/exchange_files/nse_pr_zip/')
+    rows = []
+    for k in keys:
+        b = get_blob(r2, k)
+        try:
+            z = zipfile.ZipFile(_io.BytesIO(b))
+        except Exception:   # noqa: BLE001
+            continue
+        for n in z.namelist():
+            if re.match(r'(?i)^bc\d{6}\.csv$', n.split('/')[-1]):
+                try:
+                    f = pd.read_csv(_io.BytesIO(z.read(n)), dtype=str)
+                except Exception:   # noqa: BLE001
+                    continue
+                f.columns = [c.strip().upper() for c in f.columns]
+                rows.append(f.assign(_file=n))
+    d = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+    print(f'\n===== NSE PR zip bc files: {len(keys)} zips, {len(rows)} bc files, {len(d)} rows; columns {list(d.columns)}')
+    if len(d) and 'PURPOSE' in d:
+        d = d.apply(lambda c: c.str.strip() if c.dtype == object else c)
+        d = d.drop_duplicates([c for c in d.columns if c != '_file'])
+        d['_kept'] = d['PURPOSE'].map(action_purpose)
+        sch = d[d['PURPOSE'].astype(str).str.contains(SCHEME_WORDS, case=False, regex=True)]
+        print(f'  unique rows {len(d)}; scheme / demerger rows {len(sch)}')
+        if len(sch):
+            print(sch.to_string(index=False, max_colwidth=70))
+        m = d['SYMBOL'].astype(str).str.upper().isin(syms) if 'SYMBOL' in d else pd.Series(False, index=d.index)
+        print(f'  -- rows of {syms}: {int(m.sum())}')
+        if m.any():
+            print(d[m].to_string(index=False, max_colwidth=70))
+    return 0
+
+
+def actions_coverage(r2) -> int:
+    """ACTIONS_COVERAGE: what the action tables hold, by ex-date month and purpose (NSE archive, clean actions,
+    clean bse_actions), when the NSE rows were first seen, and how many rows have an ISIN. Read only (20 Nov)."""
+    from clean_writer import list_keys
+    arch = [read_parquet(r2, k) for k in list_keys(r2, 'archive/nse_events/actions/') if k.endswith('.parquet')]
+    arch = [a for a in arch if a is not None and len(a)]
+    tabs = {'archive/nse_events/actions': pd.concat(arch, ignore_index=True) if arch else pd.DataFrame()}
+    for t in ('actions', 'bse_actions'):
+        tabs[f'clean/current/{t}'] = read_parquet(r2, f'clean/current/{t}.parquet')
+    for name, d in tabs.items():
+        if d is None or d.empty:
+            print(f'--- {name}: empty')
+            continue
+        ex = pd.to_datetime(d['ex_date'], errors='coerce')
+        print(f'--- {name}: {len(d)} rows, ex-dates {ex.min()} .. {ex.max()}; columns {list(d.columns)}')
+        if 'first_seen' in d:
+            fs = pd.to_datetime(d['first_seen'], errors='coerce')
+            print('  first_seen by month:', fs.dt.to_period('M').astype(str).value_counts().sort_index().to_dict())
+        if 'isin' in d:
+            print(f'  rows with an ISIN: {int(d["isin"].notna().sum())}')
+        if 'series' in d:
+            print('  series:', d['series'].astype(str).value_counts().head(15).to_dict())
+        print(pd.crosstab(ex.dt.to_period('M').astype(str), d['purpose'].astype(str)).to_string())
+    return 0
+
+
 def main() -> int:
     r2 = r2_client()
     syms = [x.strip().upper() for x in os.environ.get('SYMBOLS', '').split(',') if x.strip()]
@@ -1118,8 +1264,14 @@ def main() -> int:
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
         _, code, day = syms[0].split(':')
         return raw_deal_legs(r2, code, day)
+    if syms == ['PRICE_JUMPS_BSE_RAW']:   # the audit with BSE's raw actions reparsed by this branch (20 Nov)
+        return price_jump_audit(r2, [], reparse_bse=True)
     if syms and syms[0].split(':')[0] == 'PRICE_JUMPS':   # every 40% one-day move on the site's lines (19 Nov); PRICE_JUMPS:SYM,SYM2 also prints those lines
         return price_jump_audit(r2, [syms[0].split(':', 1)[1]] + syms[1:] if ':' in syms[0] else [])
+    if syms == ['ACTIONS_COVERAGE']:   # the action tables by ex-date month and purpose (20 Nov)
+        return actions_coverage(r2)
+    if syms and syms[0].startswith('RAW_ACTIONS:'):   # every raw action row of these companies, any purpose (20 Nov)
+        return raw_actions(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms and syms[0].startswith('PRICES:'):  # one company's prints, factors, site line and actions (19 Nov)
         _, sym, start, end = syms[0].split(':')
         return symbol_prices(r2, sym, start, end)

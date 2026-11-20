@@ -43,10 +43,15 @@ def test_sast_missing_figures_stay_empty_but_filed_zero_stays_zero():
     assert pd.isna(b['shares_traded']) and pd.isna(b['percent_equity_traded'])
 
 
-def test_corporate_actions_keep_five_purposes_and_read_details():
+def test_corporate_actions_keep_purposes_and_read_details():
     df, dropped = parsers.parse_corporate_actions(load('corporate_actions.json'))
-    assert set(df['purpose']) == {'buyback', 'bonus', 'split', 'rights', 'dividend'}
-    assert dropped > 0  # demergers, interest payments, unit distributions
+    assert set(df['purpose']) == {'buyback', 'bonus', 'split', 'rights', 'dividend', 'demerger'}
+    assert dropped > 0  # interest payments, unit distributions
+    # NSE's 'Demerger' rows are kept since 20 Nov 2026 (price-jump audit: TRIVENI fell 42% on 22 Jul 2026).
+    d = df[df['purpose'] == 'demerger']
+    assert set(d['symbol']) == {'GUJENERGY', 'TRIVENI', 'INOXGREEN'}
+    assert str(d.loc[d['symbol'] == 'TRIVENI', 'ex_date'].item()) == '2026-07-22'
+    assert not d['needs_price_gap'].any() and d['ratio'].isna().all()
     r = df[df['subject'] == 'Rights 3:5 @ Premium Rs 45/-'].iloc[0]
     assert (r['ratio'], r['face_value'], r['rights_premium'], r['rights_issue_price']) == ('3:5', 5.0, 45.0, 50.0)
     assert r['needs_price_gap']

@@ -544,6 +544,24 @@ def fetch_meetings(nse, start: date, today: date, raw=None, backfill_from: date 
     return df, dropped
 
 
+def fetch_actions(nse, start: date, today: date, raw=None, backfill_from: date | None = None):
+    """(actions, dropped). A backfill goes one calendar month per call. Audit 20 Nov 2026: NSE's action archive
+    began with the nightly of 28 Sep 2026 (10 days back each run) and was never backfilled, so every split or bonus
+    before then came from BSE's history alone, and a company not on BSE at its ex-date had none (E2E's split of
+    05 Jun 2026, BSE-listed from 12 Jun; TEMBO 05 Aug 2026, BSE from 15 Oct; SIKKO 27 Nov 2025, NSE only)."""
+    spans = month_chunks(backfill_from, today) if backfill_from else [(start, today)]
+    frames, dropped = [], 0
+    for a, b in spans:
+        if raw is not None and backfill_from:
+            nse.on_response = raw_hook(raw, 'actions', {'from': a.isoformat(), 'to': b.isoformat()})
+        df, n = parsers.parse_corporate_actions(nse.corporate_actions(a, b))
+        frames.append(df)
+        dropped += n
+    full = [f for f in frames if not f.empty]
+    df = pd.concat(full, ignore_index=True).drop_duplicates('event_id', keep='last') if full else frames[0]
+    return df, dropped
+
+
 def build_buybacks(r2, master, run_date, report) -> None:
     """clean/current/buybacks.parquet from tenders, daily reports and corporate actions."""
     arch = {s: merge_into_archive(r2, s, None, run_date)[0] for s in ('tenders', 'daily_buybacks', 'actions')}
@@ -952,8 +970,7 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 if stream == 'sast':
                     new = parsers.parse_sast(nse.sast_reg29(start, today))
                 elif stream == 'actions':
-                    new, entry['dropped_other_purposes'] = parsers.parse_corporate_actions(
-                        nse.corporate_actions(start, today))
+                    new, entry['dropped_other_purposes'] = fetch_actions(nse, start, today, raw, backfill_from)
                 elif stream == ISSUES:
                     known = merge_into_archive(r2, stream, None, run_date)[0]
                     iraw = raw if raw is not None else RawStore(r2, BUCKET, collector='collectors.nse_events.run_daily')
@@ -1069,7 +1086,7 @@ def main(argv=None):
     ap.add_argument('--max-xbrl', type=int, default=MAX_XBRL_PER_RUN,
                     help='shareholding pledge files to fetch this run (NSE rate-limits by IP)')
     ap.add_argument('--from', dest='backfill_from', type=date.fromisoformat, default=None,
-                    help='board meetings only: backfill month by month from this date (YYYY-MM-DD)')
+                    help='board meetings or corporate actions only: backfill month by month from this date (YYYY-MM-DD)')
     ap.add_argument('--max-issue-xbrl', type=int, default=MAX_ISSUE_XBRL_PER_RUN,
                     help='further-issue XBRL files to fetch this run')
     ap.add_argument('--max-results-xbrl', type=int, default=MAX_RESULTS_XBRL_PER_RUN,
@@ -1085,8 +1102,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = STREAMS if args.dataset == 'all' else (args.dataset,)
-    if args.backfill_from and streams != ('meetings',):
-        ap.error('--from needs --dataset meetings')
+    if args.backfill_from and streams not in (('meetings',), ('actions',)):
+        ap.error('--from needs --dataset meetings or actions')
     if args.reparse_raw and streams not in (('shareholding',), ('results',)):
         ap.error('--reparse-raw needs --dataset shareholding or results')
     r2 = r2_client()

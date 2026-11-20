@@ -238,7 +238,7 @@ data_status.render()
     assert 'Implied price inside the day' in html and '1 off by a power of ten' in html
     assert 'Holding-only disclosures' in html
     assert 'one-day moves of 40% or more' in html and 'ZZJUMP' in html and '-55%' in html
-    assert 'split or bonus, adjusted' in html and 'made by our adjustment' not in html
+    assert 'split, bonus or demerger, adjusted' in html and 'made by our adjustment' not in html
 
 
 def test_value_filed_as_price_and_face_value_are_named(real_nse_rows, master, calendar, report):

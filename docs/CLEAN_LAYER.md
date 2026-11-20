@@ -398,6 +398,34 @@ our tables and no reset of the base price (BHAGYANGR 8 Oct 2026, -91%, the day i
 demergers (NSE's action feed as parsed drops schemes: VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV 14 Oct 2025);
 they stay unadjusted (owner directive: splits and bonuses only) and named in the report.
 
+**Demergers and missing splits (20 Nov 2026, branch `price-demergers`).** Read-only peeks of raw_v2 (clean-peek
+`RAW_ACTIONS`, `ACTIONS_COVERAGE`, `PRICE_JUMPS_BSE_RAW`):
+
+- *Demergers were fetched and dropped.* BSE's raw action feed (raw_v2/bse/corporate_actions, ex-dates 9 Oct 2025 -
+  20 Nov 2026) holds 30 `Spin Off` / `Scheme of Arrangement` / `Amalgamation` / `Reduction of Capital` rows, every one
+  dropped by `action_purpose`; NSE's writes `Demerger` (tests/fixtures/nse_events/corporate_actions.json: GUJENERGY,
+  TRIVENI, INOXGREEN). Ten of the study universe's 33 unexplained moves are on one of them: BHAGYANGR 08 Oct 2026,
+  VERANDA 06 Oct 2026, INDIAGLYCO 02 Sep 2026 (taken for splits before: they are BSE `Spin Off`), DCMSRIND 26 Dec
+  2025, ALLCARGO 12 Nov 2025, VEDL 30 Apr 2026, HEGAM 07 Sep 2026, SKFINDIA 15 Oct 2025, TRIVENI 22 Jul 2026, TMPV
+  14 Oct 2025. The parsers now keep them (`demerger`, `scheme`, `capital_reduction`).
+- *No exchange-published factor exists for them in our data.* The UDiFF base price was not reset on any of these
+  ex-dates (VEDL 30 Apr 2026: PrvsClsgPric 773.60 on NSE and 773.25 on BSE, the closes of 29 Apr; it closed 271.55),
+  and no cost-of-acquisition ratio is in any table. `adjust.implied_factors` applies a filed demerger or scheme only
+  where the exchange did reset the base price and the close moved with it (kind `demerger`, basis
+  `action_base_price`, counted in `adjust.coverage`): 0 in the product window. No ratio is read from the move. The
+  audit names them `scheme_not_adjusted`.
+- *Splits with no filing: NSE's action history starts on 28 Sep 2026.* `archive/nse_events/actions` holds 232 rows,
+  ex-dates 28 Sep - 20 Nov 2026 (the nightly, 10 days back, never backfilled); everything earlier came from BSE's
+  history, so a company not on BSE at its ex-date has no split on file: E2E (split 05 Jun 2026, new ISIN
+  INE255Z01027, on BSE from 12 Jun), TEMBO (05 Aug 2026, BSE from 15 Oct), SIKKO (27 Nov 2025 and 08 Dec 2025, no
+  BSE code), VMARCIND (07 Jul 2026, NSE SME, no BSE code). Board meetings on file say split for SIKKO (18 Oct 2025,
+  split and bonus), TEMBO (16 Jun 2026) and E2E (20 Apr 2026). Not an ISIN or purpose-text miss: the ISIN bridge and
+  the symbol match already cover a split filed under the old ISIN. `run_daily --dataset actions --from` now backfills
+  NSE's actions a month per call. Whether NSE's `corporates-corporateActions?index=equities` returns SME companies
+  (VMARCIND) is not verified.
+- With BSE's raw reparsed by this branch (peek `PRICE_JUMPS_BSE_RAW`): study universe unexplained 33 -> 23 moves (31
+  -> 21 companies), `scheme_not_adjusted` 10, adjusted 117; all securities unexplained 155 -> 144.
+
 Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
 and BSE's list win on identity; the 01 Sep Value Research export only
 supplies sector and industry.
