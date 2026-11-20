@@ -86,7 +86,10 @@ jobs:
           SOURCES: ${{ inputs.sources || 'nse,bse' }}
         run: |
           set -o pipefail
-          if [ "$FULL" = "true" ]; then args=(--limit 0 --minutes 330); else args=(--limit "${LIMIT:-400}" --minutes 75); fi
+          # The fetch budget leaves room inside the job's timeout for setup, the raw flush and the artifact upload:
+          # 19 Nov 2026 a full run's 330 minutes plus setup ran into the 350-minute timeout, the job was killed before
+          # its always() steps, and five hours of answers were neither flushed nor uploaded.
+          if [ "$FULL" = "true" ]; then args=(--limit 0 --minutes 290); else args=(--limit "${LIMIT:-400}" --minutes 75); fi
           mkdir -p artifacts
           python -u scripts/industry.py fetch --out artifacts/industry --sources "$SOURCES" "${args[@]}" | tee artifacts/industry_fetch.log
       # raw_v2 is write-once and named by content, so this needs no lock (thousands of objects on a full run)
@@ -131,6 +134,7 @@ jobs:
         run: |
           set -o pipefail
           if [ -d artifacts/industry ]; then src=(--in artifacts/industry); else src=(); fi
+          mkdir -p artifacts   # absent when the fetch died before its upload (19 Nov 2026: tee failed, the build never ran)
           python -u scripts/industry.py build "${src[@]}" | tee artifacts/industry_build.log
       - name: Summary
         if: always()

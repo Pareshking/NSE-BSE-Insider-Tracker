@@ -35,7 +35,7 @@ concurrency:
 jobs:
   portfolios:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: ${{ inputs.schemes && 330 || 120 }}   # a scheme backfill re-reads every house-month (19 Nov 2026: 120 cut it off; it resumes where it stopped)
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
