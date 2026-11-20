@@ -7,6 +7,14 @@ failed one is retried up to 3 times (a missing file never). The cache is saved e
 the run stops starting new files at --minutes. No model is called. The XBRL-feed rows (`nse:xbrl:*`) are left out:
 their files are the main feed's own.
 
+Speed (14 Nov 2026 run: 3,034 files in 161 minutes; downloads about 2% of the workers' time, tesseract and drawing the
+pages for it nearly all the rest). Every filing is still downloaded and gets its own record, but a file whose bytes were
+already read that day (the same PDF filed on NSE and on BSE, or under two BSE announcements: 1,205 of that run's 3,026
+downloads repeated an earlier size, and the pairs checked were byte-identical) takes the text of that read instead of
+being OCR'd again: the same bytes through the same extractor give the same text. Filings are read --workers at a time
+(FILING_TEXT_WORKERS, default one per CPU), at most 4 downloads at once from one host, the pause before each download
+kept; OCR runs one page per CPU (announcement_sample.OCR_SLOTS).
+
     python scripts/filing_text_extract.py --from 2026-10-14 --to 2026-10-15
     python scripts/filing_text_extract.py            # the last 3 days, as the nightly collector's window
 """
@@ -16,10 +24,12 @@ import argparse
 import hashlib
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pandas as pd
 
@@ -33,6 +43,14 @@ from insiders_clean import filing_text as ft  # noqa: E402
 IST = timezone(timedelta(hours=5, minutes=30))
 FILE_TYPES = ('pdf', 'zip', 'xbrl')
 SAVE_EVERY = 100
+PER_HOST = 4             # downloads at once from one exchange host, whatever --workers is
+
+
+def default_workers() -> int:
+    try:
+        return max(1, int(os.environ.get('FILING_TEXT_WORKERS') or 0) or os.cpu_count() or 4)
+    except ValueError:
+        return max(1, os.cpu_count() or 4)
 
 
 def archive_rows(r2, exchange: str, day: date) -> pd.DataFrame:
@@ -61,15 +79,71 @@ def extract_one(row: dict, exchange: str, tries: int, download, text_of) -> dict
             'chars': len(text), 'notes': '; '.join(notes), 'text': text}
 
 
+class SameFile:
+    """text_of with a memory of one day's files: bytes already read (same sha256) give the text of that read instead of
+    a second OCR of the same pages. A file another thread is reading is waited for, not read twice; when that read
+    raised, a waiting filing reads the file itself, so a failure stays with the filing it happened to. Only finished
+    reads are kept, and the day's cache records of the current extractor seed it."""
+
+    def __init__(self, text_of):
+        self.text_of, self.done, self.busy, self.lock = text_of, {}, {}, threading.Lock()
+
+    def seed(self, cached: pd.DataFrame) -> None:
+        if cached is None or not len(cached):
+            return
+        ok = cached[cached['status'].isin(ft.DONE) & (cached['extractor'] == ft.EXTRACTOR) & cached['file_sha256'].notna()]
+        with self.lock:
+            for sha, text, notes in zip(ok['file_sha256'], ok['text'], ok['notes']):
+                self.done.setdefault((sha, None), (text if isinstance(text, str) else '',
+                                                   [notes] if isinstance(notes, str) and notes else []))
+
+    def __call__(self, data: bytes, limit=None):
+        key = (hashlib.sha256(data).hexdigest(), limit)
+        while True:
+            with self.lock:
+                if key in self.done:
+                    text, notes = self.done[key]
+                    return text, list(notes)
+                reading = self.busy.get(key)
+                if reading is None:
+                    self.busy[key] = threading.Event()
+                    break
+            reading.wait()        # then: its text, or (it raised) this filing reads the file itself
+        try:
+            text, notes = self.text_of(data, limit=limit)
+            with self.lock:
+                self.done[key] = (text, list(notes))
+            return text, notes
+        finally:
+            with self.lock:
+                self.busy.pop(key).set()
+
+
+def paced(download, per_host: int = PER_HOST):
+    """download with at most per_host (never more than PER_HOST) requests in flight to one host."""
+    gates, lock = {}, threading.Lock()
+
+    def get(url):
+        host = urlsplit(str(url)).netloc.lower()
+        with lock:
+            gate = gates.setdefault(host, threading.BoundedSemaphore(max(1, min(per_host, PER_HOST))))
+        with gate:
+            return download(url)
+    return get
+
+
 def run(r2, first: date, last: date, minutes: float = 300, workers: int = 4, pause: float = 0.3,
         download=sample.download, text_of=sample.text_of, clock=time.monotonic, newest_first: bool = False) -> dict:
     deadline = clock() + minutes * 60
     report = {'window': [first.isoformat(), last.isoformat()], 'days': [], 'stopped_early': False}
     span = [first + timedelta(days=i) for i in range((last - first).days + 1)]
+    download = paced(download)
     for day in (reversed(span) if newest_first else span):
+        same = SameFile(text_of)          # one day's memory: NSE's file and BSE's copy of it are read once
         for exchange in ('nse', 'bse'):
             rows = archive_rows(r2, exchange, day)
             cached = ft.load_day(r2, exchange, day)
+            same.seed(cached)
             todo = ft.pending(rows, cached)
             tries = dict(zip(cached['event_id'], cached['tries'].fillna(0).astype(int))) if len(cached) else {}
             stat = {'day': day.isoformat(), 'exchange': exchange, 'files': len(rows), 'cached': len(rows) - len(todo),
@@ -80,7 +154,7 @@ def run(r2, first: date, last: date, minutes: float = 300, workers: int = 4, pau
                 if clock() > deadline:
                     return None
                 time.sleep(pause)
-                return extract_one(r, exchange, tries.get(r['event_id'], 0), download, text_of)
+                return extract_one(r, exchange, tries.get(r['event_id'], 0), download, same)
 
             records = todo.to_dict('records') if todo is not None and len(todo) else []
             with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -117,7 +191,7 @@ def main(argv=None) -> int:
     ap.add_argument('--from', dest='first', type=date.fromisoformat, default=None)
     ap.add_argument('--to', dest='last', type=date.fromisoformat, default=None)
     ap.add_argument('--minutes', type=float, default=300)
-    ap.add_argument('--workers', type=int, default=4)
+    ap.add_argument('--workers', type=int, default=default_workers(), help='filings at once (FILING_TEXT_WORKERS; default one per CPU)')
     ap.add_argument('--newest-first', action='store_true', help='start with the last day (a long fill: recent days first)')
     args = ap.parse_args(argv)
     from r2_writer import r2_client
