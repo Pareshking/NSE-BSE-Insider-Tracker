@@ -37,7 +37,7 @@ _EXT = {'application/json': 'json', 'text/csv': 'csv', 'text/html': 'html', 'app
 # 15 Nov 2026 (owner: "bring it to 1 GB or less", "compress"): text answers are stored gzipped at `{blob_key}.gz`
 # (mtime 0, so the same bytes always give the same object). The fetch record keeps `blob_key` (the name of the bytes as
 # sent, by their SHA-256) and says `stored_as: gzip`; `read_blob` returns the exact bytes as sent either way.
-GZIP_EXT = {'json', 'csv', 'xml', 'html'}
+GZIP_EXT = {'json', 'csv', 'xml', 'html', 'xls', 'txt'}   # xls: old binary workbooks (fund portfolios), txt: AMFI's lists (20 Nov 2026)
 GZIP_MIN_BYTES = 1024
 
 

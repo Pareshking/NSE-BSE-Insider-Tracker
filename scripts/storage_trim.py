@@ -44,7 +44,7 @@ FILING_TEXT_DAYS = int(os.environ.get('FILING_TEXT_DAYS', '0'))
 PRICE_ZIP_DAYS = int(os.environ.get('PRICE_ZIP_DAYS', '30'))
 TARGET_GB = float(os.environ.get('STORAGE_TARGET_GB', '1'))
 DAY_KEY = re.compile(r'year=(\d{4})/month=(\d{2})/day=(\d{2})')
-PACK_EXT = ('.json', '.csv', '.xml', '.html', '.bin')
+PACK_EXT = ('.json', '.csv', '.xml', '.html', '.bin', '.xls', '.txt')
 # Our own snapshots, read through clean_writer.get / r2_data._get_bytes, which fall back to {key}.gz (15 Nov 2026).
 PLAIN_GZ_PREFIXES = ('raw/', 'reference/market_cap/')
 SHA_NAME = re.compile(r'/([0-9a-f]{64})\.[a-z]+$')
