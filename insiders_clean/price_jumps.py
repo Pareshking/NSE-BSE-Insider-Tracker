@@ -14,7 +14,7 @@ draws), on the prices as printed (`raw_move`) and as adjusted for splits and bon
   30 Apr 2026), and no ratio is read from the move, so the line keeps the fall.
 - `action_not_adjusted`: the adjusted line moves 40% or more and a corporate action is filed for the ISIN with an
   ex-date after the previous print and on or before this one, matched by ISIN or NSE symbol (rights, dividend,
-  buyback, or a bonus or split whose factor did not match: adjust.py applies splits and bonuses only).
+  buyback, or a bonus or split whose factor did not match: adjust.py applies splits, bonuses and filed demergers).
 - `missing_session`: the layer lacks the session before this one (adjust.missing_previous_session: the Sunday
   sessions of 1 Feb 2026 and 8 Nov 2026), so the move spans two sessions.
 - `exchange_reset_not_adjusted`: no action filed, but the exchange reset its base price by more than 5% that day

@@ -206,29 +206,44 @@ def test_bse_spin_off_and_schemes_are_kept():
     assert action_purpose('Demerger') == 'demerger'
 
 
-def test_demerger_with_no_base_reset_is_named_not_adjusted():
-    # VEDL 30 Apr 2026: a filed demerger, the exchanges did not reset the base price, so no exchange-published factor
-    # exists; the move is not read as a ratio. The audit names it scheme_not_adjusted instead of unexplained.
-    acts = pd.DataFrame({'isin': ['INE205A01025'], 'symbol': ['500295'], 'purpose': ['demerger'],
-                         'ex_date': ['2026-04-30']})
+def test_demerger_with_no_base_reset_is_adjusted_at_the_ex_date_close():
+    # VEDL 30 Apr 2026: a filed demerger, the exchanges did not reset the base price. Owner directive 20 Nov 2026:
+    # adjusted at the ex-date's closing price, factor = 271.55 / 773.60 (basis action_close), so the line no longer
+    # falls 65% that day and the audit counts it adjusted.
+    i = 'INE205A01025'
+    acts = pd.DataFrame({'isin': [i], 'symbol': ['500295'], 'purpose': ['demerger'], 'ex_date': ['2026-04-30']})
     close, _, f, raw = slim.adjusted_and_raw(vedl(), actions=acts)
-    assert not (f['kind'] == 'demerger').any()
-    assert close.loc['2026-04-29', 'INE205A01025'] == 773.60
+    d = f[(f['exchange'] == 'NSE') & (f['date'] == '2026-04-30')].iloc[0]
+    assert d['kind'] == 'demerger' and d['kind_basis'] == 'action_close'
+    assert np.isclose(d['factor'], 271.55 / 773.60)
+    assert np.isclose(close.loc['2026-04-29', i], 271.55)
+    assert close.loc['2026-04-30', i] == 271.55 and close.loc['2026-05-04', i] == 294.65
     meta = vedl()[['isin', 'symbol', 'name']]
-    out = price_jumps.jumps(raw, close, f, acts, universe={'INE205A01025'}, meta=meta)
-    assert out['status'].tolist() == ['scheme_not_adjusted'] and out['actions'].item() == 'demerger'
+    out = price_jumps.jumps(raw, close, f, acts, universe={i}, meta=meta)
+    assert out.loc[out['date'] == '2026-04-30', 'status'].tolist() == ['adjusted']
     rep = price_jumps.report(out, raw)
-    assert rep['in_universe']['scheme_not_adjusted'] == {'moves': 1, 'companies': 1}
-    assert rep['in_universe']['unexplained']['moves'] == 0
-    # Without the filed demerger (the feed as parsed before 20 Nov 2026) the same move is unexplained.
-    out0 = price_jumps.jumps(raw, close, f, None, universe={'INE205A01025'}, meta=meta)
-    assert out0['status'].tolist() == ['unexplained']
+    assert rep['in_universe']['scheme_not_adjusted']['moves'] == 0 and rep['in_universe']['unexplained']['moves'] == 0
+    # Without the filed demerger the same move is not adjusted, and unexplained.
+    close0, _, f0, _ = slim.adjusted_and_raw(vedl())
+    assert close0.loc['2026-04-29', i] == 773.60 and (f0['kind'] != 'demerger').all()
+    assert price_jumps.jumps(raw, close0, f0, None, universe={i}, meta=meta)['status'].tolist() == ['unexplained']
+    # A scheme of arrangement or an amalgamation (not a demerger) is not adjusted from the close.
+    sch = acts.assign(purpose='scheme')
+    _, _, f2, _ = slim.adjusted_and_raw(vedl(), actions=sch)
+    assert (f2['kind'] != 'demerger').all()
 
 
-def test_demerger_with_an_exchange_base_reset_is_flagged_not_applied():
+def test_demerger_small_move_is_left_as_printed():
+    i = 'INE00000Q011'
+    rows = [_row('2026-01-01', 100, 99, isin=i, sym='Q'), _row('2026-01-02', 97, 100, isin=i, sym='Q')]
+    acts = pd.DataFrame({'isin': [i], 'purpose': ['demerger'], 'ex_date': ['2026-01-02']})
+    close, _, f, _ = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
+    assert close.loc['2026-01-01', i] == 100 and (f['kind'] != 'demerger').all()
+
+
+def test_demerger_with_an_exchange_base_reset_is_applied():
     # A filed demerger whose ex-date base price the exchange reset (0.36, not a clean ratio): the factor is the
-    # exchange's base over our previous close, recorded with basis action_base_price, but NOT applied to the line
-    # (owner directive: splits and bonuses only, docs/CLEAN_LAYER.md).
+    # exchange's base over our previous close (basis action_base_price), applied to the line.
     i = 'INE00000Q011'
     rows = [_row('2026-01-01', 100, 99, isin=i, sym='Q'), _row('2026-01-02', 37, 36, isin=i, sym='Q'),
             _row('2026-01-05', 38, 37, isin=i, sym='Q')]
@@ -236,16 +251,11 @@ def test_demerger_with_an_exchange_base_reset_is_flagged_not_applied():
     close, _, f, raw = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
     d = f[f['date'] == '2026-01-02'].iloc[0]
     assert d['kind'] == 'demerger' and d['kind_basis'] == 'action_base_price' and np.isclose(d['factor'], 0.36)
-    assert close.loc['2026-01-01', i] == 100   # the line is left as printed
-    assert price_jumps.jumps(raw, close, f, acts)['status'].tolist() == ['scheme_not_adjusted']
+    assert np.isclose(close.loc['2026-01-01', i], 36)
     assert adjust.coverage(f)['demerger'] == 1
     # The same reset with no demerger filed is not applied.
     close0, _, f0, _ = slim.adjusted_and_raw(pd.DataFrame(rows))
     assert close0.loc['2026-01-01', i] == 100 and (f0['kind'] != 'demerger').all()
-    # A filed demerger whose base price moved while the close did not is not applied either.
-    rows[1] = _row('2026-01-02', 99, 36, isin=i, sym='Q')
-    _, _, f1, _ = slim.adjusted_and_raw(pd.DataFrame(rows), actions=acts)
-    assert (f1['kind'] != 'demerger').all()
 
 
 def test_nse_actions_backfill_goes_month_by_month():

@@ -396,7 +396,7 @@ and as adjusted, each `adjusted`, `made_by_adjustment` (an applied factor that i
 Nothing is corrected by it. The unexplained in the study universe are mostly splits or bonuses with no action in
 our tables and no reset of the base price (BHAGYANGR 8 Oct 2026, -91%, the day it moved from EQ to BE) and
 demergers (NSE's action feed as parsed drops schemes: VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV 14 Oct 2025);
-they stay unadjusted (owner directive: splits and bonuses only) and named in the report.
+they were left unadjusted then (owner directive at the time: splits and bonuses only) and named in the report.
 
 **Demergers and missing splits (20 Nov 2026, branch `price-demergers`).** Read-only peeks of raw_v2 (clean-peek
 `RAW_ACTIONS`, `ACTIONS_COVERAGE`, `PRICE_JUMPS_BSE_RAW`):
@@ -556,3 +556,12 @@ traded range, 106 between 2% and 20% outside (marked only: about 1.2%, mostly mu
 average), 215 more than 20% outside. Most of those 215 were two filing errors, now named and held back with their
 own reasons: the value field holding one share's price (`value_filed_as_price_per_share`) and shares valued at
 face value, Rs 1-10 (`valued_at_face_value`). The 2% and 20% tolerances stay.
+
+**Demergers adjusted at the ex-date close (owner directive, 20 Nov 2026).** The owner reversed "splits and bonuses
+only" for demergers: a filed demerger (NSE `Demerger`, BSE `Spin Off`) is now applied. Where the exchange reset the
+base price the factor is that base over our previous close (basis `action_base_price`, none in the product window);
+otherwise it is the ex-date close over the previous close (basis `action_close`), when that move is more than 5%
+(`STRUCTURAL`). `KIND_ADJUSTED = ('split_bonus', 'demerger')`. Known cost: the factor includes that day's trading move,
+not only the value spun off; the ex-date open (the exchanges' special pre-open price discovery, held in `open`) would
+exclude it. A scheme of arrangement, amalgamation or capital reduction is not adjusted; the audit still names those
+`scheme_not_adjusted`.
