@@ -561,7 +561,7 @@ def rows_to_parquet_bytes(exchange, category, rows, match_annotations=None):
         if df[col].map(lambda v: isinstance(v, (dict, list))).any():
             df[col] = df[col].map(lambda v: json.dumps(v, default=str) if isinstance(v, (dict, list)) else v)
     buf = io.BytesIO()
-    df.to_parquet(buf, index=False)
+    df.to_parquet(buf, index=False, compression='zstd')
     return buf.getvalue(), int(df['canonical_event_id'].nunique())
 
 

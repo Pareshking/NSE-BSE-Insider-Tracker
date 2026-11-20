@@ -37,7 +37,7 @@ JUMPS_KEY = 'clean/reports/price_jumps.json'
 
 def put(client, bucket, key, df):
     buf = io.BytesIO()
-    df.to_parquet(buf, index=False)
+    df.to_parquet(buf, index=False, compression='zstd')
     client.put_object(Bucket=bucket, Key=key, Body=buf.getvalue())
 
 

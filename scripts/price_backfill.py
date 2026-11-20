@@ -170,7 +170,7 @@ def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, 
                 merged = merged.drop_duplicates(KEYS[ex]).sort_values(['date', 'symbol'])
                 if not dry and client is not None:
                     buf = io.BytesIO()
-                    merged.to_parquet(buf, index=False)
+                    merged.to_parquet(buf, index=False, compression='zstd')
                     client.put_object(Bucket=bucket, Key=key(ex, month), Body=buf.getvalue())
             print(f'  {ex} {month}: new days {len(frames)} of {len(days)}', flush=True)
         totals[ex] = t
