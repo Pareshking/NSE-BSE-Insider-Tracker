@@ -12,12 +12,11 @@ import calendar
 import contextlib
 import functools
 import json
-import os
 import re
 from datetime import date, timedelta
 from urllib.parse import urljoin
 
-from collectors.mf_portfolios.find import UA, links_plain
+from collectors.mf_portfolios.find import UA, links_plain, raise_for_status, shared_browser
 
 TIMEOUT = 90
 
@@ -42,14 +41,10 @@ def _ym(month: str) -> tuple[int, int]:
 
 @contextlib.contextmanager
 def _browser():
-    from playwright.sync_api import sync_playwright
-    exe = os.environ.get('CHROMIUM_PATH')   # a browser installed apart from the Python package (local runs)
-    with sync_playwright() as pw:
-        b = pw.chromium.launch(**({'executable_path': exe, 'args': ['--no-sandbox']} if exe else {}))
-        try:
-            yield b
-        finally:
-            b.close()
+    """The process's shared browser (find.shared_browser): a second sync_playwright() beside the collector's raises
+    "Playwright Sync API inside the asyncio loop", which is what Edelweiss and Bandhan answered in every run with a
+    render=True house. Each reader opens and closes its own context in it; the browser stays for the next."""
+    yield shared_browser()
 
 
 # --- Franklin Templeton: the literature JSON its Reports page is built from -----------------------------------------
@@ -59,7 +54,7 @@ FRANKLIN = 'https://www.franklintempletonindia.com'
 @functools.lru_cache(maxsize=1)
 def _franklin_lit() -> dict:
     r = _session().get(f'{FRANKLIN}/api/literature/v1/responseLitJson?type=report', timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     return r.json()
 
 
@@ -103,7 +98,7 @@ def invesco(month: str) -> list[tuple[str, str]]:
     ab = calendar.month_abbr[m]
     for c in INVESCO_CLASSES:
         r = s.get(INVESCO, params={'year': y, 'classification': c}, timeout=TIMEOUT)
-        r.raise_for_status()
+        raise_for_status(r)
         for row in r.json():
             url = (row.get(f'{ab}Url') or '').strip()
             if url:   # labelled as the page labels it: "<scheme> - October-2026"
@@ -117,7 +112,7 @@ def quant(month: str) -> list[tuple[str, str]]:
     r = _session().post('https://quantmutual.com/statutorydisclosures.aspx/displaydisclouser',
                         data=json.dumps({'id': str(y), 'cat': 'MONTHLY PORTFOLIO'}),
                         headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     return _anchors(r.json().get('d') or '', 'https://quantmutual.com/')
 
 
@@ -134,7 +129,7 @@ def sundaram(month: str) -> list[tuple[str, str]]:
         raise ValueError('portfolio method not on the page')
     r = s.post(urljoin(SUNDARAM, ajax.group(0)) + '?_method=GetCategory&_session=no', data='Catid=Monthly',
                headers={'Content-Type': 'text/plain; charset=utf-8'}, timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     html = r.text.strip()
     if html.startswith("'") and html.endswith("'"):   # an AjaxPro string: quoted, quotes escaped
         html = html[1:-1].replace("\\'", "'").replace('\\"', '"').replace('\\/', '/')
@@ -151,7 +146,7 @@ def lic(month: str) -> list[tuple[str, str]]:
     s.get(f'{LIC}/downloads/monthly-portfolio', timeout=TIMEOUT).raise_for_status()
     r = s.post(f'{LIC}/downloads/consolidated-portfolio-files', data={'id': '639', 'month': str(m), 'year': str(y)},
                timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     return _anchors(r.text, f'{LIC}/downloads/monthly-portfolio')
 
 
@@ -163,7 +158,7 @@ def pgim(month: str) -> list[tuple[str, str]]:
     r = _session().post('https://www.pgimindia.com/api/v1/brochure/published/disclosure',
                         json={'headerId': 2, 'sectionId': 'SECTION_747960037', 'source': 'W', 'branchCode': None},
                         timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     out = []
     for tab in r.json().get('data') or []:
         if tab.get('tabName') not in PGIM_TABS:
@@ -183,7 +178,7 @@ def whiteoak(month: str) -> list[tuple[str, str]]:
               'filters[published_date][$lte]': (end + timedelta(days=60)).isoformat(),
               'pagination[pageSize]': 200, 'populate': 'doc_file'}
     r = _session().get('https://cms.whiteoakamc.com/api/scheme-portfolios', params=params, timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     out = []
     for row in r.json().get('data') or []:
         a = row.get('attributes') or {}
@@ -200,7 +195,7 @@ ONE360 = 'https://www.360.one/asset/mutual-funds/downloads/'
 
 def one360(month: str) -> list[tuple[str, str]]:
     r = _session().get(ONE360, timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     text = r.text.replace('\\"', '"').replace('\\/', '/')
     return [(n, u) for n, u in re.findall(r'"fileName":"([^"]*)","fileUrl":"([^"]+)"', text)]
 
@@ -423,7 +418,7 @@ def icici_links(files: list[dict]) -> list[tuple[str, str]]:
 def icici(month: str, max_pages: int = 10) -> list[tuple[str, str]]:
     s = _session()
     r = s.get(ICICI_API + 'categories', params={'userType': 'Investor'}, headers=_icici_headers(), timeout=TIMEOUT)
-    r.raise_for_status()
+    raise_for_status(r)
     cat = sub = None
     for c in (r.json().get('success') or {}).get('data') or []:
         for sc in c.get('subCategory') or []:
@@ -438,7 +433,7 @@ def icici(month: str, max_pages: int = 10) -> list[tuple[str, str]]:
                    json={'categoryId': sub['id'], 'schemeCategory': '', 'userType': 'Investor', 'fileType': 'All',
                          'page': str(pg), 'size': '20', 'filter': [],
                          'categoryName': (cat.get('title') or {}).get('code')})
-        r.raise_for_status()
+        raise_for_status(r)
         data = (r.json().get('success') or {}).get('data') or {}
         files = data.get('files') or []
         out += icici_links(files)
@@ -478,7 +473,7 @@ def alphagrep(month: str) -> list[tuple[str, str]]:
     for pg in range(1, 20):
         r = s.get(f'{ALPHAGREP_CMS}/api/portfolios', timeout=TIMEOUT,
                   params={'populate': '*', 'pagination[pageSize]': 100, 'pagination[page]': pg})
-        r.raise_for_status()
+        raise_for_status(r)
         d = r.json()
         entries += d.get('data') or []
         if pg >= (((d.get('meta') or {}).get('pagination') or {}).get('pageCount') or 1):

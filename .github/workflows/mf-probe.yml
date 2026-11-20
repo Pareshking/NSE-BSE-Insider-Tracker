@@ -13,6 +13,18 @@ on:
         description: 'More addresses, space-separated (optional)'
         required: false
         default: ''
+      browser:
+        description: 'Addresses to open in an ordinary headless browser visit (scripts/mf_probe_browser.py); blank = the default list'
+        required: false
+        default: ''
+      dry_run:
+        description: 'House keys to collect with --dry-run on the runner (reads only: no R2 secrets in this job)'
+        required: false
+        default: ''
+      month:
+        description: 'Month for the dry run'
+        required: false
+        default: '2026-10'
 
 permissions:
   contents: read
@@ -20,7 +32,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Probe
@@ -39,6 +51,9 @@ jobs:
           https://www.unionmf.com/
           https://www.unionmf.com/downloads/disclosures/portfolio-disclosure
           https://www.alphagrepmf.ai/disclosures
+          https://www.angelonemf.com/downloads
+          https://cms.whiteoakamc.com/api/scheme-portfolios?filters%5Bperiod%5D%5B%24eq%5D=Monthly&pagination%5BpageSize%5D=5&populate=doc_file
+          https://www.bajajamc.com/downloads
           $EXTRA"
           echo '### Fund house probe' >> "$GITHUB_STEP_SUMMARY"
           echo '| address | HTTP | bytes | type | ends at | error |' >> "$GITHUB_STEP_SUMMARY"
@@ -65,6 +80,38 @@ jobs:
         run: |
           pip install requests selenium
           python -u scripts/mf_probe_follow.py probe/follow
+      - name: Browser
+        if: always()
+        run: |
+          pip install -r requirements.txt playwright
+          python -m playwright install --with-deps chromium
+      - name: Browser visits (an ordinary page load; nothing solved or disguised)
+        if: always()
+        env:
+          BROWSER_URLS: ${{ inputs.browser }}
+        run: |
+          urls="$BROWSER_URLS"
+          if [ -z "$urls" ]; then urls="
+          https://www.angelonemf.com/downloads
+          https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios
+          https://www.bajajamc.com/downloads
+          https://www.kotakmf.com/Information/forms-and-downloads
+          https://navi.com/mutual-fund/downloads/portfolio
+          https://www.unionmf.com/downloads/disclosures/portfolio-disclosure"; fi
+          python -u scripts/mf_probe_browser.py probe/browser $urls | tee probe/browser.log
+          echo '### Browser visits' >> "$GITHUB_STEP_SUMMARY"
+          sed 's/^/    /' probe/browser.log >> "$GITHUB_STEP_SUMMARY"
+      - name: Collector dry run (writes nothing)
+        if: always() && inputs.dry_run != ''
+        env:
+          HOUSES: ${{ inputs.dry_run }}
+          MONTH: ${{ inputs.month }}
+        run: |
+          args="--month $MONTH --dry-run"
+          for h in $HOUSES; do args="$args --house $h"; done
+          python -u scripts/mf_portfolios.py $args 2>&1 | tee probe/dry_run.log
+          echo '### Dry run' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^\{|^found' probe/dry_run.log | cut -c1-600 | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -92,7 +92,6 @@ HOUSES = [
           must=r'monthly_portfolio_disclosure'),
     House('oldbridge', 'Old Bridge Mutual Fund', 'https://oldbridgemf.com/statutory-disclosures.html', mode='all',
           must=r'_portfolio_', exclude=r'notice|overlap'),
-    House('angelone', 'Angel One Mutual Fund', 'https://www.angelonemf.com/downloads', mode='all', must=r'monthly-portfolio'),
     House('abakkus', 'Abakkus Mutual Fund', 'https://www.abakkusmf.com/statutory-disclosures.html',
           must=r'/uploads/(?:\S*monthly_port|abakkus_mf_[a-z]+_\d\d_20\d\d)'),   # links in script data, names vary month to month
     House('jmf', 'JM Financial Mutual Fund', 'https://www.jmfinancialmf.com/downloads/Portfolio-Disclosure', render=True,
@@ -145,8 +144,6 @@ HOUSES = [
           api=apis2.lic),
     House('pgim', 'PGIM India Mutual Fund', 'https://www.pgimindia.com/mutual-funds/disclosures/Portfolios/Monthly-Portfolio',
           mode='all', api=apis2.pgim),
-    House('whiteoak', 'WhiteOak Capital Mutual Fund', 'https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios',
-          mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
     House('bandhan', 'Bandhan Mutual Fund', apis2.BANDHAN, mode='all', api=apis2.bandhan),
     House('one360', '360 ONE Mutual Fund', apis2.ONE360, must=r'monthly_portfolio', exclude=r'overlap', api=apis2.one360),
     # The downloads list shows only after the visitor declares "I am NOT a US person / resident of Canada"; the owner
@@ -205,12 +202,35 @@ PENSION = [
 NOT_COLLECTED = [
     ('Kotak Mahindra Mutual Fund', 'its file list is behind a CAPTCHA (Radware bot check)'),
     ('Navi Mutual Fund', 'its site answers a Cloudflare bot check'),
-    ('Union Mutual Fund', 'its site refuses connections from outside India'),
+    ('Union Mutual Fund', 'its site refuses connections from outside India; a collector waits for a runner in India '
+                          '(needs_india_runner, not yet verified)'),
     ('ASK Mutual Fund', 'a liquid fund only so far: no equity'),
     ('Monarch Mutual Fund', 'an overnight fund only: no equity'),
     ('Carnelian Mutual Fund', 'a liquid fund only so far: no equity'),
     ('IL&FS Mutual Fund (IDF)', 'an infrastructure debt fund: no equity'),
+    ('Angel One Mutual Fund', 'its site answers HTTP 403 to the GitHub runners the collector runs on'),
+    ('WhiteOak Capital Mutual Fund', 'its file list service answers HTTP 403 to the GitHub runners the collector runs on'),
+]
+
+# Houses whose page or list service refuses the GitHub runners (HTTP 403 in every Mutual fund portfolios run since
+# 19 Nov 2026: 44514251606, 44654006211), while the same requests are answered from a cloud machine (20 Nov 2026), so
+# nothing in the request is wrong. Not worked around; listed in NOT_COLLECTED, left out of the default run, and kept
+# here so `--house angelone` still reads them by hand, and mf-probe.yml asks them again from a runner.
+RUNNER_BLOCKED = [
+    House('angelone', 'Angel One Mutual Fund', 'https://www.angelonemf.com/downloads', mode='all', must=r'monthly-portfolio'),
+    House('whiteoak', 'WhiteOak Capital Mutual Fund', 'https://mf.whiteoakamc.com/regulatory-disclosures/scheme-portfolios',
+          mode='all', must=r'monthly portfolio', api=apis2.whiteoak),
+]
+
+# Union refuses connections from outside India (geography, not a bot check): every machine we have (a cloud machine,
+# GitHub runners) is refused at the connection, so its page has never been seen and this reading of it is NOT
+# verified: the disclosure page as AMFI's list and the probe name it, read in a browser, the month's file picked by the
+# month and file rules alone (no house-specific pattern, since none could be checked). To be checked, and given a
+# `must` pattern, on the first run from a runner in India: python scripts/mf_portfolios.py --house union --dry-run.
+INDIA_ONLY = [
+    House('union', 'Union Mutual Fund', 'https://www.unionmf.com/downloads/disclosures/portfolio-disclosure', render=True,
+          needs_india_runner=True),
 ]
 
 HOUSES = HOUSES + PENSION
-BY_KEY = {h.key: h for h in HOUSES}
+BY_KEY = {h.key: h for h in HOUSES + RUNNER_BLOCKED + INDIA_ONLY}
