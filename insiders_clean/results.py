@@ -236,7 +236,7 @@ def clean(filings: pd.DataFrame) -> pd.DataFrame:
         s = {}
         if r.get('xbrl_status') == 'ok' and r.get('xbrl_json'):
             try:
-                s = summary(json.loads(r['xbrl_json']), r.get('kind'))
+                s = summary(json.loads(r['xbrl_json']), r.get('kind') or kind_of(r.get('xbrl_url')))
             except (ValueError, KeyError, TypeError):
                 s = {}
         rows.append({**{k: v for k, v in r.items() if k != 'xbrl_json'}, **s})
