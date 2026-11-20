@@ -144,6 +144,52 @@ def results_xbrl(r2, syms: list[str]) -> int:
     return 0
 
 
+def results_tags(r2, syms: list[str]) -> int:
+    """RESULTS_TAGS:SYM,...: the element names banks, NBFCs and insurers file their results under (20 Nov 2026: the
+    Results page showed "No revenue line" for HDFC Bank, SBI, LIC ...). Per symbol, its latest filing per basis: the
+    layout (kind) and every numeric fact of the quarter context, as filed. Then, per layout across the 2026 archive,
+    the filings and how often each numeric element is on the quarter (or year to date) context. Read only."""
+    import json
+    from collections import Counter
+    from insiders_clean import results
+    a = read_parquet(r2, 'archive/nse_events/results/year=2026.parquet')
+    if a is None or a.empty:
+        print('archive results 2026: empty or missing')
+        return 0
+    a = a[a['xbrl_status'].eq('ok')]
+    for sym in syms:
+        g = a[a['symbol'].astype(str).str.upper() == sym].sort_values('broadcast_at')
+        g = g.drop_duplicates('consolidated', keep='last')
+        print(f'\n===== {sym}: latest filing per basis ({len(g)})')
+        for r in g.to_dict('records'):
+            p = json.loads(r['xbrl_json'])
+            q, y = results.periods(p)
+            ctx = q or y
+            print(f"-- {r.get('consolidated')} {r.get('revision')} period_end {r.get('period_end')} kind {r.get('kind')} "
+                  f"ctx {ctx} {p['contexts'].get(ctx, {}).get('start')} - {p['contexts'].get(ctx, {}).get('end')} url {r.get('xbrl_url')}")
+            for k, v in sorted(p['facts'].get(ctx, {}).items()):
+                if isinstance(v, float):
+                    print(f'   {k} = {v:,.0f}')
+    print('\n===== element frequency per layout (quarter context, else year to date), 2026 archive')
+    a = a.assign(_k=a['kind'].fillna('?'))
+    for kind, g in a.groupby('_k'):
+        n, c = 0, Counter()
+        cos = g['symbol'].nunique()
+        for x in g['xbrl_json']:
+            try:
+                p = json.loads(x)
+            except (TypeError, ValueError):
+                continue
+            q, y = results.periods(p)
+            f = p['facts'].get(q or y, {})
+            n += 1
+            c.update(k for k, v in f.items() if isinstance(v, float))
+        print(f'--- {kind}: {n} filings, {cos} companies')
+        for k, m in c.most_common(70 if kind != 'INDAS' else 25):
+            print(f'   {m:6d} {k}')
+    return 0
+
+
 def trades_and_deals(r2, sym: str) -> int:
     """TRADES:SYM: a company's insider market rows and bulk/block deals, Oct-Nov 2026, as cleaned (14 Nov 2026: why a
     placement or a cross is or is not labelled)."""
@@ -1037,6 +1083,8 @@ def main() -> int:
         return symbol_prices(r2, sym, start, end)
     if syms and syms[0].startswith('TRADES:'):  # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
+    if syms and syms[0].startswith('RESULTS_TAGS:'):   # the element names of banks', NBFCs' and insurers' results (20 Nov)
+        return results_tags(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
         return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026
