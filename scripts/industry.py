@@ -73,6 +73,12 @@ FLUSH_WORKERS = 16       # raw captures stored side by side
 STAGING_KEEP_DAYS = 2    # a checkpoint older than this is deleted by the build once merged (a run lasts < 6 hours)
 EXCHANGES = (('nse', I.NSE_ARCHIVE_COLUMNS, 'nse_symbol'), ('bse', I.BSE_ARCHIVE_COLUMNS, 'bse_code'))
 STOP_AFTER_ERRORS = 10   # unreadable answers in a row: the exchange is sending something else; stop it
+# BSE's quote header is slow to answer (speed test 20 Nov 2026, PR #313, GitHub runner: 3.5 s an answer one at a time
+# with a 1 s pause; 0.13 s an answer four at a time, 40 of 40 answered, no refusal). So BSE is asked by BSE_WORKERS
+# side by side, each with its own session and a BSE_WORKER_PACE pause; the first refusal (401/403/429) stops all of
+# them for the run (no browser fallback, no retry around it). ~4,849 scrips: about an hour instead of 6-7.
+BSE_WORKERS = int(os.environ.get('INDUSTRY_BSE_WORKERS', '4'))
+BSE_WORKER_PACE = (1.0, 2.0)
 
 
 def now_utc() -> datetime:
@@ -165,14 +171,20 @@ def bse_list(bse: BSEClient, report: dict) -> pd.DataFrame:
 
 
 def fetch_bse(codes, report: dict, deadline: float, out: Path | None = None, bse: BSEClient | None = None,
-              echo: bool = False, rows: list | None = None) -> pd.DataFrame:
+              echo: bool = False, rows: list | None = None, key: str = 'bse',
+              stop: threading.Event | None = None) -> pd.DataFrame:
+    """`key`: where in `report` this fetcher reports; `stop`: set by any worker on a refusal, ends the others."""
     bse = bse or BSEClient(raw=RawCapture())
     rows = [] if rows is None else rows
-    errors, rep = 0, report.setdefault('bse', {})
+    errors, rep = 0, report.setdefault(key, {})
     rep['asked'] = len(codes)
+    mine = []
     for n, code in enumerate(codes):
         if time.monotonic() > deadline:
             rep['stopped'] = f'time budget reached after {n} scrips'
+            break
+        if stop is not None and stop.is_set():
+            rep['stopped'] = f'another worker was refused; stopped after {n} scrips'
             break
         payload = None
         try:
@@ -183,6 +195,8 @@ def fetch_bse(codes, report: dict, deadline: float, out: Path | None = None, bse
             payload = json.loads(body.decode('utf-8', errors='replace'))
         except BSEBlocked as exc:
             rep['stopped'] = f'refused ({exc}) after {n} scrips'
+            if stop is not None:
+                stop.set()
             break
         except ValueError:
             payload = None   # an HTML error page where JSON was due
@@ -191,15 +205,51 @@ def fetch_bse(codes, report: dict, deadline: float, out: Path | None = None, bse
         row = I.parse_bse(payload, code)
         row['fetched_at'] = now_utc()
         rows.append(row)
+        mine.append(row)
         errors = errors + 1 if row['status'] == 'error' else 0
         if errors >= STOP_AFTER_ERRORS:
             rep['stopped'] = f'{errors} unreadable answers in a row after {n + 1} scrips'
+            if stop is not None:
+                stop.set()
             break
         if len(rows) % CHECKPOINT == 0:
             _save(rows, I.BSE_ARCHIVE_COLUMNS, out)
     _save(rows, I.BSE_ARCHIVE_COLUMNS, out)
-    df = pd.DataFrame(list(rows), columns=I.BSE_ARCHIVE_COLUMNS)
+    df = pd.DataFrame(mine, columns=I.BSE_ARCHIVE_COLUMNS)
     rep.update(fetched=int(len(df)), calls=bse.calls, via=bse.via, status=df['status'].value_counts().to_dict())
+    return df
+
+
+def fetch_bse_parallel(codes, report: dict, deadline: float, out: Path | None = None, rows: list | None = None,
+                       workers: int = BSE_WORKERS, client_factory=None) -> pd.DataFrame:
+    """`codes` dealt round-robin to `workers` threads, each with its own BSEClient (BSE_WORKER_PACE, no browser
+    fallback); answers go to the shared `rows` as they arrive (the Saver reads it). One worker refused stops all.
+    The local file is written once at the end (workers would race on it)."""
+    rows = [] if rows is None else rows
+    rep = report.setdefault('bse', {})
+    rep.update(asked=len(codes), workers=workers)
+    make = client_factory or (lambda: BSEClient(raw=RawCapture(), pace=BSE_WORKER_PACE, allow_in_page=False))
+    stop = threading.Event()
+    clients = [make() for _ in range(max(1, workers))]
+    sub = {}
+    threads = [threading.Thread(target=fetch_bse, args=(codes[w::len(clients)], sub, deadline, None, c),
+                                kwargs={'rows': rows, 'key': f'w{w}', 'stop': stop})
+               for w, c in enumerate(clients)]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        for c in clients:
+            c.close()
+    _save(rows, I.BSE_ARCHIVE_COLUMNS, out)
+    df = pd.DataFrame(list(rows), columns=I.BSE_ARCHIVE_COLUMNS)
+    rep.update(fetched=int(len(df)), calls=sum(c.calls for c in clients), via='requests',
+               status=df['status'].value_counts().to_dict(), by_worker=sub)
+    stopped = [v['stopped'] for v in sub.values() if v.get('stopped') and 'another worker' not in v['stopped']]
+    if stopped:
+        rep['stopped'] = stopped[0]
     return df
 
 
@@ -454,7 +504,10 @@ def fetch(r2, out: Path, sources, limit: int | None, minutes: float, report: dic
             todo = bse_due(scrips, sec, known['nse'], known['bse'], now, limit)
             report['bse']['due'] = len(todo)
             try:
-                fetch_bse(todo, report, deadline, out / 'bse.parquet', client, rows=live['bse'])
+                if bse is None and BSE_WORKERS > 1:
+                    fetch_bse_parallel(todo, report, deadline, out / 'bse.parquet', rows=live['bse'])
+                else:
+                    fetch_bse(todo, report, deadline, out / 'bse.parquet', client, rows=live['bse'])
             finally:
                 client.close()
         threads.append(threading.Thread(target=run_bse))

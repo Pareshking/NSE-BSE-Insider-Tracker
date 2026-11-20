@@ -362,3 +362,53 @@ def test_build_deletes_only_old_checkpoints(tmp_path, monkeypatch):
     out = script.build(r2, None, NOW.date(), {})
     assert out['staging_deleted'] == 1 and r2.deleted == ['staging/industry/old/bse.parquet']
     assert out['bse_archive']['rows'] == 1 and script.ARCHIVE['bse'] in r2.objects
+
+
+# ---- BSE asked side by side (speed test 20 Nov 2026, PR #313) -----------------------------------
+
+def test_bse_parallel_fetches_every_code_once(tmp_path, monkeypatch):
+    import time as _t
+
+    import industry as script
+    monkeypatch.setattr(__import__('raw_capture'), 'DIR', tmp_path / 'raw')
+    made = []
+
+    def factory():
+        made.append(FakeBSE())
+        return made[-1]
+    codes = ['500002', '500012', '500014', '543000', '999999', '500003', '500004']
+    rows, report = [], {}
+    df = script.fetch_bse_parallel(codes, report, _t.monotonic() + 60, tmp_path / 'bse.parquet', rows=rows,
+                                   workers=3, client_factory=factory)
+    assert len(made) == 3 and sorted(c for f in made for c in f.asked) == sorted(codes)
+    assert len(df) == len(codes) == len(rows) and set(df['bse_code'].astype(str)) == set(codes)
+    assert report['bse']['workers'] == 3 and report['bse']['fetched'] == 7 and 'stopped' not in report['bse']
+    assert len(pd.read_parquet(tmp_path / 'bse.parquet')) == 7
+
+
+def test_bse_parallel_one_refusal_stops_every_worker(tmp_path, monkeypatch):
+    import threading
+    import time as _t
+
+    import industry as script
+    monkeypatch.setattr(__import__('raw_capture'), 'DIR', tmp_path / 'raw')
+    gate = threading.Event()
+
+    class Refused(FakeBSE):
+        def get(self, path, params, dataset, covers=None):
+            gate.set()
+            raise script.BSEBlocked('HTTP 403 from header (requests)')
+
+    class Slow(FakeBSE):
+        def get(self, path, params, dataset, covers=None):
+            gate.wait(5)
+            _t.sleep(0.05)
+            return super().get(path, params, dataset, covers)
+    made = iter([Refused(), Slow()])
+    codes = [f'5{n:05d}' for n in range(40)]
+    report = {}
+    df = script.fetch_bse_parallel(codes, report, _t.monotonic() + 60, None, workers=2,
+                                   client_factory=lambda: next(made))
+    assert report['bse']['stopped'].startswith('refused (HTTP 403')
+    assert len(df) < 20   # the slow worker stopped well before its 20 codes
+    assert 'another worker' in report['bse']['by_worker']['w1']['stopped']
