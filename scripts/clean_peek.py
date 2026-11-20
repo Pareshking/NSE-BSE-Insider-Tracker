@@ -144,6 +144,94 @@ def results_xbrl(r2, syms: list[str]) -> int:
     return 0
 
 
+def results_tags(r2, syms: list[str]) -> int:
+    """RESULTS_TAGS:SYM,...: the element names banks, NBFCs and insurers file their results under (20 Nov 2026: the
+    Results page showed "No revenue line" for HDFC Bank, SBI, LIC ...). Per symbol, its latest filing per basis: the
+    layout (kind) and every numeric fact of the quarter context, as filed. Then, per layout across the 2026 archive,
+    the filings and how often each numeric element is on the quarter (or year to date) context. Read only."""
+    import json
+    from collections import Counter
+    from insiders_clean import results
+    a = read_parquet(r2, 'archive/nse_events/results/year=2026.parquet')
+    if a is None or a.empty:
+        print('archive results 2026: empty or missing')
+        return 0
+    a = a[a['xbrl_status'].eq('ok')]
+    for sym in syms:
+        g = a[a['symbol'].astype(str).str.upper() == sym].sort_values('broadcast_at')
+        g = g.drop_duplicates('consolidated', keep='last')
+        print(f'\n===== {sym}: latest filing per basis ({len(g)})')
+        for r in g.to_dict('records'):
+            p = json.loads(r['xbrl_json'])
+            q, y = results.periods(p)
+            ctx = q or y
+            print(f"-- {r.get('consolidated')} {r.get('revision')} period_end {r.get('period_end')} kind {r.get('kind')} "
+                  f"ctx {ctx} {p['contexts'].get(ctx, {}).get('start')} - {p['contexts'].get(ctx, {}).get('end')} url {r.get('xbrl_url')}")
+            for k, v in sorted(p['facts'].get(ctx, {}).items()):
+                if isinstance(v, float):
+                    print(f'   {k} = {v:,.0f}')
+    print('\n===== element frequency per layout (quarter context, else year to date), 2026 archive')
+    a = a.assign(_k=a['kind'].fillna('?'))
+    for kind, g in a.groupby('_k'):
+        n, c = 0, Counter()
+        cos = g['symbol'].nunique()
+        for x in g['xbrl_json']:
+            try:
+                p = json.loads(x)
+            except (TypeError, ValueError):
+                continue
+            q, y = results.periods(p)
+            f = p['facts'].get(q or y, {})
+            n += 1
+            c.update(k for k, v in f.items() if isinstance(v, float))
+        print(f'--- {kind}: {n} filings, {cos} companies')
+        for k, m in c.most_common(70 if kind != 'INDAS' else 25):
+            print(f'   {m:6d} {k}')
+    return 0
+
+
+def results_basis(r2, syms: list[str]) -> int:
+    """RESULTS_BASIS[:SYM,...]: the clean results rebuilt from the archive with each layout's revenue line
+    (results.TOP_LINE, 20 Nov 2026), against the Ind AS names alone: per layout, the companies whose Sep 2026 quarter
+    (latest filing, either basis) has a revenue line now and had one before, and how many also have the Sep 2025
+    quarter on the same line and basis. Then the named companies' Sep 2026 rows. Read only; writes nothing."""
+    import json
+    from insiders_clean import results
+    frames = [f for y in (2025, 2026) if (f := read_parquet(r2, f'archive/nse_events/results/year={y}.parquet')) is not None]
+    a = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if a.empty:
+        print('archive results: empty or missing')
+        return 0
+    c = results.clean(a)
+    c = c[c['xbrl_status'].eq('ok') & ~c['superseded'].astype('boolean').fillna(False)]
+    old = {}
+    for r in a[a['xbrl_status'].eq('ok')].to_dict('records'):
+        if str(r.get('period_end')) in ('2026-09-30', '2025-09-30'):
+            try:
+                old[r['event_id']] = results.summary(json.loads(r['xbrl_json']))['quarter_revenue'] is not None
+            except (TypeError, ValueError, KeyError):
+                old[r['event_id']] = False
+    c = c.assign(_kind=c['kind'].fillna('?'), _cons=c['consolidated'].astype(str).str.lower().str.startswith('consolidated'),
+                 _has=pd.to_numeric(c['quarter_revenue'], errors='coerce').notna(), _old=c['event_id'].map(old).fillna(False))
+    now, ago = c[c['period_end'].astype(str).eq('2026-09-30')], c[c['period_end'].astype(str).eq('2025-09-30')]
+    key = set(zip(ago.loc[ago['_has'], 'symbol'], ago.loc[ago['_has'], '_cons'], ago.loc[ago['_has'], 'revenue_basis']))
+    now = now.assign(_ago=[(s_, b, rb) in key for s_, b, rb in zip(now['symbol'], now['_cons'], now['revenue_basis'])])
+    print(f"{'layout':12}{'companies':>10}{'revenue now':>12}{'before':>8}{'with Sep 2025 like for like':>30}")
+    for kind, g in now.groupby('_kind'):
+        co = g.groupby('symbol')
+        print(f"{kind:12}{co.ngroups:>10}{int(co['_has'].any().sum()):>12}{int(co['_old'].any().sum()):>8}"
+              f"{int((co['_has'].any() & co['_ago'].any()).sum()):>30}  bases {g['revenue_basis'].fillna('-').value_counts().to_dict()}")
+    co = now.groupby('symbol')
+    print(f"all: {co.ngroups} companies with a Sep 2026 filing; revenue line now {int(co['_has'].any().sum())}, before "
+          f"{int(co['_old'].any().sum())}; gained {int((co['_has'].any() & ~co['_old'].any()).sum())}")
+    left = now[~now.groupby('symbol')['_has'].transform('any')]
+    print(f"still no revenue line: {left['symbol'].nunique()} companies; layouts {left.drop_duplicates('symbol')['_kind'].value_counts().to_dict()}; "
+          f"e.g. {sorted(left['symbol'].dropna().unique())[:25]}")
+    cols = ['symbol', 'consolidated', 'kind', 'revenue_basis', 'quarter_revenue', 'quarter_profit', 'quarter_profit_owners', '_ago']
+    print(now[now['symbol'].astype(str).str.upper().isin(syms)].sort_values(['symbol', 'consolidated'])[cols].to_string(index=False))
+    return 0
+
+
 def trades_and_deals(r2, sym: str) -> int:
     """TRADES:SYM: a company's insider market rows and bulk/block deals, Oct-Nov 2026, as cleaned (14 Nov 2026: why a
     placement or a cross is or is not labelled)."""
@@ -1037,6 +1125,10 @@ def main() -> int:
         return symbol_prices(r2, sym, start, end)
     if syms and syms[0].startswith('TRADES:'):  # a company's insider rows and deals as cleaned (14 Nov)
         return trades_and_deals(r2, syms[0].split(':', 1)[1])
+    if syms and syms[0].split(':')[0] == 'RESULTS_BASIS':   # who gets a revenue line from TOP_LINE (20 Nov)
+        return results_basis(r2, ([syms[0].split(':', 1)[1]] if ':' in syms[0] else []) + syms[1:])
+    if syms and syms[0].startswith('RESULTS_TAGS:'):   # the element names of banks', NBFCs' and insurers' results (20 Nov)
+        return results_tags(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms and syms[0].startswith('RESULTS_XBRL:'):   # a company's Sep 2026 results filings as filed (13 Nov)
         return results_xbrl(r2, [syms[0].split(':', 1)[1]] + syms[1:])
     if syms == ['DEAL_DAYS']:    # TODO 18: bulk and block deals per day and exchange around 07-08 Oct 2026

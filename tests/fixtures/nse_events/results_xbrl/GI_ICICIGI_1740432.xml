@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ICICI Lombard General Insurance, Sep 2026 quarter, standalone, Revision (INTEGRATED_FILING_GI_1740432_16102026073544_WEB.xml). A few facts of its quarter context, element names and values as filed (from the archive's
+     xbrl_json, read with scripts/clean_peek.py RESULTS_TAGS on 20 Nov 2026); the rest of the filing left out. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/in-capmkt">
+ <xbrli:context id="OneD"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>
+ <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-07-01</in-capmkt:DateOfStartOfReportingPeriod>
+ <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2026-09-30</in-capmkt:DateOfEndOfReportingPeriod>
+ <in-capmkt:GrossPremiumsWritten contextRef="OneD" unitRef="INR" decimals="-5">77020900000</in-capmkt:GrossPremiumsWritten>
+ <in-capmkt:NetPremiumWritten contextRef="OneD" unitRef="INR" decimals="-5">62136600000</in-capmkt:NetPremiumWritten>
+ <in-capmkt:PremiumEarned contextRef="OneD" unitRef="INR" decimals="-5">66518700000</in-capmkt:PremiumEarned>
+ <in-capmkt:OperatingIncome contextRef="OneD" unitRef="INR" decimals="-5">78437200000</in-capmkt:OperatingIncome>
+ <in-capmkt:OtherIncome contextRef="OneD" unitRef="INR" decimals="-5">310200000</in-capmkt:OtherIncome>
+ <in-capmkt:ProfitOrLossBeforeTax contextRef="OneD" unitRef="INR" decimals="-5">12474100000</in-capmkt:ProfitOrLossBeforeTax>
+ <in-capmkt:ProvisionForTax contextRef="OneD" unitRef="INR" decimals="-5">3010100000</in-capmkt:ProvisionForTax>
+ <in-capmkt:ProfitLossAfterTax contextRef="OneD" unitRef="INR" decimals="-5">9464000000</in-capmkt:ProfitLossAfterTax>
+</xbrli:xbrl>

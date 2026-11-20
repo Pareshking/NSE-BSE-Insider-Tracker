@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Life Insurance Corporation of India, Sep 2026 quarter, standalone, Original (INTEGRATED_FILING_LI_1753945_05112026064353_WEB.xml). A few facts of its quarter context, element names and values as filed (from the archive's
+     xbrl_json, read with scripts/clean_peek.py RESULTS_TAGS on 20 Nov 2026); the rest of the filing left out. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/in-capmkt">
+ <xbrli:context id="OneD"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>
+ <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-07-01</in-capmkt:DateOfStartOfReportingPeriod>
+ <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2026-09-30</in-capmkt:DateOfEndOfReportingPeriod>
+ <in-capmkt:GrossPremiumIncome contextRef="OneD" unitRef="INR" decimals="-5">1472097900000</in-capmkt:GrossPremiumIncome>
+ <in-capmkt:NetPremiumIncome contextRef="OneD" unitRef="INR" decimals="-5">1470181800000</in-capmkt:NetPremiumIncome>
+ <in-capmkt:IncomeFromInvestmentsNet contextRef="OneD" unitRef="INR" decimals="-5">1149837700000</in-capmkt:IncomeFromInvestmentsNet>
+ <in-capmkt:Income contextRef="OneD" unitRef="INR" decimals="-5">2627392700000</in-capmkt:Income>
+ <in-capmkt:ProfitLossBeforeTax contextRef="OneD" unitRef="INR" decimals="-5">121258200000</in-capmkt:ProfitLossBeforeTax>
+ <in-capmkt:ProfitLossAfterTaxBeforeExtraordinaryItems contextRef="OneD" unitRef="INR" decimals="-5">120760200000</in-capmkt:ProfitLossAfterTaxBeforeExtraordinaryItems>
+ <in-capmkt:ProfitLossAfterTaxAndExtraordinaryItems contextRef="OneD" unitRef="INR" decimals="-5">120760200000</in-capmkt:ProfitLossAfterTaxAndExtraordinaryItems>
+</xbrli:xbrl>

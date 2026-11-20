@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- State Bank of India, Sep 2026 quarter, consolidated, Original (INTEGRATED_FILING_BANKING_1751754_03112026032317_WEB.xml). A few facts of its quarter context, element names and values as filed (from the archive's
+     xbrl_json, read with scripts/clean_peek.py RESULTS_TAGS on 20 Nov 2026); the rest of the filing left out. -->
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:in-capmkt="http://www.sebi.gov.in/xbrl/in-capmkt">
+ <xbrli:context id="OneD"><xbrli:entity><xbrli:identifier scheme="s">x</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2026-07-01</xbrli:startDate><xbrli:endDate>2026-09-30</xbrli:endDate></xbrli:period></xbrli:context>
+ <in-capmkt:DateOfStartOfReportingPeriod contextRef="OneD">2026-07-01</in-capmkt:DateOfStartOfReportingPeriod>
+ <in-capmkt:DateOfEndOfReportingPeriod contextRef="OneD">2026-09-30</in-capmkt:DateOfEndOfReportingPeriod>
+ <in-capmkt:InterestEarned contextRef="OneD" unitRef="INR" decimals="-5">1410733400000</in-capmkt:InterestEarned>
+ <in-capmkt:OtherIncome contextRef="OneD" unitRef="INR" decimals="-5">466828500000</in-capmkt:OtherIncome>
+ <in-capmkt:Income contextRef="OneD" unitRef="INR" decimals="-5">1877561900000</in-capmkt:Income>
+ <in-capmkt:TaxExpense contextRef="OneD" unitRef="INR" decimals="-5">78139400000</in-capmkt:TaxExpense>
+ <in-capmkt:ProfitLossForThePeriod contextRef="OneD" unitRef="INR" decimals="-5">257414700000</in-capmkt:ProfitLossForThePeriod>
+ <in-capmkt:ProfitLossOfMinorityInterest contextRef="OneD" unitRef="INR" decimals="-5">8564300000</in-capmkt:ProfitLossOfMinorityInterest>
+ <in-capmkt:ShareOfProfitLossOfAssociates contextRef="OneD" unitRef="INR" decimals="-5">4761200000</in-capmkt:ShareOfProfitLossOfAssociates>
+ <in-capmkt:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates contextRef="OneD" unitRef="INR" decimals="-5">253611600000</in-capmkt:ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates>
+</xbrli:xbrl>

@@ -257,6 +257,10 @@ def growth(results: pd.DataFrame | None, isin, quarters: int = 8) -> tuple[pd.Da
         else pd.Series(False, index=r.index)
     basis = 'consolidated' if cons.any() else 'standalone'
     r = r[cons] if cons.any() else r
+    if 'revenue_basis' in r:   # one revenue line (results.TOP_LINE): the latest filing's, never a mix (20 Nov 2026)
+        top = r['revenue_basis'].fillna('').astype(str)
+        last = top.loc[pd.to_datetime(r['period_end'], errors='coerce').idxmax()] if r['period_end'].notna().any() else ''
+        r = r[top == last]
     r['period_end'] = pd.to_datetime(r['period_end'], errors='coerce').dt.normalize()
     when = pd.to_datetime(r.get('broadcast_at'), errors='coerce', utc=True) if 'broadcast_at' in r else pd.Series(pd.NaT, index=r.index)
     r = r.assign(_w=when).dropna(subset=['period_end']).sort_values(['period_end', '_w']).drop_duplicates('period_end', keep='last')

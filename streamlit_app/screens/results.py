@@ -7,7 +7,8 @@ and quarter end (consolidated where both are filed), the year-ago quarter from o
 (more_pages._latest_results). Market cap and its bucket from the price summary (insiders_clean/slim.py, by rank: 1-100
 Large, 101-250 Mid, 251-500 Small, the rest Micro). Industry from `clean/current/industry.parquet` (macro, sector,
 industry, basic industry) once it exists, else the security master's sector and industry; a level with no data is not
-drawn. Nothing here cleans or fills a figure: a row whose figures cannot be right is held back with its reason
+drawn. Banks and insurers are compared on their own revenue line (results.TOP_LINE: a bank's total income, an
+insurer's net premium), named under the company. Nothing here cleans or fills a figure: a row whose figures cannot be right is held back with its reason
 (results.doubt_reason), never altered.
 """
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pandas as pd
 import streamlit as st
 from data import store
 
-from insiders_clean.results import doubt_reason
+from insiders_clean.results import basis_label, doubt_reason
 from insiders_clean.slim import BUCKETS
 from screens import moves, proto
 from screens.ctx import load, need_data
@@ -300,8 +301,10 @@ def _table_rows(df: pd.DataFrame, names: dict, levels: list[str]) -> pd.DataFram
         name=_name_col(df, names),
         nse_symbol=_col(df, 'symbol'),
         mk_bucket=df['mcap_bucket'],
+        # the revenue line when it is not a company's revenue from operations: "Total income (bank)" (20 Nov 2026)
         period=[f'{period_label(f, q)} to {kit.day(e, with_year=False)} · {"consolidated" if c else "standalone"}'
-                for f, q, e, c in zip(df['fy'], df['q'], df['_end'], df['_cons'])],
+                + (f' · {basis_label(b)}' if basis_label(b) != 'Revenue' else '')
+                for f, q, e, c, b in zip(df['fy'], df['q'], df['_end'], df['_cons'], _col(df, 'revenue_basis'))],
         ind=_first_filled(df, deep),
         ind_sub=(df[top] if top and len(levels) > 1 else None),
         notes=[[t for t, on in (('Back to profit', a), ('Into loss', b), ('Derived', d), ('Half year', h),
@@ -425,8 +428,10 @@ def render():
                Col('profit', 'Profit', 'money'), Col('profit_y', 'Year-ago profit', 'money')],
               limit=60, height=420, key=f'rs_held_{fy}_{q}', keep_empty=True)
     st.html('<p class="dt-foot">One row per company and quarter, consolidated where both are filed. A dash: the year-ago '
-            'quarter is not in our history, or the filing has no revenue line under the Ind AS names (banks, NBFCs and '
-            'insurers file theirs under other names; marked "No revenue line"). "Derived": the filing gives only its half year; the quarter is that '
+            'quarter is not in our history, or the filing has no revenue line we read (marked "No revenue line"). Banks and '
+            'insurers file under their own layouts: a bank\'s revenue is its total income (interest earned plus other '
+            'income), a life insurer\'s its net premium, a general insurer\'s its net premium earned, each named under '
+            'the company and compared only with the same line a year ago. "Derived": the filing gives only its half year; the quarter is that '
             'less the June quarter filed before. "Half year": no quarter could be derived, so the half year is compared '
             'with the half year a year earlier; such rows are not in the KPI counts. Market-cap bucket by rank of NSE '
             'market cap (1-100 Large, 101-250 Mid, 251-500 Small, the rest Micro), estimated by us, not AMFI\'s list; '

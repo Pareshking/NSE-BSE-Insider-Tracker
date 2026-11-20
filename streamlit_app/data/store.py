@@ -117,7 +117,7 @@ UNUSED = ('raw_json', 'xbrl_json', 'xbrl_url', 'xbrl_sha256')
 LINKS = {('preferential', 'xbrl_url'), ('rights', 'xbrl_url'), ('qip', 'xbrl_url')}
 ONLY = {'results': ('isin', 'period_end', 'consolidated', 'ytd_revenue', 'ytd_total_income', 'ytd_profit', 'broadcast_at',
                     'quarter_revenue', 'quarter_profit', 'ytd_start', 'superseded', 'ytd_disagrees',
-                    'symbol', 'company', 'quarter_derived'),   # the Company timeline's quarter line (audit 22 Oct); Results page names, derived mark (13 Nov)
+                    'symbol', 'company', 'quarter_derived', 'revenue_basis'),   # the Company timeline's quarter line (audit 22 Oct); Results page names, derived mark (13 Nov), revenue line (20 Nov)
         # the Stakes page nets pledges per company and day and shows % of the company, encumbered after and the filing (13 Nov)
         'encumbrances': ('symbol', 'company', 'event_type', 'encumbrance_type', 'lender', 'shares', 'pct_of_company',
                          'post_event_holding_pct', 'promoter_id', 'broadcast_date', 'attachment'),
