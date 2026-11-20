@@ -15,7 +15,7 @@ Rules (docs/SIGNALS.md, "Track record"):
   one decision, not twenty.
 - Costs: 0.25 percentage points off every return (round trip at a
   zero-brokerage broker: STT, exchange charges, stamp duty, slippage).
-- Prices adjusted for splits and bonuses only.
+- Prices adjusted for splits, bonuses and filed demergers (adjust.KIND_ADJUSTED).
 - Size-matched excess as well: large caps against Nifty 100, mid caps Nifty
   Midcap 150, small caps Nifty Smallcap 250, micro caps (and unbucketed) Nifty
   Microcap 250. The size bucket is today's (NSE market-cap rank), not the one

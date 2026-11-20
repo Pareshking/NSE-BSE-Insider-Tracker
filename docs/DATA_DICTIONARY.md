@@ -717,7 +717,7 @@ NSE's daily `mcap` file from the PR zip. One row per date, symbol, series. Raw: 
 
 One row per ISIN, rewritten after each nightly run by `scripts/precompute_slim.py`
 (workflow "Precompute slim assets"), so the site never loads the full price table.
-Prices adjusted for splits and bonuses only.
+Prices adjusted for splits, bonuses and filed demergers (a demerger at its ex-date close, owner directive 20 Nov 2026).
 
 | Column | Meaning |
 |---|---|

@@ -1,7 +1,7 @@
 """Slim, precomputed summaries for the app (batch job only; the Streamlit pages never touch the full price table).
 
 `prices_summary_slim`: one row per ISIN with the adjusted latest close, 52-week high / low, calendar returns and a
-market-cap bucket. Prices are adjusted for splits and bonuses only.
+market-cap bucket. Prices are adjusted for splits, bonuses and filed demergers (adjust.KIND_ADJUSTED).
 
 Market-cap bucket is ESTIMATED: rank of NSE market cap on the latest stored day (top 100 Large, 101-250 Mid, 251-500
 Small, the rest Micro). It follows the AMFI/Nifty rank cut-offs but is computed from NSE's file, not AMFI's list.

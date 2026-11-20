@@ -11,7 +11,9 @@ factors with s <= T: `adjust_as_of` does this, so a past signal never sees a lat
 A reset that matches a filed bonus or split (NSE's and BSE's corporate actions, `expected_factors`) or, where none is
 filed, a reset above 5% that matches a clean split/bonus/consolidation ratio is `split_bonus` (`kind_basis` says
 which). A reset by the exchange on the ex-date of a filed demerger or scheme of arrangement is `demerger` (basis
-`action_base_price`). Only split_bonus is applied (KIND_ADJUSTED; owner directive, splits and bonuses only): a demerger is recorded and flagged, never applied. Other large resets (`other_large`:
+`action_base_price`); where the exchange did not reset it, a filed demerger whose ex-date close moved more than 5% is
+`demerger` at close / previous close (basis `action_close`, owner directive 20 Nov 2026). Split_bonus and demerger
+are applied (KIND_ADJUSTED). Other large resets (`other_large`:
 rights, unfiled demergers, relistings, series moves, special dividends) and small ones (`minor`, mostly cash
 dividends) are counted, never applied.
 
@@ -36,7 +38,12 @@ RATIO_TOL = 0.015      # a reset within 1.5% of a clean split/bonus ratio counts
 # not reset the base price for any demerger in the product window (VEDL 30 Apr 2026: PrvsClsgPric 773.60 = 29 Apr's
 # close on NSE, 773.25 on BSE; it closed 271.55), so none is applied yet; they are named in the price-jump audit
 # (`scheme_not_adjusted`).
-KIND_ADJUSTED = ('split_bonus',)   # owner directive: splits and bonuses only; a demerger is flagged (kind 'demerger'), never applied (20 Nov 2026)
+# Owner directive (20 Nov 2026, later the same day): a filed demerger IS adjusted, at the closing price of its
+# ex-date: factor = close on the ex-date / previous close (basis `action_close`) where the exchange did not reset the
+# base price (it reset none in the product window), or the exchange's own base price where it did. The factor takes
+# in that day's trading move as well as the demerger; the ex-date open (the special pre-open price discovery) would
+# leave it out, but the directive is the close.
+KIND_ADJUSTED = ('split_bonus', 'demerger')
 SCHEME_PURPOSES = ('demerger', 'scheme')   # filed purposes whose base-price reset is applied (collectors parsers)
 MOVE_TOL = 1.25        # a filed factor is applied on an unreset base price when close / previous close is within this of it
 BRIDGE_GAP_DAYS = 10   # an ISIN that replaces another (a split) prints within this many days of the old one's last print
@@ -92,7 +99,7 @@ def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
     (h/(h+n)) and splits (to/from face value), NaN when the date has no bonus or split, `split_bonus` (bool) and
     `scheme` (a demerger or scheme of arrangement filed that day, SCHEME_PURPOSES). A date with only a dividend,
     rights or buyback is kept: it says the reset that day is not a bonus or split."""
-    cols = ['isin', 'ex_date', 'expected', 'split_bonus', 'scheme']
+    cols = ['isin', 'ex_date', 'expected', 'split_bonus', 'scheme', 'demerger']
     if actions is None or actions.empty or not {'isin', 'purpose', 'ex_date'} <= set(actions.columns):
         return pd.DataFrame(columns=cols)
     a = actions.copy()
@@ -107,11 +114,13 @@ def expected_factors(actions: pd.DataFrame | None) -> pd.DataFrame:
                        np.where(purpose.eq('split'), fv_to / fv_from, np.nan))
     a['_sb'] = purpose.isin(['bonus', 'split'])
     a['_sch'] = purpose.isin(SCHEME_PURPOSES)
+    a['_dem'] = purpose.eq('demerger')
     # One filing seen twice (NSE and BSE, or two captures) counts once per purpose.
     a = a.drop_duplicates(['isin', 'ex_date', 'purpose', '_f'])
     g = a.groupby(['isin', 'ex_date'])
     out = pd.DataFrame({'expected': g['_f'].apply(lambda s: s.prod() if s.notna().any() else np.nan),
-                        'split_bonus': g['_sb'].any(), 'scheme': g['_sch'].any()}).reset_index()
+                        'split_bonus': g['_sb'].any(), 'scheme': g['_sch'].any(),
+                        'demerger': g['_dem'].any()}).reset_index()
     out.loc[~out['split_bonus'], 'expected'] = np.nan
     return out[cols]
 
@@ -192,7 +201,8 @@ def _action_on_session(s: pd.DataFrame, exp: pd.DataFrame) -> pd.DataFrame:
     """Per session row: the filed action whose ex-date falls after the previous print and on or before this one
     (an illiquid stock may not trade on the ex-date itself). Columns `expected`, `split_bonus`, `scheme`,
     `has_action`."""
-    out = pd.DataFrame({'expected': np.nan, 'split_bonus': False, 'scheme': False, 'has_action': False}, index=s.index)
+    out = pd.DataFrame({'expected': np.nan, 'split_bonus': False, 'scheme': False, 'demerger': False, 'has_action': False},
+                       index=s.index)
     if exp.empty:
         return out
     left = s[['isin', 'date', 'last_date']].assign(_i=np.arange(len(s)))
@@ -207,6 +217,8 @@ def _action_on_session(s: pd.DataFrame, exp: pd.DataFrame) -> pd.DataFrame:
     out.loc[rows, 'split_bonus'] = m['split_bonus'].to_numpy().astype(bool)
     if 'scheme' in m:
         out.loc[rows, 'scheme'] = m['scheme'].fillna(False).to_numpy().astype(bool)
+    if 'demerger' in m:
+        out.loc[rows, 'demerger'] = m['demerger'].fillna(False).to_numpy().astype(bool)
     out.loc[rows, 'has_action'] = True
     return out
 
@@ -278,6 +290,14 @@ def implied_factors(prices: pd.DataFrame, max_gap_days: int = 10, actions: pd.Da
     priced = has & sb & ~near & not_reset & agrees & np.isfinite(exp)
     s.loc[priced, 'factor'] = exp[priced]
     s.loc[priced, 'kind'], s.loc[priced, 'kind_basis'] = 'split_bonus', 'action_price'
+    # A filed demerger the exchange did not mark with a base-price reset (VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV
+    # 14 Oct 2025 ...): owner directive 20 Nov 2026, adjusted at the ex-date's closing price, factor = close / previous
+    # close (basis `action_close`), when the move is more than STRUCTURAL and the previous print is within
+    # ACTION_GAP_DAYS. A demerger with no move that large (a small spin-off) is left as printed.
+    dem = act['demerger'].to_numpy(dtype=bool)
+    closed = has & dem & ~sb & ~demerged & not_reset & np.isfinite(move) & (np.abs(move - 1) > STRUCTURAL)
+    s.loc[closed, 'factor'] = move[closed]
+    s.loc[closed, 'kind'], s.loc[closed, 'kind_basis'] = 'demerger', 'action_close'
     # A session whose base price differs from our previous close for most securities on the exchange means the
     # layer lacks the session before it (audit 19 Nov 2026: the Sunday sessions of 1 Feb 2026, Budget day, and of
     # 8 Nov 2026, Muhurat; 2 Feb and 9 Nov then showed 20% 'resets', the upper circuit of the missing day, and IIFL a
