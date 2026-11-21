@@ -40,7 +40,11 @@ Shareholding (the companies NSE's list does not carry; NSE's filing wins for a
 company on both): a company whose ISIN is in NSE's
 clean/current/shareholding.parquet is left out and counted. An NSE-listed
 company that NSE's list leaves out (Abbott India, MCX: audit 22 Oct) is read
-here; without NSE's table, a company with an NSE symbol is left out. BSE's filings list is asked for a period back from
+here; without NSE's table, a company with an NSE symbol is left out. "Left
+out" means not read and not in the clean table: every listed filing is
+archived (21 Nov 2026), a company left to NSE with `left_to_nse` set and
+xbrl_status `on_nse`. --shp-from-raw archives the filings of every list kept
+in raw_v2 that the archive lacks (no list call). BSE's filings list is asked for a period back from
 today (client.py), 15 days nightly and a year in history mode. The holdings
 are only in each filing's inline XBRL, read once per filing with NSE's parsers
 into NSE's columns (promoter and public %, promoter pledge, ownership by
@@ -87,6 +91,10 @@ TILE_DAYS, TILE_SHIFT = 7, 3
 AHEAD_DAYS = 60    # board meetings, as NSE's collector
 MEETING_PIECE_DAYS = 15   # board meetings are read whole and in pieces of this size (meetings_window)
 SHP_FLAG_NIGHTLY, SHP_FLAG_HISTORY = 3, 6   # BSE's periods: 15 days, one year
+# `left_to_nse` of a listed filing whose company NSE's collector holds (its XBRL is not read here): its ISIN is in NSE's
+# shareholding table, or (no NSE table) the company has an NSE symbol. Blank for a company read from BSE.
+LEFT_IN_TABLE, LEFT_NSE_SYMBOL = 'isin_in_nse_table', 'nse_symbol'
+SHP_LIST_RAW = 'raw_v2/bse/shareholding_filings/fetches/'
 MAX_XBRL_PER_RUN = 150                      # ~5 s each one at a time: about 13 minutes; XBRL_WORKERS side by side
 # BSE is slow to answer, not slow to allow (industry speed test 20 Nov 2026, PR #313/#315: 3.5 s an answer one at a
 # time, 0.13 s four at a time, no refusal). The nightly spent ~25 of its 37 minutes here, holding the r2-archive-writes
@@ -249,6 +257,13 @@ def _holding_pcts(rows: pd.DataFrame, i, got: dict) -> None:
     rows.at[i, 'employee_trust_pct'] = None if pd.isna(trust) else float(trust)
 
 
+def _left(df: pd.DataFrame) -> pd.Series:
+    """Rows archived as left to NSE (`left_to_nse` set); archive rows from before the column all False."""
+    if 'left_to_nse' not in df:
+        return pd.Series(False, index=df.index)
+    return df['left_to_nse'].notna()
+
+
 def _read(prev: pd.DataFrame | None, eid) -> bool:
     """Parsed before, investor types included (ok or failed): carried over, not read again."""
     if prev is None or eid not in prev.index or str(prev.at[eid, 'xbrl_status']) != 'ok':
@@ -320,8 +335,12 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
                          ignore_index=True)
     for c in facts_cols:
         rows[c] = rows[c].astype(object) if c in rows else None
+    rows['left_to_nse'] = (rows['left_to_nse'] if 'left_to_nse' in rows else pd.Series(None, index=rows.index)
+                           ).astype(object).where(lambda x: x.notna(), None)
     ids = ['event_id', 'bse_code', 'quarter_end', 'submission_date']
-    every = pd.concat([rows[ids]] + ([known[ids]] if prev is not None else []), ignore_index=True)
+    # a filing left to NSE takes no part in which submission of a company's quarter is the newest one read here
+    every = pd.concat([rows.loc[rows['left_to_nse'].isna(), ids]]
+                      + ([known.loc[~_left(known), ids]] if prev is not None else []), ignore_index=True)
     every['submission_date'] = pd.to_datetime(every['submission_date'], errors='coerce')
     newest = set(every.sort_values('submission_date', kind='stable')
                       .drop_duplicates(['bse_code', 'quarter_end'], keep='last')['event_id'])
@@ -336,6 +355,15 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
     todo = []   # (row index, url, covers), in the order they are read
     for i, r in order.sort_values(['_q', '_s'], ascending=False, kind='stable').iterrows():
         eid = r['event_id']
+        if isinstance(r['left_to_nse'], str):   # NSE's: not read; what was read before NSE had it is kept as it was
+            was = str(prev.at[eid, 'xbrl_status']) if prev is not None and eid in prev.index else 'pending'
+            if was in ('pending', 'None', 'nan', '<NA>'):
+                rows.at[i, 'xbrl_status'] = 'on_nse'
+            else:
+                for c in facts_cols:
+                    if c in prev.columns:
+                        rows.at[i, c] = prev.at[eid, c]
+            continue
         if _read(prev, eid):
             for c in facts_cols:
                 if c in prev.columns:
@@ -401,8 +429,54 @@ def shareholding_xbrl(bse: BSEClient, rows: pd.DataFrame, known: pd.DataFrame | 
     return rows, blocked
 
 
+def listed_from_raw(store) -> tuple[pd.DataFrame, dict]:
+    """Every filing in every shareholding list kept in raw_v2/bse/shareholding_filings/ (no BSE call), parsed as
+    the run parses tonight's list, one row an event_id (the latest list's copy). Raw is only read. (rows, counts)."""
+    from insiders_clean import raw_store
+    counts = {'fetch_records': 0, 'lists_read': 0, 'records_not_200': 0, 'records_content_check': 0,
+              'blobs_missing': 0, 'blobs_unreadable': 0, 'rows_in_lists': 0}
+    recs = []
+    for key in sorted(k for k in store.cw.list_keys(store.r2, SHP_LIST_RAW) if k.endswith('.json')):
+        counts['fetch_records'] += 1
+        body = store.cw.get(store.r2, key)
+        rec = json.loads(body) if body else {}
+        if int(rec.get('http_status') or 0) != 200:
+            counts['records_not_200'] += 1
+        elif rec.get('content_check'):
+            counts['records_content_check'] += 1
+        elif rec.get('blob_key'):
+            recs.append(rec)
+    seen, frames = set(), []
+    for rec in sorted(recs, key=lambda r: str(r.get('fetched_at_utc') or '')):
+        if rec['blob_key'] in seen:
+            continue
+        seen.add(rec['blob_key'])
+        body = raw_store.read_blob(lambda k: store.cw.get(store.r2, k), rec['blob_key'])
+        if body is None:
+            counts['blobs_missing'] += 1
+            continue
+        try:
+            payload = json.loads(body.decode('utf-8', errors='replace'))
+        except ValueError:
+            counts['blobs_unreadable'] += 1
+            continue
+        rows = payload.get('Table') if isinstance(payload, dict) else payload
+        if not isinstance(rows, list):   # as the client's _json: an answer without a row list is not a list
+            counts['blobs_unreadable'] += 1
+            continue
+        counts['lists_read'] += 1
+        counts['rows_in_lists'] += len(rows)
+        frames.append(parsers.parse_shareholding_listing(rows))
+    frames = [f for f in frames if not f.empty]
+    if not frames:
+        return parsers.parse_shareholding_listing([]), counts
+    out = pd.concat(frames, ignore_index=True).drop_duplicates('event_id', keep='last').reset_index(drop=True)
+    counts['filings'] = len(out)
+    return out, counts
+
+
 def shareholding(store, bse: BSEClient, master, flag: int, max_xbrl: int, stats: dict, run_date: str,
-                 members: list, nse_isins: frozenset = frozenset()) -> tuple[pd.DataFrame, bool]:
+                 members: list, nse_isins: frozenset = frozenset(), from_raw: bool = False) -> tuple[pd.DataFrame, bool]:
     """BSE's filings list for the period `flag`, BSE-only companies kept (with
     a master; a dry run keeps all), their XBRL read. (rows, refused). A
     company is left to NSE's collector when its ISIN is in NSE's shareholding
@@ -411,9 +485,21 @@ def shareholding(store, bse: BSEClient, master, flag: int, max_xbrl: int, stats:
     (`dual_listed_kept`): NSE's corporate-share-holdings-master gives no row for
     574 companies of the universe, Abbott India and MCX among them (audit
     22 Oct: symbol=ABBOTINDIA answers 0 rows). Without NSE's table, an NSE
-    symbol alone leaves a company to NSE, as before."""
-    listing = parsers.parse_shareholding_listing(bse.shareholding_filings(flag))
-    stats.update(calls=stats.get('calls', 0) + 1, listed=len(listing))
+    symbol alone leaves a company to NSE, as before.
+
+    `from_raw`: no list is asked for; the filings are every list kept in raw_v2
+    (listed_from_raw), those already in the archive left as they are (the
+    backfill of the filings left out before 21 Nov 2026)."""
+    known = store.whole('shareholding') if store is not None else None
+    if from_raw:
+        listing, stats['from_raw'] = listed_from_raw(store)
+        if known is not None and not listing.empty:
+            stats['from_raw']['already_in_archive'] = int(listing['event_id'].isin(known['event_id']).sum())
+            listing = listing[~listing['event_id'].isin(known['event_id'])].reset_index(drop=True)
+        stats['listed'] = len(listing)
+    else:
+        listing = parsers.parse_shareholding_listing(bse.shareholding_filings(flag))
+        stats.update(calls=stats.get('calls', 0) + 1, listed=len(listing))
     if master is not None and not listing.empty:
         listing = bse_events.add_identity(listing, master)
         nse = listing['nse_symbol'].notna()
@@ -422,9 +508,15 @@ def shareholding(store, bse: BSEClient, master, flag: int, max_xbrl: int, stats:
         stats['dual_listed_skipped'] = int((nse & skip).sum())
         stats['isin_in_nse_table_skipped'] = int((~nse & skip).sum())
         stats['dual_listed_kept'] = int((nse & ~skip).sum())
-        listing = listing[~skip]
-    stats['fetched'] = len(listing)
-    known = store.whole('shareholding') if store is not None else None
+        # Every listed filing is archived (owner, 21 Nov 2026: raw coverage audit found 10,863 of 24,558 listed
+        # filings missing from the archive, all left to NSE here before the merge). A company left to NSE is kept
+        # with the reason in `left_to_nse` and xbrl_status `on_nse`; its XBRL is not read and the clean step leaves
+        # it out as before (bse_events.shareholding_input).
+        listing = listing.assign(left_to_nse=None)
+        listing['left_to_nse'] = listing['left_to_nse'].astype(object)
+        listing.loc[skip, 'left_to_nse'] = LEFT_IN_TABLE if nse_isins else LEFT_NSE_SYMBOL
+        stats['archived_left_to_nse'] = int(skip.sum())
+    stats['fetched'] = len(listing) - stats.get('archived_left_to_nse', 0)
     return shareholding_xbrl(bse, listing, known, stats, max_xbrl, members, run_date, nse_isins)
 
 
@@ -491,9 +583,11 @@ EMPTY_NOTE_DAYS = 7   # a nightly window this long with no row is said in the no
 
 def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start: date | None = None,
         end: date | None = None, days: int = NIGHTLY_DAYS, redo: bool = False, master=None, log=print,
-        max_xbrl: int = MAX_XBRL_PER_RUN, now: datetime | None = None) -> dict:
+        max_xbrl: int = MAX_XBRL_PER_RUN, now: datetime | None = None, shp_from_raw: bool = False) -> dict:
     """History when `start` is given (month by month, resumable), else the
-    nightly window. `store` None = dry run (fetch and count only)."""
+    nightly window. `store` None = dry run (fetch and count only).
+    `shp_from_raw`: shareholding's filings come from the lists kept in raw_v2
+    instead of BSE (shareholding(from_raw=True))."""
     run_date = today.isoformat()
     history = start is not None
     a, b = (start, end or today) if history else (today - timedelta(days=days), today)
@@ -510,7 +604,8 @@ def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start
     for stream in streams:
         stats = report['streams'].setdefault(stream, {'chunks_done': 0, 'chunks_skipped_done': 0, 'added': 0, 'errors': []})
         if stream == 'shareholding':
-            blocked = run_shareholding(store, bse, get_master, history, max_xbrl, stats, report, run_date, now, blocked)
+            blocked = run_shareholding(store, bse, get_master, history, max_xbrl, stats, report, run_date, now, blocked,
+                                       shp_from_raw)
             continue
         progress = (store.json(progress_key(stream)) if store and history else None) or {'stream': stream, 'chunks': {}}
         done = {} if redo or not history else progress['chunks']
@@ -568,7 +663,7 @@ def run(store: Store | None, bse: BSEClient, today: date, streams=STREAMS, start
 
 
 def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats: dict, report: dict,
-                     run_date: str, now: datetime | None, blocked: bool) -> bool:
+                     run_date: str, now: datetime | None, blocked: bool, from_raw: bool = False) -> bool:
     """The shareholding stream (see the module notes). Returns whether BSE
     has refused this run."""
     members: list = []
@@ -580,7 +675,7 @@ def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats
     if not blocked:
         try:
             rows, blocked = shareholding(store, bse, get_master(), SHP_FLAG_HISTORY if history else SHP_FLAG_NIGHTLY,
-                                         max_xbrl, stats, run_date, members, nse_isins)
+                                         max_xbrl, stats, run_date, members, nse_isins, from_raw and store is not None)
         except Blocked as exc:
             blocked, rows = True, None
             stats['stopped_at'] = {'chunk': 'filings list', 'reason': str(exc)}
@@ -599,8 +694,9 @@ def run_shareholding(store, bse, get_master, history: bool, max_xbrl: int, stats
     stats['archive_rows'] = 0 if arch is None else len(arch)
     if arch is not None and not arch.empty:
         from collectors.nse_events.run_daily import clean_shareholding, shareholding_coverage
-        clean, counts = bse_events.clean(clean_shareholding(arch), get_master(), nse, 'shareholding')
-        stats['clean'] = counts
+        kept, left = bse_events.shareholding_input(arch)
+        clean, counts = bse_events.clean(clean_shareholding(kept), get_master(), nse, 'shareholding')
+        stats['clean'] = {**counts, 'listed_left_to_nse_not_read': left}
         if not clean.empty:
             stats['coverage'] = shareholding_coverage(clean)
         _units('bse_shareholding', clean, stats, report)
@@ -628,6 +724,17 @@ def datasets(text: str) -> tuple:
     return tuple(s for s in STREAMS if s in names)
 
 
+def shp_from_raw_dry_run(store, print=print) -> int:
+    """--shp-from-raw --dry-run: the filings of the raw lists the archive lacks, counted; nothing written."""
+    listing, counts = listed_from_raw(store)
+    known = store.whole('shareholding')
+    have = set() if known is None else set(known['event_id'])
+    counts['already_in_archive'] = int(listing['event_id'].isin(have).sum())
+    counts['would_add'] = int(len(listing) - counts['already_in_archive'])
+    print(f'  shareholding from raw (dry run): {json.dumps(counts)}')
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--days', type=int, default=NIGHTLY_DAYS, help='nightly window (ignored with --from)')
@@ -638,10 +745,17 @@ def main(argv=None):
     ap.add_argument('--redo', action='store_true', help='refetch months already marked done')
     ap.add_argument('--dry-run', action='store_true', help='fetch and count; write nothing')
     ap.add_argument('--max-xbrl', type=int, default=MAX_XBRL_PER_RUN, help='shareholding XBRL files to read this run')
+    ap.add_argument('--shp-from-raw', action='store_true',
+                    help='shareholding: archive every filing of the lists kept in raw_v2 that the archive lacks '
+                         '(no list call; XBRLs up to --max-xbrl, 0 = no BSE call at all)')
     args = ap.parse_args(argv)
     today = datetime.now(IST).date()
     streams = args.dataset
     store, raw = None, None
+    if args.shp_from_raw and args.dry_run and streams == ('shareholding',):   # read-only: what the backfill
+        # would add, nothing written
+        from r2_writer import r2_client
+        return shp_from_raw_dry_run(Store(r2_client()))
     if not args.dry_run:
         from r2_writer import r2_client
 
@@ -650,7 +764,8 @@ def main(argv=None):
         store, raw = Store(r2), RawStore(r2, collector='bse_events')
     bse = BSEClient(raw=raw)
     try:
-        report = run(store, bse, today, streams, args.start, args.end, args.days, args.redo, max_xbrl=args.max_xbrl)
+        report = run(store, bse, today, streams, args.start, args.end, args.days, args.redo, max_xbrl=args.max_xbrl,
+                     shp_from_raw=args.shp_from_raw)
     finally:
         bse.close()
     for name, s in report['streams'].items():
