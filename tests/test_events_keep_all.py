@@ -420,3 +420,18 @@ def test_reparse_fills_lossless_copies_and_builds_own_tables():
     assert t['nse_tenders']['filled'] > 0
     assert frame(r2, 'archive/nse_events/tenders/year=2026.parquet')['bids_json'].notna().any()
     assert all('failed' not in s for s in t.values())
+
+
+def test_reparse_skips_a_udiff_blob_that_is_not_a_file():
+    # 21 Nov 2026 dry run: BSE answers a day with no file with its home page (status 200); the first such blob stopped
+    # the udiff_bse target. It is now counted and skipped; the real files are read.
+    import raw_reparse
+    from test_prices import ROW, _csv
+    r2 = FakeR2()
+    _raw(r2, 'exchange_files', 'bse_udiff_cm', b'<html>\n<head></head>\n<body>BSE home</body>\n<p>a,b,c,d,e,f,g</p>\n'
+         b'x\ny\na,b,c,d,e,f,g\n</html>', covers={'day': '2026-10-09'}, ct='text/html')
+    _raw(r2, 'exchange_files', 'bse_udiff_cm', _csv(ROW).replace(b'NSE', b'BSE'), covers={'day': '2026-10-08'},
+         ct='text/csv')
+    rep = raw_reparse.run(r2, ['udiff_bse'], dry=True, run_date='2026-11-21')
+    t = rep['targets']['udiff_bse']
+    assert 'failed' not in t and t['blobs_unreadable'] == 1
