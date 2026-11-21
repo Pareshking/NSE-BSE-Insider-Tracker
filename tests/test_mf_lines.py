@@ -246,6 +246,7 @@ def test_lines_flag_is_wired(monkeypatch):
     monkeypatch.setattr(mp, 'backfill_lines', lambda r2, houses: seen.setdefault('houses', [h.key for h in houses]) and {})
     monkeypatch.setattr(mp, 'rebuild', lambda r2: {})
     monkeypatch.setattr(mp, 'run_houses', lambda hs, work, workers=None: [])
+    monkeypatch.setattr(mp.find, 'shared_browser', lambda: None)   # sbi is a browser house; CI has no Playwright
     import r2_writer
     monkeypatch.setattr(r2_writer, 'r2_client', lambda: R2())
     assert mp.main(['--month', '2026-10', '--house', 'sbi', '--lines', '--no-amfi']) == 0
