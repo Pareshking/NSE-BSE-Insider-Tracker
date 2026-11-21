@@ -281,6 +281,9 @@ class Spec:
     fields_note: str = ''               # blob formats where field-level comparison does not apply
     grouping: str = ''                  # the parser merges several raw rows into one by design
     why_not: str = ''                   # level None: why no adapter re-parses it here
+    extra: Callable | None = None       # blob: (ro, body, rec, cache) -> {'rows', 'in_table', 'tables'}: what the parser
+                                        # leaves out, looked up in its own table (UDiFF columns, PR zip members)
+    extra_fields: Callable | None = None   # blob: field name -> table holding it, for fields not in field_map
 
 
 def _nse_parsers():
@@ -297,14 +300,15 @@ def _nse_sast(rows, rec):
     return _nse_parsers().parse_sast(rows), {}
 
 
+# Since 21 Nov 2026 the collectors archive every row (keep_all=True): a row the clean tables leave out is stored with
+# kept = false and its drop_reason, so it is looked up in the archive like any other and is no drop here; the audit
+# counts those rows by reason (`stored_not_kept`).
 def _nse_actions(rows, rec):
-    df, n = _nse_parsers().parse_corporate_actions(rows)
-    return df, {'purpose not kept (parsers.action_purpose)': n}
+    return _nse_parsers().parse_corporate_actions(rows, keep_all=True)[0], {}
 
 
 def _nse_meetings(rows, rec):
-    df, n = _nse_parsers().parse_board_meetings(rows)
-    return df, {'no kept purpose (parsers._BM_FLAGS)': n}
+    return _nse_parsers().parse_board_meetings(rows, keep_all=True)[0], {}
 
 
 def _nse_simple(fn_name):
@@ -314,13 +318,13 @@ def _nse_simple(fn_name):
 
 
 def _bse_sast(rows, rec):
-    df, extra = _bse_parsers().parse_sast(rows)
-    return df, {f'regulation {k} not kept (parsers.SAST_KEPT)': n for k, n in extra['dropped_other_regulations'].items()}
+    # Rows equal in every field to an earlier one are the same line (counted by the audit as identical raw rows); a
+    # repeat of a disclosure that differs outside the id is stored under its own id (parsers.SAST_REPEAT).
+    return _bse_parsers().parse_sast(rows, keep_all=True)[0], {}
 
 
 def _bse_actions(rows, rec):
-    df, n = _bse_parsers().parse_actions(rows)
-    return df, {'purpose not kept (action_purpose)': n}
+    return _bse_parsers().parse_actions(rows, keep_all=True)[0], {}
 
 
 def _bse_meeting_rows(body, rec):
@@ -333,8 +337,7 @@ def _bse_meetings(rows, rec):
     payload = {'Table': [], 'Table1': []}
     for r in rows:
         payload[r.get('__table', 'Table')].append({k: v for k, v in r.items() if k != '__table'})
-    df, counts = _bse_parsers().parse_board_meetings(payload)
-    return df, {'meeting groups with no code, no date or no kept purpose (parsers.BM_FLAGS)': counts['dropped_other_purposes']}
+    return _bse_parsers().parse_board_meetings(payload, keep_all=True)[0], {}
 
 
 def _bse_shareholding(rows, rec):
@@ -499,18 +502,57 @@ def _udiff_fields(body):
 
 
 def _mcap_fields(body):
+    """The mcap member's header; the zip's other members are stored whole in archive/nse_pr/ since 21 Nov 2026
+    (checked line by line by _pr_extra), so none is listed as a file not parsed."""
     from insiders_clean import market_cap
     if body[:2] != b'PK':
         return [c.strip().lower() for c in pd.read_csv(io.BytesIO(body), dtype=str, nrows=0).columns], []
     with zipfile.ZipFile(io.BytesIO(body)) as z:
         member = market_cap.mcap_member(z)
         fields = [c.strip().lower() for c in pd.read_csv(io.BytesIO(z.read(member)), dtype=str, nrows=0).columns]
-        others = sorted({re.sub(r'\d+', '#', n) for n in z.namelist() if n != member})
-    return fields, others
+    return fields, []
 
 
 def _index_fields(body):
     return [c.strip().lower() for c in pd.read_csv(io.BytesIO(body), dtype=str, nrows=0).columns], []
+
+
+def _found(ro: ReadOnly, cache: dict, key: str, id_cols: list, rows: pd.DataFrame) -> int:
+    """How many of `rows` the parquet at `key` holds, by `id_cols` (the file read once per audit)."""
+    if key not in cache:
+        df = ro.parquet(key)
+        cache[key] = set() if df is None or df.empty else set(cols(*id_cols)(df))
+    return int(cols(*id_cols)(rows).isin(cache[key]).sum())
+
+
+def _udiff_extra(exchange: str):
+    """The UDiFF columns parse_udiff leaves out, in prices/udiff_extra/ (insiders_clean/prices.udiff_extra)."""
+    def extra(ro, body, rec, cache):
+        from insiders_clean import prices
+        rows = prices.udiff_extra(body, exchange)
+        tmpl = prices.UDIFF_EXTRA_KEY.replace('{exchange}', exchange.lower())
+        n, tables = 0, set()
+        for month, part in rows.groupby(pd.to_datetime(rows['date'], errors='coerce').dt.strftime('%Y-%m')):
+            key = tmpl.replace('{month}', month)
+            tables.add(tmpl.replace('{month}', '{YYYY-MM}'))
+            n += _found(ro, cache, key, prices.UDIFF_EXTRA_ID, part)
+        return {'rows': len(rows), 'in_table': n, 'tables': tables or {tmpl}}
+    return extra
+
+
+def _pr_extra(ro, body, rec, cache):
+    """Every member of the PR zip, line by line, in archive/nse_pr/{kind}/ (insiders_clean/market_cap.pr_members)."""
+    from insiders_clean import market_cap
+    day = (rec.get('covers') or {}).get('day')
+    if not day or body[:2] != b'PK':
+        return {'rows': 0, 'in_table': 0, 'tables': set()}
+    rows, n, tables = 0, 0, set()
+    for kind, part in market_cap.pr_members(body, day).items():
+        tmpl = market_cap.PR_MEMBERS_KEY.replace('{kind}', kind)
+        tables.add(tmpl.replace('{month}', '{YYYY-MM}'))
+        rows += len(part)
+        n += _found(ro, cache, tmpl.replace('{month}', str(day)[:7]), market_cap.PR_MEMBERS_ID, part)
+    return {'rows': rows, 'in_table': n, 'tables': tables}
 
 
 def _map(module: str, name: str) -> dict:
@@ -683,20 +725,25 @@ SPECS: list[Spec] = [
                      'archive/mf_sheets_skipped. The equity tables (mf_schemes, mf_holdings) are built from the same '
                      'parse and are not what this checks.'),
     # Exchange files for the price layers (scripts/price_backfill.py SOURCES)
-    Spec('exchange_files', 'nse_udiff_cm', 'zip', 'insiders_clean.prices.parse_udiff', 'prices/daily/nse/{YYYY-MM}.parquet',
-         *Q_UDIFF, 'blob', None, _price('udiff', 'NSE'), cols('date', 'exchange', 'isin', 'symbol', 'series'),
+    Spec('exchange_files', 'nse_udiff_cm', 'zip', 'insiders_clean.prices.parse_udiff (+ prices.udiff_extra)',
+         'prices/daily/nse/{YYYY-MM}.parquet', *Q_UDIFF, 'blob', None, _price('udiff', 'NSE'),
+         cols('date', 'exchange', 'isin', 'symbol', 'series'),
          monthly('prices/daily/nse', cols('date', 'exchange', 'isin', 'symbol', 'series')),
          ['open', 'high', 'low', 'close', 'volume'], raw_fields=_udiff_fields,
-         field_map=_map('insiders_clean.prices', '_MAP')),
-    Spec('exchange_files', 'bse_udiff_cm', 'csv', 'insiders_clean.prices.parse_udiff', 'prices/daily/bse/{YYYY-MM}.parquet',
-         *Q_BSE_UDIFF, 'blob', None, _price('udiff', 'BSE'), cols('date', 'exchange', 'isin', 'symbol', 'series'),
+         field_map=_map('insiders_clean.prices', '_MAP'), extra=_udiff_extra('NSE'),
+         extra_fields=lambda f: 'prices/udiff_extra/nse/{YYYY-MM}.parquet'),
+    Spec('exchange_files', 'bse_udiff_cm', 'csv', 'insiders_clean.prices.parse_udiff (+ prices.udiff_extra)',
+         'prices/daily/bse/{YYYY-MM}.parquet', *Q_BSE_UDIFF, 'blob', None, _price('udiff', 'BSE'),
+         cols('date', 'exchange', 'isin', 'symbol', 'series'),
          monthly('prices/daily/bse', cols('date', 'exchange', 'isin', 'symbol', 'series')),
          ['open', 'high', 'low', 'close', 'volume'], raw_fields=_udiff_fields,
-         field_map=_map('insiders_clean.prices', '_MAP')),
-    Spec('exchange_files', 'nse_pr_zip', 'zip', 'insiders_clean.market_cap.parse_mcap (mcap member only)',
+         field_map=_map('insiders_clean.prices', '_MAP'), extra=_udiff_extra('BSE'),
+         extra_fields=lambda f: 'prices/udiff_extra/bse/{YYYY-MM}.parquet'),
+    Spec('exchange_files', 'nse_pr_zip', 'zip', 'insiders_clean.market_cap.parse_mcap (mcap member; every member: pr_members)',
          'marketcap/daily/nse/{YYYY-MM}.parquet', *Q_PR_ZIP, 'blob', None, _price('mcap'), cols('date', 'symbol', 'series'),
          monthly('marketcap/daily/nse', cols('date', 'symbol', 'series')), ['issue_size', 'close', 'market_cap'],
-         raw_fields=_mcap_fields, field_map=_map('insiders_clean.market_cap', '_MAP')),
+         raw_fields=_mcap_fields, field_map=_map('insiders_clean.market_cap', '_MAP'), extra=_pr_extra,
+         extra_fields=lambda f: 'archive/nse_pr/mcap_csv/{YYYY-MM}.parquet'),
     Spec('exchange_files', 'nse_index_close', 'csv', 'insiders_clean.index_close.parse_index',
          'indices/daily/nse/{YYYY-MM}.parquet', 'unknown', '', 'blob', None, _price('index'), cols('date', 'symbol'),
          monthly('indices/daily/nse', cols('date', 'symbol')), ['close'], raw_fields=_index_fields,
@@ -877,10 +924,11 @@ def _trace(raw_row: dict, stored_row: dict | None, parsed_row: dict | None, fiel
     """Each raw field with a value -> 'column', 'raw_json', 'value' (its value found in a stored column) or 'no'."""
     target = stored_row if stored_row is not None else (parsed_row or {})
     cols_ = {c for c in target if c not in SKIP_COLUMNS}
-    values = {norm(v) for c, v in target.items() if c not in SKIP_COLUMNS and c != 'raw_json'}
+    values = {norm(v) for c, v in target.items() if c not in SKIP_COLUMNS and not str(c).endswith('_json')}
     inside: set = set()
-    rj = target.get('raw_json')
-    if isinstance(rj, str) and rj:
+    for c, rj in target.items():     # raw_json, and other lossless copies (a tender's bids_json)
+        if not str(c).endswith('_json') or not isinstance(rj, str) or not rj:
+            continue
         try:
             obj = json.loads(rj)
             for o in (obj if isinstance(obj, list) else [obj]):
@@ -954,6 +1002,7 @@ def audit_dataset(ro: ReadOnly, source: str, dataset: str, objs: dict, sample: i
     raw_total, identical, done = 0, 0, 0
     field_sets: Counter = Counter()
     unparsed_members: set = set()
+    extras, extra_cache = {'rows': 0, 'in_table': 0, 'tables': set()}, {}
     t0 = time.monotonic()
     timed_out = False
     with ThreadPoolExecutor(WORKERS) as pool:
@@ -986,6 +1035,11 @@ def audit_dataset(ro: ReadOnly, source: str, dataset: str, objs: dict, sample: i
                     else:
                         df, d, n = spec.parse(body, rec)
                         raw_total += n if n is not None else len(df) + sum(d.values())
+                        if spec.extra is not None:
+                            got = spec.extra(ro, body, rec, extra_cache)
+                            extras['rows'] += got['rows']
+                            extras['in_table'] += got['in_table']
+                            extras['tables'] |= set(got['tables'])
                         if spec.raw_fields is not None:
                             names, others = spec.raw_fields(body)
                             field_sets.update(names)
@@ -1009,6 +1063,13 @@ def audit_dataset(ro: ReadOnly, source: str, dataset: str, objs: dict, sample: i
     keys = set(parsed['_key'].astype(str))
     res['counts'] = {'raw_rows': raw_total, 'parsed_rows': parsed_rows, 'parsed_keys': len(keys),
                      'identical_raw_rows': identical, 'dropped': dict(drops), 'parse_errors': dict(errors)}
+    if 'kept' in parsed.columns:    # stored for completeness, left out of the clean tables (insiders_clean/archive.py)
+        out = ~parsed['kept'].astype('boolean').fillna(True).astype(bool)
+        if out.any():
+            res['counts']['stored_not_kept'] = {str(k): int(v) for k, v in
+                                                parsed.loc[out, 'drop_reason'].fillna('not kept').value_counts().items()}
+    if extras['rows'] or extras['tables']:
+        res['extra'] = {**extras, 'missing': extras['rows'] - extras['in_table'], 'tables': sorted(extras['tables'])}
     try:
         stored = spec.stored(ro, keys, parsed, [r for _, r in blobs]) if keys else pd.DataFrame(columns=['_key'])
         res['table_found'] = True
@@ -1042,10 +1103,16 @@ def _fields(spec, raw_rows, parsed, stored_by, field_sets, unparsed_members, rng
             return {'applicable': False, 'note': spec.fields_note}
         fm = {str(k).strip().lower(): v for k, v in spec.field_map.items()}
         kept = sorted(f for f in field_sets if str(f).strip().lower() in fm)
-        unkept = sorted(f for f in field_sets if str(f).strip().lower() not in fm)
+        rest = sorted(f for f in field_sets if str(f).strip().lower() not in fm)
+        elsewhere = {f: spec.extra_fields(f) for f in rest} if spec.extra_fields else {}
+        elsewhere = {f: t for f, t in elsewhere.items() if t}
+        unkept = [f for f in rest if f not in elsewhere]
         unkept += [f'file in archive not parsed: {m}' for m in sorted(unparsed_members)]
-        return {'applicable': True, 'raw_fields': sorted(field_sets), 'kept': kept, 'not_kept': unkept,
-                'how': 'raw CSV header against the parser\'s column map'}
+        out = {'applicable': True, 'raw_fields': sorted(field_sets), 'kept': kept, 'not_kept': unkept,
+               'how': 'raw CSV header against the parser\'s column map'}
+        if elsewhere:
+            out['kept_in_own_table'] = elsewhere
+        return out
     picks = raw_rows if len(raw_rows) <= TRACE_ROWS else rng.sample(raw_rows, TRACE_ROWS)
     status: dict = {}
     by_key = {}
@@ -1139,6 +1206,10 @@ def _verdict(res, spec, inv) -> tuple[str, list]:
         gaps.append(f"{c['missing_from_table']:,} of {c['parsed_keys']:,} parsed rows not in {spec.table}")
     if c['unexplained_drop']:
         gaps.append(f"{c['unexplained_drop']:,} raw rows neither parsed nor dropped with a reason")
+    ex = res.get('extra')
+    if ex and ex['missing']:
+        gaps.append(f"{ex['missing']:,} of {ex['rows']:,} lines of the fields or files the parser leaves out are not in "
+                    + ', '.join(ex['tables']))
     f = res['fields']
     if f.get('applicable') and f.get('not_kept'):
         gaps.append(f"raw fields no table keeps: {', '.join(map(str, f['not_kept'][:10]))}"

@@ -55,6 +55,12 @@ ATTACHMENT = 'https://www.bseindia.com/xml-data/corpfiling/AttachLive/'
 COLUMNS = ('event_id', 'news_id', 'bse_code', 'company', 'category', 'subcategory', 'subject', 'headline',
            'critical', 'file_url', 'file_type', 'file_bytes', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
+# BSE's announcement row as sent, every field (owner, 21 Nov 2026: nothing may exist only in raw; AGENDA_ID,
+# ANNOUNCEMENT_TYPE, ATTACHMENTNAME, AUDIO_VIDEO_FILE, CRITICALNEWS, DataInsDate, FILESTATUS, Investor_Presentation,
+# NSURL, OLD and others had no column of their own). Rows archived before then lack it until re-parsed from raw_v2
+# (scripts/announcements_from_raw.py --all).
+RAW_COLUMN = 'raw_json'
+
 # BSE subcategories (SUBCATNAME as on 12 Oct 2026) for each reading group; the
 # group names are the NSE collector's. Everything else is routine.
 READING_GROUPS = {
@@ -118,8 +124,9 @@ def parse(rows: list[dict]) -> pd.DataFrame:
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
             'broadcast_date': at.date().isoformat() if at is not None else None,
+            RAW_COLUMN: json.dumps(r, ensure_ascii=False, sort_keys=True, default=str),
         })
-    df = pd.DataFrame(out, columns=list(COLUMNS))
+    df = pd.DataFrame(out, columns=list(COLUMNS) + [RAW_COLUMN])
     df['file_bytes'] = df['file_bytes'].astype('Int64')
     return df
 

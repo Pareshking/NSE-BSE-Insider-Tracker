@@ -27,6 +27,7 @@ from decimal import Decimal, InvalidOperation
 import pandas as pd
 
 from collectors.nse_events.parsers import BM_COLUMNS, CA_COLUMNS, SAST_COLUMNS, SH_COLUMNS, action_purpose
+from insiders_clean.archive import with_kept
 from insiders_clean.dates import parse_dates
 from insiders_clean.entities import entity_display, entity_key
 from insiders_clean.history import BSE_DEALS_SOURCE as DEALS_SOURCE
@@ -159,7 +160,10 @@ def deal_rows(rows: list[dict]) -> list[dict]:
         t = [re.sub(r'\s+', ' ', v.strip()) for v in x]
         out.append({'event_date': t[0], 'security_code': t[1], 'security_name': t[2], 'company': t[2],
                     'person': t[3], 'side': {'B': 'BUY', 'S': 'SELL'}.get(t[4].upper(), t[4].upper()),
-                    'quantity': t[5], 'price': t[6], 'raw': x})
+                    'quantity': t[5], 'price': t[6], 'raw': x,
+                    # the history row as sent (21 Nov 2026: Security_Name and any other field had no column); left
+                    # out of the canonical id (r2_writer.ID_IGNORED_FIELDS), so the nightly copy keeps one id with it
+                    'raw_json': _raw(r)})
     return out
 
 
@@ -176,16 +180,36 @@ def sast_event_id(r: dict) -> str:
                r.get('NEWDT'))
 
 
-def parse_sast(rows: list[dict]) -> tuple[pd.DataFrame, dict]:
+SAST_REPEAT = 'repeat of a disclosure in the same answer (same event_id, fields outside the id differ)'
+
+
+def sast_not_kept(reg: str) -> str:
+    return f'regulation {reg or "blank"} not kept (SAST_KEPT)'
+
+
+def parse_sast(rows: list[dict], keep_all: bool = False) -> tuple[pd.DataFrame, dict]:
     """(Reg 29(1) and 29(2) disclosures, counts). BSE's list also holds
     Reg 10(5)/10(6) exemption reports and Reg 31 encumbrance notes; those are
-    dropped and counted by regulation."""
+    dropped and counted by regulation.
+
+    With `keep_all` (what the collector archives, 21 Nov 2026) every row comes
+    back: the other regulations with kept = false and sast_not_kept(reg), and
+    a row that repeats a disclosure of the same answer (same event_id) but
+    differs in a field the id leaves out (Company_Name with BSE's '-$', the
+    mode, a %) under its own id, kept = false, SAST_REPEAT. Such repeats are
+    the rows the raw coverage audit of 21 Nov found neither parsed nor dropped
+    (119): drop_duplicates('event_id') let them go uncounted. A repeat equal
+    in every field is the same line and is stored once. The kept rows are
+    exactly those without `keep_all`. Counts: `identical_repeats` (rows equal
+    in every field to an earlier one), `repeats` (same event_id, other fields
+    differ: stored with keep_all, else left out)."""
     out, dropped = [], {}
     for r in rows or []:
         reg = str(r.get('flag') or '').strip()
         if reg not in SAST_KEPT:
             dropped[reg or 'blank'] = dropped.get(reg or 'blank', 0) + 1
-            continue
+            if not keep_all:
+                continue
         dates = re.findall(r'\d{1,2}/\d{1,2}/\d{4}', str(r.get('Acquisition_date') or ''))
         side = str(r.get('Acq_Sale') or '').strip().upper()
         acq, sale = side.startswith('ACQ'), side.startswith('SAL')
@@ -199,7 +223,7 @@ def parse_sast(rows: list[dict]) -> tuple[pd.DataFrame, dict]:
             'acquirer_name': entity_display(r.get('shareholdername')),
             'acquirer_id': entity_key(r.get('shareholdername')),
             'is_promoter': str(r.get('Fld_NameOfPG') or '').strip().upper() in ('YES', 'Y'),
-            'regulation': SAST_KEPT[reg],
+            'regulation': SAST_KEPT.get(reg) or (f'Reg{reg}' if reg else None),
             'action_type': 'Acquisition' if acq else 'Sale' if sale else (_clean(r.get('Acq_Sale')).title() or None),
             'mode': mode,
             'is_market': (mode or '').strip().lower() in ('market', 'open market'),
@@ -232,7 +256,19 @@ def parse_sast(rows: list[dict]) -> tuple[pd.DataFrame, dict]:
     df['percent_equity_traded'] = (df['pct_acquired'].fillna(0) - df['pct_sold'].fillna(0)).where(has_pct)
     # One disclosure can come back twice in one answer (and once per window
     # tile): kept once.
-    return df[BSE_SAST_COLUMNS].drop_duplicates('event_id'), {'dropped_other_regulations': dropped}
+    df = df[BSE_SAST_COLUMNS]
+    once = df.drop_duplicates(['event_id', 'raw_json'])
+    repeat = once.duplicated('event_id')
+    counts = {'dropped_other_regulations': dropped, 'identical_repeats': len(df) - len(once),
+              'repeats': int(repeat.sum())}
+    if not keep_all:
+        return df.drop_duplicates('event_id'), counts
+    once = once.copy()
+    once.loc[repeat, 'event_id'] = [_id('bse_sast_repeat', rj) for rj in once.loc[repeat, 'raw_json']]
+    kept = once['regulation'].isin(SAST_KEPT.values()) & ~repeat
+    reason = [SAST_REPEAT if rp else sast_not_kept(str(json.loads(rj).get('flag') or '').strip())
+              for rp, rj in zip(repeat, once['raw_json'])]
+    return with_kept(once, kept, reason), counts
 
 
 # --- corporate actions -------------------------------------------------------------
@@ -240,18 +276,26 @@ def parse_sast(rows: list[dict]) -> tuple[pd.DataFrame, dict]:
 BSE_CA_COLUMNS = CA_COLUMNS + ['exchange', 'bse_code']
 
 
-def parse_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
+ACTION_NOT_KEPT = 'purpose not kept (action_purpose)'
+
+
+def parse_actions(rows: list[dict], keep_all: bool = False) -> tuple[pd.DataFrame, int]:
     """(kept actions, number dropped), on NSE's purposes: buyback, bonus,
     split, rights, dividend. BSE writes 'Final Dividend - Rs. - 5.0000',
     'Bonus issue 1:2', 'Stock  Split From Rs.5/- to Rs.1/-', 'Right Issue of
-    Equity Shares' (no ratio or price), 'Buy Back of Shares'."""
+    Equity Shares' (no ratio or price), 'Buy Back of Shares'. With `keep_all`
+    (what the collector archives, 21 Nov 2026) the dropped rows come back too:
+    purpose 'other', BSE's Purpose text in `subject`, kept = false and
+    drop_reason ACTION_NOT_KEPT; the kept rows are unchanged."""
     out, dropped = [], 0
     for r in rows or []:
         subject = re.sub(r'\s+', ' ', str(r.get('Purpose') or '')).strip()
         purpose = action_purpose(subject)
         if purpose is None:
             dropped += 1
-            continue
+            if not keep_all:
+                continue
+            purpose = 'other'
         ratio = re.search(r'(\d+)\s*:\s*(\d+)', subject)
         fv = re.search(r'from\s+rs\.?\s*(\d+(?:\.\d+)?).*?to\s+rs\.?\s*(\d+(?:\.\d+)?)', subject, re.IGNORECASE)
         div = re.search(r'rs\.?\s*-?\s*(\d+(?:\.\d+)?)', subject, re.IGNORECASE)
@@ -273,7 +317,10 @@ def parse_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
     df = pd.DataFrame(out, columns=BSE_CA_COLUMNS) if out else pd.DataFrame(columns=BSE_CA_COLUMNS)
     for c in ('ex_date', 'record_date', 'broadcast_date'):
         df[c] = parse_dates(df[c])
-    return df.drop_duplicates('event_id'), dropped
+    df = df.drop_duplicates('event_id')
+    if keep_all:
+        df = with_kept(df, df['purpose'].ne('other'), ACTION_NOT_KEPT)
+    return df, dropped
 
 
 # --- board meetings --------------------------------------------------------------
@@ -310,12 +357,23 @@ def _bse_ts(v) -> str | None:
         return s
 
 
-def parse_board_meetings(payload: dict) -> tuple[pd.DataFrame, dict]:
+BM_NOT_KEPT = 'no kept purpose (BM_FLAGS)'
+BM_NO_KEY = 'no scrip code or meeting date'
+
+
+def parse_board_meetings(payload: dict, keep_all: bool = False) -> tuple[pd.DataFrame, dict]:
     """(meetings that consider results, dividend, buyback, bonus, split,
     rights or a preferential issue, counts). `Table` rows are meetings as
     listed, one row a meeting; `Table1` rows, one a purpose, are dates a
     meeting was moved away from: kept with moved = true, so the clean step
-    can drop the date they replace (insiders_clean/bse_events.py)."""
+    can drop the date they replace (insiders_clean/bse_events.py).
+
+    With `keep_all` (what the collector archives, 21 Nov 2026) the rest comes
+    back with kept = false: a meeting whose purposes hold none of BM_FLAGS
+    (BM_NOT_KEPT; its own event_id, from 'bse_bm_other', so it never takes
+    the place of a kept meeting of the same day), and each row with no scrip
+    code or no meeting date on its own (BM_NO_KEY, its id from its text). The
+    kept rows and the counts are those without `keep_all`."""
     out, dropped, moved_dates = [], 0, 0
     groups: dict = {}
     for moved, rows in ((False, (payload or {}).get('Table') or []), (True, (payload or {}).get('Table1') or [])):
@@ -323,31 +381,48 @@ def parse_board_meetings(payload: dict) -> tuple[pd.DataFrame, dict]:
             code, day = _clean(r.get('scrip_code')), _clean(r.get('MEETING_BOARD_DATE'))[:10]
             if not code or not day:
                 dropped += 1
+                if keep_all:
+                    groups[(moved, code, day, _raw(r))] = {'rows': [r], 'purposes': [
+                        re.sub(r'\s+', ' ', p).strip() for p in str(r.get('PURPOSE_NAME') or '').split(';')]}
                 continue
-            g = groups.setdefault((moved, code, day), {'rows': [], 'purposes': []})
+            g = groups.setdefault((moved, code, day, None), {'rows': [], 'purposes': []})
             g['rows'].append(r)
             g['purposes'] += [re.sub(r'\s+', ' ', p).strip() for p in str(r.get('PURPOSE_NAME') or '').split(';')]
-    for (moved, code, day), g in groups.items():
+    for (moved, code, day, alone), g in groups.items():
         purposes = [p for p in dict.fromkeys(g['purposes']) if p]
         flags = {k: any(re.search(pat, p, re.IGNORECASE) for p in purposes) for k, pat in BM_FLAGS.items()}
-        if not any(flags.values()):
+        kept = alone is None and any(flags.values())
+        if alone is None and not kept:
             dropped += 1
-            continue
-        moved_dates += moved
+            if not keep_all:
+                continue
+        moved_dates += moved and kept
         first = g['rows'][0]
         ts = max((_bse_ts(r.get('DT_TM')) or '' for r in g['rows']), default='') or None
+        if kept:
+            event_id = _id('bse_bm_moved' if moved else 'bse_bm', code, day, ts if moved else None)
+        elif alone is None:
+            event_id = _id('bse_bm_moved_other' if moved else 'bse_bm_other', code, day, ts if moved else None)
+        else:
+            event_id = _id('bse_bm_nokey', moved, alone)
         out.append({
-            'event_id': _id('bse_bm_moved' if moved else 'bse_bm', code, day, ts if moved else None),
-            'symbol': code, 'bse_code': code, 'isin': None,
+            'event_id': event_id,
+            'symbol': code or None, 'bse_code': code or None, 'isin': None,
             'company': re.sub(r'\s*-\$\s*$', '', _clean(first.get('Long_Name') or first.get('Long_name'))) or None,
-            'meeting_date': day, **flags, 'purposes': ','.join(k for k in BM_FLAGS if flags[k]),
+            'meeting_date': day or None, **flags, 'purposes': ','.join(k for k in BM_FLAGS if flags[k]),
             'description': ' | '.join(purposes), 'intimation_ts': ts, 'exchange': 'BSE', 'moved': moved,
             'raw_json': _raw(first) if len(g['rows']) == 1 else '[' + ','.join(_raw(r) for r in g['rows']) + ']',
+            'kept': kept, 'drop_reason': None if kept else BM_NOT_KEPT if alone is None else BM_NO_KEY,
         })
-    df = pd.DataFrame(out, columns=BSE_BM_COLUMNS) if out else pd.DataFrame(columns=BSE_BM_COLUMNS)
+    columns = BSE_BM_COLUMNS + ['kept', 'drop_reason']
+    df = pd.DataFrame(out, columns=columns) if out else pd.DataFrame(columns=columns)
     df['meeting_date'] = parse_dates(df['meeting_date'])
-    return df.drop_duplicates('event_id').reset_index(drop=True), {'dropped_other_purposes': dropped,
-                                                                   'moved_dates': moved_dates}
+    df = df.drop_duplicates('event_id').reset_index(drop=True)
+    if keep_all:
+        df['kept'] = df['kept'].astype(bool)
+    else:
+        df = df[BSE_BM_COLUMNS]
+    return df, {'dropped_other_purposes': dropped, 'moved_dates': moved_dates}
 
 
 # --- shareholding pattern ------------------------------------------------------------

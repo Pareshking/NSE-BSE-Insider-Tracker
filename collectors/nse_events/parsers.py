@@ -13,6 +13,7 @@ import re
 
 import pandas as pd
 
+from insiders_clean.archive import with_kept
 from insiders_clean.dates import parse_dates
 from insiders_clean.entities import entity_display, entity_key
 
@@ -214,18 +215,24 @@ def action_purpose(subject) -> str | None:
     return None
 
 
-def parse_corporate_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
+ACTION_NOT_KEPT = 'purpose not kept (action_purpose)'
+
+
+def parse_corporate_actions(rows: list[dict], keep_all: bool = False) -> tuple[pd.DataFrame, int]:
     """(kept actions, number dropped). Kept: buyback, bonus, split, demerger,
     capital reduction, scheme of arrangement or amalgamation, rights, dividend.
     Dropped: interest payments, unit distributions and the like (counted, not
-    silently lost)."""
+    silently lost). With `keep_all` (what the collector archives, 21 Nov 2026)
+    the dropped rows come back too, with purpose 'other', the subject as filed,
+    kept = false and drop_reason ACTION_NOT_KEPT; the kept rows are unchanged."""
     out, dropped = [], 0
     for r in rows or []:
         subject = str(r.get('subject') or '').strip()
         purpose = action_purpose(subject)
         if purpose is None:
             dropped += 1
-            continue
+            if not keep_all:
+                continue
         ratio = re.search(r'(\d+)\s*:\s*(\d+)', subject)
         price = re.search(r'(?:premium|@|price)[^0-9]*(\d+(?:\.\d+)?)', subject, re.IGNORECASE)
         fv = re.search(r'from\s+r[se]\.?\s*(\d+(?:\.\d+)?).*?to\s+r[se]\.?\s*(\d+(?:\.\d+)?)', subject, re.IGNORECASE)
@@ -259,6 +266,10 @@ def parse_corporate_actions(rows: list[dict]) -> tuple[pd.DataFrame, int]:
     df = _frame(out, CA_COLUMNS)
     for c in ('ex_date', 'record_date', 'broadcast_date'):
         df[c] = parse_dates(df[c])
+    if keep_all:
+        other = df['purpose'].isna()
+        df.loc[other, 'purpose'] = 'other'
+        df = with_kept(df, ~other, ACTION_NOT_KEPT)
     return df, dropped
 
 
@@ -279,38 +290,72 @@ _BM_FLAGS = {
 }
 
 
-def parse_board_meetings(rows: list[dict]) -> tuple[pd.DataFrame, int]:
+BM_NOT_KEPT = 'no kept purpose (_BM_FLAGS)'
+BM_NO_KEY = 'no symbol or meeting date'
+
+
+def _bm_group(df: pd.DataFrame, flag_cols: list, dropna: bool = True) -> pd.DataFrame:
+    """The rows of one meeting (symbol, meeting date) combined into one."""
+    return (df.sort_values('intimation_ts')
+              .groupby(['symbol', 'meeting_date'], as_index=False, sort=False, dropna=dropna)
+              .agg({**{c: 'any' for c in flag_cols}, 'isin': 'first', 'company': 'first',
+                    # NSE's purpose field as filed: a label can come from it while the description says other things
+                    # (13 Nov 2026: Natural Capsules "fund raising", description only results), so the page shows it
+                    'nse_purpose': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
+                    'description': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
+                    'intimation_ts': 'last', 'raw_json': lambda s: '[' + ','.join(s) + ']'}))
+
+
+def parse_board_meetings(rows: list[dict], keep_all: bool = False) -> tuple[pd.DataFrame, int]:
     """(meetings that consider results, dividend, buyback, bonus, fund
     raising, split, rights or preferential issue; number dropped). NSE files
     an 'intimation' row whose purpose is only in the description, so both
-    fields are read; the rows for one meeting are combined into one."""
+    fields are read; the rows for one meeting are combined into one.
+
+    With `keep_all` (what the collector archives, 21 Nov 2026) the other rows
+    come back too, with kept = false: the rows of a meeting with no kept
+    purpose, combined the same way (event_id from 'bm_other', BM_NOT_KEPT),
+    and rows with no symbol or meeting date, which the grouping used to lose
+    without a count (BM_NO_KEY). They are grouped apart from the kept rows,
+    so a kept meeting is exactly what it was."""
     out, dropped = [], 0
     for r in rows or []:
         text = f"{r.get('bm_purpose') or ''} {r.get('bm_desc') or ''}"
         flags = {k: bool(re.search(p, text, re.IGNORECASE)) for k, p in _BM_FLAGS.items()}
         if not any(flags.values()):
             dropped += 1
-            continue
+            if not keep_all:
+                continue
         out.append({'event_id': None, 'symbol': (r.get('bm_symbol') or '').strip().upper() or None,
                     'isin': r.get('sm_isin'), 'company': r.get('sm_name'), 'meeting_date': r.get('bm_date'),
                     **flags, 'nse_purpose': (r.get('bm_purpose') or '').strip(), 'description': (r.get('bm_desc') or '').strip(),
                     'intimation_ts': r.get('bm_timestamp'), 'raw_json': _raw(r)})
     df = _frame(out, BM_COLUMNS)
+    columns = BM_COLUMNS + (['kept', 'drop_reason'] if keep_all else [])
     if df.empty:
-        return df, dropped
+        return (with_kept(df, True, None) if keep_all else df), dropped
     flag_cols = list(_BM_FLAGS)
-    df = (df.sort_values('intimation_ts')
-            .groupby(['symbol', 'meeting_date'], as_index=False, sort=False)
-            .agg({**{c: 'any' for c in flag_cols}, 'isin': 'first', 'company': 'first',
-                  # NSE's purpose field as filed: a label can come from it while the description says other things
-                  # (13 Nov 2026: Natural Capsules "fund raising", description only results), so the page shows it
-                  'nse_purpose': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
-                  'description': lambda s: ' | '.join(dict.fromkeys(x for x in s if x)),
-                  'intimation_ts': 'last', 'raw_json': lambda s: '[' + ','.join(s) + ']'}))
+    has_flag = df[flag_cols].any(axis=1)
+    no_key = df['symbol'].isna() | df['meeting_date'].isna()
+    parts = []
+    if (has_flag & ~no_key).any():
+        g = _bm_group(df[has_flag & ~no_key], flag_cols)
+        g['event_id'] = [_id('bm', s, d) for s, d in zip(g['symbol'], g['meeting_date'])]
+        parts.append(with_kept(g, True, None) if keep_all else g)
+    if keep_all:
+        for mask, tag, reason in ((~has_flag & ~no_key, 'bm_other', BM_NOT_KEPT), (no_key, 'bm_nokey', BM_NO_KEY)):
+            if mask.any():
+                g = _bm_group(df[mask], flag_cols, dropna=False)
+                # rows with no key are told apart by their own text (one group may hold several meetings)
+                g['event_id'] = [_id(tag, s, d) if tag == 'bm_other' else _id(tag, s, d, rj)
+                                 for s, d, rj in zip(g['symbol'], g['meeting_date'], g['raw_json'])]
+                parts.append(with_kept(g, False, reason))
+    if not parts:
+        return _frame([], columns), dropped
+    df = pd.concat(parts, ignore_index=True)
     df['purposes'] = df[flag_cols].apply(lambda row: ','.join(c for c in flag_cols if row[c]), axis=1)
-    df['event_id'] = [_id('bm', s, d) for s, d in zip(df['symbol'], df['meeting_date'])]
     df['meeting_date'] = parse_dates(df['meeting_date'])
-    return df[BM_COLUMNS], dropped
+    return df[columns], dropped
 
 
 # --- Shareholding pattern -----------------------------------------------------------
@@ -403,6 +448,9 @@ TENDER_COLUMNS = ['event_id', 'symbol', 'company', 'series', 'offer_type', 'offe
                   'offer_open', 'offer_close', 'status', 'raw_json']
 
 
+TENDER_BIDS = ('demand', 'bidDetails')   # NSE's bid book in each tender row
+
+
 def tender_kind(offer_type) -> str:
     s = str(offer_type or '').lower()
     if re.search(r'buy\s*-?\s*back', s):
@@ -435,13 +483,16 @@ def parse_tender_offers(past: list[dict], active: list[dict] = ()) -> pd.DataFra
             'accepted_price': _num(r.get('allocatedPrice')),
             'offer_open': opened, 'offer_close': r.get('offerEndDate') or r.get('todEndDate'),
             'status': status,
-            'raw_json': _raw({k: v for k, v in r.items() if k not in ('demand', 'bidDetails')}),
+            'raw_json': _raw({k: v for k, v in r.items() if k not in TENDER_BIDS}),
+            # The bid book (21 Nov 2026: every raw field reaches the archive). Archive only: raw_json above leaves it
+            # out as it always has, and the clean table is built without this column (insiders_clean/archive.py).
+            'bids_json': _raw({k: r[k] for k in TENDER_BIDS if k in r}) if any(k in r for k in TENDER_BIDS) else None,
         })
-    df = _frame(out, TENDER_COLUMNS)
+    df = _frame(out, TENDER_COLUMNS + ['bids_json'])
     for c in ('offer_open', 'offer_close'):
         df[c] = parse_dates(df[c])
     # An offer that is still open is in both lists on its last day; the active row is newer.
-    return df.drop_duplicates('event_id', keep='last').reset_index(drop=True)[TENDER_COLUMNS]
+    return df.drop_duplicates('event_id', keep='last').reset_index(drop=True)[TENDER_COLUMNS + ['bids_json']]
 
 
 DAILY_BB_COLUMNS = ['event_id', 'symbol', 'company', 'report_ts', 'report_date', 'text', 'attachment', 'raw_json']

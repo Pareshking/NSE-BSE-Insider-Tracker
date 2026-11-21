@@ -57,6 +57,88 @@ def _uniform(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Every raw row is archived (owner, 21 Nov 2026: nothing may exist only in raw). A row the clean tables leave out
+# carries kept = false and its drop_reason; rows archived before the column existed were all kept. Columns that only
+# the archive holds (the flag, its reason, and lossless copies added after the clean tables existed) are named here
+# and taken off before a clean table is built, so the clean tables stay as they were.
+KEPT = 'kept'
+DROP_REASON = 'drop_reason'
+ARCHIVE_ONLY_COLUMNS = (KEPT, DROP_REASON, 'bids_json')
+# Lossless copies of the row as sent: merge keeps the archived copy when a row seen again comes without one.
+KEEP_IF_MISSING = ('raw_json', 'bids_json')
+
+
+def kept_mask(df: pd.DataFrame) -> pd.Series:
+    """True for rows the clean tables use: kept true, or no flag (archived before 21 Nov 2026, all kept)."""
+    if df is None or KEPT not in df.columns:
+        return pd.Series(True, index=None if df is None else df.index, dtype=bool)
+    return df[KEPT].astype('boolean').fillna(True).astype(bool)
+
+
+def clean_view(df: pd.DataFrame | None) -> tuple[pd.DataFrame | None, dict]:
+    """(the archive rows and columns a clean table is built from, {drop_reason: rows left out})."""
+    if df is None or df.empty:
+        return df, {}
+    keep = kept_mask(df)
+    out = {}
+    if (~keep).any():
+        reasons = df.loc[~keep, DROP_REASON] if DROP_REASON in df.columns else pd.Series('not kept', index=df.index[~keep])
+        out = {str(k): int(v) for k, v in reasons.fillna('not kept').astype(str).value_counts().items()}
+    view = df[keep].drop(columns=[c for c in ARCHIVE_ONLY_COLUMNS if c in df.columns]).reset_index(drop=True)
+    return view, out
+
+
+def with_kept(df: pd.DataFrame, kept, reason) -> pd.DataFrame:
+    """`df` with the archive's kept flag and drop reason (scalars or per-row sequences) as its last two columns."""
+    df = df.copy()
+    df[KEPT] = kept
+    df[DROP_REASON] = reason
+    df[KEPT] = df[KEPT].astype(bool)
+    df[DROP_REASON] = df[DROP_REASON].astype(object).where(~df[KEPT], None)
+    return df
+
+
+def backfill(archive: pd.DataFrame | None, new: pd.DataFrame | None, run_date: str, key: str = KEY,
+             fill: tuple = (), add_kept: bool = False) -> tuple[pd.DataFrame | None, dict]:
+    """Rows re-read from raw_v2 into an archive without changing what the clean tables read (scripts/raw_reparse.py):
+
+    * a row already archived keeps every value and its first_seen / last_seen; only the `fill` columns are filled
+      where the archive has none (a lossless copy added after the row was stored, e.g. raw_json);
+    * a row not archived is added when it is kept = false (first_seen = last_seen = run_date): a row the clean
+      tables leave out, which the collector used to drop;
+    * a kept row that is not archived is only counted (`kept_not_archived`), never added, unless `add_kept`: adding
+      it would change a clean table, which a re-read must not do on its own.
+
+    Returns (archive, counts: added, filled, kept_not_archived)."""
+    counts = {'added': 0, 'filled': 0, 'kept_not_archived': 0}
+    if new is None or new.empty:
+        return archive, counts
+    new = _uniform(new.drop(columns=['exchange', 'category'], errors='ignore'))   # as merge stores them
+    new = new.drop_duplicates(key, keep='last')
+    have = set(archive[key].astype(str)) if archive is not None and not archive.empty else set()
+    fresh = ~new[key].astype(str).isin(have)
+    kept = kept_mask(new)
+    counts['kept_not_archived'] = int((fresh & kept).sum())
+    add = new[fresh & (~kept | add_kept)].assign(first_seen=run_date, last_seen=run_date)
+    counts['added'] = len(add)
+    if archive is None or archive.empty:
+        return (_uniform(add.reset_index(drop=True)) if len(add) else archive), counts
+    archive = archive.copy()
+    by_key = new[~fresh].set_index(new.loc[~fresh, key].astype(str))
+    for c in fill:
+        if c not in by_key.columns:
+            continue
+        if c not in archive.columns:
+            archive[c] = pd.Series(pd.NA, index=archive.index, dtype=object)
+        hole = archive[c].isna()
+        got = archive.loc[hole, key].astype(str).map(by_key[c])
+        filled = got.notna()
+        counts['filled'] += int(filled.sum())
+        archive.loc[got[filled].index, c] = got[filled].astype(object)
+    merged = pd.concat([archive, add], ignore_index=True) if len(add) else archive
+    return _uniform(merged), counts
+
+
 def merge(archive: pd.DataFrame | None, new: pd.DataFrame | None, run_date: str,
           key: str = KEY) -> tuple[pd.DataFrame, int]:
     """(merged frame, number of records not seen before). Rows seen again
@@ -73,6 +155,13 @@ def merge(archive: pd.DataFrame | None, new: pd.DataFrame | None, run_date: str,
     first = archive.set_index(key)['first_seen']
     added = int((~new[key].isin(first.index)).sum())
     new['first_seen'] = new[key].map(first).fillna(run_date)
+    # A lossless copy is never lost to a row seen again without it (a BSE deal from the history endpoint carries
+    # raw_json, the same deal from the nightly page does not; a tender's bid book is in one of NSE's two lists).
+    for c in KEEP_IF_MISSING:
+        if c in archive.columns:
+            prev = archive.drop_duplicates(key).set_index(key)[c]
+            back = new[key].map(prev)
+            new[c] = back if c not in new.columns else new[c].where(new[c].notna(), back)
     merged = pd.concat([archive[~archive[key].isin(new[key])], new], ignore_index=True)
     return _uniform(merged), added
 

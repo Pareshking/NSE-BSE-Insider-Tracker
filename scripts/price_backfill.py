@@ -39,6 +39,18 @@ SOURCES = {
 }
 KEYS = {'NSE': ['date', 'exchange', 'isin', 'symbol', 'series'], 'BSE': ['date', 'exchange', 'isin', 'symbol', 'series'],
         'NSE_PR': ['date', 'symbol', 'series'], 'NSE_IDX': ['date', 'symbol']}
+# What the parsed layer leaves out of a file, in its own tables (owner, 21 Nov 2026: every raw field reaches a table):
+# name -> ((body, day) -> {key template with {month}: rows}, the columns that identify a row). The UDiFF columns
+# parse_udiff does not take (insiders_clean/prices.udiff_extra) and every member of the PR zip, line by line
+# (insiders_clean/market_cap.pr_members). Days fetched before then come from raw_v2 (scripts/raw_reparse.py).
+EXTRAS = {
+    'NSE': (lambda b, day: {prices.UDIFF_EXTRA_KEY.replace('{exchange}', 'nse'): prices.udiff_extra(b, 'NSE')},
+            prices.UDIFF_EXTRA_ID),
+    'BSE': (lambda b, day: {prices.UDIFF_EXTRA_KEY.replace('{exchange}', 'bse'): prices.udiff_extra(b, 'BSE')},
+            prices.UDIFF_EXTRA_ID),
+    'NSE_PR': (lambda b, day: {market_cap.PR_MEMBERS_KEY.replace('{kind}', k): v
+                               for k, v in market_cap.pr_members(b, day).items()}, market_cap.PR_MEMBERS_ID),
+}
 PAUSE = 0.6
 
 
@@ -83,7 +95,37 @@ def fetch(session, store, exchange, day):
     if store is not None:
         store.put('exchange_files', label, r.content, url=url, status=200,
                   content_type=r.headers.get('Content-Type'), covers={'day': day.isoformat()})
-    return parse(r.content)
+    return parse(r.content), r.content
+
+
+def read_key(client, bucket, key):
+    try:
+        return pd.read_parquet(io.BytesIO(client.get_object(Bucket=bucket, Key=key)['Body'].read()))
+    except Exception as e:  # noqa: BLE001
+        if 'NoSuchKey' in str(e) or '404' in str(e):
+            return None
+        raise
+
+
+def merge_extras(client, bucket, month: str, found: dict, id_cols: list, dry=False) -> dict:
+    """{key template: [rows]} -> each month file merged with what it holds (a day read again replaces its rows).
+    Returns {key: rows written}."""
+    out = {}
+    for tmpl, frames in found.items():
+        k = tmpl.replace('{month}', month)
+        new = pd.concat(frames, ignore_index=True)
+        old = read_key(client, bucket, k) if client is not None else None
+        merged = pd.concat([old, new], ignore_index=True) if old is not None else new
+        merged = merged.drop_duplicates(id_cols, keep='last').sort_values(id_cols).reset_index(drop=True)
+        for c in merged.columns:   # one type per column: text stays text
+            if merged[c].dtype == object:
+                merged[c] = merged[c].astype('string')
+        if not dry and client is not None:
+            buf = io.BytesIO()
+            merged.to_parquet(buf, index=False, compression='zstd')
+            client.put_object(Bucket=bucket, Key=k, Body=buf.getvalue())
+        out[k] = len(merged)
+    return out
 
 
 CALENDAR_KEY = 'reference/nse_calendar.json'
@@ -125,10 +167,13 @@ def months(start: date, end: date, extra=()):
         yield cur, out
 
 
-def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep, extra=()):
+def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, sleep=time.sleep, extra=(),
+        extras_only=False):
     """One month at a time: fetch, then write that month's parquet and print progress right away,
     so an interrupted run keeps what it finished and the log shows where it is. `extra`: weekend sessions to fetch
-    too (weekend_sessions)."""
+    too (weekend_sessions). `extras_only`: fetch days the layer already holds too and write only the EXTRAS tables
+    (the PR zips of days whose raw blob storage_trim deleted; NSE keeps the file at its URL); the layer is not
+    rewritten."""
     s = requests.Session()
     s.headers.update({'User-Agent': UA, 'Accept': '*/*'})
     totals = {}
@@ -136,13 +181,14 @@ def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, 
         t = {'sessions': 0, 'no_file': 0, 'rows': 0, 'already': 0, 'errors': 0, 'problems': {}}
         for month, days in months(start, end, extra):
             old = load_month(client, bucket, ex, month) if client is not None else None
-            frames = []
+            frames, extras = [], {}
             for day in days:
-                if old is not None and (old['date'] == pd.Timestamp(day)).any():
+                if old is not None and (old['date'] == pd.Timestamp(day)).any() and not extras_only:
                     t['already'] += 1
                     continue
                 try:
-                    df = fetch(s, store, ex, day)
+                    got = fetch(s, store, ex, day)
+                    df, body = got if got is not None else (None, None)
                 except Stop:
                     raise
                 except Exception as e:  # noqa: BLE001
@@ -165,7 +211,16 @@ def run(start, end, exchanges, client=None, bucket=None, store=None, dry=False, 
                     if k not in ('rows', 'listed') and v:
                         t['problems'][k] = t['problems'].get(k, 0) + v
                 frames.append(df)
-            if frames:
+                if ex in EXTRAS:
+                    try:
+                        for tmpl, rows in EXTRAS[ex][0](body, day).items():
+                            extras.setdefault(tmpl, []).append(rows)
+                    except Exception as e:  # noqa: BLE001 -- counted; the raw bytes are kept, raw_reparse reads them
+                        t['extras_failed'] = t.get('extras_failed', 0) + 1
+                        print(f'  {ex} {day}: extras not read ({type(e).__name__}: {e})', flush=True)
+            if extras:
+                t.setdefault('extras_written', {}).update(merge_extras(client, bucket, month, extras, EXTRAS[ex][1], dry))
+            if frames and not extras_only:
                 merged = pd.concat([old, *frames]) if old is not None else pd.concat(frames)
                 merged = merged.drop_duplicates(KEYS[ex]).sort_values(['date', 'symbol'])
                 if not dry and client is not None:
@@ -184,6 +239,8 @@ def main(argv=None) -> int:
     ap.add_argument('--to', dest='end', default='')
     ap.add_argument('--exchange', default='NSE,BSE,NSE_PR')
     ap.add_argument('--dry-run', action='store_true')
+    ap.add_argument('--extras-only', action='store_true',
+                    help='fetch stored days too and write only the tables of what the layer leaves out (EXTRAS)')
     a = ap.parse_args(argv)
     start = datetime.strptime(a.start, '%Y-%m-%d').date()
     end = datetime.strptime(a.end, '%Y-%m-%d').date() if a.end else date.today() - timedelta(days=1)
@@ -198,7 +255,8 @@ def main(argv=None) -> int:
     try:
         extra = weekend_sessions(client, bucket) if client is not None else set()
         print(f'weekend sessions in range: {sorted(d.isoformat() for d in extra if start <= d <= end)}')
-        run(start, end, [x.strip().upper() for x in a.exchange.split(',')], client, bucket, store, a.dry_run, extra=extra)
+        run(start, end, [x.strip().upper() for x in a.exchange.split(',')], client, bucket, store, a.dry_run, extra=extra,
+            extras_only=a.extras_only)
     except Stop as e:
         print(f'STOPPED: {e}')
         return 1

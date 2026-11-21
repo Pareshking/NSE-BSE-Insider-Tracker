@@ -286,7 +286,11 @@ def test_nse_actions_backfill_goes_month_by_month():
     months = [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31)),
               (date(2026, 8, 1), date(2026, 8, 3))]
     assert nse.calls == [(a, b, i) for a, b in months for i in ('equities', 'sme')]
-    assert dropped == 2 and sorted(df['purpose']) == ['bonus', 'split']
+    # every row reaches the archive (21 Nov 2026): the interest payment (asked twice, one event_id) is there, not kept
+    assert dropped == 2 and sorted(df.loc[df['kept'], 'purpose']) == ['bonus', 'split']
+    other = df[~df['kept']]
+    assert other['purpose'].tolist() == ['other'] and other['subject'].tolist() == ['Interest Payment']
+    assert other['drop_reason'].tolist() == ['purpose not kept (action_purpose)']
     sp = df[df['purpose'] == 'split']
     assert (sp['face_value_from'].item(), sp['face_value_to'].item()) == (10.0, 1.0)
     assert df.loc[df['purpose'] == 'bonus', 'symbol'].item() == 'SMECO'

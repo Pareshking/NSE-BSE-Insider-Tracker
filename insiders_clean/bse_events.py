@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from . import archive
 from . import sast as sast_rules
 from .securities import SecurityMaster
 
@@ -119,9 +120,14 @@ def shareholding_input(arch: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
 def clean(arch: pd.DataFrame | None, master: SecurityMaster, nse: pd.DataFrame | None, stream: str):
     """(clean BSE table, counts for the run report)."""
+    # The archive holds every row BSE sent (21 Nov 2026); the ones the table leaves out are flagged there and
+    # counted here by reason.
+    arch, not_kept = archive.clean_view(arch)
     if arch is None or arch.empty:
-        return pd.DataFrame(), {'rows': 0}
+        return pd.DataFrame(), {'rows': 0, **({'archive_not_kept': not_kept} if not_kept else {})}
     df, extra = add_identity(arch, master), {}
+    if not_kept:
+        extra['archive_not_kept'] = not_kept
     if stream == 'meetings':
         df, extra['moved_away'] = drop_moved(df)
     if stream == 'shareholding':

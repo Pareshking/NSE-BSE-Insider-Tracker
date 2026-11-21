@@ -14,6 +14,10 @@ on:
       exchange:
         description: 'NSE, BSE, NSE_PR (market cap), NSE_IDX (index closes) or a comma list'
         default: 'NSE,BSE,NSE_PR'
+      extras_only:
+        description: 'Fetch stored days again and write only what the layer leaves out (UDiFF columns, PR zip members)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,7 +46,11 @@ jobs:
           FROM: ${{ inputs.from || '2025-01-01' }}
           TO: ${{ inputs.to }}
           EXCHANGE: ${{ inputs.exchange || 'NSE,BSE,NSE_PR' }}
-        run: python -u scripts/price_backfill.py --from "$FROM" --to "$TO" --exchange "$EXCHANGE" | tee price_backfill.log
+          EXTRAS_ONLY: ${{ inputs.extras_only }}
+        run: |
+          args=(--from "$FROM" --to "$TO" --exchange "$EXCHANGE")
+          [ "$EXTRAS_ONLY" = "true" ] && args+=(--extras-only)
+          python -u scripts/price_backfill.py "${args[@]}" | tee price_backfill.log
       - name: Summary
         if: always()
         run: |
