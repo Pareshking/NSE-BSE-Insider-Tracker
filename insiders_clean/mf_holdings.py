@@ -14,7 +14,9 @@ Quantity or No of Units, Market Value, % of Portfolio), with the value in rupees
 
 A sheet without such a header row is skipped and counted (index sheets, notes). Only equity shares are kept for the
 stock tables (`is_equity`: an INE ISIN whose security code is 01, the depositories' code for equity shares); every
-other line is counted, not dropped silently.
+other line is counted, not dropped silently, and kept: `parse_workbook_lines` gives every filled row of every sheet
+read, with its kind (equity, debt, money market, cash, derivative, other), and every sheet skipped with its reason
+(archive/mf_lines/ and archive/mf_sheets_skipped/, scripts/mf_portfolios.py).
 
     holdings(rows, amc, month)       -> one row per fund house, month and ISIN: shares, value, schemes
     changes(cur, prev, factors)      -> shares added or cut in the month per fund house and ISIN, a split or bonus
@@ -28,6 +30,7 @@ month's figures cover.
 from __future__ import annotations
 
 import io
+import json
 import re
 import zipfile
 
@@ -165,25 +168,212 @@ def parse_workbook(body: bytes, filename: str, value_unit: str = 'lakh') -> tupl
     """Every holding line in the file, and a count of what was read and skipped. `value_unit` is the unit the file's
     market value is in, as the filer states it: 'lakh' (the SEBI format, "Rs. in Lakhs") or 'rupee' (the PFRDA form
     NPS pension funds file, "Amount in Rs."); `value_lakh` is always in lakh."""
+    df, report, _, _ = _parse(body, filename, value_unit, lines=False)
+    return df, report
+
+
+def _parse(body: bytes, filename: str, value_unit: str, lines: bool):
+    """One pass over the file's sheets: `parse_workbook`'s rows and report and, with `lines`, every line of every sheet
+    read (`line_rows`) and every sheet skipped (`parse_workbook_lines`)."""
     if value_unit not in VALUE_UNIT:
         raise ValueError(f'value_unit {value_unit!r}: one of {sorted(VALUE_UNIT)}')
     rows, report = [], {'workbooks': 0, 'sheets': 0, 'sheets_read': 0, 'skipped': {}, 'value_unit': value_unit}
+    all_lines, skipped = [], []
     for name, data in _books(body, filename):
         report['workbooks'] += 1
+        wb = '' if name == filename else name     # the file's name inside a zip; blank for a plain workbook
         for sheet, srows in _sheets(name, data):
             report['sheets'] += 1
             got, why = parse_rows(sheet, srows)
             if why:
                 report['skipped'][why] = report['skipped'].get(why, 0) + 1
+                if lines:
+                    skipped.append({'workbook': wb, 'sheet': sheet, 'reason': why, 'rows': len(srows),
+                                    'filled_rows': sum(1 for r in srows if _filled(r))})
                 continue
             report['sheets_read'] += 1
             rows += got
+            if lines:
+                # A failure here must never cost the equity rows above: the sheet is listed as not read line by line.
+                try:
+                    all_lines += [dict(x, workbook=wb) for x in line_rows(sheet, srows, value_unit)[0]]
+                except Exception as exc:  # noqa: BLE001
+                    skipped.append({'workbook': wb, 'sheet': sheet, 'reason': f'lines not read ({type(exc).__name__}: {exc})'[:300],
+                                    'rows': len(srows), 'filled_rows': sum(1 for r in srows if _filled(r))})
     df = pd.DataFrame(rows, columns=['sheet', 'scheme', 'isin', 'name', 'quantity', 'value_lakh', 'pct_aum'])
     df['value_lakh'] = pd.to_numeric(df['value_lakh'], errors='coerce') / VALUE_UNIT[value_unit]
     report['lines'] = int(len(df))
     report['equity_lines'] = int(is_equity(df['isin']).sum()) if len(df) else 0
     report['equity_lines_no_quantity'] = int((is_equity(df['isin']) & df['quantity'].isna()).sum()) if len(df) else 0
-    return df, report
+    return df, report, all_lines, skipped
+
+
+# --- every line, not only equity (owner, 21 Nov 2026: nothing may exist only in raw) ------------------------------------
+#
+# `parse_workbook` above gives what it always gave (the equity tables read it). `parse_workbook_lines` reads, in the same
+# pass and with the same header finder, EVERY filled row of every sheet read: the title rows above
+# the header, the header, section headings, holdings with or without an ISIN (TREPS, net receivables, cash), totals and
+# notes. Each line carries its kind as the workbook says it: the section heading above it ('EQUITY & EQUITY RELATED',
+# 'Debt Instruments', 'Money Market Instruments', 'Derivatives', 'Others' ...), else for a line without such a heading
+# an equity share by its ISIN code (`is_equity`), else its own name; nothing matched is 'other', never guessed.
+# Sheets without the header are listed with their reason (`skipped`), and no row is made up from them.
+
+LINE_KINDS = ('equity', 'debt', 'money market', 'cash', 'derivative', 'other')
+# Words on a heading (or a line's own name) and the kind they name, tried in this order (so 'Equity Derivatives' is a
+# derivative and 'Debt - Money Market' money market). 'other' here is a heading that names a kind outside the five
+# ('Others', 'Units of REITs', 'Gold'), so the lines under it are not left in the section above.
+KIND_WORDS = [
+    ('derivative', re.compile(r'derivative|\bfutures?\b|\bswaps?\b|options? contracts?|index options?', re.I)),
+    ('money market', re.compile(r'money market|commercial papers?|certificates? of deposit|treasury bills?|\bt-?bills?\b|'
+                                r'\btreps\b|tri-?party repo|reverse repo|\bcblo\b', re.I)),
+    ('cash', re.compile(r'\bcash\b|net receivables?|net payables?|net current assets?|margin money', re.I)),
+    ('debt', re.compile(r'\bdebt\b|\bbonds?\b|debentures?|\bncds?\b|government securit|\bg-?secs?\b|\bgilts?\b|'
+                        r'state development loans?|\bsdls?\b|sovereign|securiti[sz]ed|pass through|\bptcs?\b|zero coupon', re.I)),
+    ('equity', re.compile(r'\bequit(?:y|ies)\b', re.I)),
+    ('other', re.compile(r'^\W*others?\b|\breits?\b|\binvits?\b|mutual fund units|units of (?:mutual )?funds?|\bgold\b|'
+                         r'\bsilver\b|alternative investment|\baifs?\b|fixed deposits?|term deposits?', re.I)),
+]
+TOTAL = re.compile(r'^\W*(?:sub[\s-]*total|grand total|total)\b', re.I)
+# A heading under a section that does not change its kind: '(a) Listed / awaiting listing on Stock Exchanges', 'Unlisted'.
+SUB_HEADING = re.compile(r'listed|awaiting listing|privately placed|non[\s-]*traded|thinly traded|\brated\b|unrated|'
+                         r'^\W*nil\W*$|^\W*$', re.I)
+HEADING_MAX = 120     # a text row longer than this is a note, not a heading (it changes no section)
+LINE_COLS = ['workbook', 'sheet', 'row', 'row_type', 'scheme', 'isin', 'name', 'line_kind', 'kind_from', 'section',
+             'quantity', 'value_lakh', 'pct_aum', 'rating', 'industry', 'in_equity_tables', 'cells']
+SKIPPED_COLS = ['workbook', 'sheet', 'reason', 'rows', 'filled_rows']
+
+
+def _words_kind(text: str) -> str | None:
+    for kind, rx in KIND_WORDS:
+        if rx.search(text or ''):
+            return kind
+    return None
+
+
+def _cell_text(c):
+    if c is None or (isinstance(c, float) and pd.isna(c)):
+        return None
+    if hasattr(c, 'isoformat'):
+        return c.isoformat()
+    return str(c)
+
+
+def _filled(r) -> bool:
+    return any(_norm(c) for c in r)
+
+
+def _is_header_row(r) -> bool:
+    n = [_norm(c) for c in r]
+    return any(x.startswith('isin') for x in n) and any(_is_qty(x) for x in n)
+
+
+def _extra_cols(header_row) -> dict:
+    """Rating and industry columns of the header row (not used by the equity tables): 'Rating / Industry^' is both."""
+    out: dict = {}
+    for j, x in enumerate(_norm(c) for c in header_row):
+        if 'rating' in x and 'rating' not in out:
+            out['rating'] = j
+        if 'industry' in x and 'industry' not in out:
+            out['industry'] = j
+    return out
+
+
+def line_rows(sheet: str, rows: list, value_unit: str = 'lakh') -> tuple[list[dict], str | None]:
+    """Every filled row of one sheet as a line, and why the sheet was skipped (then no lines). Uses the same header
+    finder as `parse_rows`, so the 'holding' lines here are its lines exactly (same scheme, ISIN, quantity, value)."""
+    h = _header(rows)
+    if h is None:
+        return [], 'no ISIN and Quantity header'
+    k, col = h
+    col = dict(col, **{key: j for key, j in _extra_cols(rows[k]).items()})
+    scheme = BLOCK.sub('', _scheme(rows[:k + 1]) or sheet).strip() or sheet
+    unit = VALUE_UNIT[value_unit]
+    out = []
+    section, section_kind = None, None
+
+    def line(i, r, row_type, kind='other', kind_from='none', isin=None, **kw):
+        cells = [_cell_text(c) for c in r]
+        while cells and cells[-1] is None:
+            cells.pop()
+        g = lambda key: r[col[key]] if key in col and col[key] < len(r) else None  # noqa: E731
+        name = g('name')
+        val = pd.to_numeric(g('val'), errors='coerce')
+        return {'sheet': sheet, 'row': i, 'row_type': row_type, 'scheme': scheme, 'isin': isin,
+                'name': str(name).strip() if name is not None else None, 'line_kind': kind, 'kind_from': kind_from,
+                'section': section, 'quantity': pd.to_numeric(g('qty'), errors='coerce'),
+                'value_lakh': val / unit if pd.notna(val) else float('nan'), 'pct_aum': pd.to_numeric(g('pct'), errors='coerce'),
+                'rating': _cell_text(g('rating')), 'industry': _cell_text(g('industry')),
+                'cells': json.dumps(cells, ensure_ascii=False), **kw}
+
+    for i, r in enumerate(rows, 1):
+        r = list(r)
+        if not _filled(r):
+            continue
+        if i <= k:
+            out.append(line(i, r, 'title'))
+            continue
+        if i == k + 1 or _is_header_row(r):
+            out.append(line(i, r, 'header'))
+            continue
+        title = next((str(c) for c in r if isinstance(c, str) and BLOCK.match(c.strip())), None)
+        if title is not None and BLOCK.sub('', title.strip()).strip():
+            scheme = BLOCK.sub('', title.strip()).strip()   # a new scheme's block: its own sections follow
+            section, section_kind = None, None
+            out.append(line(i, r, 'scheme_title'))
+            continue
+        isin = str(r[col['isin']] or '').strip().upper() if col['isin'] < len(r) else ''
+        text = ' '.join(str(c).strip() for c in r if isinstance(c, str) and c.strip())
+        g = lambda key: r[col[key]] if key in col and col[key] < len(r) else None  # noqa: E731
+        numbers = any(pd.notna(pd.to_numeric(g(c), errors='coerce')) for c in ('qty', 'val', 'pct'))
+        if ISIN.match(isin):
+            # its own words: the name, then the industry / rating cell ('GOVERNMENT SECURITIES' on the PFRDA form)
+            own = _words_kind(str(g('name') or '')) or _words_kind(str(g('industry') or '')) or _words_kind(str(g('rating') or ''))
+            if section_kind is not None:
+                kind, how = section_kind, 'heading'
+            elif is_equity(pd.Series([isin])).iloc[0]:
+                kind, how = 'equity', 'isin'
+            elif own:
+                kind, how = own, 'name'
+            else:
+                kind, how = 'other', 'none'
+            out.append(line(i, r, 'holding', kind, how, isin))
+            continue
+        if numbers:   # a line with a value and no ISIN: TREPS, net receivables, cash, a total
+            own = _words_kind(text) if not TOTAL.match(text) else None
+            if own is not None:
+                kind, how = own, 'name'
+            elif section_kind is not None:
+                kind, how = section_kind, 'heading'
+            else:
+                kind, how = 'other', 'none'
+            out.append(line(i, r, 'total' if TOTAL.match(text) else 'value', kind, how, isin or None))
+            continue
+        # text only: a heading (it may open a section), a total's label, or a note
+        if len(text) > HEADING_MAX or TOTAL.match(text):
+            out.append(line(i, r, 'note' if len(text) > HEADING_MAX else 'total', section_kind or 'other',
+                            'heading' if section_kind else 'none', isin or None))
+            continue
+        own = _words_kind(text)
+        if own is not None:
+            section, section_kind = text, own
+        elif not SUB_HEADING.search(text):
+            section, section_kind = text, 'other'   # a heading naming none of the kinds: what follows is not the above
+        out.append(line(i, r, 'heading', section_kind or 'other', 'heading' if section_kind else 'none', isin or None))
+    return out, None
+
+
+def parse_workbook_lines(body: bytes, filename: str, value_unit: str = 'lakh'):
+    """`parse_workbook`'s rows and report, unchanged, plus every line of every sheet read (`LINE_COLS`) and every sheet
+    skipped with its reason (`SKIPPED_COLS`): (rows, report, lines, skipped). `workbook` is the file's name inside a zip,
+    blank for a plain workbook."""
+    df, report, lines, skipped = _parse(body, filename, value_unit, lines=True)
+    ln = pd.DataFrame(lines, columns=LINE_COLS)
+    ln['in_equity_tables'] = (ln['row_type'].eq('holding') & is_equity(ln['isin'].fillna('')) & ln['quantity'].notna()
+                              ).astype(bool) if len(ln) else pd.Series(dtype=bool)
+    for c in ('quantity', 'value_lakh', 'pct_aum'):
+        ln[c] = pd.to_numeric(ln[c], errors='coerce').astype(float)
+    ln['row'] = ln['row'].astype('int64')
+    return df, report, ln, pd.DataFrame(skipped, columns=SKIPPED_COLS)
 
 
 def holdings(rows: pd.DataFrame, amc: str, month: str) -> pd.DataFrame:

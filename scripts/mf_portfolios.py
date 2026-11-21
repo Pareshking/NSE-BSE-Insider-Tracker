@@ -34,6 +34,12 @@ last working day is read once (archive/amfi_schemes/, raw in raw_v2/amfi/nav_his
 mf_stock_month also carries total_shares: the company's shares on the month-end's basis (its last filing, a split or
 bonus since applied), which "% of the company" divides by.
 
+Every line too (owner, 21 Nov 2026: nothing may exist only in raw): each file read is also kept line by line, debt,
+money market, cash, derivatives, headings and totals included, in archive/mf_lines/month=YYYY-MM/{house}.parquet, and
+each sheet not read (no ISIN and Quantity header) or file not read in archive/mf_sheets_skipped/ with the reason. Both
+are merged by the file's sha256, so every raw file's lines stay. --lines fills them from the raw files already stored
+(once for the months collected before; again, it reads only files not yet in them). The equity tables are unchanged.
+
 The NPS pension fund managers (houses with kind='pension', keys nps_...) are collected the same way and kept in the
 same tables, marked by kind, so the Funds page can keep them apart from mutual funds.
 
@@ -66,6 +72,8 @@ from insiders_clean import mf_holdings  # noqa: E402
 ARCHIVE = 'archive/mf_holdings/'
 SCHEME_ARCHIVE = 'archive/mf_schemes/'          # month=YYYY-MM/{house}.parquet: scheme x ISIN rows (scheme_holdings)
 SCHEME_LIST_ARCHIVE = 'archive/mf_scheme_list/'  # month=YYYY-MM/{house}.parquet: every scheme read (scheme_list)
+LINES_ARCHIVE = 'archive/mf_lines/'             # month=YYYY-MM/{house}.parquet: every line of every file (line_rows)
+SKIPPED_ARCHIVE = 'archive/mf_sheets_skipped/'  # month=YYYY-MM/{house}.parquet: every sheet (or file) not read, and why
 AMFI_ARCHIVE = 'archive/amfi_schemes/'          # month=YYYY-MM.parquet: AMFI's schemes per house on the month-end
 CLEAN = {'holdings': 'clean/current/mf_holdings.parquet', 'changes': 'clean/current/mf_changes.parquet',
          'stock': 'clean/current/mf_stock_month.parquet', 'coverage': 'clean/current/mf_coverage.parquet',
@@ -202,7 +210,7 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
             res['why'] = 'no file for the month on the page'
             out.append(res)
             continue
-        frames, reports = [], []
+        frames, reports, lines, skipped = [], [], [], []
         for u in urls:
             try:
                 body, ctype, status = find.fetch_rendered(u, browser) if house.browser_fetch else _download(u)
@@ -215,14 +223,27 @@ def collect_house(house, months: list[str], browser=None) -> list[dict]:
                 reports.append({'url': u, 'error': f'HTTP {status}'})
                 continue
             try:
-                df, rep = mf_holdings.parse_workbook(body, u.split('?')[0].rsplit('/', 1)[-1], house.value_unit)
+                df, rep, ln, sk = file_lines(body, u, house.value_unit)
             except Exception as exc:  # noqa: BLE001
-                reports.append({'url': u, 'error': f'not parsed ({type(exc).__name__}: {exc})'[:200]})
-                continue
+                try:   # the lines failed: the equity rows are still read exactly as before, the file listed as not read
+                    df, rep = mf_holdings.parse_workbook(body, _name(u), house.value_unit)
+                    ln, sk = None, not_read(body, u, exc, 'lines')
+                except Exception as exc:  # noqa: BLE001
+                    reports.append({'url': u, 'error': f'not parsed ({type(exc).__name__}: {exc})'[:200]})
+                    skipped.append(not_read(body, u, exc))
+                    continue
             rep['url'] = u
             reports.append(rep)
             frames.append(df)
+            if ln is not None:
+                lines.append(ln)
+            skipped.append(sk)
         res['parse'] = reports
+        if lines or skipped:   # every line of every file read, kept whether or not the month has equity
+            res['lines'] = pd.concat(lines, ignore_index=True) if lines else _empty_lines()
+            res['skipped_sheets'] = pd.concat(skipped, ignore_index=True)
+            res['all_lines'] = int(len(res['lines']))
+            res['sheets_skipped'] = int(len(res['skipped_sheets']))
         rows = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
         if rows.empty or not mf_holdings.is_equity(rows['isin']).any():
             res['found'] = False
@@ -255,6 +276,7 @@ def run_house(house, months: list[str], browser=None, r2=None) -> list[dict]:
     try:
         for res in collect_house(house, months, browser):
             rows = res.pop('rows', None)
+            keep_lines(r2, house, res)
             if rows is not None:
                 hold = mf_holdings.holdings(rows, house.key, res['month']).assign(kind=house.kind)
                 res['isins'] = int(len(hold))
@@ -271,6 +293,73 @@ def run_house(house, months: list[str], browser=None, r2=None) -> list[dict]:
             _log({k: v for k, v in res.items() if k not in ('parse',)})
     except Exception as exc:  # noqa: BLE001 - this house is reported, the others go on
         return _house_failed(house, months, out, exc)
+    return out
+
+
+def _name(url: str) -> str:
+    return url.split('?')[0].rsplit('/', 1)[-1]
+
+
+def _empty_lines() -> pd.DataFrame:
+    return pd.DataFrame(columns=['file', 'blob_sha256', *mf_holdings.LINE_COLS])
+
+
+def _empty_skipped() -> pd.DataFrame:
+    return pd.DataFrame(columns=['file', 'blob_sha256', *mf_holdings.SKIPPED_COLS])
+
+
+def file_lines(body: bytes, url: str, value_unit: str):
+    """One downloaded (or raw) file parsed: `parse_workbook`'s rows and report as before, plus every line and every
+    skipped sheet, each tagged with the file's name and the sha256 of its bytes (the raw blob's name)."""
+    from insiders_clean.raw_store import sha256_hex
+    df, rep, ln, sk = mf_holdings.parse_workbook_lines(body, _name(url), value_unit)
+    tag = {'file': _name(url), 'blob_sha256': sha256_hex(body)}
+    return (df, rep, ln.assign(**tag)[['file', 'blob_sha256', *mf_holdings.LINE_COLS]],
+            sk.assign(**tag)[['file', 'blob_sha256', *mf_holdings.SKIPPED_COLS]])
+
+
+def not_read(body: bytes, url: str, exc: Exception, what: str = 'file') -> pd.DataFrame:
+    """A file that is not a workbook we can read: one row in the skipped table with the reason (no line made up)."""
+    from insiders_clean.raw_store import sha256_hex
+    return pd.DataFrame([{'file': _name(url), 'blob_sha256': sha256_hex(body), 'workbook': '', 'sheet': '',
+                          'reason': f'{what} not read ({type(exc).__name__}: {exc})'[:300], 'rows': 0, 'filled_rows': 0}])
+
+
+def keep_lines(r2, house, res: dict) -> None:
+    """Take the lines and skipped sheets out of a collect_house result (the report keeps only their counts) and, unless
+    `r2` is None (a dry run), archive them."""
+    lines, skipped = res.pop('lines', None), res.pop('skipped_sheets', None)
+    if r2 is not None and (lines is not None or skipped is not None):
+        put_lines(r2, house, res['month'], lines, skipped)
+
+
+def _merge_by_blob(old: pd.DataFrame | None, new: pd.DataFrame, shas: set) -> pd.DataFrame:
+    """The stored rows of files not read this time, then this time's rows: a file read again replaces its own rows, and
+    another file of the same month (a new version at a new address) keeps its own, so every raw file's lines stay."""
+    if old is None or old.empty:
+        return new.reset_index(drop=True)
+    keep = old[~old['blob_sha256'].isin(shas)]
+    return pd.concat([keep, new], ignore_index=True) if len(new) else keep.reset_index(drop=True)
+
+
+def put_lines(r2, house, month: str, lines: pd.DataFrame | None, skipped: pd.DataFrame | None) -> dict:
+    """Archive one house-month's lines (archive/mf_lines/) and skipped sheets (archive/mf_sheets_skipped/), merged by
+    the file's sha256 with what is stored. Returns the rows each now holds."""
+    from clean_writer import put_parquet, read_parquet
+    lines = _empty_lines() if lines is None else lines
+    skipped = _empty_skipped() if skipped is None else skipped
+    shas = set(lines['blob_sha256']) | set(skipped['blob_sha256'])
+    out = {}
+    for prefix, df in ((LINES_ARCHIVE, lines), (SKIPPED_ARCHIVE, skipped)):
+        key = f'{prefix}month={month}/{house.key}.parquet'
+        df = df.assign(amc=house.key, month=month)
+        df = df[['amc', 'month', *[c for c in df.columns if c not in ('amc', 'month')]]]
+        merged = _merge_by_blob(read_parquet(r2, key), df, shas)
+        for c in ('row', 'rows', 'filled_rows'):
+            if c in merged:
+                merged[c] = pd.to_numeric(merged[c]).astype('int64')
+        put_parquet(r2, key, merged)
+        out[prefix] = int(len(merged))
     return out
 
 
@@ -313,19 +402,26 @@ def add_up_detail(sc: pd.DataFrame, hold: pd.DataFrame, files: list | None = Non
 RAW_FILES: dict = {}   # (house, month) -> the raw addresses raw_rows read, for add_up_detail
 
 
+def raw_records(r2, house) -> list[dict]:
+    """Every fetch record stored for this house's month-end files (raw_v2/amc/{house}/portfolio_month/fetches/)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from clean_writer import get, list_keys
+    keys = [k for k in list_keys(r2, f'raw_v2/amc/{house.key}/portfolio_month/fetches/') if k.endswith('.json')]
+    if not keys:
+        return []
+    with ThreadPoolExecutor(16) as pool:
+        return [json.loads(b) for b in pool.map(lambda k: get(r2, k), keys) if b]
+
+
 def raw_rows(r2, house, months: set) -> dict:
     """{month: parsed rows} from the raw files already stored for this house (raw_v2/amc/{house}/portfolio_month/):
     the HTTP-200 fetches whose record covers the month, the latest fetch of each address, every one parsed as the
     collector parses it. A month with no such fetch is not in the result."""
-    import json
-    from concurrent.futures import ThreadPoolExecutor
-
-    from clean_writer import get, get_blob, list_keys
-    keys = [k for k in list_keys(r2, f'raw_v2/amc/{house.key}/portfolio_month/fetches/') if k.endswith('.json')]
-    if not keys:
+    from clean_writer import get_blob
+    recs = raw_records(r2, house)
+    if not recs:
         return {}
-    with ThreadPoolExecutor(16) as pool:
-        recs = [json.loads(b) for b in pool.map(lambda k: get(r2, k), keys) if b]
     by: dict = {}
     for r in sorted(recs, key=lambda r: r.get('fetched_at_utc', '')):
         m = (r.get('covers') or {}).get('month')
@@ -389,6 +485,7 @@ def _backfill_months(r2, h, todo: list[str], browser, fetch: bool, r: dict) -> N
     left = [m for m in todo if m not in got]
     if left and fetch:
         for res in collect_house(h, left, browser):
+            keep_lines(r2, h, res)
             if 'rows' in res:
                 got[res['month']] = ('fetched', res['rows'])
             else:
@@ -406,6 +503,8 @@ def _backfill_months(r2, h, todo: list[str], browser, fetch: bool, r: dict) -> N
             # the house's current files are the other copy; kept only if they add up, as any fetch.
             r.setdefault('differs', {})[f'{m} from_raw'] = add_up_detail(sc, hold, RAW_FILES.get((h.key, m)))
             res = next(iter(collect_house(h, [m], browser)), {})
+            if res:
+                keep_lines(r2, h, res)
             if 'rows' in res:
                 how, rows = 'fetched', res['rows']
                 sc = mf_holdings.scheme_holdings(rows, h.key, m, h.name)
@@ -422,6 +521,63 @@ def _backfill_months(r2, h, todo: list[str], browser, fetch: bool, r: dict) -> N
             continue
         put_schemes(r2, h, m, rows)
         r[how].append(m)
+
+
+def backfill_lines(r2, houses) -> dict:
+    """Every line of every raw file already stored (raw_v2/amc/{house}/portfolio_month/: HTTP 200, any month a fetch
+    record covers, each distinct file once) into archive/mf_lines/ and archive/mf_sheets_skipped/, for files whose
+    sha256 is in neither yet: run once to fill the months collected before the lines archive existed; run again, it
+    reads only what is new. Nothing is downloaded. Returns per house: months written, files read, lines, sheets
+    skipped, files not read, blobs missing."""
+    rep = {}
+    for h, r in run_houses(list(houses), lambda h: _backfill_lines_house(r2, h)):
+        if isinstance(r, Exception):
+            r = {'error': f'{type(r).__name__}: {r}'[:300]}
+            _log({h.key: r}, limit=None)
+        rep[h.key] = r
+    return rep
+
+
+def _backfill_lines_house(r2, h) -> dict:
+    from clean_writer import get_blob, read_parquet
+    r = {'months': [], 'files_read': 0, 'lines': 0, 'sheets_skipped': 0, 'files_not_read': 0, 'blobs_missing': 0}
+    by: dict = {}
+    for rec in sorted(raw_records(r2, h), key=lambda x: x.get('fetched_at_utc', '')):
+        m = (rec.get('covers') or {}).get('month')
+        if m and rec.get('http_status') == 200 and not rec.get('content_check') and rec.get('blob_key'):
+            sha = rec.get('sha256') or rec['blob_key'].rsplit('/', 1)[-1].split('.')[0]
+            by.setdefault(m, {}).setdefault(sha, rec)    # one read per distinct file (same bytes, one blob)
+    for m in sorted(by):
+        have = set()
+        for prefix in (LINES_ARCHIVE, SKIPPED_ARCHIVE):
+            old = read_parquet(r2, f'{prefix}month={m}/{h.key}.parquet')
+            if old is not None and len(old):
+                have |= set(old['blob_sha256'])
+        todo = {sha: rec for sha, rec in by[m].items() if sha not in have}
+        lines, skipped = [], []
+        for sha, rec in todo.items():
+            body = get_blob(r2, rec['blob_key'])
+            if body is None:
+                r['blobs_missing'] += 1
+                continue
+            r['files_read'] += 1
+            try:
+                _, _, ln, sk = file_lines(body, rec.get('url') or '', h.value_unit)
+                lines.append(ln)
+            except Exception as exc:  # noqa: BLE001 - a file that is not a workbook is recorded with the reason
+                sk = not_read(body, rec.get('url') or '', exc)
+                r['files_not_read'] += 1
+            skipped.append(sk)
+        if not skipped:
+            continue
+        ln = pd.concat(lines, ignore_index=True) if lines else _empty_lines()
+        sk = pd.concat(skipped, ignore_index=True)
+        put_lines(r2, h, m, ln, sk)
+        r['months'].append(m)
+        r['lines'] += int(len(ln))
+        r['sheets_skipped'] += int(len(sk))
+    _log({h.key: r}, limit=None)
+    return r
 
 
 def amfi_list(month: str, tries: int = 3) -> tuple[pd.DataFrame, dict]:
@@ -586,6 +742,8 @@ def main(argv=None) -> int:
     ap.add_argument('--expand', help='print the months of a range spec and exit')
     ap.add_argument('--schemes', action='store_true',
                     help='archive scheme by scheme every archived house-month that is not yet: from raw, else fetched again')
+    ap.add_argument('--lines', action='store_true',
+                    help='archive every line of every raw file already stored that is not yet (archive/mf_lines/)')
     ap.add_argument('--no-amfi', action='store_true', help="do not read AMFI's scheme list for months that have none")
     a = ap.parse_args(argv)
     if a.expand is not None:
@@ -618,6 +776,8 @@ def main(argv=None) -> int:
                 report['houses'][h.key] = results
         if r2 is not None and a.schemes:
             report['schemes_backfill'] = backfill_schemes(r2, houses, browser)
+        if r2 is not None and a.lines:
+            report['lines_backfill'] = backfill_lines(r2, houses)
         if r2 is not None and not a.no_amfi:
             from clean_writer import list_keys
             arch = sorted({k[len(ARCHIVE):].split('/')[0][6:] for k in list_keys(r2, ARCHIVE) if k.endswith('.parquet')})

@@ -4,334 +4,134 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
-## Fund houses that failed in run 44654006211, 20 Nov 2026 (branch `mf-house-fixes`, draft PR)
+The earlier body of this file (every dated section to 20 Nov 2026, with run numbers) is kept word for word in
+`docs/TODO_DONE.md`. Rewritten 21 Nov 2026 from `main` at 3b6f6fd (#321).
 
-Edelweiss and Bandhan had failed in every run with a browser-read house since #288: their readers started a second
-Playwright beside the collector's ("Sync API inside the asyncio loop"). Now one shared browser
-(`find.shared_browser`); Bandhan reads on a runner (probe 44663322178). Edelweiss, Angel One, WhiteOak and Bajaj
-answer 403 to a GitHub runner, also to an ordinary browser visit, and answer elsewhere: moved to
-`houses.RUNNER_BLOCKED` and `NOT_COLLECTED`. Kotak (Radware CAPTCHA) and Navi (Cloudflare challenge) stay out; Union
-has an unverified collector waiting for a runner in India (`needs_india_runner`). Emails to send:
-`docs/MF_ACCESS_REQUESTS.md`. NPS ABSL October: the house's own link answers 404. HDFC 2025-12 scheme rows: a
-`--schemes` run now tries the house's current files when the raw ones do not add up and reports what differs
-(`differs`); needs a dispatched `--schemes --house hdfc` run to read. Done when that run's report is read.
+## Fund-house files: every line archived, 21 Nov 2026 (branch `mf-all-lines`)
 
-## ICICI Prudential and AlphaGrep, 19 Nov 2026 (branch `mf-icici`, draft PR)
+Owner: every line of every raw file must reach the database. The raw coverage audit (21 Nov) found the fund-house
+parser kept equity only (ICICI 33,232 non-equity lines, nps_lic 66,409 only in raw), skipped sheets and summed
+duplicate lines. Now every filled row of every sheet read goes to `archive/mf_lines/` with its kind (equity, debt,
+money market, cash, derivative, other, from the workbook's own headings), and every sheet not read to
+`archive/mf_sheets_skipped/` with the reason (`docs/DATA_DICTIONARY.md`); the equity tables are byte-identical
+(`tests/test_mf_lines.py`). **Next:** after merge, run Mutual fund portfolios (workflow) once with `lines` ticked
+(months and houses blank) to fill every month already in raw, then Raw coverage audit with sources `amc`: the
+non-equity lines should be found stored; what stays is the rows of skipped sheets (index and notes sheets), named.
 
-The Fund house probe now keeps every answer's body as the run's artifact and makes the sites' own list calls
-(`scripts/mf_probe_follow.py`). What the runner's "200"s were: ICICI's `apimf.icicipruamc.com` answers a call without
-a JSON Accept with an F5 bot-defence page ("Please enable JavaScript to view the page content. Your support ID is
-...", TSPD cookies), and a JSON call without the site's `env: api` header with "Original Status Code: 404" and the
-site's 404 page; with the headers the site's own request code sends it answers JSON (categories, then the Monthly
-Portfolio Disclosures files list: one zip a month, a workbook per scheme, at www.icicipruamc.com/blob). AlphaGrep's
-200 was the Angular page shell; its list is `cmsweb.alphagrepmf.ai/api/portfolios` (Flexi Cap, Multi Asset
-Allocation, a liquid fund of funds; monthly from July 2026). Both added (`icici`, `alphagrep`; `apis2.py`) and taken
-off `NOT_COLLECTED`; both answer only a GitHub runner, which is where the collector runs. Dispatched runs, 2026-09 /
-2026-10: ICICI 728 / 737 ISINs (Rs 7,12,110 / 7,11,748 Cr). The AlphaGrep run (44611798421) was cancelled
-while queued behind other R2 writers and not re-sent (it would have displaced a queued price backfill); its October
-files, fetched by the probe on a runner, parse to 177 ISINs, Rs 87 Cr (Flexi Cap; the fund of funds holds no
-shares). Kotak (Radware CAPTCHA), Navi (403) and Union (no
-connection) still not collected. BSE route for ICICI: none of ICICI Prudential's portfolio filings is among BSE's
-corporate announcements of 6-10 Nov 2026 (the feed the collectors read), so no PDF was assessed. **Next:** merge;
-dispatch `alphagrep` for 2026-07..2026-10 and `icici` for 2025-10..2026-08 when the R2 queue is free.
 
-## Price jumps, 19 Nov 2026 (branch `price-jumps`, draft PR)
+## Where things stand (21 Nov 2026)
 
-IIFL Finance's line showed ~330 -> ~600 on 30 Jul 2026 ("Up 131.7% in a year"): NSE's block window series (BL,
-base 334.25) beat EQ as the day's most traded and its 0.5617 passed for a 5:4 bonus. Fixed in `adjust.py` / `slim.py`
-with the other faults the new audit found (`docs/CLEAN_LAYER.md`, "Price jumps audit"): side-window series left out,
-no factor across a session the layer lacks (1 Feb 2025, 1 Feb 2026, 8 Nov 2026 are not in `prices/daily/`), filed
-splits on a new ISIN or after a gap applied, BSE keeps its factor where NSE did not print. With this code (read-only
-peek, 19 Nov): IIFL +17.1% a year, no factor applied; ratio guesses applied fell from 247 to 10; 0 moves made by
-adjustment; in the study universe 33 unexplained 40% moves (31 companies), 9 on a filed rights or dividend not
-adjusted, 1 across a missing session, 116 adjusted. **Next, after merge:** Price backfill for 2025-02-01, 2026-02-01
-and 2026-11-08 (NSE, BSE, NSE_PR, NSE_IDX), then Precompute slim assets (writes the lines and
-`clean/reports/price_jumps.json`). Open: the unexplained are mostly splits and bonuses with no action in our tables
-and demergers (VEDL, SKFINDIA, TMPV); collecting NSE's scheme/demerger actions is a separate piece of work.
+- **Data.** NSE and BSE insider filings, bulk and block deals, SAST, corporate actions (NSE main board and SME board),
+  board meetings, shareholding patterns (promoter group, public holders over 1%, ownership by investor type), further
+  issues, results XBRL (broadcasts from 8 Apr 2025), tradability flags, a price layer (NSE + BSE bhavcopy from
+  1 Jan 2025), market flows (NSE provisional FII/DII, NSDL FPI daily and fortnightly sectors, SEBI mutual fund trends),
+  fund houses' month-end portfolios (44 mutual fund houses and 5 NPS pension fund managers, `collectors/mf_portfolios/
+  houses.py`), and the four-level industry classification. Product window: transactions from 8 Oct 2025.
+- **Site** (insiders.streamlit.app, from `main`): Dashboard (default), Today, Insiders, Funds, Deals, Stakes,
+  Situations in the bar; Results, Calendar, Filings, Companies, Investors, Data health under More; the company page is a
+  decision page. Page-to-table map: `docs/DATA_TO_PAGES.md`, "The site on 21 Nov 2026".
+- **Storage**: R2 bucket 2.29 GB on 21 Nov 2026 (2.44 GB on 20 Nov before zstd and gzip of `.xls`/`.txt`, #307).
+- **Runners**: everything runs on GitHub's hosted runners except `mf-portfolios-own.yml` (label `mf`), which waits
+  for the owner's own machine (`docs/OWN_RUNNER.md`).
 
-**Demergers and missing splits, 20 Nov 2026 (branch `price-demergers`, draft PR).** BSE's raw action feed had every
-demerger (`Spin Off`) and the parsers dropped them; kept now, and the audit names the 10 study-universe moves on
-them `scheme_not_adjusted` (no exchange-published factor: the base price was not reset; `docs/CLEAN_LAYER.md`). The
-splits with no filing (E2E, TEMBO, SIKKO, VMARCIND, likely most of the other 23 unexplained) are NSE-only at their
-ex-date and NSE's action archive starts 28 Sep 2026. **After merge, in order:** NSE Corporate Events
-`dataset=actions`, `from=2025-10-08` (NSE's action history, a month per call; rebuilds `clean/current/actions`);
-BSE History Backfill `dataset=actions`, `from=2025-10-08`, `redo=true` (re-reads BSE's history with the new parser
-and links it to NSE's table; rebuilds `bse_actions`); then Precompute slim assets (lines and
-`clean/reports/price_jumps.json`). Expected: unexplained in the study universe
-33 -> 23 from the BSE rows alone, lower once NSE's history is in. Open: SME companies (VMARCIND) if NSE's
-`index=equities` leaves them out.
+## Done 19-21 Nov 2026 (merged to main)
 
-## Fund houses set E, 19 Nov 2026 (branch `mf-houses-e`, draft PR)
+- **Fund houses.** One shared browser for Edelweiss and Bandhan (#308); Angel One, WhiteOak, Edelweiss and Bajaj
+  refuse GitHub's runners by address and are kept apart (`houses.RUNNER_BLOCKED`, `NOT_COLLECTED` with the reason),
+  Union refuses machines outside India (`INDIA_ONLY`); access-request emails drafted in `docs/MF_ACCESS_REQUESTS.md`.
+  ICICI Prudential and AlphaGrep collected through their own list services, read on the runner (#304); Mahindra
+  Manulife and Helios added (#301); 12 more houses (#288); NPS pension fund managers (#287). Scheme-by-scheme tables
+  and the AMFI scheme count check (#302). Own runner workflow and setup (#309).
+- **Funds explorer** (#293): month or 3/6/12-month windows, size and industry filters, month-to-date deals, lists by %
+  of company and size, house positioning, coverage by value.
+- **Price jumps** (#303): IIFL Finance's false 5:4 "bonus" (NSE's block window series `BL` taken as the day's price);
+  side-window series never a close, no factor across a session the layer lacks, filed splits on a new ISIN or after a
+  gap applied, BSE keeps its own factor where NSE did not print; the audit `clean/reports/price_jumps.json`.
+- **Demergers and schemes kept in the action feeds**, NSE actions backfill by month (`run_daily --dataset actions
+  --from`) (#311).
+- **Demergers adjusted at the ex-date close** (#314, owner directive 20 Nov 2026, which reversed "splits and bonuses
+  only" for filed demergers): `KIND_ADJUSTED = ('split_bonus', 'demerger')`; `docs/CLEAN_LAYER.md`, "Price
+  adjustment".
+- **NSE SME corporate actions** (#319): only `index=equities` was asked, so NSE SME names had no splits or bonuses on
+  file; all 12 companies behind the study universe's 13 unexplained price jumps were NSE SME names with no BSE code.
+  With the SME board asked, 12 of the 13 are explained. Left: GICL, 15 Oct 2025, with nothing filed on either exchange.
+- **Industry classification, four levels** (#292; incremental save and resume #312; BSE four at a time #315):
+  4,835 companies have all four levels; 867 NSE-only companies keep the VR export's two levels, because NSE refuses
+  GitHub's runners; companies with no class went from 225 to 40. Used by Results, Funds and the Dashboard.
+- **Speed** (policy in `docs/PRODUCT.md`, "Speed"), measured:
+  - Industry fetch (#315): 26 minutes for 3,250 BSE scrips (was 6-7 hours one at a time).
+  - Nightly BSE step (#316, shareholding XBRLs four at a time): 6.6 minutes (was about 25 of the nightly's 37).
+  - Filing text (#318: a file filed twice read once, OCR one page per CPU, PPM pages): about 106 filings a minute
+    (was 19: the 14 Nov run, 3,034 files in 161 minutes).
+  - Mutual fund raw flush (#317: 16 at a time, fund houses side by side): under 30 seconds (was 47 minutes).
+- **Results revenue line**: banks and insurers read under their own revenue line, `revenue_basis` (#310); statement
+  lines read from same-period sibling contexts (`results.same_period`: 51 Sep 2026 filings, 43 Ind AS and 8 NBFC, had
+  put the period end in a metadata context) and Ind AS 117 insurers (`INS_IND_AS`, `InsuranceRevenue`, e.g. GODIGIT)
+  (#321). Before #321, 55 companies of the Sep 2026 quarter had no revenue line. FY quarter, size and industry
+  filters, KPI cards and sector roll-up on Results (#290); like-for-like basis comparisons (#297).
+- **Raw coverage audit** (#320, read-only, `raw-coverage.yml`): of 83 `raw_v2/` datasets, 5 fully captured, 45 with
+  gaps, 31 not checked, 2 with no parser found.
+- **Site**: Dashboard (#296), company decision page (#299), bought-or-sold charts on Insiders, Deals, Stakes, People
+  & funds, Holders and Investor flows (#294, #305), one date control on every dated page (#291, #298), controls
+  redesign with radius tokens and no pill shapes (#300), Streamlit 1.67.0 (#295), block deals with the seller counted
+  once (#289), Parquet written with zstd (#307).
 
-Added: Mahindra Manulife (`mahindra`: the downloads list shows after the "I am NOT a US person / resident of Canada"
-declaration, which the owner authorised; read in a browser as the page decrypts it) and Helios (`helios`, a workbook
-per scheme). Dry run 2026-09 and 2026-10: Mahindra 299 / 298 ISINs (Rs 32,257 / 32,038 Cr), Helios 173 / 177
-(Rs 14,770 / 15,168 Cr). `houses.NOT_COLLECTED` (the same list as draft PR #293, reasons now as tried) names the rest:
-ICICI Prudential (its file service resets connections from this machine), Kotak (CAPTCHA on every list and file
-call; not solved), Navi (Cloudflare challenge), Union (connection reset), AlphaGrep (site firewall), and four with no
-equity (Monarch, Carnelian and ASK: liquid or overnight only; IL&FS IDF: debt). **Next:** merge, then dispatch
-Fund house probe (`mf-probe.yml`) to see whether a GitHub runner reaches ICICI, Kotak, Navi, Union and AlphaGrep;
-add whichever answers.
-## Funds explorer, 19 Nov 2026 (branch `funds-explorer`, draft PR)
+## In progress (branches, not merged)
 
-The Funds page rebuilt as an explorer (`streamlit_app/screens/funds.py`, arithmetic in `screens/funds_logic.py`, tests in
-`tests/test_funds_page.py`): month-end picker (default the newest month with 90% of the most houses compared) and 3 / 6 /
-12-month windows; active or every scheme; filters by size, a 4-level industry cascade (`industry` table, else the
-security master's sector and industry) and fund house; the month so far from bulk and block deals by fund type and name;
-bought / sold by rupees and by % of the company, per size bucket; stocks no house held before (new listings such as Jio
-Platforms, listed on NSE 28 Oct 2026, INE0BJO01010) kept apart; new entries and exits; sector roll-up; how each house is
-positioning (flow as % of its equity at constant prices, breadth, broad trim / add at 40%, size and sector shifts, top-10
-weight, house x month heatmap); one house; NPS apart; houses compared, not collected (`houses.NOT_COLLECTED`) and coverage
-by value over every company whose filing has the mutual-fund line read (stated as a share only from 200 companies).
-**Missing:** cash, TREPS and receivables per house (the collector keeps equity lines only; parsing them needs a raw
-re-read, not done); ICICI Prudential and Kotak Mahindra mutual funds not collected; the `industry` table (another branch).
+Owner, 21 Nov 2026: every raw line must reach the database from now on (`docs/PRODUCT.md`, "Raw retention").
+- `mf-all-lines`
+- `events-keep-all`
+- `bse-shp-archive-all`
 
-## NPS pension fund portfolios, 19 Nov 2026 (branch `nps-portfolios`, draft PR)
+Done when: merged, and a Raw coverage audit run after them shows no dataset with gaps that is not named here.
 
-The 10 NPS pension fund managers' month-end scheme portfolios (NPS Trust's list, `npstrust.org.in/scheme-portfolio`),
-collected with the mutual fund houses as `kind='pension'` houses (`nps_...` keys) into the same archive and tables
-(`docs/DATA_DICTIONARY.md`, Fund month-end portfolios). Done: the parser reads the PFRDA form (value in rupees,
-`Particulars`, `Isin No.`, `Mkt_Value`, `No of Units`, `Name Of Scheme :`) with the 32 mutual fund houses unchanged
-(tests; dry run of sbi, hdfc, nippon); `kind` on holdings, `house_kind` on changes and per-stock rows, coverage still
-mutual funds only; Funds page section "What did NPS pension funds add and cut?" (mutual fund lists unchanged).
-Dry run Oct and Sep 2026: SBI, LIC, ICICI, Axis both months; Aditya Birla Sep only (its October link answers 404 on
-its own site, 19 Nov). Not collected, none worked around: UTI Retirement Solutions and Max Life (expired site
-certificates), HDFC Pension (Akamai 403 to anything but a full browser visit), Kotak (Radware bot check on the list
-call), Tata (now tatapensionfund.com; the Portfolio list never loads headless, Download buttons carry no address).
-**Next:** after merge, run Mutual fund portfolios (workflow) for 2026-09 and 2026-10 (the archive needs both months for a change);
-retry Aditya Birla October; recheck UTI and Max Life certificates monthly.
-
-## Market flows, 19 Nov 2026 (branch `market-flows`, draft PR)
-
-A daily table of market-wide flows for a context line on Today ("FPIs sold Rs X Cr, DIIs bought Rs Y Cr on 18 Nov;
-mutual funds ... on 4 Nov"). Done: `scripts/market_flows.py` (nightly step at the end of R2 Storage Write, cannot fail
-it; `market-flows.yml` for a range), `clean/current/market_flows.parquet` and `fpi_sector_flows.parquet`
-(`docs/DATA_DICTIONARY.md`, Market flows), `screens/market_flows.flows_line` (tested; not on a page).
-Each source fetched from the container on 19 Nov: NSE `fiidiiTradeReact`/`fiidiiTradeNse` (latest day only, no
-history), NSDL daily trends (Oct 2025 - 18 Nov 2026 read in a dry run, every month adding to NSDL's total), NSDL
-fortnightly sectors (27 reports from 15 Oct 2025), SEBI mutual fund trends (newest day 04 Nov: about two weeks late).
-Note `docs/PRODUCT.md` says "Sources: NSE and BSE only" (07 Oct, about Screener.in); NSDL and SEBI were asked for by
-the owner on 19 Nov; the decision line is the owner's to update.
-**Next:** run Market flows backfill (from 2025-10-08) once merged; place `flows_line` on Today (another change);
-NSDL's DII pages (`DIIGenerateReport.aspx`) not read yet.
-## Public shareholders over 1%, 19 Nov 2026 (branch `public-holders`, draft PR)
-
-The shareholding XBRL we already fetch names every public holder over 1% (Tables III and IV). Now parsed
-(`parsers.parse_shp_public_holders`), into `clean/current/public_holders.parquet` (`docs/DATA_DICTIONARY.md`,
-public_holders) by the nightly path that writes `promoter_group`, with write-once batches in
-`archive/nse_events/public_holders/`. Checked on 128 real filings fetched from NSE today: in every one the named holders
-of a category add up to no more than its filed total. Company page: "Who holds over 1%?" with the change since the
-last quarter; person / fund page: "Holdings over 1%" when the id or name matches a `holder_key`, and holders are in its
-search. Production R2 was not read from here.
-- **Next (to fill the table):** run NSE Corporate Events with `dataset=shareholding`, `reparse_raw=1` once: every XBRL
-  kept in `raw_v2/nse/shareholding_xbrl/` (from 12 Oct 2026) is read again, no NSE call. Check the report's
-  `shareholding_reparse.public_holders_parse` (all `ok` expected), `public_holders.filings`/`holders`/`quarters`, and any
-  `public_holders: named holders in sections not read` note (a section to add after reading a filing). Filings with no
-  raw copy are not read until downloaded again; if a company's Jun 2026 quarter is missing, "since last quarter" shows
-  "no earlier quarter read" rather than calling everyone new.
-- Not done: BSE-only companies (`bse_shareholding` inline XBRL), and the Holders page. Found on the way: for taxonomy
-  2025-05-31 filings `promoter_group.pct_of_company` is 100 times too big (the filed % is a percentage there,
-  MOTILALOFS Jun 2025 shows 2122 for 21.22%); not changed in this branch.
-
-## Today page data, 19 Nov 2026 (live data to 18 Nov; branch `fix-today-data-19nov`)
-
-Found from code reading; production tables were not read (R2 is in Actions only). Check after the next nightly with
-`clean_peek TRADES:544826` (now takes a BSE code) and the report counts named below.
-- **Same client on both sides of a deal** (Millworks 544826 LRSD Capital, SC Agrotech 526081 Pravinbhai Bharatbhai Gohil,
-  GRP Bellwether Capital, BSE bulk). Cause: the round-trip rule (writer and `deals.py`) fires only when bought and sold are
-  within 1%; an unequal two-way day kept both gross legs, and the client was listed as its own counterparty. The names on
-  the page are identical, so one `client_id`, not a spelling split. Fixed: the day is netted to the difference (reason
-  `same_day_both_sides_netted`, columns `two_way_bought`/`two_way_sold`; `docs/CLEAN_LAYER.md`).
-- **SAST holders that are not investors** (TBZ / AZB & Partners, promoter, 74.12% to 0%, Others; Medplus / Catalyst
-  Trusteeship as debenture trustee). Cause: the trustee pattern (`ideas.SECURITY_HOLDER`) was applied only by
-  `ideas.stake_events`, not by the Today and Stakes tables (`screens/proto._sast_rows`), and nothing caught a law firm.
-  Fixed: `insiders_clean/sast.py` writes `holder_kind` and `held_back_reason` on `sast` and `bse_sast` (rows kept, counted).
-  NSE's raw row has `acquisitionMode`, `promoterType`, `acqType` and `remarks`; no acquirer-type field.
-- **Late SAST on Today** (Info Edge / LIC 28 days late): the cut was 30 days; now 14, the same as the "late" chip
-  (`docs/DESIGN_V3.md`, Today's selection rules).
-- **Vectras Enprocon, two directors, same rupees and %**: not decidable from code. The duplicate check keys on the person,
-  so one trade filed under two names would stay two rows; two directors with equal stakes buying together is also
-  possible. The clean report now counts `tables.insider_trades.same_trade_two_names` (same exchange, ISIN, side, shares,
-  value, days and holdings before and after, different people; `same_filing` when they share one `app_id`). Nothing
-  merged. **Next:** read that count and the two rows' `app_id`/holdings (`clean_peek TRADES:<BSE code>`); remove only if it
-  is one filing.
-
-## Site redesign, 12 Nov 2026 (PR #229, live)
-
-Done (owner's brief: redesign from blank, more pages, no mental arithmetic, club the noise, fewer clicks, no AI,
-a minimal theme from one file; `docs/DESIGN.md`, `docs/PRODUCT.md` decision of 12 Nov):
-- One theme file (`streamlit_app/ui/theme.py`; `scripts/sync_theme.py` writes the Streamlit config; `tests/test_theme.py`).
-- Pages: Today, Watchlist (`?watch=`), Screener, Insiders, Deals (both sides as one deal), Raises, Holders, Sectors,
-  Results, Risks (red flags, lenders), Calendar, Companies; Investors, Evidence, Filings restyled. 7 days by default.
-- Data on the way: a promoter's deal with no insider filing is its own kind (no borrowed record); pledge sentences name
-  the filing compared (an off-quarter shareholding filing by its date); staff trades, ESOPs, gifts, transfers counted,
-  not listed; encumbrances keyed on the symbol (the feed has no ISIN; dictionary corrected).
-
-Open from it:
-| # | Item | Done when |
-|---|---|---|
-| D1 | Year-on-year on Results. **12 Nov, backfill run** (NSE Corporate Events, dataset results, 90-day windows from Oct 2026 back, chained; the first try in one 22-month window hit the 90-minute limit and saved nothing). **Finding** (`clean_peek` RESULTS_QUARTERS, run 43241666660): NSE's integrated-filing results start with broadcasts of **6 Feb 2026**; the archive holds Dec 2025 quarter 2,339, Mar 2026 4,798, Jun 2026 1,108, Sep 2026 3,306, but Sep 2025 only 155, so only 60 of 1,771 companies with a Sep 2026 quarter have the year-ago one. Year-on-year fills in by itself from the Dec 2026 quarter (filed Jan-Feb 2027). **Probe, 12 Nov** (Results XBRL probe MODE=OLD, run 43243993785, read-only): the 6 Feb 2026 start above is **not NSE's limit**. (a) The same integrated-filing feed asked for broadcasts 01-15 Nov 2025 answers (paged: `data/size/page/totalCount`, first page 20 rows), all quarter 30-Sep-2025, each with an XBRL that parses (Kavveri Defence: 275 facts, RevenueFromOperations for the quarter and half-year). So the low Sep 2025 count is most likely the backfill not having reached those windows yet (the chain was still running at the probe: run 126 in progress, 124-125 failed on NSE timeouts), not a missing source. (b) The older `corporates-financial-results?period=Quarterly` feed serves pre-integrated-filing XBRL (`INDAS_*.xml`): HAVELLS 113 rows, quarters Mar 2023 to Dec 2024; with no dates, 3,816 rows all Dec 2024 quarter; with a date window it gave 31 late filings only. Not seen in either feed: Mar 2025 and Jun 2025 quarters (not asked for). **Chain done, 17:51** (peek run 43273639041): broadcasts now from 8 Apr 2025; quarters Mar 2025 4,300, Jun 2025 274, Sep 2025 155, Dec 2025 2,339; still 60 of 1,771. **Cause:** rounds 5-6 (windows Oct 2025-Jan 2026 and Jul-Oct 2025) timed out listing at NSE, the report said 0 pending, and the chain moved to the older window: those windows were never read. **Fix:** a failed listing now stops the chain with its resume line (`nse-events.yml`, test `test_nse_events_chain.py`); the two windows are run again. **Rerun, 12 Nov 21:50** (peek run 43314101046): Sep 2025 quarter 1,794 rows, Jun 2025 4,045; 599 of 1,771 Sep 2026 companies have the year-ago quarter (34%). **Second cause:** NSE counts 4,287 filings for 19 Oct 2025 - 16 Jan 2026 (3,676 in 19 Oct - 18 Nov alone, pages fine from a desktop fetch), but the runner listed 1,400 in 14 calls: a page came back with nothing new and the lister took it as the end. **Fix:** an empty page before NSE's count is asked again; a window still short is reported as a failed listing (the chain stops and is resumed, the window is not skipped; test in `test_results.py`). **Done, 13 Nov 00:47** (peek run 43339754686, after the #238 rerun): 25,102 results rows from broadcasts of 8 Apr 2025; quarters Mar 2025 4,386, Jun 2025 4,074, Sep 2025 4,500, Dec 2025 2,559, Mar 2026 4,798, Jun 2026 1,108, Sep 2026 3,637; **1,822 of 1,953 companies with a Sep 2026 quarter have the Sep 2025 one (93%)**. The Results dek says year-on-year is shown where our history holds the quarter (from Apr 2025). Open: Dec 2025 (2,559) and Jun 2026 (1,108) look short against their neighbours; check with NSE's totalCount for their filing windows. **Next:** when that rerun finishes, rerun `clean_peek` RESULTS_QUARTERS; if Sep 2025 fills in, year-on-year works now for Sep 2026 and the Results dek, neutral since 12 Nov ("Year-ago quarters are still being loaded"), says what holds. A collector for the older feed waits for the owner | rerun peek after the chain; owner decides on the older feed |
-| D2 | `/today` typed by hand shows Streamlit's "Page not found" (the default page lives at `/`; Streamlit refuses a second page at `/today`) | a Streamlit option or an upstream fix; links all use `/` |
-| D3 | Forward record of the Worth-a-look shortlist itself (started 12 Nov) | three months of picks measured |
-
-## Filings by day, 19 Nov 2026
-
-Owner could not find a day's insider buys (a broker's "Daily insider buying, 17 Nov" list) on the site. Checked on the
-live site: most of its rows were there, but only on `/filings-all`, which had no menu link, listed newest first and
-stopped at 200 rows (481 insider filings in 7 days), so 17 Nov fell past the cut. Insiders shows decisions, not
-filings, by design (staff, trusts and small buys counted, not listed).
-Done: Filings in the menu (More); a one-day picker (only what was made public that day, up to 2,000 rows); "Show every
-row" in Filters & sort; a line above the table when rows are cut. Companies under Rs 100 Cr stay off (universe).
-
-## Where things stand (09 Oct 2026)
-
-- Data in R2: one year of NSE insider filings and bulk/block deals (from
-  08 Oct 2025), nightly NSE + BSE collection, NSE events, and a price layer
-  (NSE + BSE daily bhavcopy from 1 Jan 2025, NSE daily market cap, NSE index
-  closes, a per-ISIN price summary rewritten after each nightly run).
-- Kept from the 09 Oct work (PRs #11, #12): write-once raw layer
-  (`raw_v2/`), nightly bulk/block from NSE's uncapped CSV, intraday round
-  trips flagged in raw and excluded in clean, NSE revision markers (item 14),
-  filing link `source_url` on insider rows, the price layer. Deals backfill
-  redone with `--redo` (bulk +6,460 rows, flagged as round trips).
-- Set aside from the 09 Oct work (owner): the 13-page app (PRs #15, #16),
-  its research run and forward ledger, probes and its documents.
-- Site v2 (PR #17, replaces draft PR #4): our pages on `main`.
-
-## Next, in this order
+## Open, in order
 
 | # | Item | Done when |
 |---|---|---|
-| A | ~~Check the 781 removed insider rows~~ **Done 08 Oct.** | Breakdown (clean-only run 37677587574): 37 corrected re-filings + 744 repeats; NSE 733 (727 with a different filing ID and later broadcast but the same person, shares, value, trade dates and holdings before/after; 6 the same filing ID twice), BSE 48 (same trade re-captured with small text differences). Checked against NSE's own filing list: only 41 of 3,152 filings are marked "Revision" and 2 carry prevAppId, e.g. HCL Tech 3119 is a "Revision" ("revised solely to rectify" the mode) with no prevAppId, while Prakash Steelage filed the same gift four times as "Original" in six minutes (3135-3139). Identical holdings before and after make two real trades impossible, so these are copies; removing them is right |
-| B | ~~Run the backfill: last one year~~ **Done 08 Oct.** | Run 37678771716: insider 8 Oct 2025 - 2 May 2026, 7,523 rows; bulk 8 Oct 2025 - 2 Jun 2026, 14,844 fetched, 8,381 stored (6,460 intraday round trips dropped, 43.5%, same rule and share as nightly); block 848 rows. 5 insider rows carry dates mistyped in the filing itself (Campus 26-Nov-2026 for 2025; Premier Polyfilm intimation 03-Feb-2036; Solar Industries 3 gifts dated 09-Nov-2026 but published 11-Mar-2026): parsed correctly, stored as filed, held back by the cleaner. Clean rebuild (run 37679323259): insider 14,478 in -> 13,487 out; deals 17,421 -> 16,825; 2,367 securities, 57 unmatched. One-year default and best-effort warm-up merged in PR #9 (NSE 403s the home page to GitHub's runner, not the API) |
-| C | Owner reviews the baseline numbers above | Owner confirms |
-| D | ~~PR #17 (was PR #4)~~ **Done 09 Oct** (merged; the Site preview job screenshots every page on R2 data on each PR) | CI green on the PR head; screenshots looked at |
-| E | ~~Merge PR #17, then a "Clean only" run~~ **Done 09 Oct** | Live insiders.streamlit.app shows the new site on the rebuilt tables |
-| F | ~~Shareholding for every company~~ **Done 12 Oct (chain of 13 rounds, 04:04 to 07:40 UTC, no manual step after the first dispatch).** Coverage in the last round: 2,367 companies; latest filing carries pledge detail for 2,315 (was 529); pledge files parsed 2,920, failed 60, still pending 8; 1 company whose latest filing is not parsed. The 68 failed or pending files are retried every round and still do not parse: cause found 12 Oct (#47): 58 were companies with no promoter group (ITC, L&T, ICICI Bank), now promoter 0% as filed; 3 are network give-ups, and a stale quarter shows without pledge on the site rather than a guess. Re-run: `nse-events.yml` with dataset=shareholding, days=120, chain=1 | The run report prints coverage: companies, each company's latest quarter, pending files |
-| G | ~~Prices on the pages~~ **Done 09 Oct** (CMP, 52W range, price line with trades, avg paid vs CMP; ICDR minimum waits on H) | From our own price layer (`artifacts/prices_summary_slim.parquet`, `prices/daily/`): CMP, 52-week high, 200-day average, price paid vs CMP, move since broadcast, and the ICDR minimum (higher of 90- and 10-session VWAP); pending columns on Screener, Today and Company filled; three checked by hand |
-| H | ~~Preferential and rights issues cleaned~~ **Checked 12 Nov on real data**: the nightly writes both tables and Raises, Risks and the company page read them (Gabriel India, Kabra Extrusion, Manaksia, 11 Nov). **Open: the ICDR minimum by VWAP** for issues that do not file it: it needs each issue's relevant date (30 days before the shareholders' meeting), which no source we collect carries; not computed rather than guessed. (Was: **coded 12 Oct; Clean only wrote the tables and the Capital raises page and the Company page's Capital raises tab read them; check the first nightly output**: `insiders_clean/issues.py`, tables `clean/current/preferential.parquet` and `rights.parquet`, Capital raises sections S16-S18 and rights; the ICDR minimum price still needs VWAP) | Offer price, shares allotted, allotment and trading-approval dates, promoter or not; lock-in expiry (promoters 18 months, others 6); Capital raises sections S16-S18 built |
+| 1 | **The weekly Storage trim deletes by age, against the raw retention decision of 21 Nov.** `storage-trim.yml` runs every Sunday at 06:23 UTC with `--delete` and every step: `price_zips` deletes NSE PR zip blobs older than 30 days from `raw_v2/` (only the market cap is parsed from them), `filing_text` deletes every filing-text day file but today's, `results_xbrl` deletes raw results XBRL whose facts are in the archive. The next scheduled run is Sunday 22 Nov 2026. Not changed in this docs pass | the schedule or its steps changed to match the decision (or the owner confirms each step) |
+| 2 | **Results rebuild after #321**: `clean/current/results.parquet` is rebuilt by the NSE events run; until then the 55 companies stay without a revenue line on the site | after the next NSE events run, `clean_peek RESULTS_BASIS` shows the Sep 2026 quarter's companies without a revenue line, each named |
+| 3 | **Raw coverage: 45 datasets with gaps, 31 not checked, 2 with no parser** (#320). The three branches above cover part of it | every dataset fully captured, or its gap named here with the reason; the 31 checked (whole, not sampled) |
+| 4 | **867 NSE-only companies at two industry levels**: NSE's quote API refuses GitHub's runners (`docs/DATA_DICTIONARY.md`, Industry classification). 40 companies have no class at all | they have NSE's four levels (a machine NSE answers, such as the own runner), or each is named with why not |
+| 5 | **Own runner** for Angel One, WhiteOak, Edelweiss, Bajaj (and Union, from India): owner sets it up (`docs/OWN_RUNNER.md`) | the first "Mutual fund portfolios (own runner)" run collects them |
+| 6 | **Fund houses not collected**: Kotak (Radware CAPTCHA), Navi (Cloudflare challenge), Union (outside India refused); access requests in `docs/MF_ACCESS_REQUESTS.md` are the owner's to send. NPS: UTI and Max Life (expired certificates), HDFC Pension (Akamai), Kotak (bot check), Tata (list never loads headless); Aditya Birla's October link answered 404 on its own site | each collected or its reason re-checked monthly |
+| 7 | **HDFC 2025-12 scheme rows**: a `--schemes --house hdfc` run reports what differs (`differs`) | that run's report is read |
+| 8 | **Dispatches named in the merged PRs, not confirmed from here**: `alphagrep` 2026-07..2026-10 and `icici` 2025-10..2026-08 (#304); Price backfill for the weekend sessions 2025-02-01, 2026-02-01, 2026-11-08, then Precompute slim assets (#303); Market flows backfill from 2025-10-08 (#283); NSE bulk and block deals refilled from 13 Nov 2026 (the nseindia.in move, #274) | each run's report read and noted here |
+| 9 | **Price jump left unexplained**: GICL, 15 Oct 2025, nothing filed on NSE or BSE. The `insiders_clean/price_jumps.py` docstring still says a demerger's factor is applied only on an exchange base-price reset; since #314 it is also applied at the ex-date close | a filing or source explains GICL, or it stays named in the audit; the docstring matches `adjust.py` |
+| 10 | **Filing text downloads up to 4 at once per host** (`scripts/filing_text_extract.py` `PER_HOST`), NSE's archive host included; the speed policy says never in parallel to NSE | the owner confirms, or NSE hosts are kept to one at a time |
+| 11 | **Cash, TREPS and receivables per fund house**: the collector keeps equity lines only | parsed from raw (the `mf-all-lines` branch may cover it) |
+| 12 | **Public holders**: not read for BSE-only companies (`bse_shareholding` inline XBRL). `promoter_group.pct_of_company` is 100 times too big for taxonomy 2025-05-31 filings (MOTILALOFS Jun 2025: 2122 for 21.22%; `parsers.parse_shp_members` multiplies the filed % by 100) | both fixed and tested |
+| 13 | **Two directors, same rupees and %** (Vectras Enprocon): read `tables.insider_trades.same_trade_two_names` and the rows' `app_id` (`clean_peek TRADES:<code>`) | removed only if it is one filing |
+| 14 | **NSDL's DII pages** (`DIIGenerateReport.aspx`) not read | read, or a reason |
+| 15 | **ICDR minimum by VWAP** for issues that do not file it: needs each issue's relevant date, which no source we collect carries | a source with the relevant date |
+| 16 | **Year-on-year before Apr 2025**: the older `corporates-financial-results` feed (pre-integrated XBRL, quarters Mar 2023 - Dec 2024) has no collector | owner decides |
+| 17 | **Forward record of the Worth-a-look shortlist** (started 12 Nov 2026) | three months of picks measured |
+| 18 | **Named-investor aliases** (`insiders_clean/investor_aliases.csv`) grow as names are checked | ongoing |
+| 19 | **BSE**: rights terms not collected; BSE's recent SAST feed is thin for an unknown reason | collected; cause found |
 
-| P | ~~Prices every night~~ **Fixed 12 Oct**: no workflow appended prices after the manual backfill, so the site's prices stopped at 08 Oct. Price backfill run on 12 Oct from 01 Oct; the nightly now fetches the last 10 days (NSE, BSE, NSE market cap, NSE indices) before Precompute | `slim: ... last session` in the Precompute log is the latest trading day |
+Owner only: object lock or lifecycle protection on `raw_v2/` (R2 setting); the own runner (5); access emails (6); the
+older results feed (16); a review of the 8 Oct baseline numbers (archived item C).
 
-## Added 16 Oct 2026 (owner's messages; the numbered detail is in `docs/BLUEPRINT_TODO.md`, section 12)
+Resolved by the code since the last rewrite: `/today` is its own page since the Dashboard became the default (#296;
+was D2).
 
-| # | Item | Done when |
-|---|---|---|
-| Q | **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs). **Supervised reader batches of 100 until at least 1,000 cards are audited**, every card checked against its filing by ten independent reviewers, findings fixed before the next batch (12.1, 12.2). Run 5 (live-10) dispatched 14:04 IST | 1,000 cards audited; schedule, chain and history stay off until a batch audits clean or close to it |
-| R | **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs). **Headline and subtitle format** merged (#132, live-10); kicker line and more owner examples per category open (12.3) | run 5 headlines read; kicker restyled |
-| S | **Run-4 findings without a rule yet**: cards with no headline, wrong categories, duplicate events, instalment amounts, dropped hedges (12.4) | each has a rule or hold and a test |
-| T | **Context engine** (12.5): results backfill of 12 quarters, other XBRL layouts, BSE results, balance sheet, shares and convertibles, then fundraising, results, debt, acquisition and capacity blocks, then ledgers of orders, capacity and ratings | blocks on real cards with dated inputs; "not available" where an input is missing |
-| U | **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs). **Concalls** built 18 Oct (12.27): transcripts read into quote-checked facts, paired with the results on the card; open: more measures, presentations, company-page table. **Annual reports** (12.6; owner 18 Oct: a transcript is a must when there is one, example first on one company with Q1 and Q2 transcripts and Q2 results via `concall-probe.yml`): read transcripts by section; probe the annual-report source; management's words only as quoted, dated facts | a transcript read with quotes; source probed |
-| W | **Live by day, history by night** (12.26): confirm the first overnight run read old dates; checkpoint status view; real RPM per Gemini model; model-list probe for models with their own quota | history run log and checkpoint show the latest filled date |
-| V | **Text cache fill 1 Jan to 15 Oct** (run 38848258817) and the **nightly collection at 02:30 IST**: report counts and sizes (12.7, 12.8) | reported to the owner |
+## Parked or not re-checked
 
-| UN | ~~Study universe: Rs 100 Cr and up~~ **Done 18 Oct** (owner): clean step writes the universe table, the site cuts every table to it on read, Track record uses the same list (latest market cap); collection unchanged | Pages show no company under Rs 100 Cr; the Data page counts what is left out |
-
-## Added 23 Oct 2026 (owner: design V3, the money board; detail in `docs/DESIGN_V3.md`)
-
-| # | Item | Done when |
-|---|---|---|
-| X | **Filings kinds** (built 23 Oct): a table of its own columns per kind, company cell with market line, "?" on held-back amounts, Upcoming kind | CI and Site preview green; the owner has seen it on live data |
-| X2 | ~~Today as the money board~~ **Built 23 Oct**: ₹25 Cr additional rule (owner), Raises, panels Money in / Money out / Risk changes, Coming up, market line (`ideas.py`, `home.py`; rules in `docs/DESIGN_V3.md`) | CI and Site preview green; owner has seen it on live data |
-| X3 | ~~Company snapshot~~ **Coded 23 Oct** (`insiders_clean/snapshot.py`, written by `scripts/precompute_slim.py`, read by `store.snapshot()`; columns in `docs/DATA_DICTIONARY.md`). Check the first nightly log line `snapshot: N companies, ...` | Companies and Investors join only it |
-| X4 | **Investors page and investor profile** (funds, FPIs, insurers, AIF/PMS; handshakes; named raise allottees); alias lines for fund families | Page live; alias list has GQG-style lines |
-| X5 | **Companies list and dossier** (ratios strip, money in and out, decisions timeline) | Pages live |
-
-## Later
-
-| # | Item | Done when |
-|---|---|---|
-| 7 | ~~Signal lab and Track record page~~ **Measured 09 Oct** (insiders_clean/track.py, nightly; 1W-6M vs Nifty 500, costs, cases). **Size-matched benchmark added 12 Oct** (large caps vs Nifty 100, mid Midcap 150, small Smallcap 250, micro and unbucketed Microcap 250, by today's size bucket; a switch on Track record); the precompute log names any of those indices missing from `indices/daily/nse/` | Each signal in `docs/SIGNALS.md` shows 1-week, 1-, 3- and 6-month excess returns vs Nifty 500 from broadcast time, after ~0.25% costs, with case counts (one year of history limits the longer horizons) |
-| 8 | ~~Price chart with filings marked (company page)~~ **Done 09 Oct** | |
-| 9 | ~~Morning brief and watchlist warnings~~ **Done 12 Oct, as a page** (owner: a page on the site, no email or messages). `/brief`: the last session's buys, sales, clusters, big trades and deals, board meetings and lock-ins in the next 7 days; warnings on a watchlist from Streamlit secrets or `?watch=` (insider sales, pledges, preferential shares to promoters below today's price, 7 days) | Brief before 09:15 IST on trading days; warning when an insider sells, pledges or gets cheap shares in a watched stock |
-| 10 | ~~Model basket~~ **Coded 12 Oct** (`insiders_clean/basket.py`: forward-record signals with an "ahead" early read stamped the night they fired, no surveillance or tight-band flag, equal weight, 63 sessions, costs; Track record card appears with the first position) | Waits on 7 |
-| 12 | ~~Buyback price and route~~ **Done 12 Oct for tender buybacks** (#40: NSE tender-offer list; open-market buyback maximum price is only in PDFs and BSE-only tenders are not in NSE's list) | Offer price and tender/open-market route attached to every buyback |
-| 13 | ~~BSE history and BSE events~~ **Coded 12 Oct** (#48: BSE insider CSV and bulk/block history endpoints, SAST and corporate actions; nightly re-reads the last 10 / 30 days; one-year backfill run after the 12 Oct nightly). BSE board meetings and BSE-only shareholding patterns collected from 22 Oct 2026 (clean tables `bse_meetings`, `bse_shareholding`, `bse_promoter_group`; no page reads them yet). Missing: BSE rights terms, a Company page for BSE-only companies; BSE's recent SAST feed is thin for an unknown reason | In-page fetch working; BSE insider, bulk/block, SAST and corporate actions collected |
-| 14 | ~~`nse_insider.py` keeps NSE's revision markers~~ **Coded 09 Oct; check the first nightly rows carry them** | `prevAppId`, `typeOfSubmission` and `revisionRemark` captured from the filing list, so the cleaner can say "revised per NSE: <remark>" vs "re-submitted as Original"; the content-based check stays (most re-filings are marked Original) |
-| 15 | Retention deletes for real | **Done 14 Nov 2026 (owner: "Delete it")**: one manual run with `delete` = 1 removed the 642 dated `raw/` and `canonical/` snapshots older than 14 days that the archive had absorbed (244 MB, 17 Aug onward), including the pre-`raw_v2` raw responses of those days (the owner was told they were the only copy). The weekly run stays a dry run unless `R2_RETENTION_DELETE=1` is set |
-| 16 | ~~Named-investor aliases~~ **Started 12 Oct**: `insiders_clean/investor_aliases.csv` (curated, a reason per line) plus share-class and series rules give `investor_group` on deals; the list grows as names are checked | Curated list maps known investors' and funds' spellings to one name |
-| 18 | ~~NSE block deals BLOCKED in the nightly collection on 07 and 08 Oct~~ **Checked 12 Nov** (`clean_peek` DEAL_DAYS, run 43204097869): clean deals hold NSE block deals on 08 Oct (6 primary rows; BSE 16), so the gap was filled by the lookback. 07 Oct: **NSE's own list has no block deal that day** (History backfill dry run 43205891964, 07 Oct only: fetched 0), so nothing was missing. **Closed.** Side note: NSE lists 10 block rows for 06-09 Oct (dry run 43205575127) where the clean table holds 8 NSE primary block rows; the clean step drops same-day round trips, and one pair would explain the 2, not yet confirmed | **Cause found 12 Oct, fixed in #22:** the 8 Oct fetch worked (10 block deals on 08 Oct, 617 in 90 days). The validator of that day (commit 1667efb) required more than one distinct date in the 7-day and 30-day windows, and block deals are sparse, so the 7-day window held only 08 Oct and the dataset was BLOCKED and not written. Now the rule is chunk completeness and a 90-day window with data on more than one day. The gap (07 and 08 Oct block deals) is filled by the History backfill / next nightly 90-day lookback. Verify on the next green nightly that `nse/block_deals` is written |
-| 19 | ~~Data checks from the 09 Oct brief~~ **Done 12 Oct** (#37; tolerances checked on 12 Oct with the read-only diagnostic and kept; the two commonest filing errors behind "far outside" now have their own reasons) | In the cleaning report and Data page: holding after - holding before = shares traded (right sign); implied price (value / shares) inside that day's high-low (catches lakh/crore unit errors and off-market prices); disclosure before trade or in the future; holding-only disclosures (on appointment) not counted as trades |
-| 20 | ~~Tradability flags~~ **Done 12 Oct** (#36; no current NSE source for suspended stocks, no BSE surveillance lists) | ASM / GSM / ESM stage, trade-for-trade, SME board, circuit-locked or suspended days, shown as flags (never silent drops), thresholds in config |
-| 21 | ~~One decision-maker per promoter family~~ **Done 12 Oct** (#47: promoter-group members from the shareholding-pattern XBRL; filings linked by exact name key, 84% of promoter filings on a 50-company sample; clusters count the group once; the latest list is applied to the whole year, a small look-ahead noted in SIGNALS.md) | Promoter-group entities acting together count once in cluster and breadth figures (linked through the shareholding pattern, not by name similarity) |
-| 22 | ~~Ownership headroom~~ **Done 12 Oct** (Company Overview; creeping room estimated from promoter open-market buys only, labelled) | Distance to the 75% promoter ceiling (minimum public shareholding, SCRR 19A) and creeping-acquisition room (SAST Reg 3(2), 5% a year) on the Company page |
-| 23 | ~~Deal participant types~~ **Done 12 Oct** (`insiders_clean/participants.py`, calibrated on 1,653 NSE client names; type, confidence and the rule that matched on every deal; Deals page filter, "institutions only" on small-cap accumulation, type on the Person page) | Mutual fund, insurer, FPI, PMS/AIF, proprietary/HFT, corporate, individual, each with a confidence level; name mapping auditable |
-| 24 | ~~Disclosure lag and price before broadcast~~ **Done 12 Oct**: per signal on Track record, and per filing on Insider trades ("Before public" move on split-adjusted closes, lag in sessions under the date) | How long each filing took to reach the public and how much the price moved before it did |
-| 25 | ~~Results dates and trading window~~ **Done 12 Oct** (#40: results dates from board meetings back to Jul 2025, window-open buys marked on Insider trades; measured on Track record as `window_open_buy`, exploratory) | Board-meeting results dates joined to filings: buys right after the trading window opens marked |
-| 26 | ~~Forward record~~ **Coded 12 Oct** (Precompute appends what fired in the last 5 sessions to a new write-once `ledger/forward/<run time>.parquet`, rules version `track.RULES_VERSION`; outcomes in `artifacts/forward_outcomes.parquet`; the Track record card appears with the first row) | Each signal recorded as it fires (time, rule version, entry price), never edited; outcomes filled in later; shown on Track record |
-| 27 | ~~Retire or fix "NSE-BSE Data Validation"~~ **Retired 12 Oct, removed the same day** with the other September probes (acquisition probe, joint validation, the two diagnose workflows and their scripts); NSE validation and the R2 test no longer run on every push | Red on every push since 07 Oct: its step expects `nse_acquisition_output.json` that is never written, with a fixed date 2026-08-31 |
-| 28 | Object lock on `raw_v2/` | Owner sets R2 object lock or lifecycle protection on the raw layer |
-| 29 | **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs). Announcement reader, step 1: collect and count (**coded 13 Oct**, `collectors/nse_events/announcements.py`, workflow NSE Announcements, nightly; no model). About 600 NSE announcements a day (17,127 in Sep 2026), each with a PDF; groups from NSE's subject line: buyback, fund_raise, rights, takeover, warning (exploratory), to_sort (board outcomes, general updates). BSE's announcement API is not confirmed (BSE refuses this container; to be probed from the runner). **Sample check 13 Oct** (12 filings read by hand, `scripts/announcement_sample_expected.json`; workflow Announcement reader sample runs the model on them and scores values right and backed by a quote found in the PDF): NSE's subject was right for 7 of 12, wrong for 2 ("Allotment of Securities" that is debt, now `debt` from NSE's text; a "Credit Rating- Revision" that is an upgrade), weak for 1 (a subsidiary's auditor); 2 of 3 `to_sort` filings held something only the PDF says (a promoter's warrant conversion, an acquisition sent to arbitration); 224 a month are ZIPs of several PDFs and 259 have no file. Next: a model sorts `to_sort` from the subject and text, then reads the PDFs of the useful groups, each value checked against a quote found in the PDF text. **13 Oct: 24-filing model test across Gemini, Groq, NVIDIA and Z.ai (results, decisions and next steps in `docs/ANNOUNCEMENT_READER.md`). Readers picked by the owner: Kimi K3 on NVIDIA (88 of 91 right, twice) main, Gemma 4 on NVIDIA (85, twice) its backup, GLM-4.5-Flash on Z.ai free (77 then 78, 13-15 s a filing) second lane and cross-check. Collectors now also take NSE's SME board and BSE (BSE adds ~120 useful filings a day from companies NSE lacks, usually 1-2 minutes ahead; NSE adds its SME board). Live reader coded (`scripts/announcement_reader.py`, every 30 minutes, read once across exchanges, every value checked against its quote, a currency only where the filing writes one) and the Brief card "Filings read"; dry run on 3 real filings green (13 Oct); waits on the merge of PR #56.** | One week of nightly reports: announcements a day and per group, PDF sizes; then the open-market buyback maximum price read from its PDF end to end; after the merge, the reader's usage log and the Brief card checked on live filings |
-
-| 30 | **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs). **Historical announcement AI backfill from 01 Jan 2026** (implementation on `feat/announcement-historical-ai-backfill`): bounded NSE/BSE date-range collectors, oldest-first AI batches, R2 checkpoint `archive/announcement_backfill/state.json`, idempotent per-company source-linked memory under `archive/company_memory/`, memory supplied to future live prompts, separate live/backfill concurrency for current-month writes | Historical source archives from 01 Jan 2026 are collected; repeatable backfill reaches `complete`; checkpoint reports remaining work and failures; company memory contains only quote-validated claims and source filing IDs/URLs; tests and Actions green; merge after review || 31 | **Blueprint review** (owner, 15 Oct): the shared blueprint mapped point by point onto our project, worked one item at a time in order, none skipped (`docs/BLUEPRINT_TODO.md`; 1.1 closed, 1.1a open) | Every item closed or rejected by the owner; the tracker's status table is current |
+- **Parked 15 Nov 2026** (owner: no plan for the announcement reader or AI reading; the code is kept, nothing runs):
+  supervised reader batches, headline format, concalls and annual reports, live-by-day reading, the text cache fill,
+  the historical AI backfill (archived items Q, R, U, W, V, 29, 30; `docs/ANNOUNCEMENT_READER.md`). Announcement
+  collection without AI still runs nightly (`announcement-collect.yml`); filing text runs by hand only.
+- Not re-checked on 21 Nov 2026: run-4 reader findings (S), the context engine (T), Investors and Companies pages as
+  designed in `docs/DESIGN_V3.md` (X4, X5), the blueprint review (31, `docs/BLUEPRINT_TODO.md`). See `docs/TODO_DONE.md`.
 
 ## Decided, not to do
 
 - Screener.in and Tijori are not scraped. The owner gave permission on
   08 Oct, but Screener's terms forbid copying or mirroring and its
   robots.txt disallows the paginated pages; Tijori's terms couldn't be read
-  (rendered by script). NSE data and Paresh's public release cover the needs.
+  (rendered by script). Third-party re-packagers stay out (`docs/PRODUCT.md`, Sources).
 - No prices token and no Paresh data: our own exchange bhavcopy layer covers NSE and BSE (Paresh's covers about 38% of NSE symbols with 2026 data).
 - History: only the last one year (owner, 08 Oct); the site grows daily from there.
-
-- **Table links (fixed 12 Oct):** company and person links inside tables did nothing on the live site. Streamlit's `st.iframe` is sandboxed without top-level navigation, so `target="_top"` was blocked; reproduced in headless Chromium (console: "The frame attempting navigation of the top-level window is sandboxed"). `ui/table.py` now hands the click to an anchor in the parent page. Re-check on the live site after the deploy; if the host wraps the app in another frame, open links in a new tab instead.
-
-- **Group-level round trips (decided 12 Oct: not built).** The D3 Stock Vision LLP / Ankita Vishal Shah case (GREENPOWER, 28 Apr 2026) is two named clients buying and selling near-equal amounts the same day. Nothing in the NSE/BSE rows says the two are related (the "A; B" string on the page is only the list of counterparties of that company and day), so a rule that pairs them would flag ordinary trades between unrelated parties and break rule 7. It needs a source that names the group (a common PAN, or a filing that lists the persons acting in concert); until one is found these rows stay as filed. Market-maker flagging (`client_is_market_maker`) already covers repeat two-way clients.
-
-## Redesign build (owner, 13 Nov 2026: yes to dense tables, a Situations page, group-transfer labels; render first; 9 pages; half-hour chain for 5 hours)
-
-**Status 14 Nov 2026:** R0–R13 live. The synthesis cleaning findings C4–C8, C12 and C13 are handled or checked, and the investor-check fixes 1–6 are live, plus the sort switch and placements. Still open, owner only: TODO 15 (retention deletes) and TODO 28 (object lock). Read-only audit tools: `clean_peek` RESULTS_XBRL:SYM and TRADES:SYM.
-
-**Storage, 15 Nov 2026 (owner: "bring it to 1 GB or less"):**
-- R2 went from 11.9 GB to 3.53 GB.
-  - Raw results XBRL whose facts are in the archive is deleted: 52,436 objects, 3.64 GB.
-  - filing_text older than 90 days is deleted: 2.85 GB.
-  - raw_v2 text is gzipped: 18,153 files, 2.24 GB down to 0.37 GB, each checked byte for byte.
-- New raw text is stored gzipped (`raw_store.read_blob` reads both forms).
-- filing_text is deleted entirely and its nightly trigger is off. The owner has no plan for the announcement reader or AI reading; the code is kept.
-- Weekly guard: `storage-trim.yml` runs Sundays (trim, compress, report) and fails above 5 GB.
-- Results gap (clean_peek RESULTS_ORPHANS, 15 Nov): 2,442 results filings NSE listed were never written to the archive; 2,021 are of the June 2026 quarter, broadcast July-August. Raw XBRL is kept for 2,331 of them. `run_daily --dataset results --reparse-raw` adds them from the kept listings and XBRLs, with no NSE call; the rest are marked pending, and the nightly run fetches them. The other 1,645 unmatched raw links are older copies of revised filings; the archive holds those filings under the newer link.
-- Results quarters, 15 Nov (clean_peek RESULTS_QUARTERS, RESULTS_WINDOWS): after the reparse, Jun 2026 holds 3,122 filings (was 1,108), and 2,196 of 2,368 companies with a Sep 2026 quarter have Sep 2025 (93%). Dec 2025 (2,648) and Jun 2026 are still short against NSE's own count: for 17 Jan-16 Feb 2026 NSE counts 4,118 and our pages hold 2,200; for 16 Jul-15 Aug 2026, 4,288 against 800. Those pages were listed before the 12 Nov fix that asks an empty page again, so whole stretches were never read. Fix: a results backfill of 1 Jan-30 Sep 2026 with the fixed lister (chain=1, 4 workers); filings already read are carried over. Then RESULTS_QUARTERS again.
-- Results backfill 1 Jan-30 Sep 2026 done 15 Nov (2 rounds, NSE refused nothing): archive 28,296 -> 30,900 filings, 30,861 read; quarters cons+stand Dec 2025 4,426 (was 2,648), Jun 2026 3,929 (was 3,122); the 111 pending were read. The chain goes on to older 90-day windows by itself.
-- Results for banks and insurers, 20 Nov (PR `results-banks`; clean_peek RESULTS_TAGS and RESULTS_BASIS, runs 44695603354 and 44696370273, read-only): the Results page showed "No revenue line" for banks and insurers, which file no `RevenueFromOperations`. Each layout's own names are now read (`results.TOP_LINE`, `revenue_basis`): BANKING `Income` (total income, interest earned plus other income) and `ProfitLossForThePeriod`; LI `NetPremiumIncome` and `ProfitLossAfterTaxAndExtraordinaryItems`; GI `PremiumEarned` and `ProfitLossAfterTax`; NONINDAS profit `ProfitLossForThePeriod`. Sep 2026 quarter: 41 banks, 5 life and 3 general insurers gain a revenue line (49 companies), 48 of them with the Sep 2025 quarter on the same line. NBFCs (NBFC_INDAS, e.g. Bajaj Finance) already had one. Still blank: 55 companies, including 3 whose file name gives no layout (Ind AS 117 `InsuranceRevenue`, 9 filings) and HDB Financial, GODIGIT: not mapped until looked at. Applied when `clean/current/results.parquet` is next rebuilt (the NSE events run).
-- The 39 not read (clean_peek RESULTS_FAILED): 2 are files NSE served broken (Laurus Labs 1.6 KB, Softtech 0 bytes). The 37 "RuntimeError" are HTTP 404s, mostly large groups (Adani Enterprises, Adani Green, UPL, JSW Energy, L&T, CleanMax). NSE's listing gives their file size as "0 Bytes" (no XBRL published; the consolidated filing of the same quarter is read), or NSE replaced the file after we listed it (Adani Enterprises 28 Oct 2026: the new link answers 200). Now the listing's `xbrl_size` is kept, and a filing NSE lists at 0 bytes is `no_xbrl_at_nse` with no fetch. A re-listing of 2026 after the chain refreshes the stale links.
-- Re-listing 1 Apr 2025-15 Nov 2026, 15 Nov (after #271): 545 more filings; archive 31,445, read 31,406. Quarters cons+stand: Mar 2025 4,413, Jun 2025 4,100, Sep 2025 4,630, Dec 2025 4,426, Mar 2026 4,989, Jun 2026 4,442, Sep 2026 4,406 (arriving); 2,202 of 2,375 Sep 2026 companies have Sep 2025 (93%). Not read: 20 no_xbrl_at_nse (0 bytes), 17 links NSE answers 404 (May-Aug 2025; older listings give no size) now also no_xbrl_at_nse, 2 broken files NSE served (Laurus Labs, Softtech).
-- Nightly watchdog, 17 Nov (owner: "Yes I want"): on 16 Nov GitHub started neither R2 Storage Write nor its 23:00 backup, and the site stayed on 13 Nov data until a manual run. `nightly-watchdog.yml` (01:37, 04:37, 07:37 UTC daily) starts R2 Storage Write or NSE events when no full run has succeeded since it was due (6 hours of grace) and none is waiting; NSE events manual runs are named by dataset so a results backfill is not taken for the nightly.
-- NSE moved to nseindia.in, 18 Nov (owner): www.nseindia.com answers 301 to www.nseindia.in. The browser collectors (nse_bulk, nse_block, nse_rights, nse_preferential) loaded the page (now on .in) and fetched the API at an absolute .com address with credentials: a cross-site request the browser blocks, status 0 and 0 bytes. NSE bulk and block deals, rights and preferential (this path) were BLOCKED and not written every night from 13 Nov at least, while the run reported success. Fix: the browser fetches on the page's own site (location.origin), and every www.nseindia.com address is www.nseindia.in. Archive hosts stay: nsearchives.nseindia.com still serves, archives.nseindia.in does not exist. Gap: refill NSE bulk and block deals from 13 Nov with the History backfill.
-- BSE promoter group, 18 Nov: the nightly note "promoter_group: failed (ArrowTypeError ... column quarter_end)" every night from at least 13 Nov: a parse batch mixed a date, text and a number in quarter_end and symbol, and the batch did not write, so new BSE promoter-group members were not added. `promoter_group.member_rows` now gives the identity columns one form (dates YYYY-MM-DD, codes text).
-- Nightly alarm, 18 Nov (owner: "Yes"): R2 Storage Write was green while four NSE datasets were skipped and BSE promoter-group batches failed for days. Its last step, `Alarm: data not written` (scripts/nightly_alarm.py), now fails the run when a dataset in the manifest was not written (with the reason) or the BSE events step noted a failure; every step above still runs. The watchdog does not restart a run red only from this step.
-- Numbered AIF schemes ("- SCHEME 6") are one investor (participants suffix rule; Nippon India Equity Opportunities AIF schemes 6, 7 and 9 showed as three).
-- raw/ and reference/market_cap/ are kept gzipped at {key}.gz. clean_writer.get and r2_data._get_bytes fall back to the .gz copy, and r2_writer.put_gz writes it.
-- NSE PR zips are kept for 30 days (storage_trim price_zips). The fetch records stay, a list of the deleted zips goes to manifests/storage_trim/, and the parsed market caps stay in marketcap/daily/nse/.
-- canonical/ and raw/ are not legacy: r2_writer writes them every night, clean_writer reads canonical/, and r2_retention keeps 14 days of both. They are kept.
-
-Source: the design synthesis of 12 Nov (three briefs from the raw exchange data, plus a benchmark). One item per PR, tests green, merged.
-Each page shows the render to the owner before it replaces the old one.
-
-- [x] R0 Prototype renders of Today (dense) and Situations on real data (#240, hidden pages, screenshots to the owner)
-- [x] R1 Deals: a matched pair of different clients (same day, symbol, quantity, price, opposite sides) is one line; "group transfer" when both names are in the company's promoter group, else "negotiated cross"
-- [x] R2 Pledges: net change per promoter group per day; "rollover" when the net is about zero (Embassy, 11 Nov)
-- [x] R3 Fetches that are not data (HTML home page for a file, "Missing parameters" text) are marked failed, not stored as success
-- [x] R4 Today: the dense table replaces the card page (live 13 Nov, #243)
-- [x] R5 Situations: the live page (in the menu) (live 13 Nov, #243)
-- [x] R6 Insiders and Deals: dense tables (live 13 Nov, #243)
-- [x] R7 Stakes: SAST crossings and pledges (net, rollover, invocations first) (live 13 Nov, #243)
-- [x] R8 Company: header and checks kept; insider decisions, deals and SAST stake changes as the dense tables of the topic pages, 12 months, no Company column (13 Nov)
-- [x] R9 Data health: each source's last fetch, rows, removed and held back, known limits (13 Nov). Exchange counts: the nightly NSE events report is published to `reports/nse_events/latest_all.json` and Data health shows each stream's rows and NSE's own results count against ours, with the night's notes. BSE's `TotalPageCnt` for announcements: parked 15 Nov with the announcement reader
-- [x] R10 Results and Calendar: dense tables (13 Nov)
-- [x] R12 SAST stake changes shown twice on the Stakes render (12 Nov data: Silgo Retail / Dempal Shah +1.77%, Molbio / Kotak MF +0.49%, Alankit / Alka Agarwal): find whether these are NSE revisions (two application numbers) or BSE rows `with_bse` failed to match, and fix it in the clean layer (the site does not drop rows). **Done 13 Nov:** `event_id` hashes the application number, so a re-filing is a new id; `parsers.drop_sast_refilings` keeps the latest broadcast of the same company, acquirer, action, trade dates, shares and stake after, counted as `refiled_removed` in the nightly report.
-- [x] R13 Results: a filing that reports only a half year or a full year (IFIndAs V2.1, TypeOfReportingPeriod "Half Yearly") was read as a quarter (Emami Sep 2026: +166% revenue on the Sep 2025 quarter; Godfrey Phillips +157%, Tega +950% look the same). The quarter is now blank for those filings and the period is the year to date; fixed in `insiders_clean/results.periods`, applied on the next clean run. **Derived 13 Nov:** `results.derive_quarters` sets the quarter as the year to date less the previous filing on the same basis covering the same year to the quarter before, marked `quarter_derived` (EPS not derived; blank where that filing is missing); such filings also keep their ISIN now (it was read from the blank quarter). From 14 Nov a filing with no quarter is compared half year with half year (same length, a year earlier) on Results, marked "Half year" (`more_pages._latest_results`). **Checked live 13 Nov after a refresh:** Emami is off the top; Godfrey Phillips (+157%) and Tega (+949%, consolidated) file a real 91-day quarter (`clean_peek RESULTS_XBRL:`), so their moves are as filed (Tega's consolidated revenue ₹4,254 Cr against ₹203 Cr standalone).
-- [x] R11 Menu: the 9 pages (Today, Insiders, Deals, Stakes, Situations, Results, Calendar, Company, Data health); old addresses redirect (live 13 Nov, #243)
-- [x] C12 personal identifiers (synthesis 12 Nov: BSE's regulation JSON carries `Fld_PromoterPAN`, address, phone): checked 13 Nov, they never reach a page. `scripts/bse_raw_capture_v2.py` copies named fields only, and the site never loads `raw_json` (`data/store.UNUSED`); the full rows stay in the write-once raw store.
-- [x] C7 scheme-level splits (ABSL MF in Swiggy, 4 rows): checked 13 Nov. The deals copy rule keys on client, quantity and price (`insiders_clean/deals.py`), so different schemes or sizes are kept, then added up per client and day.
-- [x] C5 percent units: checked 13 Nov. NSE and BSE SAST file percents, and the shareholding XBRL is computed from share counts or multiplied by 100. `insiders_clean/units.check` now counts out-of-range or fraction-like percent columns on every NSE events table each night, named in the run's notes (Data health). From 13 Nov the same check runs on the tables `scripts/clean_writer.py` writes and on the BSE events tables (`collectors/bse/events.py`), named in their reports' notes.
-- [x] C4 empty is not "nothing happened": checked 13 Nov. Since then an NSE events stream that returns no rows over a window of 7 days or more is marked `empty_unconfirmed` and named in the night's notes (Data health). Today's run is an example: encumbrances, 0 rows in 10 days. Since 13 Nov the empty tables on Stakes (SAST, pledges), Situations (tenders) and Results say "empty, not confirmed" when the last run marked their stream so. From 14 Nov the BSE events run notes an empty nightly window of 7 days or more the same way (`collectors/bse/events.py`).
-- [x] C8 fields known wrong as filed, checked 13 Nov 2026: none enters a figure.
-  - `gsmStage` is not read: it holds the code number (`insiders_clean/tradability.py`).
-  - Preferential `boardResDate` equals the posting date, as documented in `insiders_clean/issues.py`.
-  - The tender `demand` field is dropped at parse.
-  - The results listing `page` is handled by `results_filings`.
-  - A BSE deal's company name comes from the security master once its code resolves (`insiders_clean/deals.py`), so a wrong `scripname` (AJMERA for Shree Precoated) only shows on an unmatched row.
-- [x] C6 copies merged, shown 13 Nov: a deal line's Source names its feeds (block, bulk) and, where it adds up several exchange rows, "· N rows" (the clean layer's `trades`).
-- [x] Investor check (13 Nov), fix 1: a promoter's market trade that is one side of a promoter-to-promoter bulk/block deal pair is inter-se, not a decision (`promoter_group.mark_insider_group_transfers`). Gallantt Ispat was shown on Insiders as a Rs 420 Cr promoter sale. Fix 2 (13 Nov): a promoter decision's Holding Δ is against the group's stake in the latest shareholding pattern (`ideas.decisions` `group_change`), no longer the buying entity's own. Fix 3 and 4 (13 Nov): Today shows deals of companies of ₹500 Cr and up only, and SAST rows filed within 30 days of the trade; the rest are counted and stay on Deals and Stakes. Fix 5 (13 Nov): a promoter trade that is one side of a matched deal names the other side on Insiders ("to Suryalaxmi Infracon"), from `cross_with`. Owner 14 Nov ("finish everything"): Today and Insiders get a sort switch, "% of company" (default) or "₹ value"; a promoter sale placed with several buyers at one price is labelled with them (`placement_buyers`). Fix 6 (13 Nov): each insider decision counts the months of the 12 before in which the same people traded the company on the same side (`ideas.decisions` `prior_months`); Insiders marks "routine" (6 or more) and "first in 12 months" (none).
-- [x] C13 raw copies (rule 5): NSE SAST Reg 29, corporate actions and the shareholding list are kept byte for byte from 13 Nov (`raw_v2/nse/sast/`, `actions/`, `shareholding_list/`). NSE insider filings were already kept raw (`scripts/nse_insider.py` captures the filing list and each XBRL via `raw_capture`, flushed to R2 by `raw_flush`); the audit's "PIT JSON" was the dead `/api/corporates-pit`. The shareholding master is the shareholding list, now kept. C13 closed (14 Nov).
+- **Group-level round trips (decided 12 Oct: not built).** Nothing in the NSE/BSE rows says two clients trading
+  opposite sides the same day are related; a rule that pairs them would flag ordinary trades and break rule 7. It needs
+  a source that names the group (a common PAN, or a filing that lists persons acting in concert).

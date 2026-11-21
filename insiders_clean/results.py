@@ -65,18 +65,21 @@ SUMMARY = {'revenue': 'RevenueFromOperations', 'other_income': 'OtherIncome', 't
 #     swings with the market (LIC Sep 2026: Rs 1,14,983.77 Cr of investment income on Rs 1,47,018.18 Cr of net
 #     premium), so it is not the top line. Profit ProfitLossAfterTaxAndExtraordinaryItems.
 #   GI (general insurers): PremiumEarned (net premium earned), profit ProfitLossAfterTax.
-# A filing with no layout in its file name (9 filings of 3 companies in 2026, Ind AS 117 InsuranceRevenue) is read
-# as INDAS and keeps a blank revenue: not mapped until its layout is known.
+#   INS_IND_AS (insurers filing under Ind AS 117, file IF_INS_COM_IND_AS_{id}_WebXMLFile_...xml): InsuranceRevenue
+#     (21 Nov 2026, GODIGIT Sep 2026 quarter: InsuranceRevenue 27,204,900,000, all under the premium allocation
+#     approach; investment income and finance results are reported separately). Profit ProfitLossForPeriod.
 TOP_LINE = {'INDAS': ('ind_as_revenue', 'RevenueFromOperations'), 'NBFC_INDAS': ('ind_as_revenue', 'RevenueFromOperations'),
             'NONINDAS': ('igaap_revenue', 'RevenueFromOperations'), 'BANKING': ('bank_total_income', 'Income'),
-            'LI': ('insurer_net_premium', 'NetPremiumIncome'), 'GI': ('insurer_premium_earned', 'PremiumEarned')}
+            'LI': ('insurer_net_premium', 'NetPremiumIncome'), 'GI': ('insurer_premium_earned', 'PremiumEarned'),
+            'INS_IND_AS': ('insurer_insurance_revenue', 'InsuranceRevenue')}
 PROFIT = {'NONINDAS': 'ProfitLossForThePeriod', 'BANKING': 'ProfitLossForThePeriod',
           'LI': 'ProfitLossAfterTaxAndExtraordinaryItems', 'GI': 'ProfitLossAfterTax'}
 PROFIT_OWNERS = {'BANKING': 'ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates'}
 # What the site calls each basis (the revenue column is "Revenue" for companies).
 BASIS_LABEL = {'ind_as_revenue': 'Revenue', 'igaap_revenue': 'Revenue', 'bank_total_income': 'Total income (bank)',
                'insurer_net_premium': 'Net premium (life insurer)',
-               'insurer_premium_earned': 'Net premium earned (general insurer)'}
+               'insurer_premium_earned': 'Net premium earned (general insurer)',
+               'insurer_insurance_revenue': 'Insurance revenue (Ind AS 117 insurer)'}
 
 
 def basis_label(basis) -> str:
@@ -111,7 +114,9 @@ def _ist(v) -> pd.Timestamp | None:
 def kind_of(url) -> str | None:
     """'INDAS', 'NBFC_INDAS', 'BANKING', 'GI', 'LI' ... from INTEGRATED_FILING_{kind}_{id}_{stamp}_WEB.xml."""
     m = re.search(r'INTEGRATED_FILING_([A-Z_]+?)_\d+_\d+', str(url or ''))
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    return 'INS_IND_AS' if re.search(r'IF_INS_COM_IND_AS_\d+', str(url or '')) else None
 
 
 def filing_rows(rows: list[dict]) -> pd.DataFrame:
@@ -195,6 +200,24 @@ def periods(parsed: dict) -> tuple[str | None, str | None]:
 QUARTER_MAX_DAYS = 100
 
 
+def same_period(parsed: dict, ctx: str | None) -> dict:
+    """The facts of `ctx` and of every other plain context (no dimension, not an instant) with the same start and
+    end. Audit 21 Nov 2026: 43 Ind AS and 8 NBFC Sep 2026 filings (AAREYDRUGS, AFIL, AMANTA, HDBFS, KALAMANDIR ...)
+    put DateOfEndOfReportingPeriod in a metadata context (StatementStatic1D) and their statement lines in another
+    context for the same quarter, so revenue and profit read blank. A value filed in `ctx` itself wins."""
+    if not ctx:
+        return {}
+    ctxs, facts = parsed['contexts'], parsed['facts']
+    c = ctxs.get(ctx) or {}
+    out = {}
+    for k, o in ctxs.items():
+        if k != ctx and not o.get('instant') and not o.get('dimension') and o.get('start') == c.get('start') \
+                and o.get('end') == c.get('end'):
+            for tag, v in facts.get(k, {}).items():
+                out.setdefault(tag, v)
+    return {**out, **facts.get(ctx, {})}
+
+
 def _days(c: dict) -> int:
     try:
         return (pd.Timestamp(c['end']) - pd.Timestamp(c['start'])).days
@@ -216,7 +239,7 @@ def summary(parsed: dict, kind: str | None = None) -> dict:
     out['period_end_xbrl'] = meta.get('DateOfEndOfReportingPeriod')
     basis, top_tag = TOP_LINE.get(kind, TOP_LINE['INDAS'])
     for prefix, ctx in (('quarter', quarter), ('ytd', ytd)):
-        row = facts.get(ctx, {}) if ctx else {}
+        row = same_period(parsed, ctx)
         tags = {**SUMMARY, 'revenue': top_tag, 'profit': PROFIT.get(kind, SUMMARY['profit']),
                 'profit_owners': PROFIT_OWNERS.get(kind, SUMMARY['profit_owners'])}
         for name, tag in tags.items():

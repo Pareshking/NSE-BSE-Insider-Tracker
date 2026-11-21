@@ -418,31 +418,66 @@ def _house(rec):
     return house
 
 
+MF_LINES = 'archive/mf_lines/'
+MF_SKIPPED = 'archive/mf_sheets_skipped/'
+MF_KEY = ('month', 'blob_sha256', 'workbook', 'sheet', 'row')
+
+
+def _mf_sheet_rows(skipped: pd.DataFrame) -> pd.DataFrame:
+    """A skipped sheet as one row (row 0, row_type 'sheet_skipped'), so the audit looks each one up in the skipped table."""
+    return skipped.assign(row=0, row_type='sheet_skipped')
+
+
 def _mf_workbook(body, rec):
+    """Every line of the file (mf_holdings.parse_workbook_lines, as scripts/mf_portfolios.py keeps it in
+    archive/mf_lines/) and each sheet skipped as one row (archive/mf_sheets_skipped/). Raw rows: the filled rows of the
+    sheets read, and per sheet skipped the sheet itself and its filled rows; those rows are dropped with the reason
+    (the sheet is recorded, its rows exist only in raw)."""
     from insiders_clean import mf_holdings
     house, month = _house(rec), (rec.get('covers') or {}).get('month')
     name = (rec.get('url') or '').split('?')[0].rsplit('/', 1)[-1]
-    rows, rep = mf_holdings.parse_workbook(body, name, house.value_unit)
-    sc = mf_holdings.scheme_holdings(rows, house.key, month, house.name)
-    drops = {f'sheet skipped: {why}': n for why, n in rep.get('skipped', {}).items()}
-    drops['non-equity lines (not in mf_schemes by design)'] = int(rep.get('lines', 0)) - int(rep.get('equity_lines', 0))
-    drops['equity lines with no quantity (mf_holdings.holdings leaves them out)'] = int(rep.get('equity_lines_no_quantity', 0))
-    merged = int(rep.get('equity_lines', 0)) - drops['equity lines with no quantity (mf_holdings.holdings leaves them out)'] - len(sc)
-    if merged > 0:
-        drops['equity lines summed into one scheme x ISIN row (scheme_holdings)'] = merged
-    return sc, {k: v for k, v in drops.items() if v}, int(rep.get('lines', 0))
+    _, _, lines, skipped = mf_holdings.parse_workbook_lines(body, name, house.value_unit)
+    sha = raw_store.sha256_hex(body)
+    out = pd.concat([lines, _mf_sheet_rows(skipped)], ignore_index=True).assign(month=month, blob_sha256=sha)
+    drops = {}
+    for why, g in skipped.groupby('reason'):
+        drops[f'rows of sheets skipped ({why}): the sheet is in {MF_SKIPPED}, its rows only in raw'] = int(g['filled_rows'].sum())
+    drops = {k: v for k, v in drops.items() if v}
+    return out, drops, int(len(out)) + sum(drops.values())
 
 
 def _mf_stored(ro, wanted, parsed, recs):
-    keys = sorted({f"archive/mf_schemes/month={(r.get('covers') or {}).get('month')}/{(r.get('dataset') or '').split('/')[0]}.parquet"
-                   for r in recs})
-    have = {k for k, _ in ro.list('archive/mf_schemes/')[0]}
-    if not have:
-        raise TableMissing('no parquet under archive/mf_schemes/')
-    return _read_filtered(ro, cols('month', 'scheme_key', 'isin'), wanted, [k for k in keys if k in have])
+    names = sorted({f"month={(r.get('covers') or {}).get('month')}/{(r.get('dataset') or '').split('/')[0]}.parquet"
+                    for r in recs})
+    have_lines = {k for k, _ in ro.list(MF_LINES)[0]}
+    have_skipped = {k for k, _ in ro.list(MF_SKIPPED)[0]}
+    if not have_lines and not have_skipped:
+        raise TableMissing(f'no parquet under {MF_LINES} or {MF_SKIPPED}')
+    keys_of = cols(*MF_KEY)
+
+    def one(n):
+        parts = []
+        for prefix, have, f in ((MF_LINES, have_lines, None), (MF_SKIPPED, have_skipped, _mf_sheet_rows)):
+            if prefix + n in have:
+                df = ro.parquet(prefix + n)
+                if df is not None and len(df):
+                    parts.append(f(df) if f else df)
+        if not parts:
+            return None
+        df = pd.concat(parts, ignore_index=True)
+        for c in ('reason', 'line_kind', 'isin', 'name', 'quantity', 'value_lakh'):   # a month with lines only, or skips only
+            if c not in df:
+                df[c] = None
+        df = df.assign(_key=keys_of(df).values)
+        return df[df['_key'].isin(wanted)]
+    with ThreadPoolExecutor(WORKERS) as pool:
+        frames = [f for f in pool.map(one, names) if f is not None and len(f)]
+    if not frames:
+        return pd.DataFrame(columns=['_key'])
+    return pd.concat(frames, ignore_index=True).drop_duplicates('_key', keep='last')
 
 
-_mf_stored.table = 'archive/mf_schemes/month={month}/{house}.parquet'
+_mf_stored.table = 'archive/mf_lines/month={month}/{house}.parquet (+ archive/mf_sheets_skipped/)'
 
 
 def _price(fn: str, exchange: str | None = None):
@@ -681,11 +716,14 @@ SPECS: list[Spec] = [
          rows=csv_rows, fmt='csv', refetch=Q_NSE_DEALS),
     # Fund-house month-end portfolios (scripts/mf_portfolios.py: raw_rows / run_house)
     Spec('amc', '*/portfolio_month', 'spreadsheet',
-         'insiders_clean.mf_holdings.parse_workbook -> scheme_holdings', _mf_stored.table, 'unknown', '', 'blob', None,
-         _mf_workbook, cols('month', 'scheme_key', 'isin'), _mf_stored, ['shares', 'value_lakh', 'name'],
-         fields_note='Spreadsheet (xls/xlsx/zip of workbooks): field-level comparison not applicable. Extracted per '
-                     'holding line: sheet, scheme, ISIN, name, quantity, value, % of AUM; the table keeps equity lines '
-                     'with a quantity, summed per scheme and ISIN.'),
+         'insiders_clean.mf_holdings.parse_workbook_lines', _mf_stored.table, 'unknown', '', 'blob', None,
+         _mf_workbook, cols(*MF_KEY), _mf_stored, ['row_type', 'line_kind', 'isin', 'name', 'quantity', 'value_lakh', 'reason'],
+         fields_note='Spreadsheet (xls/xlsx/zip of workbooks): field-level comparison not applicable. Every filled row '
+                     'of every sheet read is a line in archive/mf_lines (title, header, headings, holdings with or '
+                     'without an ISIN, totals, notes; every cell kept in `cells`), keyed by file sha256, workbook, sheet '
+                     'and row; blank rows are not counted. A sheet without the ISIN and Quantity header is one row in '
+                     'archive/mf_sheets_skipped. The equity tables (mf_schemes, mf_holdings) are built from the same '
+                     'parse and are not what this checks.'),
     # Exchange files for the price layers (scripts/price_backfill.py SOURCES)
     Spec('exchange_files', 'nse_udiff_cm', 'zip', 'insiders_clean.prices.parse_udiff (+ prices.udiff_extra)',
          'prices/daily/nse/{YYYY-MM}.parquet', *Q_UDIFF, 'blob', None, _price('udiff', 'NSE'),

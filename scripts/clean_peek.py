@@ -258,6 +258,51 @@ def trades_and_deals(r2, sym: str) -> int:
     return 0
 
 
+def table_ranges(r2) -> int:
+    """TABLE_RANGES: every clean/current table and every archive/ and prices/ parquet folder: rows, columns and the
+    min/max of each date-like column (read-only, 21 Nov 2026: inventory of what is held)."""
+    import io as _io
+    import os as _os
+    import pandas as _pd
+    bucket = _os.environ.get('R2_BUCKET_NAME')
+    keys, token = [], None
+    while True:
+        kw = {'Bucket': bucket}
+        if token:
+            kw['ContinuationToken'] = token
+        resp = r2.list_objects_v2(**kw)
+        keys += [o['Key'] for o in resp.get('Contents', []) if o['Key'].endswith('.parquet')
+                 and o['Key'].split('/')[0] in ('clean', 'archive', 'prices', 'marketcap', 'indices', 'reference')]
+        if not resp.get('IsTruncated'):
+            break
+        token = resp['NextContinuationToken']
+    groups = {}
+    for k in keys:   # a folder of partitions (archive/x/year=2026.parquet, prices/daily/nse/2026-10.parquet) is one table
+        parts = k.split('/')
+        g = k if parts[0] == 'clean' else '/'.join(p for p in parts[:-1] if '=' not in p)
+        groups.setdefault(g, []).append(k)
+    for g in sorted(groups):
+        rows, cols, lo, hi = 0, None, {}, {}
+        for k in groups[g]:
+            try:
+                df = _pd.read_parquet(_io.BytesIO(r2.get_object(Bucket=bucket, Key=k)['Body'].read()))
+            except Exception as exc:  # noqa: BLE001
+                print(f'{g}: {k} unreadable ({type(exc).__name__})')
+                continue
+            rows += len(df)
+            cols = cols or list(df.columns)
+            for c in df.columns:
+                if any(w in c.lower() for w in ('date', 'month', 'quarter', '_end', 'ex_date', 'period', 'day')) or c == 'date':
+                    v = _pd.to_datetime(df[c].astype('string'), errors='coerce', format='mixed').dropna()
+                    if len(v):
+                        lo[c] = min(lo.get(c, v.min()), v.min())
+                        hi[c] = max(hi.get(c, v.max()), v.max())
+        rng = '; '.join(f'{c} {lo[c].date()}..{hi[c].date()}' for c in lo)
+        print(f'TABLE {g} | files {len(groups[g])} | rows {rows:,} | {rng}')
+        print(f'  columns: {", ".join(map(str, cols or []))}')
+    return 0
+
+
 def sizes(r2) -> int:
     """SIZES: objects and bytes per top-level folder, and per second level for the three largest (read-only, 15 Nov
     2026: the owner asked why the bucket holds 11.89 GB)."""
@@ -1283,6 +1328,8 @@ def main() -> int:
         return results_orphans(r2)
     if syms == ['COMPRESS']:   # gzip ratio and age per folder (15 Nov)
         return compress_age(r2)
+    if syms == ['TABLE_RANGES']:   # rows, columns and date ranges of every stored table (21 Nov)
+        return table_ranges(r2)
     if syms == ['SIZES']:   # objects and bytes per folder (15 Nov)
         return sizes(r2)
     if syms and syms[0].startswith('RAW_DEALS:'):   # one security-day of raw bulk and block rows (19 Nov)
