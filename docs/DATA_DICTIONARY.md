@@ -426,12 +426,12 @@ quarter, so year-on-year comparisons need our own history.
 | `symbol`, `company`, `isin`, `company_display`, `unmatched_security` | As listed; ISIN from the XBRL, else the security master |
 | `period_end`, `audited`, `consolidated`, `revision`, `revised_at`, `revision_remark` | As NSE lists them |
 | `broadcast_at`, `broadcast_date` | NSE's broadcast time (IST), else the filing's creation time |
-| `kind` | XBRL layout from its file name: `INDAS`, `NBFC_INDAS`, `BANKING`, `GI`, `LI` |
+| `kind` | XBRL layout from its file name: `INDAS`, `NBFC_INDAS`, `NONINDAS`, `BANKING`, `GI`, `LI` (`INTEGRATED_FILING_{kind}_...`), `INS_IND_AS` (insurers under Ind AS 117, `IF_INS_COM_IND_AS_...`, 21 Nov 2026) |
 | `xbrl_url`, `ixbrl_url`, `pdf_url` | Links; `pdf_url` blank when NSE shows `.../corporate/null` |
-| `xbrl_status` | `ok`, `pending` (refused or over the night's cap of 500; retried), `no_xbrl`, `failed: <error>` |
+| `xbrl_status` | `ok`, `pending` (refused or over the night's cap of 500; retried), `no_xbrl`, `no_xbrl_at_nse` (NSE lists the file at 0 bytes, or its link answers 404; not fetched), `failed: <error>` |
 | `bse_code`, `xbrl_symbol`, `rounding`, `reporting_quarter`, `period_type`, `period_start`, `period_end_xbrl`, `board_meeting`, `audit_opinion`, `segments` | From the XBRL |
 | `quarter_*`, `ytd_*` (`revenue`, `other_income`, `total_income`, `total_expenses`, `finance_costs`, `depreciation`, `profit_before_exceptional_and_tax`, `exceptional_items`, `profit_before_tax`, `tax`, `profit`, `profit_owners`, `eps_basic`, `eps_diluted`), `ytd_start` | The quarter and the year to date under the INDAS names; blank where the layout files a line under other names (all facts are in the archive). `revenue`, `profit` and `profit_owners` are read under each layout's own names (20 Nov 2026, `results.TOP_LINE`): see `revenue_basis` |
-| `revenue_basis` | Which line `revenue` is: `ind_as_revenue` (INDAS, NBFC_INDAS: `RevenueFromOperations`), `igaap_revenue` (NONINDAS: `RevenueFromOperations`), `bank_total_income` (BANKING: `Income`, interest earned plus other income; profit `ProfitLossForThePeriod`, owners' `ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates`), `insurer_net_premium` (LI: `NetPremiumIncome`; profit `ProfitLossAfterTaxAndExtraordinaryItems`), `insurer_premium_earned` (GI: `PremiumEarned`; profit `ProfitLossAfterTax`). Blank when the filing has no such line. Comparisons (year ago, derived quarters) are made only within one basis and one of standalone / consolidated |
+| `revenue_basis` | Which line `revenue` is: `ind_as_revenue` (INDAS, NBFC_INDAS: `RevenueFromOperations`), `igaap_revenue` (NONINDAS: `RevenueFromOperations`), `bank_total_income` (BANKING: `Income`, interest earned plus other income; profit `ProfitLossForThePeriod`, owners' `ProfitLossAfterTaxesMinorityInterestAndShareOfProfitLossOfAssociates`), `insurer_net_premium` (LI: `NetPremiumIncome`; profit `ProfitLossAfterTaxAndExtraordinaryItems`), `insurer_premium_earned` (GI: `PremiumEarned`; profit `ProfitLossAfterTax`), `insurer_insurance_revenue` (INS_IND_AS: `InsuranceRevenue`; profit `ProfitLossForPeriod`; 21 Nov 2026, GODIGIT). Blank when the filing has no such line. From 21 Nov 2026 a line is read from its own context or any other plain context with the same start and end (`results.same_period`; 51 Sep 2026 filings had put the period end in a metadata context). Comparisons (year ago, derived quarters) are made only within one basis and one of standalone / consolidated |
 | `ytd_disagrees` | True where the filing's quarter revenue is above its own year to date (neither is used) |
 | `superseded` | A later filing of the same company, period end and basis was broadcast |
 | `quarter_derived` | True where the filing gives only its year to date (a half year: no quarter context of about three months) and the `quarter_*` lines are that less the previous filing on the same basis covering the same year to the quarter before (13 Nov 2026); EPS is not derived |
@@ -524,7 +524,12 @@ A filing whose XBRL is not read yet holds no figure and is left out (`not_parsed
 `pending`, at most 150 read a night). Run-report counts (`clean/reports/bse_events/{date}.json`, stream
 `shareholding`): `listed`, `dual_listed_skipped`, `isin_in_nse_table_skipped`, `xbrl_fetched`, `xbrl_status`,
 `categories_status`, and in `clean`: `dual_listed_left_out`, `isin_in_nse_table_left_out`, `not_parsed_yet`,
-`unmatched_securities`; `coverage` is NSE's coverage block. Archive: `archive/bse_events/shareholding/year=YYYY.parquet`;
+`unmatched_securities`, `listed_left_to_nse_not_read`; `coverage` is NSE's coverage block. Archive:
+`archive/bse_events/shareholding/year=YYYY.parquet`, every filing BSE listed (from 21 Nov 2026; before, a company left to
+NSE was dropped before the merge: 10,863 of 24,558 raw rows missing, raw coverage audit). Archive-only column
+`left_to_nse`: `isin_in_nse_table` or `nse_symbol` when the company is NSE's (its XBRL not read here, `xbrl_status`
+`on_nse`; what was read before NSE had it is kept), blank otherwise; run count `archived_left_to_nse`. The lists kept
+in raw are archived again with `--shp-from-raw` (BSE History Backfill input `shp_from_raw`);
 raw: `raw_v2/bse/shareholding_filings/` (the lists) and `raw_v2/bse/shareholding_xbrl/` (each file gzip-compressed with
 no timestamp, `params.sha256_as_sent` the hash of the bytes BSE sent). Checked live on 22 Oct 2026: Oscar Global
 (530173) and BKM Industries (539043), Sep 2026: investor types `match`, members add up to the promoter total.
@@ -691,8 +696,9 @@ dropped with that reason.
 
 The official four-level classification (macro-economic sector > sector > industry > basic industry), one row per
 ISIN, so pages can filter by industry. `scripts/industry.py`, parsers in `insiders_clean/industry.py`, workflow
-`.github/workflows/industry.yml` (nightly 08:13 IST, about 400 symbols per exchange; Run workflow with `full`
-ticked for the first run). Raw answers in `raw_v2/nse/quote_equity/`, `raw_v2/bse/comheadernew/`,
+`.github/workflows/industry.yml` (nightly 08:13 IST, at most 400 symbols per exchange; Run workflow with `full`
+ticked for every due symbol; BSE is asked 4 at a time, `INDUSTRY_BSE_WORKERS`, the first refusal stops all). On
+21 Nov 2026: 4,835 companies with four levels, 867 NSE-only companies on the VR export's two, 40 with no row. Raw answers in `raw_v2/nse/quote_equity/`, `raw_v2/bse/comheadernew/`,
 `raw_v2/bse/scrip_list/`; the latest answer per symbol in `archive/industry/{nse,bse}.parquet` (with `status`:
 `ok`, `no_industry`, `not_found`, `error`, and `fetched_at`). An answer is fetched again after 30 days (`ok`) or 7
 (anything else); a symbol never fetched comes first. While it runs, the fetch stores its raw answers and a
@@ -705,7 +711,7 @@ an exchange.
 
 | Source (`source`) | Where | Levels |
 |---|---|---|
-| `nse` | `www.nseindia.in/api/quote-equity?symbol=SYM`, key `industryInfo` (one call per symbol of `securities` with an INE ISIN). **Not answering yet**: HTTP 403 from the dev container and from GitHub's runners on both `www.nseindia.com` and `www.nseindia.in` (19 Nov 2026, the workflow's probe job); the collector keeps asking and stops NSE for the night on a refusal | `macro`, `sector`, `industry`, `basicIndustry` |
+| `nse` | `www.nseindia.in/api/quote-equity?symbol=SYM`, key `industryInfo` (one call per symbol of `securities` with an INE ISIN). **Not answering**: HTTP 403 from the dev container and from GitHub's runners on both `www.nseindia.com` and `www.nseindia.in` (19 Nov 2026, the workflow's probe job; still so on 21 Nov); the collector keeps asking and stops NSE for the night on a refusal | `macro`, `sector`, `industry`, `basicIndustry` |
 | `bse` | `api.bseindia.com/BseIndiaAPI/api/ComHeadernew/w?quotetype=EQ&scripcode=CODE&seriesid=` (the quote page header), for BSE's active equity scrips (`ListofScripData/w`, 4,849 with an INE ISIN), those NSE cannot cover first, then the rest (so every company has BSE's words while NSE refuses). Plain requests answer from GitHub's runners. Fetched 19 Nov 2026 (`tests/fixtures/industry/`) | `Sector`, `IndustryNew`, `IGroup`, `ISubGroup`: the same scheme and words as NSE's (ABB: Industrials / Capital Goods / Electrical Equipment / Heavy Electrical Equipment on both) |
 | `vr_master` | The Value Research export (`reference_data/security_master_20260901.csv`), placed by NSE symbol or BSE code as in `securities`; only where neither exchange classifies the ISIN | Its own two levels, in `sector` and `industry`; `macro` and `basic_industry` empty. Its words are not the exchanges' ("Financial", not "Financial Services") |
 
@@ -726,7 +732,7 @@ and `industry_source` by ISIN; `prefix='ind_'` beside a table that already has `
 
 ## Not yet collected
 
-BSE-only companies have no Company page (it is keyed by NSE symbol).
+BSE-only companies have a Company page by BSE code since 14 Nov 2026 (#261: `/company?symbol=<BSE code>`, rows by ISIN).
 Results filed before 15 Oct 2026's first run in the integrated format beyond the nightly window (NSE's
 `corporates-financial-results` answers only for the old format; integrated filing is collected from 15 Oct 2026,
 `results` above, and can be backfilled by date range). The trading window is still dated from the meeting day.
@@ -765,7 +771,7 @@ Prices adjusted for splits, bonuses and filed demergers (a demerger at its ex-da
 | `last_date`, `latest_close` | Last session with a print and its adjusted close |
 | `high_52w`, `low_52w`, `pct_off_high` | Range over the 365 days to the last stored session; `pct_off_high` = close / high - 1 |
 | `ret_90d`, `ret_180d` | Price change over 90 and 180 calendar days |
-| `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses seen in the price table |
+| `last_split_date`, `last_split_factor`, `n_splits` | Splits and bonuses applied (kind `split_bonus`; demergers are applied but not counted here) |
 | `adv_20d`, `adv_sessions` | Average traded value (₹) per session over the stock's last 20 sessions with a print, NSE + BSE summed per day (`slim.average_daily_value`), and how many sessions it rests on. A decision's value over it is the "× a day's trade" column (19 Nov 2026) |
 | `market_cap`, `mcap_rank`, `mcap_bucket` | NSE market cap on the last stored day; bucket by rank (1-100 Large, 101-250 Mid, 251-500 Small, rest Micro), computed by us, not AMFI's list. BSE-only names have none |
 
@@ -778,7 +784,7 @@ insider table on every rerun. Read by `store.snapshot()`. A figure the data lack
 | Column | Meaning |
 |---|---|
 | `isin`, `symbol`, `company` | Identity; `company` is the security master's display name, else the price file's name |
-| `price_date`, `latest_close`, `high_52w`, `low_52w`, `pct_off_high`, `ret_90d` | From the price summary (adjusted for splits and bonuses) |
+| `price_date`, `latest_close`, `high_52w`, `low_52w`, `pct_off_high`, `ret_90d` | From the price summary (adjusted for splits, bonuses and filed demergers) |
 | `range_pos` | Where the close sits in the 52-week range: 0 at the low, 100 at the high; blank for a flat range |
 | `market_cap`, `mcap_bucket` | NSE's market cap on the last stored day and the size bucket by rank (as the price summary) |
 | `promoter`, `pledge`, `mf`, `fpi`, `insurance`, `aif`, `retail` | The latest filed value of each, in % (promoter holding, pledge as % of promoter shares, and the share of the company held by mutual funds, foreign portfolio investors, insurers, AIFs, retail), from NSE's shareholding table plus BSE-only companies |
@@ -790,7 +796,25 @@ insider table on every rerun. Read by `store.snapshot()`. A figure the data lack
 
 ## Adjustment factors (computed, not stored yet)
 
-`insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table; `kind` is `split_bonus` (the only kind applied), `other_large`, `minor`, `none` or `unknown`; `kind_basis` says how a large reset was classified: `action` (a filed bonus or split in `actions` / `bse_actions`, factor within 1.5% of the filed ratio), `action_mismatch` (filed, but the factor differs: not applied), `action_not_split_bonus` (only a dividend, rights or buyback filed that day: not applied), `ratio` (nothing filed; the clean-ratio guess). Adjusted price at T uses only factors dated up to T.
+`insiders_clean/adjust.py` derives `factor = prev_close / previous close` per exchange and ISIN from the price table
+(NSE side-window series `BL` and `T0` left out), then classifies each session:
+
+| `kind` | Applied | When |
+|---|---|---|
+| `split_bonus` | Yes | A filed bonus or split, or (nothing filed) a reset over 5% matching a clean ratio that the close moves with |
+| `demerger` | Yes (since 20 Nov 2026, owner directive) | A filed demerger (NSE `Demerger`, BSE `Spin Off`): the exchange's base price where it reset one, else ex-date close / previous close when that move is over 5%. A filed scheme of arrangement or amalgamation only on an exchange base-price reset |
+| `other_large` | No | A reset over 5% not classified above (rights, unfiled demergers, relistings, series moves, special dividends) |
+| `minor` | No | 0.1% to 5% (mostly cash dividends) |
+| `unknown` | No | No usable previous print (none within 10 days, or no base price), or the layer lacks the previous session (`previous_session_missing`) |
+| `none` | – | No reset |
+
+`kind_basis`: `action` (filed bonus or split, factor within 1.5% of the filed ratio), `action_price` (filed bonus or
+split priced from the close: base price missing, or after a gap of up to 31 days), `ratio` (nothing filed; the
+clean-ratio guess), `action_base_price` (demerger on an exchange base-price reset), `action_close` (demerger at the
+ex-date close); not applied: `action_mismatch`, `action_not_split_bonus` (only a dividend, rights or buyback filed),
+`ratio_price_disagrees`, `previous_session_missing`. `KIND_ADJUSTED = ('split_bonus', 'demerger')`. Adjusted price at T
+uses only factors dated up to T. A BSE row takes NSE's factor only on a date NSE printed (`inherit_nse`). Rules:
+`docs/CLEAN_LAYER.md`, Price adjustment.
 
 ### Investors page (read from `deals`; `insiders_clean/investors.py`, `fund_managers.py`)
 

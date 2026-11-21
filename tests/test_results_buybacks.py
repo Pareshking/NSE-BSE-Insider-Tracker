@@ -211,3 +211,30 @@ def test_sast_actions_and_the_shareholding_list_keep_their_raw_bytes(monkeypatch
                   raw=RawStore(r2, bucket='b', collector='test'))
     for d in ('sast', 'actions', 'shareholding_list'):
         assert any(k.startswith(f'raw_v2/nse/{d}/fetches/') for k in r2.objects), d
+
+
+def test_statement_lines_in_a_sibling_context_are_read():
+    # 21 Nov 2026: DateOfEndOfReportingPeriod in a metadata context, revenue and profit in another context for the
+    # same quarter (AAREYDRUGS, AMANTA, HDBFS ... Sep 2026): both are read as the quarter.
+    from insiders_clean import results as R
+    parsed = {'contexts': {'StatementStatic1D': {'start': '2026-07-01', 'end': '2026-09-30', 'instant': False, 'dimension': False},
+                           'OneD': {'start': '2026-07-01', 'end': '2026-09-30', 'instant': False, 'dimension': False},
+                           'OneI': {'start': None, 'end': '2026-09-30', 'instant': True, 'dimension': False},
+                           'Seg': {'start': '2026-07-01', 'end': '2026-09-30', 'instant': False, 'dimension': True}},
+              'facts': {'StatementStatic1D': {'DateOfEndOfReportingPeriod': '2026-09-30', 'ISIN': 'INE000A01010'},
+                        'OneD': {'RevenueFromOperations': 120.0, 'ProfitLossForPeriod': 9.0},
+                        'Seg': {'RevenueFromOperations': 999.0}}}
+    out = R.summary(parsed, 'INDAS')
+    assert out['quarter_revenue'] == 120.0 and out['quarter_profit'] == 9.0 and out['revenue_basis'] == 'ind_as_revenue'
+
+
+def test_ind_as_117_insurer_reads_insurance_revenue():
+    from insiders_clean import results as R
+    url = 'https://nsearchives.nseindia.in/corporate/xbrl/IF_INS_COM_IND_AS_21009_WebXMLFile_20261112_145426721.xml'
+    assert R.kind_of(url) == 'INS_IND_AS'
+    parsed = {'contexts': {'OneD': {'start': '2026-07-01', 'end': '2026-09-30', 'instant': False, 'dimension': False}},
+              'facts': {'OneD': {'DateOfEndOfReportingPeriod': '2026-09-30', 'InsuranceRevenue': 27204900000.0,
+                                 'ProfitLossForPeriod': 1423900000.0}}}
+    out = R.summary(parsed, 'INS_IND_AS')
+    assert out['quarter_revenue'] == 27204900000.0 and out['revenue_basis'] == 'insurer_insurance_revenue'
+    assert out['quarter_profit'] == 1423900000.0
