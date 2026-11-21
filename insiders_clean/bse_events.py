@@ -18,7 +18,9 @@ Links (each counted in the run report):
   than the move; the moved rows themselves are not shown.
 * Shareholding: collected for companies with no NSE symbol only (NSE has the
   rest); a row whose ISIN is in NSE's shareholding table is left out too, so
-  no BSE row is on NSE and nothing is counted twice. A filing whose XBRL is
+  no BSE row is on NSE and nothing is counted twice. The archive holds every
+  listed filing; those left to NSE and not read are left out first
+  (shareholding_input). A filing whose XBRL is
   not parsed yet holds no figure and is left out. Each is counted.
 """
 from __future__ import annotations
@@ -99,6 +101,20 @@ def drop_moved(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     moved_at = pd.Series(last_move.reindex(key).to_numpy(), index=listed.index)
     gone = moved_at.notna() & (ts(listed['intimation_ts']).isna() | (ts(listed['intimation_ts']) <= moved_at))
     return listed[~gone], int(gone.sum())
+
+
+def shareholding_input(arch: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """(archive rows the shareholding clean step reads, rows left out). Every
+    filing BSE lists is archived (21 Nov 2026); one whose company is NSE's
+    (`left_to_nse` set by collectors/bse/events.py) and whose XBRL was not read
+    here (`xbrl_status` on_nse) is left out before anything else, as it was
+    before it was archived, so it cannot stand in for another submission of
+    its company's quarter. Counted in the run report. The clean table's
+    columns are as before (no `left_to_nse`)."""
+    if 'left_to_nse' not in arch:
+        return arch, 0
+    out = arch['left_to_nse'].notna() & arch['xbrl_status'].astype('string').eq('on_nse').fillna(False)
+    return arch[~out].drop(columns='left_to_nse'), int(out.sum())   # the column is the archive's, not the table's
 
 
 def clean(arch: pd.DataFrame | None, master: SecurityMaster, nse: pd.DataFrame | None, stream: str):
