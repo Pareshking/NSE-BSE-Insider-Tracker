@@ -1,0 +1,59 @@
+name: Raw coverage audit (read-only)
+
+# For every raw_v2 source and dataset: is everything in the raw bytes also in a table? (scripts/raw_coverage.py)
+# So the owner can decide, source by source, whether raw files could ever be deleted. Reads R2 only (GET and LIST):
+# no exchange call, no model, no write. Writes only the job summary and the uploaded artifact. Not in the
+# r2-archive-writes group: it never writes, so it can run beside the nightly.
+on:
+  workflow_dispatch:
+    inputs:
+      sources:
+        description: 'Comma list of raw_v2 sources (nse, bse, amc, exchange_files, amfi, nsdl, sebi) and/or raw (the older layout); all = every one'
+        required: false
+        default: 'all'
+      sample:
+        description: 'Records per dataset whose key fields are compared raw -> parsed -> stored'
+        required: false
+        default: '5'
+      max_blobs:
+        description: 'Distinct raw blobs re-parsed per dataset (a random sample when there are more)'
+        required: false
+        default: '300'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: raw-coverage
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Audit
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          SOURCES: ${{ inputs.sources }}
+          SAMPLE: ${{ inputs.sample }}
+          MAX_BLOBS: ${{ inputs.max_blobs }}
+        # 40 minutes of datasets at most; those not reached are listed as "not checked: time budget reached"
+        run: >-
+          python -u scripts/raw_coverage.py --sources "$SOURCES" --sample "$SAMPLE" --max-blobs "$MAX_BLOBS"
+          --budget-minutes 40 --out artifacts/raw_coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: raw-coverage
+          path: artifacts/raw_coverage/
+          if-no-files-found: warn

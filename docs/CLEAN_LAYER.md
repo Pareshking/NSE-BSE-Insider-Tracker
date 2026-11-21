@@ -128,6 +128,16 @@ untouched; a filing with no raw copy (fetched before 12 Oct 2026) is fetched
 again by the normal path whenever it is in the listing window (`days=400`,
 `chain=1` for four quarters), and the download is kept raw like any other.
 
+**Raw coverage audit (read-only).** Actions -> **Raw coverage audit** (`scripts/raw_coverage.py`; inputs `sources`,
+`sample`, `max_blobs`) lists every `raw_v2/` source and dataset in R2 and, where the code names a parser and a table
+(`SPECS` in the script), re-parses the raw answers with the collector's own parser and looks the rows up in the
+archive: counts (fetch records, blobs, bytes, fetch days; raw rows, parsed rows, rows in the table, rows the parser
+drops with its reasons), raw fields no table keeps, `sample` records compared raw -> parsed -> stored, and what the code
+or docs say about the source still serving old data. Verdict per dataset: fully captured, gaps (with the specifics),
+not checked (with the reason: bounded sample, time, no adapter) or no parser found. GET and LIST only; the report is
+the job summary and the `raw-coverage` artifact. It is evidence for a delete decision, not one: a dataset re-parsed
+from a sample is never called fully captured.
+
 ## Product window
 
 The product holds transactions dated on or after 8 Oct 2025: the last one
