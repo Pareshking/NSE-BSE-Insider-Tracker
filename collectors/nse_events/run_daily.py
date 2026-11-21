@@ -544,6 +544,9 @@ def fetch_meetings(nse, start: date, today: date, raw=None, backfill_from: date 
     return df, dropped
 
 
+ACTION_INDEXES = ('equities', 'sme')   # NSE main board and SME board
+
+
 def fetch_actions(nse, start: date, today: date, raw=None, backfill_from: date | None = None):
     """(actions, dropped). A backfill goes one calendar month per call. Audit 20 Nov 2026: NSE's action archive
     began with the nightly of 28 Sep 2026 (10 days back each run) and was never backfilled, so every split or bonus
@@ -551,12 +554,17 @@ def fetch_actions(nse, start: date, today: date, raw=None, backfill_from: date |
     05 Jun 2026, BSE-listed from 12 Jun; TEMBO 05 Aug 2026, BSE from 15 Oct; SIKKO 27 Nov 2025, NSE only)."""
     spans = month_chunks(backfill_from, today) if backfill_from else [(start, today)]
     frames, dropped = [], 0
+    # Audit 21 Nov 2026: only index=equities was asked, so NSE's SME board had no actions at all; all 12 companies
+    # behind the study universe's 13 unexplained price jumps are NSE SME names with no BSE code and no action row
+    # (VMARCIND -81% 07 Jul 2026, ORIANA and DHARIWAL with a new ISIN, the mark of a split). SME is asked too
+    # (ACTION_INDEXES); its rows carry series SM/ST, so their event ids never collide with the main board's.
     for a, b in spans:
-        if raw is not None and backfill_from:
-            nse.on_response = raw_hook(raw, 'actions', {'from': a.isoformat(), 'to': b.isoformat()})
-        df, n = parsers.parse_corporate_actions(nse.corporate_actions(a, b))
-        frames.append(df)
-        dropped += n
+        for index in ACTION_INDEXES:
+            if raw is not None and backfill_from:
+                nse.on_response = raw_hook(raw, 'actions', {'from': a.isoformat(), 'to': b.isoformat(), 'index': index})
+            df, n = parsers.parse_corporate_actions(nse.corporate_actions(a, b, index=index))
+            frames.append(df)
+            dropped += n
     full = [f for f in frames if not f.empty]
     df = pd.concat(full, ignore_index=True).drop_duplicates('event_id', keep='last') if full else frames[0]
     return df, dropped

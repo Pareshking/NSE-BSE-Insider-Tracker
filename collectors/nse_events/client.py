@@ -92,8 +92,8 @@ class NSEClient:
         j = self.get(f'{BASE}/api/corporate-pledgedata-sast3132?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
         return j.get('data', []) if isinstance(j, dict) else j
 
-    def corporate_actions(self, start: date, end: date) -> list[dict]:
-        j = self.get(f'{BASE}/api/corporates-corporateActions?index=equities&from_date={self._d(start)}&to_date={self._d(end)}')
+    def corporate_actions(self, start: date, end: date, index: str = 'equities') -> list[dict]:
+        j = self.get(f'{BASE}/api/corporates-corporateActions?index={index}&from_date={self._d(start)}&to_date={self._d(end)}')
         return j if isinstance(j, list) else j.get('data', [])
 
     def board_meetings(self, start: date, end: date) -> list[dict]:
