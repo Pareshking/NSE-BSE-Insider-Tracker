@@ -298,8 +298,20 @@ def bse_deals(category: str):
 def udiff(exchange: str):
     def run(r2, run_date, dry, stats):
         from insiders_clean import prices
-        frames = _concat(prices.udiff_extra(b, exchange.upper())
-                         for _, b in bodies(r2, records(r2, 'exchange_files', f'{exchange}_udiff_cm'), stats))
+        def read(b):
+            # BSE answers a day with no file with its home page and status 200 (scripts/price_backfill.py); such a
+            # blob, or any that is not a UDiFF file, is counted and skipped, not allowed to stop the target.
+            try:
+                return prices.udiff_extra(b, exchange.upper())
+            except Exception as exc:  # noqa: BLE001
+                stats['blobs_unreadable'] = stats.get('blobs_unreadable', 0) + 1
+                stats.setdefault('unreadable_reasons', {})
+                k = type(exc).__name__
+                stats['unreadable_reasons'][k] = stats['unreadable_reasons'].get(k, 0) + 1
+                return None
+        frames = _concat(f for f in (read(b) for _, b in bodies(r2, records(r2, 'exchange_files',
+                                                                              f'{exchange}_udiff_cm'), stats))
+                         if f is not None)
         if not len(frames):
             return
         tmpl = prices.UDIFF_EXTRA_KEY.replace('{exchange}', exchange)
