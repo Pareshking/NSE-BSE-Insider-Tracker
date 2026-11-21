@@ -4,6 +4,17 @@ What is open, in order, and how we will know each is done. Update this the
 same day something is promised, started or finished. Pages follow the data:
 `docs/DATA_TO_PAGES.md` maps each dataset to the sections it unlocks.
 
+## Fund-house files: every line archived, 21 Nov 2026 (branch `mf-all-lines`)
+
+Owner: every line of every raw file must reach the database. The raw coverage audit (21 Nov) found the fund-house
+parser kept equity only (ICICI 33,232 non-equity lines, nps_lic 66,409 only in raw), skipped sheets and summed
+duplicate lines. Now every filled row of every sheet read goes to `archive/mf_lines/` with its kind (equity, debt,
+money market, cash, derivative, other, from the workbook's own headings), and every sheet not read to
+`archive/mf_sheets_skipped/` with the reason (`docs/DATA_DICTIONARY.md`); the equity tables are byte-identical
+(`tests/test_mf_lines.py`). **Next:** after merge, run Mutual fund portfolios (workflow) once with `lines` ticked
+(months and houses blank) to fill every month already in raw, then Raw coverage audit with sources `amc`: the
+non-equity lines should be found stored; what stays is the rows of skipped sheets (index and notes sheets), named.
+
 ## Fund houses that failed in run 44654006211, 20 Nov 2026 (branch `mf-house-fixes`, draft PR)
 
 Edelweiss and Bandhan had failed in every run with a browser-read house since #288: their readers started a second

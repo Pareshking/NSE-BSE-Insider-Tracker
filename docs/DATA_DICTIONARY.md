@@ -647,6 +647,46 @@ scheme read), `archive/amfi_schemes/month=YYYY-MM.parquet` (AMFI's list; raw in 
 archived before 19 Nov 2026 are added by `--schemes` (workflow input `schemes`): from raw where stored, else fetched again,
 written only when they add up to the archived house rows.
 
+### Every line of every file (`archive/mf_lines/` and `archive/mf_sheets_skipped/`, from 21 Nov 2026)
+
+Owner, 21 Nov 2026: nothing may exist only in raw. The equity tables above keep equity shares only (an INE ISIN with
+security code 01 and a quantity) and sum a stock's lines per scheme; these two archives keep the rest. Written by
+`scripts/mf_portfolios.py` for every file it reads (nightly and when `--schemes` downloads again), parsed by
+`insiders_clean/mf_holdings.parse_workbook_lines` in the same pass as `parse_workbook` (whose rows, and so every
+equity table, are unchanged: `tests/test_mf_lines.py` compares them byte for byte with the parser before). Both are
+merged by the file's sha256: a file read again replaces its own rows, another file for the same month (a new version
+at a new address) keeps its own. Past months: `--lines` (workflow input `lines`) reads every raw file already stored
+(`raw_v2/amc/{house}/portfolio_month/`, HTTP 200, each distinct file once) that is in neither archive yet; nothing is
+downloaded. The raw coverage audit (`scripts/raw_coverage.py`, source `amc`) looks every line up here.
+
+`archive/mf_lines/month=YYYY-MM/{house}.parquet`, one row per filled row of every sheet read (blank rows are not lines):
+
+| Column | Meaning |
+|---|---|
+| `amc`, `month` | House key, month-end (the fetch record's `covers.month`) |
+| `file` | The file's name in its address; `blob_sha256` the sha256 of its bytes (the raw blob `raw_v2/amc/{house}/portfolio_month/blobs/{sha[:2]}/{sha}.*`) |
+| `workbook` | The workbook's name inside a zip; blank for a plain workbook |
+| `sheet`, `row` | Sheet name and row number as read (1 = the first row the reader gives). (`blob_sha256`, `workbook`, `sheet`, `row`) is the key |
+| `row_type` | `title` (above the header row), `header` (the ISIN / Quantity row, also when a block repeats it), `scheme_title` (a 'SCHEME: name' row opening a scheme's block, UTI), `heading` (text only: a section heading or sub-heading), `holding` (a valid ISIN), `value` (no ISIN but a quantity, value or % filled: TREPS, net receivables, cash, a future), `total` ('Total', 'Sub Total', 'Grand Total'), `note` (text over 120 characters) |
+| `scheme` | The scheme the line is under, as `parse_workbook` names it |
+| `isin` | As filed when it is a valid ISIN, else blank |
+| `name` | The name column's cell (on `title` and `header` rows whatever sits in that column) |
+| `line_kind` | `equity`, `debt`, `money market`, `cash`, `derivative` or `other`, from what the workbook says (`mf_holdings.KIND_WORDS`): the section heading above the line ('EQUITY & EQUITY RELATED', 'Debt Instruments', 'Money Market Instruments', 'Derivatives'; 'Others', 'Units of REITs', 'Gold', 'Fixed Deposits' open an `other` section; '(a) Listed / awaiting listing', 'Unlisted' keep the section); for a line with no ISIN its own words first (TREPS: money market; Net Receivables / (Payables): cash); for a holding under no heading the ISIN's equity code, else its own name, industry or rating cell ('GOVERNMENT SECURITIES': debt). Nothing matched: `other`, never guessed. On `title` / `header` rows always `other` |
+| `kind_from` | `heading`, `isin`, `name` or `none`: which of those gave `line_kind` |
+| `section` | The heading text the line is under, as filed (blank before the first heading) |
+| `quantity`, `value_lakh`, `pct_aum` | As `parse_workbook` reads them (`value_lakh` always Rs lakh: the NPS form's rupees divided by 1e5; `pct_aum` as filed, a fraction or a percent) |
+| `rating`, `industry` | The cells of the header's 'Rating' and 'Industry' columns, as filed; one column 'Rating / Industry' fills both |
+| `in_equity_tables` | True when the line is one the equity tables read (a `holding` with an equity ISIN and a quantity) |
+| `cells` | Every cell of the row as text, a JSON list in column order (dates ISO, empty cells null, trailing empties dropped): nothing on the row is lost |
+
+`archive/mf_sheets_skipped/month=YYYY-MM/{house}.parquet`, one row per sheet not read (no row is made up from it):
+`amc`, `month`, `file`, `blob_sha256`, `workbook`, `sheet`, `reason` (`no ISIN and Quantity header`: an index sheet,
+notes, a disclaimer; with `sheet` blank, `file not read (...)`: an answer that is not a workbook we can read;
+`lines not read (...)`: the line reader failed on a sheet or file whose equity rows were still read as before, so a
+failure here never changes the equity tables),
+`rows` (rows the reader gave), `filled_rows`. The rows of a skipped sheet are only in raw; the audit counts them as
+dropped with that reason.
+
 ## Industry classification (`clean/current/industry.parquet`, from 19 Nov 2026)
 
 The official four-level classification (macro-economic sector > sector > industry > basic industry), one row per

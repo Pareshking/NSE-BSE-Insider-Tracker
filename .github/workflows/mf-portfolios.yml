@@ -1,7 +1,8 @@
 name: Mutual fund portfolios
 
 # Fund houses' month-end portfolios (scripts/mf_portfolios.py): found on each house's own disclosure page, stored
-# byte for byte in raw_v2/amc/, parsed into archive/mf_holdings/month=YYYY-MM/{house}.parquet, and the clean tables
+# byte for byte in raw_v2/amc/, parsed into archive/mf_holdings/month=YYYY-MM/{house}.parquet (every line of every file
+# also into archive/mf_lines/, every sheet not read into archive/mf_sheets_skipped/), and the clean tables
 # (mf_holdings, mf_changes, mf_stock_month, mf_coverage) rebuilt from every archived month.
 # SEBI: a house publishes by the 10th of the next month, so the schedule runs daily from the 11th to the 16th (a
 # house late by a day or two is picked up; a month already archived is fetched again only for houses missing it).
@@ -24,6 +25,11 @@ on:
         type: boolean
         required: false
         default: false
+      lines:
+        description: 'Archive every line of every raw file stored that is not yet in archive/mf_lines (from raw only, nothing downloaded)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -35,7 +41,7 @@ concurrency:
 jobs:
   portfolios:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.schemes && 330 || 120 }}   # a scheme backfill re-reads every house-month (19 Nov 2026: 120 cut it off; it resumes where it stopped)
+    timeout-minutes: ${{ (inputs.schemes || inputs.lines) && 330 || 120 }}   # a scheme or lines backfill re-reads every house-month (19 Nov 2026: 120 cut it off; it resumes where it stopped)
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -54,9 +60,11 @@ jobs:
           MONTHS: ${{ inputs.months }}
           HOUSES: ${{ inputs.houses }}
           SCHEMES: ${{ inputs.schemes }}
+          LINES: ${{ inputs.lines }}
         run: |
           args=""
           if [ "$SCHEMES" = "true" ]; then args="--schemes"; fi
+          if [ "$LINES" = "true" ]; then args="$args --lines"; fi
           if [ -z "$MONTHS" ]; then args="$args --latest 2"; else
             for m in $(python scripts/mf_portfolios.py --expand "$MONTHS"); do args="$args --month $m"; done
           fi
