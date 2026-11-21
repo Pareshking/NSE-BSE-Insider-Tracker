@@ -92,5 +92,8 @@ def test_price_zips_go_after_30_days_fetch_records_stay():
         r2.objects[key] = body
         r2.objects[f'raw_v2/exchange_files/nse_pr_zip/fetches/{day}/x.json'] = json.dumps(
             {'blob_key': key, 'covers': {'day': day}, 'url': f'https://n/PR{day}.zip', 'sha256': sha256_hex(body)}).encode()
+    # 21 Nov 2026: a zip whose members are not in archive/nse_pr/ yet stays (nothing may exist only in raw)
+    assert st.price_zips_doomed(r2, date(2026, 11, 15)) == ([], [])
+    r2.objects['archive/nse_pr/mcap_csv/2026-09.parquet'] = parquet(pd.DataFrame({'date': [pd.Timestamp('2026-09-01')]}))
     doomed, gone = st.price_zips_doomed(r2, date(2026, 11, 15))
     assert [g['day'] for g in gone] == ['2026-09-01'] and len(doomed) == 1 and doomed[0][0].endswith('.zip')

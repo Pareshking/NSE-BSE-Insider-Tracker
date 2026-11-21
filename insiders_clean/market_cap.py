@@ -8,6 +8,8 @@ The file name's case differs between years (`MCAP15012025.csv`, `mcap08102026.cs
 from __future__ import annotations
 
 import io
+import json
+import re
 import zipfile
 
 import numpy as np
@@ -43,6 +45,54 @@ def parse_mcap(body: bytes) -> pd.DataFrame:
     for c in ('face_value', 'issue_size', 'close', 'market_cap'):
         df[c] = pd.to_numeric(df[c].str.strip().str.replace(',', '', regex=False).replace('', pd.NA), errors='coerce')
     return df[df['symbol'] != ''][COLUMNS].reset_index(drop=True)
+
+
+# Every member of the PR zip, line by line (owner, 21 Nov 2026: nothing may exist only in raw). The zip holds the mcap
+# file read above and a dozen others (bc: book closures / corporate actions, an: announcements text, pd/pr: prices,
+# gl/hl/tt: gainers, highs and lows, top traded, etf, sme, corporate bonds, ...); scripts/storage_trim.py deletes the
+# zips after 30 days. Each member goes to archive/nse_pr/{kind}/{YYYY-MM}.parquet, `kind` its name without the digits
+# and with its extension ('bc_csv', 'an_txt', 'mcap_csv'): one row per line, `date` the session, `member` the file
+# name, `line` from 0, `text` the line exactly as filed (decoded as Latin-1, which maps every byte, so nothing is
+# lost), and for a CSV member the header's fields as columns (text, stripped header names; a line with more fields
+# than the header keeps them in `extra_fields`). The mcap member is here too, with the columns parse_mcap leaves out.
+PR_MEMBERS_KEY = 'archive/nse_pr/{kind}/{month}.parquet'
+PR_MEMBERS_ID = ['date', 'member', 'line']
+
+
+def pr_kind(name: str) -> str:
+    base = name.rsplit('/', 1)[-1]
+    stem, _, ext = base.rpartition('.')
+    stem = stem if _ else base
+    return re.sub(r'[^a-z_]+', '', re.sub(r'\d+', '', stem.lower())).strip('_') + (f'_{ext.lower()}' if _ else '') or 'unnamed'
+
+
+def pr_members(body: bytes, day) -> dict:
+    """{kind: rows} for every member of a PR zip (see above). `day` is the session the zip was fetched for."""
+    import csv
+    out: dict = {}
+    with zipfile.ZipFile(io.BytesIO(body)) as z:
+        for name in z.namelist():
+            if name.endswith('/'):
+                continue
+            text = z.read(name).decode('latin-1')
+            lines = text.split('\n')        # on newlines only, so each line comes back exactly ('\r' kept)
+            if lines and lines[-1] == '':
+                lines.pop()
+            rows = [{'date': pd.Timestamp(day), 'member': name, 'line': i, 'text': ln} for i, ln in enumerate(lines)]
+            if name.lower().endswith('.csv') and lines:
+                parsed = [next(csv.reader([ln.rstrip('\r')]), []) for ln in lines]
+                header = [h.strip() for h in parsed[0]]
+                cols = [h if h and h not in ('date', 'member', 'line', 'text', 'extra_fields') else f'field_{i}'
+                        for i, h in enumerate(header)]
+                cols = [c if cols.index(c) == i else f'{c}_{i}' for i, c in enumerate(cols)]
+                for r, values in zip(rows[1:], parsed[1:]):
+                    r.update({c: v for c, v in zip(cols, values)})
+                    if len(values) > len(cols):
+                        r['extra_fields'] = json.dumps(values[len(cols):])
+            frame = pd.DataFrame(rows)
+            kind = pr_kind(name)
+            out[kind] = pd.concat([out[kind], frame], ignore_index=True) if kind in out else frame
+    return out
 
 
 def validate(df: pd.DataFrame) -> dict:

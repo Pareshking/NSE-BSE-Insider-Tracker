@@ -1,0 +1,113 @@
+name: Raw re-read into the archive (no exchange request)
+
+# What the collectors used to leave only in raw_v2/ (owner, 21 Nov 2026: every line of every raw file reaches the
+# database), read again from the saved answers into the archive by scripts/raw_reparse.py: rows the clean tables leave
+# out, added with kept = false and their drop_reason; lossless copies (raw_json, bids_json) filled on archived rows;
+# the UDiFF columns and PR zip members into their own tables. raw_v2/ is only read. No exchange is asked, no model is
+# called, and no clean table changes (an archived row keeps every value; a kept row missing from the archive is only
+# counted). Dry run first: it prints the counts and writes nothing. Each group of targets runs in the concurrency group
+# of the job that writes the same archive, so it never writes a file at the same time as that job.
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: >-
+          Comma list or all: bse_actions, bse_meetings, bse_sast, bse_bulk_deals, bse_block_deals, udiff_nse,
+          udiff_bse, nse_pr, index_close (R2 archive writes); nse_actions, nse_meetings, nse_tenders (NSE events);
+          nse_announcements, bse_announcements (announcement collection)
+        required: false
+        default: 'all'
+      add_missing:
+        description: 'Announcements: also add a filing found only in raw (else only counted)'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Count only, write nothing'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  archive_writes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: r2-archive-writes
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Re-read
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          TARGETS: ${{ inputs.targets }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          args=(--targets "${TARGETS:-all}" --within bse_actions,bse_meetings,bse_sast,bse_bulk_deals,bse_block_deals,udiff_nse,udiff_bse,nse_pr,index_close)
+          if [ "$DRY" != "false" ]; then args+=(--dry-run); fi
+          python -u scripts/raw_reparse.py "${args[@]}"
+
+  nse_events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: nse-events
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Re-read
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          TARGETS: ${{ inputs.targets }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          args=(--targets "${TARGETS:-all}" --within nse_actions,nse_meetings,nse_tenders)
+          if [ "$DRY" != "false" ]; then args+=(--dry-run); fi
+          python -u scripts/raw_reparse.py "${args[@]}"
+
+  announcements:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: announcement-collect
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Re-read
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          TARGETS: ${{ inputs.targets }}
+          DRY: ${{ inputs.dry_run }}
+          ADD_MISSING: ${{ inputs.add_missing }}
+        run: |
+          args=(--targets "${TARGETS:-all}" --within nse_announcements,bse_announcements)
+          if [ "$DRY" != "false" ]; then args+=(--dry-run); fi
+          if [ "$ADD_MISSING" = "true" ]; then args+=(--add-missing); fi
+          python -u scripts/raw_reparse.py "${args[@]}"

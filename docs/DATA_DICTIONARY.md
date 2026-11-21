@@ -444,9 +444,12 @@ quarter, so year-on-year comparisons need our own history.
 | `canonical_prev_app_id`, `canonical_submission_type`, `canonical_revision_remark` | archive, NSE insider | NSE's own revision markers from the filing list (clean table: `prev_app_id`, `nse_submission_type`, `nse_revision_remark`). Not part of the row id |
 | `first_seen`, `last_seen` | archive | Run dates a row was first and last collected |
 | `event_id`, `kind`, `stage`, `app_id`, `posted_on`, `xbrl_url`, `xbrl_status`, `xbrl_json`, `raw_json` | `archive/nse_events/issues/year=YYYY.parquet` | One row per further-issue filing (`{kind}:{stage}:{appId}`), NSE's list row as JSON, and the parsed XBRL facts (`{'main': ..., 'groups': ...}`) for preferential filings and QIP listings |
+| `kept`, `drop_reason` | `archive/nse_events/{actions,meetings}/`, `archive/bse_events/{sast,actions,meetings}/` | (21 Nov 2026, owner: every raw row reaches the database) Every row the exchange sent is archived; `kept` false marks a row the clean table leaves out and `drop_reason` says why: `purpose not kept (action_purpose)` (an action that is not a buyback, bonus, split, demerger, capital reduction, scheme, rights or dividend: `purpose` is `other`, `subject` the exchange's text), `no kept purpose (_BM_FLAGS)` / `no kept purpose (BM_FLAGS)` (a meeting with none of the flagged purposes: the purpose text in `nse_purpose` / `description`, flags false), `no symbol or meeting date` (NSE) / `no scrip code or meeting date` (BSE) (a row that cannot be keyed to a meeting, stored on its own), `regulation 10(5) not kept (SAST_KEPT)` and the like (BSE SAST of another regulation; `regulation` is `Reg10(5)`), `repeat of a disclosure in the same answer (same event_id, fields outside the id differ)` (BSE SAST: a second row of one disclosure, e.g. Company_Name with BSE's `-$`, under its own id). Empty on rows archived before then (all kept). The clean step takes the kept rows and drops both columns (`insiders_clean/archive.clean_view`), counting the rest by reason (`archive_not_kept` in the run reports); a not-kept meeting has its own `event_id` (`bm_other`, `bse_bm_other`), so it never takes the place of a kept one. Older rows: `scripts/raw_reparse.py` |
+| `bids_json` | `archive/nse_events/tenders/` | (21 Nov 2026) NSE's bid book of an open offer (`demand`, `bidDetails`), as sent; `raw_json` leaves it out as before. Archive only: not on `clean/current/tenders.parquet` |
+| `raw_json` | `archive/announcements/{nse,bse}/`, `archive/canonical/bse/{bulk,block}_deals/` (history rows) | (21 Nov 2026) The exchange's row as sent, every field: NSE's `difference`, `voiceSummary`, `voiceUrl`; BSE's `AGENDA_ID`, `ANNOUNCEMENT_TYPE`, `ATTACHMENTNAME`, `AUDIO_VIDEO_FILE`, `CRITICALNEWS`, `DataInsDate`, `FILESTATUS`, `Investor_Presentation`, `NSURL`, `OLD`; the deal history's `Security_Name`. Not part of a deal's `canonical_event_id`. A row seen again without it keeps the archived copy (`archive.merge`, `KEEP_IF_MISSING`). Empty on rows archived before then until `scripts/raw_reparse.py` fills it |
 | `raw_v2/...` | R2 | Exact response bytes and one fetch record each: see `docs/CLEAN_LAYER.md` ("Raw layer") |
 | `raw_v2/nse/shareholding_xbrl/` | R2 | Each shareholding XBRL fetched from 12 Oct 2026, gzip-compressed (`.gz`, no timestamp, so the same file is one blob); the fetch record's `params.sha256_as_sent` is the hash of the uncompressed bytes |
-| `event_id` (`nse:{seq_id}`), `seq_id`, `symbol`, `isin`, `company`, `industry`, `subject`, `text`, `file_url`, `file_type`, `file_size`, `file_bytes`, `has_xbrl`, `broadcast_at`, `disseminated_at`, `broadcast_date` | `archive/announcements/nse/year=YYYY/month=MM.parquet` | One row per NSE announcement from 13 Oct 2026 (`collectors/nse_events/announcements.py`), values as filed: `subject` is NSE's subject line, `text` its one-line description, `broadcast_at` NSE's broadcast time in IST. `file_url` is empty where NSE shows `-` (no attachment); `file_type` is `pdf` or `zip` (several PDFs, or a PDF and its XML); `file_bytes` is read from NSE's size text (`0` where NSE shows "0 Bytes"). Concall announcements are not archived (counted per run). No clean table yet |
+| `event_id` (`nse:{seq_id}`), `seq_id`, `symbol`, `isin`, `company`, `industry`, `subject`, `text`, `file_url`, `file_type`, `file_size`, `file_bytes`, `has_xbrl`, `broadcast_at`, `disseminated_at`, `broadcast_date` | `archive/announcements/nse/year=YYYY/month=MM.parquet` | One row per NSE announcement from 13 Oct 2026 (`collectors/nse_events/announcements.py`), values as filed: `subject` is NSE's subject line, `text` its one-line description, `broadcast_at` NSE's broadcast time in IST. `file_url` is empty where NSE shows `-` (no attachment); `file_type` is `pdf` or `zip` (several PDFs, or a PDF and its XML); `file_bytes` is read from NSE's size text (`0` where NSE shows "0 Bytes"). Concall announcements are archived since 15 Oct. `raw_json` (21 Nov 2026): NSE's row as sent. No clean table yet |
 
 ## Insider trades: results dates and the trading window
 
@@ -702,6 +705,42 @@ One row per exchange, date, ISIN, symbol, series, as printed in the exchange's U
 | `date`, `exchange`, `isin`, `symbol`, `series`, `name`, `instrument_id` | Identity as printed that day (symbols and ISINs can change) |
 | `open`, `high`, `low`, `close`, `last`, `prev_close`, `settle` | Prices in rupees, unadjusted; `prev_close` is the exchange's own previous close |
 | `volume`, `value`, `trades` | Traded quantity, traded value, number of trades |
+
+### UDiFF columns the price layer leaves out (`prices/udiff_extra/{nse|bse}/{YYYY-MM}.parquet`, from 21 Nov 2026)
+
+One row per line of a day's UDiFF file (`insiders_clean/prices.udiff_extra`, written by `scripts/price_backfill.py`
+beside the layer; days before then from raw by `scripts/raw_reparse.py udiff_nse,udiff_bse`). Not read by any page or
+clean step: a table of its own because the price layer is read whole by the nightly price steps (a synthetic month of
+3,000 lines a day: 37 KB on disk with zstd against the layer's 3.1 MB, but 69 MB in memory against 27 MB).
+
+| Column | Meaning |
+|---|---|
+| `date`, `exchange`, `isin`, `symbol`, `series` | The price layer's key for the line |
+| `line` | The line's place in the file, from 0 (with `date` and `exchange` it identifies the row) |
+| `BizDt`, `Sgmt`, `FinInstrmTp`, `XpryDt`, `FininstrmActlXpryDt`, `StrkPric`, `OptnTp`, `UndrlygPric`, `OpnIntrst`, `ChngInOpnIntrst`, `SsnId`, `NewBrdLotQty`, `Rmks`, `Rsvd1`-`Rsvd4` | As printed (text), and any column a later file adds |
+
+### PR zip members (`archive/nse_pr/{kind}/{YYYY-MM}.parquet`, from 21 Nov 2026)
+
+Every member of NSE's PR zip, line by line (`insiders_clean/market_cap.pr_members`): the corporate-action file
+(`bc_csv`), the announcements text (`an_txt`), the mcap file (`mcap_csv`, with the `Last Trade Date` parse_mcap leaves
+out) and the rest (`pd_csv`, `pr_txt`, `gl_csv`, `hl_csv`, `tt_csv`, `etf_csv`, `sme_csv`, `corpbond_csv`, ...: `kind`
+is the file name without digits, with its extension). Written by `scripts/price_backfill.py` (NSE_PR); older days from
+raw by `scripts/raw_reparse.py nse_pr`, or fetched again with Price backfill `extras_only` where
+`scripts/storage_trim.py` had deleted the zip (it now deletes a zip only once its day is here).
+
+| Column | Meaning |
+|---|---|
+| `date` | The session the zip was fetched for |
+| `member`, `line` | File name in the zip and line number from 0 (the header is line 0) |
+| `text` | The line exactly as filed (decoded as Latin-1, `\r` kept) |
+| (header fields) | For a CSV member, each field under its header name, as text (empty on line 0); `extra_fields` a JSON list of values past the header |
+
+## Indices (derived, `indices/daily/nse/{YYYY-MM}.parquet`)
+
+NSE's daily index closing file (`ind_close_all_DDMMYYYY.csv`), one row per index and session. `date`, `symbol` (index
+name), `open`, `high`, `low`, `close`, `volume`, `turnover_cr`; from 21 Nov 2026 also `points_change`, `change_pct`
+(NSE's day change), `pe`, `pb`, `div_yield` as printed (empty where NSE prints `-`, and on months written before then
+until `scripts/raw_reparse.py index_close` fills them).
 
 ## Market cap (derived, `marketcap/daily/nse/{YYYY-MM}.parquet`)
 

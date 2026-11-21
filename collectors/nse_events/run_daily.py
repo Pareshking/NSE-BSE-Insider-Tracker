@@ -536,7 +536,7 @@ def fetch_meetings(nse, start: date, today: date, raw=None, backfill_from: date 
     for a, b in spans:
         if raw is not None:
             nse.on_response = raw_hook(raw, 'meetings', {'from': a.isoformat(), 'to': b.isoformat()})
-        df, n = parsers.parse_board_meetings(nse.board_meetings(a, b))
+        df, n = parsers.parse_board_meetings(nse.board_meetings(a, b), keep_all=True)
         frames.append(df)
         dropped += n
     full = [f for f in frames if not f.empty]
@@ -562,7 +562,7 @@ def fetch_actions(nse, start: date, today: date, raw=None, backfill_from: date |
         for index in ACTION_INDEXES:
             if raw is not None and backfill_from:
                 nse.on_response = raw_hook(raw, 'actions', {'from': a.isoformat(), 'to': b.isoformat(), 'index': index})
-            df, n = parsers.parse_corporate_actions(nse.corporate_actions(a, b, index=index))
+            df, n = parsers.parse_corporate_actions(nse.corporate_actions(a, b, index=index), keep_all=True)
             frames.append(df)
             dropped += n
     full = [f for f in frames if not f.empty]
@@ -572,7 +572,8 @@ def fetch_actions(nse, start: date, today: date, raw=None, backfill_from: date |
 
 def build_buybacks(r2, master, run_date, report) -> None:
     """clean/current/buybacks.parquet from tenders, daily reports and corporate actions."""
-    arch = {s: merge_into_archive(r2, s, None, run_date)[0] for s in ('tenders', 'daily_buybacks', 'actions')}
+    arch = {s: archive.clean_view(merge_into_archive(r2, s, None, run_date)[0])[0]
+            for s in ('tenders', 'daily_buybacks', 'actions')}
     if all(a is None or a.empty for a in arch.values()):
         return
     bb, rep = buybacks.build(arch['tenders'], arch['daily_buybacks'], arch['actions'])
@@ -1018,7 +1019,13 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
                 report['notes'].append(f'{stream}: NSE refused ({exc}); no further NSE calls tonight')
             except Exception as exc:  # noqa: BLE001 -- one stream failing must not stop the others
                 report['notes'].append(f'{stream}: fetch failed ({type(exc).__name__}: {exc})')
-        entry['fetched'] = 0 if new is None else len(new)
+        # Actions and meetings come with the rows the tables leave out (kept = false, drop_reason; 21 Nov 2026: every
+        # raw row is archived). `fetched` counts the kept rows, as before.
+        kept_new = archive.kept_mask(new) if new is not None else None
+        entry['fetched'] = 0 if new is None else int(kept_new.sum())
+        if new is not None and (~kept_new).any():
+            entry['archived_not_kept'] = {str(k): int(v) for k, v in
+                                          new.loc[~kept_new, archive.DROP_REASON].value_counts().items()}
         if new is not None and len(new) == 0 and days >= EMPTY_NOTE_DAYS:
             # Empty is not "nothing happened" (synthesis C4, 13 Nov 2026: the NSE pledge feed answered [] for 2-12 Nov
             # while Reg 31 filings lag a median 8 days; BSE SAST [] for a week while NSE listed 30): said, not assumed.
@@ -1038,6 +1045,11 @@ def run(r2, nse: NSEClient, today: date, days: int, streams=STREAMS, max_xbrl: i
             entry['unmatched_securities'] = int(clean['unmatched_security'].sum())
             entry['clean_rows'] = len(clean)
             put_parquet(r2, f'clean/current/{stream}.parquet', clean)
+            continue
+        arch, not_kept = archive.clean_view(arch)   # the rows and columns the clean table is built from
+        if not_kept:
+            entry['archive_not_kept'] = not_kept
+        if arch.empty:
             continue
         clean = add_identity(arch, master)
         if stream == 'sast' and 'raw_json' in clean:   # rows stored before the column existed

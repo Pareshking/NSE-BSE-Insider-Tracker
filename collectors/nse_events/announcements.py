@@ -49,6 +49,11 @@ FEEDS = ('equities',)   # main-board investment universe only; SME listings are 
 COLUMNS = ('event_id', 'seq_id', 'market', 'symbol', 'isin', 'company', 'industry', 'subject', 'text', 'file_url',
            'file_type', 'file_size', 'file_bytes', 'has_xbrl', 'xbrl_url', 'broadcast_at', 'disseminated_at', 'broadcast_date')
 
+# NSE's announcement row as sent, every field, on each row `parse` returns (owner, 21 Nov 2026: nothing may exist only
+# in raw; `difference`, `voiceSummary`, `voiceUrl` and others had no column). Rows archived before then lack it until
+# re-parsed from raw_v2 (scripts/announcements_from_raw.py --all).
+RAW_COLUMN = 'raw_json'
+
 # NSE subject lines (the `desc` field, exactly as in Sep 2026's 104 subjects)
 # for each later reading job. Everything else is routine for that purpose.
 READING_GROUPS = {
@@ -180,8 +185,9 @@ def parse(rows: list[dict], market: str = 'equities') -> pd.DataFrame:
             'broadcast_at': at.isoformat() if at is not None else None,
             'disseminated_at': sent.isoformat() if sent is not None else None,
             'broadcast_date': at.date().isoformat() if at is not None else None,
+            RAW_COLUMN: json.dumps(r, ensure_ascii=False, sort_keys=True, default=str),
         })
-    df = pd.DataFrame(out, columns=list(COLUMNS))
+    df = pd.DataFrame(out, columns=list(COLUMNS) + [RAW_COLUMN])
     df['file_bytes'] = df['file_bytes'].astype('Int64')
     df['has_xbrl'] = df['has_xbrl'].astype('boolean')
     return df

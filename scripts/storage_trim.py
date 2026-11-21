@@ -180,7 +180,25 @@ def price_zips_doomed(client, today: date) -> tuple[list[tuple[str, int]], list[
             if b and day >= str((newest.get(b) or {}).get('day', '')):
                 newest[b] = {'blob_key': b, 'day': day, 'url': rec.get('url'), 'sha256': rec.get('sha256')}
     gone = [v for v in newest.values() if v['day'] and v['day'] < cutoff and v['blob_key'] in objs]
+    # Nothing may exist only in raw (owner, 21 Nov 2026): a zip goes only once every member of its day is in
+    # archive/nse_pr/ (scripts/price_backfill.py EXTRAS, or scripts/raw_reparse.py nse_pr for older days).
+    archived = pr_days_archived(client)
+    gone = [v for v in gone if v['day'] in archived]
     return [(v['blob_key'], objs[v['blob_key']]) for v in gone], gone
+
+
+def pr_days_archived(client) -> set[str]:
+    """Days (ISO) whose PR zip members are in archive/nse_pr/{kind}/{YYYY-MM}.parquet: a day counts when the
+    members of that day stored there hold the mcap file (the member every PR zip has)."""
+    import io
+
+    import pandas as pd
+    days = set()
+    for k, _ in listing(client, 'archive/nse_pr/mcap_csv/'):
+        if k.endswith('.parquet'):
+            df = pd.read_parquet(io.BytesIO(client.get_object(Bucket=BUCKET, Key=k)['Body'].read()), columns=['date'])
+            days |= set(pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d'))
+    return days
 
 
 def report(client) -> float:

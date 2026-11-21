@@ -60,7 +60,10 @@ def test_deal_history_maps_to_exactly_the_nightly_row(nightly):
         lists = json.loads(json.dumps([cap.bulk_block_row(r) for r in js(beta)['Table']]))
         night = [val.normalize(cat, r) for r in lists]
         hist_rows = parsers.deal_rows(js(hist)['Table'])
-        key = lambda rows: sorted(json.dumps(r, sort_keys=True) for r in rows)  # noqa: E731
+        # the history row as sent rides along (raw_json, 21 Nov 2026) and is left out of the id
+        assert all(json.loads(r['raw_json']) in js(hist)['Table'] for r in hist_rows)
+        key = lambda rows: sorted(json.dumps({k: v for k, v in r.items() if k != 'raw_json'}, sort_keys=True)  # noqa: E731
+                                  for r in rows)
         assert key(hist_rows) == key(night)
         ids = lambda rows: set(canonical('bse', cat, rows)['canonical_event_id'])  # noqa: E731
         assert ids(hist_rows) == ids(night)

@@ -148,8 +148,9 @@ def build() -> FakeR2:
     ann_df = nann.parse(NSE_ANN, 'equities')
     ann_df.loc[ann_df['seq_id'] == '1002', 'subject'] = 'Something else'
     r.objects['archive/announcements/nse/year=2026/month=10.parquet'] = parquet(ann_df)
-    # BSE actions: every kept row stored
-    act_df, _ = bse_parsers.parse_actions(BSE_ACTIONS)
+    # BSE actions: every row stored, the one the clean table leaves out with kept = false (as the collector writes
+    # them since 21 Nov 2026)
+    act_df, _ = bse_parsers.parse_actions(BSE_ACTIONS, keep_all=True)
     r.objects['archive/bse_events/actions/year=2026.parquet'] = parquet(act_df)
     # NSE SAST: one of the two filings never reached the archive
     sast_df = nse_parsers.parse_sast(NSE_SAST)
@@ -185,19 +186,28 @@ def test_counts(r2):
     assert a['inventory']['blob_bytes'] > 0
     assert a['reparsed']['how'] == 'all 1 blobs'
     c = a['counts']
-    assert (c['raw_rows'], c['parsed_rows'], c['in_table'], c['missing_from_table']) == (2, 1, 1, 0)
-    assert c['unexplained_drop'] == 0
+    assert (c['raw_rows'], c['parsed_rows'], c['in_table'], c['missing_from_table']) == (2, 2, 2, 0)
+    assert c['unexplained_drop'] == 0 and c['stored_not_kept'] == {'purpose not kept (action_purpose)': 1}
     n = by(rep, 'nse', 'announcements')['counts']
     assert (n['raw_rows'], n['parsed_rows'], n['in_table']) == (2, 2, 2)
 
 
-def test_dropped_row_reported_with_parser_reason(r2):
+def test_row_left_out_of_the_clean_table_is_stored_with_its_reason(r2):
     a = by(rc.run(r2, 'b', sample=10, max_blobs=50), 'bse', 'corporate_actions')
-    assert a['counts']['dropped'] == {'purpose not kept (action_purpose)': 1}
-    # everything kept is stored, every raw field is in raw_json: captured, but the design drop is said
-    assert a['verdict'].startswith('gaps: ') and 'drops (only in raw)' in a['verdict']   # dropped rows block a delete
-    assert 'purpose not kept (action_purpose) 1' in a['verdict']
+    assert a['counts']['dropped'] == {} and a['counts']['stored_not_kept'] == {'purpose not kept (action_purpose)': 1}
+    # every row stored, every raw field a column or in raw_json: nothing only in raw
+    assert a['verdict'] == 'fully captured'
     assert set(a['fields']['kept_in_raw_json']) | set(a['fields']['kept_as_column']) >= {'scrip_code', 'Purpose', 'Ex_date'}
+
+
+def test_an_archive_written_before_keep_all_shows_the_row_only_in_raw(r2):
+    r2.frozen = False
+    old, _ = bse_parsers.parse_actions(BSE_ACTIONS)          # kept rows only, as before 21 Nov 2026
+    r2.objects['archive/bse_events/actions/year=2026.parquet'] = parquet(old)
+    r2.freeze()
+    a = by(rc.run(r2, 'b', sample=10, max_blobs=50), 'bse', 'corporate_actions')
+    assert a['counts']['missing_from_table'] == 1
+    assert a['verdict'].startswith('gaps: ') and '1 of 2 parsed rows not in archive/bse_events/actions/' in a['verdict']
 
 
 def test_row_missing_from_table_is_a_gap(r2):
@@ -207,8 +217,13 @@ def test_row_missing_from_table_is_a_gap(r2):
 
 
 def test_unkept_field_detected(r2):
+    # rows archived before raw_json (21 Nov 2026): the parser has no column for nsurl and the row no raw_json
+    r2.frozen = False
+    key = 'archive/announcements/nse/year=2026/month=10.parquet'
+    r2.objects[key] = parquet(pd.read_parquet(io.BytesIO(r2.objects[key])).drop(columns=['raw_json']))
+    r2.freeze()
     a = by(rc.run(r2, 'b', sample=10, max_blobs=50), 'nse', 'announcements')
-    assert 'nsurl' in a['fields']['not_kept']          # the parser has no column for it and the archive no raw_json
+    assert 'nsurl' in a['fields']['not_kept']
     assert 'seq_id' in a['fields']['kept_as_column']
     assert 'an_dt' in a['fields']['value_found_in_a_column']    # renamed to broadcast_at
     assert 'nsurl' in a['verdict']
@@ -235,12 +250,14 @@ def test_bounded_sample_is_not_checked(r2):
     RawStore(r2, bucket='b', collector='nightly', clock=lambda: T2).put(
         'bse', 'corporate_actions', json.dumps({'Table': BSE_ACTIONS_2}).encode(),
         url='https://api.bseindia.com/BseIndiaAPI/api/DefaultData/w', content_type='application/json')
-    act_df, _ = bse_parsers.parse_actions(BSE_ACTIONS + BSE_ACTIONS_2)
+    act_df, _ = bse_parsers.parse_actions(BSE_ACTIONS + BSE_ACTIONS_2)     # kept rows only: the other is only in raw
     r2.objects['archive/bse_events/actions/year=2026.parquet'] = parquet(act_df)
     r2.freeze()
     a = by(rc.run(r2, 'b', sources={'bse'}, sample=5, max_blobs=1), 'bse', 'corporate_actions')
     assert a['inventory']['distinct_blobs'] == 2 and a['reparsed']['blobs'] == 1
-    assert a['bounded'] and 'drops (only in raw)' in a['verdict']   # a gap found in the sample is reported even when bounded
+    # a gap found in the sample is reported even when bounded (which blob was read is random: either the one with the
+    # row only in raw, or one with nothing missing)
+    assert a['bounded'] and (a['verdict'].startswith('gaps: ') or a['verdict'].startswith('not checked: only 1 of 2'))
 
 
 def test_missing_blob_and_old_raw_layout(r2):
@@ -276,7 +293,7 @@ def test_one_dataset_failing_does_not_stop_the_others(r2, monkeypatch):
     monkeypatch.setattr(spec, 'stored', boom)
     rep = rc.run(r2, 'b', sample=5, max_blobs=50)
     assert by(rep, 'nse', 'sast')['verdict'] == 'not checked: audit failed (RuntimeError)'
-    assert by(rep, 'bse', 'corporate_actions')['verdict'].startswith('gaps: ')
+    assert by(rep, 'bse', 'corporate_actions')['verdict'] == 'fully captured'
 
 
 def test_time_budget_reached_is_said(r2):
@@ -367,7 +384,7 @@ def _canonical(exchange, category, mapped):
 def _bse_meetings_table(path):
     from insiders_clean import archive
     data = json.loads((FIX / path).read_text(encoding='utf-8'))
-    return archive.merge(None, bse_parsers.parse_board_meetings(data)[0], RUN, key='event_id')[0]
+    return archive.merge(None, bse_parsers.parse_board_meetings(data, keep_all=True)[0], RUN, key='event_id')[0]
 
 
 def _history():
@@ -378,9 +395,9 @@ def _history():
 ROUND_TRIP = [
     ('nse', 'sast', 'nse_events/sast_reg29.json', 'archive/nse_events/sast/', _events(nse_parsers.parse_sast)),
     ('nse', 'actions', 'nse_events/corporate_actions.json', 'archive/nse_events/actions/',
-     _events(nse_parsers.parse_corporate_actions)),
+     _events(lambda rows: nse_parsers.parse_corporate_actions(rows, keep_all=True))),
     ('nse', 'meetings', 'nse_events/board_meetings.json', 'archive/nse_events/meetings/',
-     _events(nse_parsers.parse_board_meetings)),
+     _events(lambda rows: nse_parsers.parse_board_meetings(rows, keep_all=True))),
     ('nse', 'encumbrances', 'nse_events/encumbrances_202610.json', 'archive/nse_events/encumbrances/',
      _events(nse_parsers.parse_encumbrances)),
     ('nse', 'daily_buybacks', 'nse_events/daily_buybacks.json', 'archive/nse_events/daily_buybacks/',
@@ -391,9 +408,12 @@ ROUND_TRIP = [
      _events(nse_parsers.parse_shareholding_listing)),
     ('nse', 'announcements', 'nse_events/announcements.json', 'archive/announcements/nse/',
      _events(lambda rows: nann.parse(rows, 'equities'))),
-    ('bse', 'sast', 'bse/sast_202511.json', 'archive/bse_events/sast/', _events(bse_parsers.parse_sast)),
+    ('bse', 'sast', 'bse/sast_202511.json', 'archive/bse_events/sast/',
+     _events(lambda rows: bse_parsers.parse_sast(rows, keep_all=True))),
+    ('bse', 'sast', 'bse/sast_repeats_202511.json', 'archive/bse_events/sast/',
+     _events(lambda rows: bse_parsers.parse_sast(rows, keep_all=True))),
     ('bse', 'corporate_actions', 'bse/actions_20251008_20251015.json', 'archive/bse_events/actions/',
-     _events(bse_parsers.parse_actions)),
+     _events(lambda rows: bse_parsers.parse_actions(rows, keep_all=True))),
     ('bse', 'board_meetings', 'bse/board_meetings_202602.json', 'archive/bse_events/meetings/', _bse_meetings_table),
     ('bse', 'shareholding_filings', 'bse/shareholding_listing_20261012.json', 'archive/bse_events/shareholding/',
      _events(bse_parsers.parse_shareholding_listing)),
@@ -410,7 +430,8 @@ ROUND_TRIP = [
 ]
 
 
-@pytest.mark.parametrize('source,dataset,path,table,build_table', ROUND_TRIP, ids=[f'{s}/{d}' for s, d, *_ in ROUND_TRIP])
+@pytest.mark.parametrize('source,dataset,path,table,build_table', ROUND_TRIP,
+                         ids=[f'{s}/{d}:{p.rsplit("/", 1)[-1]}' for s, d, p, *_ in ROUND_TRIP])
 def test_round_trip_on_real_answers(source, dataset, path, table, build_table):
     """Raw as the exchange sent it, the table as the collector writes it: every parsed row is found by the parser's
     key, and no sampled value differs (the comparison itself raises no false alarm)."""
@@ -447,12 +468,19 @@ def test_price_file_unkept_columns_and_values():
     stored = prices.parse_udiff(body, 'NSE')
     stored.loc[stored['symbol'] == 'XYZ', 'close'] = 99.0
     r.objects['prices/daily/nse/2026-10.parquet'] = parquet(stored)
+    extra = prices.udiff_extra(body, 'NSE')
+    r.objects['prices/udiff_extra/nse/2026-10.parquet'] = parquet(extra[extra['line'] == 0])   # one line never stored
     r.freeze()
     d = by(rc.run(r, 'b', sample=5, max_blobs=10), 'exchange_files', 'nse_udiff_cm')
     assert d['counts']['parsed_rows'] == 2 and d['counts']['in_table'] == 2
-    assert d['fields']['not_kept'] == ['FinInstrmTp', 'OptnTp']
+    # the columns parse_udiff leaves out are in their own table (21 Nov 2026), looked up line by line
+    assert d['fields']['not_kept'] == []
+    assert d['fields']['kept_in_own_table'] == {'FinInstrmTp': 'prices/udiff_extra/nse/{YYYY-MM}.parquet',
+                                                'OptnTp': 'prices/udiff_extra/nse/{YYYY-MM}.parquet'}
+    assert (d['extra']['rows'], d['extra']['in_table'], d['extra']['missing']) == (2, 1, 1)
     assert [(m['field'], m['stored']) for m in d['mismatches']] == [('close', '99')]
-    assert d['verdict'].startswith('gaps:') and r.writes == []
+    assert d['verdict'].startswith('gaps:') and '1 of 2 lines of the fields or files' in d['verdict']
+    assert r.writes == []
 
 
 def test_shareholding_xbrl_kept_gzipped_by_the_collector():

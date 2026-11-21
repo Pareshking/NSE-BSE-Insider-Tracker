@@ -138,6 +138,35 @@ not checked (with the reason: bounded sample, time, no adapter) or no parser fou
 the job summary and the `raw-coverage` artifact. It is evidence for a delete decision, not one: a dataset re-parsed
 from a sample is never called fully captured.
 
+**Every raw line reaches the database (owner, 21 Nov 2026; branch `events-keep-all`).** The audit of 21 Nov found
+exchange-event rows and fields that existed only in raw. Since then:
+
+- *Rows the clean tables leave out are archived, flagged.* NSE actions and board meetings (`run_daily`), BSE SAST,
+  actions and board meetings (`collectors/bse/events.py`) parse with `keep_all=True`: every row goes to the archive,
+  the ones the clean table does not use with `kept` = false and a `drop_reason` (`docs/DATA_DICTIONARY.md`, archive
+  columns). The clean step reads `archive.clean_view` (kept rows, without the archive-only columns), so the clean
+  tables are what they were (tests/test_events_keep_all.py runs each collector as it is and as it was on the same
+  answers and compares the clean tables whole). Reports: `fetched` still counts kept rows; `archived_not_kept` and
+  `clean.archive_not_kept` count the rest by reason.
+- *The 119 BSE SAST rows neither parsed nor dropped* were repeats of a disclosure inside one answer that differ in a
+  field the event id leaves out (Company_Name with BSE's `-$`, the mode, a %): `parse_sast` kept the first by
+  `drop_duplicates('event_id')` and lost the others without a count, and `sast_window` kept one row per event id
+  across its tilings. Now each distinct repeat is stored under its own id (kept = false, `SAST_REPEAT`); a copy equal
+  in every field is the same line, stored once (counted `identical_repeats`). Board-meeting rows NSE sends with no
+  symbol or date (lost in the grouping) and BSE rows with no code or date are stored on their own the same way.
+- *Raw fields with no column:* announcements (both exchanges) and BSE's deal history carry the row as sent
+  (`raw_json`); NSE tenders the bid book (`bids_json`, archive only); NSE index closes gained five columns; the UDiFF
+  columns the price layer leaves out go to `prices/udiff_extra/` and every PR zip member to `archive/nse_pr/{kind}/`
+  (written by `scripts/price_backfill.py`, nightly and by hand). `archive.merge` keeps a `raw_json` / `bids_json`
+  when the same row comes back without one (the nightly copy of a BSE deal). `scripts/storage_trim.py price_zips`
+  deletes a PR zip only once its day is in `archive/nse_pr/`.
+- *Older rows* (archived before) are read again from raw_v2 by Actions -> **Raw re-read into the archive**
+  (`scripts/raw_reparse.py`; dry run by default): rows not kept are added, lossless copies filled where empty, own
+  tables completed; an archived row keeps its values and dates, and a kept row found only in raw is counted
+  (`kept_not_archived`), never added, so no clean table changes. PR zips older than 30 days are no longer in raw
+  (`storage_trim`): Price backfill with `exchange` NSE_PR and `extras_only` fetches them again (NSE keeps the file).
+  The raw coverage audit's adapters parse the same way, so a re-read dataset reads as stored.
+
 ## Product window
 
 The product holds transactions dated on or after 8 Oct 2025: the last one

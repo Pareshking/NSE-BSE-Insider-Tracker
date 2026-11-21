@@ -174,10 +174,12 @@ def sast_window(bse: BSEClient, a: date, b: date, stats: dict) -> list[dict]:
     tilings = [([(a, b)], False), (pieces(a, b, TILE_DAYS), True)]
     if (b - a).days >= TILE_SHIFT:
         tilings.append((pieces(a, b, TILE_DAYS, TILE_SHIFT), False))
+    variants: dict = {}   # every distinct row (21 Nov 2026: a repeat that differs outside the id is archived too)
     for tiling, split in tilings:
         for x, y in tiling:
             for r in get(x, y, split):
                 rows[parsers.sast_event_id(r)] = r
+                variants.setdefault(json.dumps(r, sort_keys=True, default=str), r)
     for r in rows.values():
         d = pd.to_datetime(str(r.get('Acquisition_date') or '')[:10], format='%d/%m/%Y', errors='coerce')
         if pd.notna(d):
@@ -185,7 +187,10 @@ def sast_window(bse: BSEClient, a: date, b: date, stats: dict) -> list[dict]:
     stats.setdefault('weekdays_without_rows', []).extend(
         (a + timedelta(days=i)).isoformat() for i in range((b - a).days + 1)
         if (a + timedelta(days=i)).weekday() < 5 and (a + timedelta(days=i)) not in seen_days)
-    return list(rows.values())
+    # The row kept per disclosure first (the last one read, as before; parse_sast keeps the first of an event_id),
+    # then the other distinct rows of the same disclosures, which parse_sast(keep_all=True) archives as repeats.
+    winners = {json.dumps(r, sort_keys=True, default=str) for r in rows.values()}
+    return list(rows.values()) + [r for k, r in variants.items() if k not in winners]
 
 
 def meetings_window(bse: BSEClient, a: date, b: date, stats: dict) -> dict:
@@ -216,20 +221,28 @@ def meetings_window(bse: BSEClient, a: date, b: date, stats: dict) -> dict:
 
 
 def fetch(bse: BSEClient, stream: str, a: date, b: date, stats: dict) -> pd.DataFrame:
+    """Every row of the window, kept or not (the archive holds them all, `kept` / `drop_reason`; the clean step
+    reads the kept ones: insiders_clean/archive.clean_view). `fetched` counts kept rows, as before;
+    `archived_not_kept` the others, by reason."""
     if stream == 'sast':
-        frame, extra = parsers.parse_sast(sast_window(bse, a, b, stats))
+        frame, extra = parsers.parse_sast(sast_window(bse, a, b, stats), keep_all=True)
         for reg, n in extra['dropped_other_regulations'].items():
             d = stats.setdefault('dropped_other_regulations', {})
             d[reg] = d.get(reg, 0) + n
     elif stream == 'meetings':
-        frame, counts = parsers.parse_board_meetings(meetings_window(bse, a, b, stats))
+        frame, counts = parsers.parse_board_meetings(meetings_window(bse, a, b, stats), keep_all=True)
         for k, n in counts.items():
             stats[k] = stats.get(k, 0) + n
     else:
-        frame, dropped = parsers.parse_actions(bse.actions(a, b))
+        frame, dropped = parsers.parse_actions(bse.actions(a, b), keep_all=True)
         stats['calls'] = stats.get('calls', 0) + 1
         stats['dropped_other_purposes'] = stats.get('dropped_other_purposes', 0) + dropped
-    stats['fetched'] = stats.get('fetched', 0) + len(frame)
+    kept = archive.kept_mask(frame)
+    stats['fetched'] = stats.get('fetched', 0) + int(kept.sum())
+    if (~kept).any():
+        d = stats.setdefault('archived_not_kept', {})
+        for reason, n in frame.loc[~kept, archive.DROP_REASON].value_counts().items():
+            d[reason] = d.get(reason, 0) + int(n)
     return frame
 
 

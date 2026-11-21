@@ -47,6 +47,27 @@ def parse_udiff(body: bytes, exchange: str | None = None) -> pd.DataFrame:
     return df[COLUMNS]
 
 
+# The UDiFF columns `COLUMNS` does not take (owner, 21 Nov 2026: every raw field reaches a table): BizDt, Sgmt,
+# FinInstrmTp, XpryDt, FininstrmActlXpryDt, StrkPric, OptnTp, UndrlygPric, OpnIntrst, ChngInOpnIntrst, SsnId,
+# NewBrdLotQty, Rmks, Rsvd1-4, and any column a later file adds. Their own table, not the price layer: the price
+# layer is read whole by the nightly price steps (scripts/precompute_slim.py loads every month), and 17 more text
+# columns there would multiply its memory for fields no step reads. One row per file line (`line`, from 0), the
+# price layer's key beside it, every value as printed (text).
+UDIFF_EXTRA_KEY = 'prices/udiff_extra/{exchange}/{month}.parquet'
+UDIFF_EXTRA_ID = ['date', 'exchange', 'line']
+
+
+def udiff_extra(body: bytes, exchange: str | None = None) -> pd.DataFrame:
+    """The columns of one day's UDiFF file that parse_udiff leaves out, with the key it keeps."""
+    raw = pd.read_csv(io.BytesIO(csv_bytes(body)), dtype=str, keep_default_na=False)
+    missing = [c for c in _MAP if c not in raw.columns]
+    if missing:
+        raise ValueError(f'not a UDiFF file, missing columns: {missing}')
+    key = parse_udiff(body, exchange)[['date', 'exchange', 'isin', 'symbol', 'series']]
+    extra = raw[[c for c in raw.columns if c not in _MAP]]
+    return pd.concat([key, pd.DataFrame({'line': range(len(raw))}), extra.reset_index(drop=True)], axis=1)
+
+
 def validate_day(df: pd.DataFrame) -> dict:
     """Counts of rows that break basic sanity; the rows stay, the report says what was seen."""
     traded = df['volume'].fillna(0) > 0

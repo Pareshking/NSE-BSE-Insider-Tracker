@@ -172,7 +172,9 @@ def r2_client():
 # Fields added to a row after the archive began. Left out of the hash so that
 # a row keeps the id it had before the field existed (otherwise every archived
 # row would be stored a second time under a new id).
-ID_IGNORED_FIELDS = frozenset({'prevAppId', 'typeOfSubmission', 'revisionRemark', 'otherQuantity'})   # otherQuantity: added 22 Oct, so a filing seen before keeps its id
+# otherQuantity: added 22 Oct, so a filing seen before keeps its id. raw_json: BSE's deal history row as sent (21 Nov
+# 2026), which the nightly copy of the same deal does not carry.
+ID_IGNORED_FIELDS = frozenset({'prevAppId', 'typeOfSubmission', 'revisionRemark', 'otherQuantity', 'raw_json'})
 
 
 def canonical_event_id(exchange, category, row):
