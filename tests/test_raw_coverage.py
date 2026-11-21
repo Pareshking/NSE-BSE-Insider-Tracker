@@ -195,8 +195,8 @@ def test_dropped_row_reported_with_parser_reason(r2):
     a = by(rc.run(r2, 'b', sample=10, max_blobs=50), 'bse', 'corporate_actions')
     assert a['counts']['dropped'] == {'purpose not kept (action_purpose)': 1}
     # everything kept is stored, every raw field is in raw_json: captured, but the design drop is said
-    assert a['verdict'].startswith('fully captured')
-    assert 'drops by design' in a['verdict'] and 'deleting raw loses them' in a['verdict']
+    assert a['verdict'].startswith('gaps: ') and 'drops (only in raw)' in a['verdict']   # dropped rows block a delete
+    assert 'purpose not kept (action_purpose) 1' in a['verdict']
     assert set(a['fields']['kept_in_raw_json']) | set(a['fields']['kept_as_column']) >= {'scrip_code', 'Purpose', 'Ex_date'}
 
 
@@ -240,7 +240,7 @@ def test_bounded_sample_is_not_checked(r2):
     r2.freeze()
     a = by(rc.run(r2, 'b', sources={'bse'}, sample=5, max_blobs=1), 'bse', 'corporate_actions')
     assert a['inventory']['distinct_blobs'] == 2 and a['reparsed']['blobs'] == 1
-    assert a['verdict'].startswith('not checked: only 1 of 2 blobs re-parsed')
+    assert a['bounded'] and 'drops (only in raw)' in a['verdict']   # a gap found in the sample is reported even when bounded
 
 
 def test_missing_blob_and_old_raw_layout(r2):
@@ -276,7 +276,7 @@ def test_one_dataset_failing_does_not_stop_the_others(r2, monkeypatch):
     monkeypatch.setattr(spec, 'stored', boom)
     rep = rc.run(r2, 'b', sample=5, max_blobs=50)
     assert by(rep, 'nse', 'sast')['verdict'] == 'not checked: audit failed (RuntimeError)'
-    assert by(rep, 'bse', 'corporate_actions')['verdict'].startswith('fully captured')
+    assert by(rep, 'bse', 'corporate_actions')['verdict'].startswith('gaps: ')
 
 
 def test_time_budget_reached_is_said(r2):

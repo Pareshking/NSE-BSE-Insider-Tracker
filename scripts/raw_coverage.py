@@ -1107,14 +1107,16 @@ def _verdict(res, spec, inv) -> tuple[str, list]:
                     + (f' (+{len(f["not_kept"]) - 10})' if len(f['not_kept']) > 10 else ''))
     if res['mismatches']:
         gaps.append(f"{len(res['mismatches'])} value mismatches in {res['values_compared']} sampled records")
+    # Rows the parser drops on purpose still exist only in raw: for the delete decision they are a gap (a parser
+    # dropped BSE 'Spin Off' rows on purpose until 20 Nov 2026, and only raw let them be recovered).
+    if c['dropped']:
+        gaps.append(f"{sum(c['dropped'].values()):,} rows the parser drops (only in raw): "
+                    + '; '.join(f'{k} {v:,}' for k, v in c['dropped'].items()))
     if gaps:
         return 'gaps: ' + '; '.join(gaps), gaps
     if not c['parsed_rows']:
         return 'not checked: no answer re-parsed gave a row' + (' (bounded sample)' if res['bounded'] else ''), gaps
     design = ''
-    if c['dropped']:
-        design = (f" ({sum(c['dropped'].values()):,} rows the parser drops by design: "
-                  + '; '.join(f'{k} {v:,}' for k, v in c['dropped'].items()) + '; deleting raw loses them)')
     if res['bounded']:
         return (f"not checked: only {res['reparsed']['blobs']:,} of {inv['distinct_blobs']:,} blobs re-parsed "
                 f"({res['reparsed']['how'].split('(', 1)[-1].rstrip(')')}); no gap in those{design}"), gaps
