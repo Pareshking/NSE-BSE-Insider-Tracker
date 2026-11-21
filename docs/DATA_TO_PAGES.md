@@ -29,14 +29,19 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | D8q | QIPs | in-principle: board and shareholder approval dates, amount; listing: bid dates, relevant date, floor and issue price, discount, shares, allottee count, amount; XBRL: each allottee with category and % of the issue | NSE filings by date window (`corporate-further-issues-qip`, confirmed 12 Oct 2026) | Clean (12 Oct, `issues.clean_qip`) |
 | D9 | Market cap | per symbol, daily | NSE PR file + BSE list | In |
 | D10 | Securities | ISIN, NSE symbol, BSE code, name, sector, industry, size bucket | NSE/BSE lists nightly + VR export | In |
-| D10i | Industry classification | four official levels (macro, sector, industry, basic industry) per ISIN, with the source (NSE, else BSE, else the VR export) | NSE quote API and BSE quote header, one symbol a call, about 400 per exchange a night (`scripts/industry.py`, from 19 Nov 2026) | Coded 19 Nov; waits on the first full run |
-| D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In; not yet shown on pages (TODO G) |
+| D10i | Industry classification | four official levels (macro, sector, industry, basic industry) per ISIN, with the source (NSE, else BSE, else the VR export) | NSE quote API and BSE quote header (BSE 4 at a time), at most 400 per exchange a night (`scripts/industry.py`, from 19 Nov 2026). 21 Nov: 4,835 companies with four levels; 867 NSE-only companies on the VR export's two (NSE refuses GitHub's runners); 40 with no class | In (Results, Funds, Dashboard filters and sectors) |
+| D11 | Prices | daily OHLC, volume, value, prev close; split/bonus adjusted summary (close, 52-week high/low, 90/180-day change, size bucket) | NSE + BSE UDiFF bhavcopy from 1 Jan 2025, nightly; NSE daily market cap; Nifty 500 and other NSE index closes | In: on every page with a price (CMP, 52W range, × a day's trade); adjusted for splits, bonuses and filed demergers (`docs/CLEAN_LAYER.md`, Price adjustment) |
 | D12 | Trading calendar | NSE sessions, special sessions | from 30 Sep 2024, extends nightly | In |
 | D13 | Measured outcomes | returns after each signal from broadcast time, after costs, with case counts | from D1h + D2h + D11 | Pending (TODO 7) |
 | D15 | Tradability | NSE ASM / GSM / ESM stage, IBC code, trade for trade, SME, price band, circuit-locked days (20 sessions) | NSE, daily snapshots from 12 Oct 2026; series and circuit days from the bhavcopy | In (no suspended list: NSE's ends in 2012) |
-| D16 | Announcements (Reg 30 and the rest) | subject, NSE one-line text / BSE category, subcategory and headline, attachment link and size, broadcast time, market (NSE main board, NSE SME, BSE) | NSE (both boards) and BSE, nightly 3 days and every 30 minutes for today; concalls not collected | Coded 13 Oct (PR #56), waits on merge |
-| D16r | Announcement reads | per filing: category, values each with its quote and evidence (`exact` or `table`), values held back with the reason, second reader's agreement, reader and prompt version; read once across exchanges | useful groups of today and yesterday, companies of Rs 100 Cr and up | Live 14 Oct: Brief card "Filings read" (PR #56, #58, #59); page Filings read (`/filings`), filters by heading, period, exchange, size, search, 2 readers agree |
-| D14 | Named-investor aliases | curated list mapping spellings of known investors and funds to one name | — | Pending (to add to TODO) |
+| D16 | Announcements (Reg 30 and the rest) | subject, NSE one-line text / BSE category, subcategory and headline, attachment link and size, broadcast time, market (NSE main board, NSE SME, BSE) | NSE (both boards) and BSE, nightly (`announcement-collect.yml`, no AI) | Raw and archive; no page reads it (the reader is parked, 15 Nov) |
+| D16r | Announcement reads | per filing: category, values each with its quote and evidence (`exact` or `table`), values held back with the reason, second reader's agreement, reader and prompt version; read once across exchanges | useful groups of today and yesterday, companies of Rs 100 Cr and up | Off: AI cards off the site from 21 Oct, reader parked 15 Nov; `/filings` redirects to Today. Tables kept (`announcement_reads`) |
+| D14 | Named-investor aliases | curated list mapping spellings of known investors and funds to one name (`insiders_clean/investor_aliases.csv`) | grows as names are checked | In (`investor_group` on deals) |
+| D17 | Results | quarter and year to date: revenue (each layout's own line, `revenue_basis`), profit, EPS; standalone and consolidated; revisions | NSE integrated-filing XBRL, broadcasts from 8 Apr 2025; banks and insurers from 20 Nov 2026, Ind AS 117 insurers and same-period contexts from 21 Nov (rebuild pending) | In (NSE only; BSE-only companies not read) |
+| D18 | Fund month-end portfolios | per house, scheme and ISIN: shares, value; changes month on month; AMFI scheme count check | 44 mutual fund houses and 5 NPS pension fund managers (`collectors/mf_portfolios/houses.py`); not collected and why: `houses.NOT_COLLECTED` | In (equity lines only) |
+| D19 | Market flows | NSE provisional FII/DII a day, NSDL FPI daily and fortnightly by sector, SEBI mutual fund trends | nightly from 19 Nov 2026 (NSE's provisional figures: the latest day only, no history); history by the Market flows backfill from 2025-10-08 (`market-flows.yml`; its run not confirmed here) | In |
+| D20 | Public shareholders over 1% | holder, type, shares, % of the company, per quarter (shareholding XBRL Tables III and IV) | NSE companies; BSE-only not read | In |
+| D21 | Encumbrances (SAST Reg 31) | lender, pledge type, shares, % of the company, holding after | NSE | In (Stakes) |
 
 ## Step 2: what the data can answer
 
@@ -105,6 +110,8 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 
 ## Step 4: pages, grouped by when and why an investor opens them
 
+The plan of 08 Oct 2026, kept as written; the pages on the site now are in "The site on 21 Nov 2026" below.
+
 | Page | Why it is opened | Sections |
 |---|---|---|
 | Today | Every morning: what happened in the last session | S1 (session), S4 crossed today, S6 formed today, S9 (session), S12 (session), S14 (next days), S23 |
@@ -117,7 +124,39 @@ Status: **In** = collected and cleaned; **Raw** = collected, not cleaned;
 | Track record | Trusting a signal | S21 |
 | Data | Trusting the numbers | S22 |
 
-## What this changes
+## The site on 21 Nov 2026 (`streamlit_app/app.py`, `streamlit_app/data/store.py`)
+
+Every page reads `clean/current/{table}.parquet` (cut to the study universe on read) and the precompute artifacts
+(`artifacts/prices_summary_slim.parquet`, `artifacts/company_snapshot.parquet`, `artifacts/track_summary.parquet`).
+`screens/ctx.py` loads the common set: `insider_trades`, `deals`, `securities`, `sast`, `bse_sast`, `actions`,
+`bse_actions`, `meetings`, `shareholding`, `bse_shareholding`, `preferential`, `rights`, `tradability`, `encumbrances`,
+`results`, and the price summary. Dated pages share one date control (`ui/dates.py`: presets, Custom range, in the
+address as `?range=` or `?from=&to=`; Today a single day, `?day=`; the Calendar runs forward), clamped to the product
+window (from 8 Oct 2025).
+
+| Page (address) | Tables | Date control |
+|---|---|---|
+| Dashboard (`/`, default) | `insider_trades`, `deals`, `sast`, `results`, `market_flows`, `fpi_sector_flows`, `mf_stock_month`, `industry` (else `securities` sectors), `meetings`, `actions`, track summary | range, default 1M (insider, deal and SAST figures; funds, flows and results keep their own periods) |
+| Today (`/today`) | the ctx set, `market_flows`, `mf_stock_month` | one day |
+| Insiders (`/insiders`) | `insider_trades`, price summary | range |
+| Funds (`/funds`) | `mf_stock_month`, `mf_changes`, `mf_scheme_month`, `mf_scheme_moves`, `mf_scheme_coverage`, `industry`, `deals` (month to date), `shareholding`, price summary | month end, or 3/6/12-month windows |
+| Deals (`/deals`) | `deals` | range |
+| Stakes (`/stakes`) | `sast`, `bse_sast`, `encumbrances` | range |
+| Situations (`/situations`) | `tenders`, `rights`, `qip`, `preferential` | range, default 3M |
+| Results (`/results`) | `results`, `industry` (else `securities`), price summary (size bucket) | a financial-year quarter |
+| Calendar (`/calendar`) | `meetings`, `actions`, `preferential`, `preferential_lockins`, `buybacks` | forward range |
+| Filings (`/filings-all`) | the ctx set, `buybacks`, `preferential_allottees`, `preferential_lockins`, `qip`, `qip_allottees` | range, or one day |
+| Companies (`/company?symbol=`; a BSE code for BSE-only companies) | the ctx set, `promoter_group`, `public_holders`, `mf_stock_month`, `mf_changes`, `buybacks`, `preferential_allottees`, `qip`, company snapshot, price history | range |
+| Investors (`/investors`) | `deals` (`insiders_clean/investors.py`) | range |
+| Data health (`/data-health`) | the nightly reports (`reports/nse_events/latest_all.json`, `clean/reports/`) | – |
+| People & funds (`/entity?id=`, hidden) | the ctx set, `public_holders` | range |
+| Hidden, at their addresses: Watchlist, Screener, Raises, Holders, Sectors, Risks, Investor flows, Evidence, Data quality | as built 12 Nov (`screens/more_pages.py`, `pages.py`, `investors.py`, `track_record.py`, `data_status.py`) | – |
+
+`store.TABLES` (it sizes the table cache) lists the tables above except `tenders`, which Situations reads all the
+same. Not on any page: the announcement tables (reader parked), `mf_scheme_changes` (too large for the site's memory;
+`mf_scheme_moves` is its cut).
+
+## What this changes (08 Oct plan)
 
 - Today gains S12 (outside 5% holders) and S14 (catalysts in the next days):
   both are in, and neither was on the page.
