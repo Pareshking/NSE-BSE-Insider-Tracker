@@ -68,9 +68,15 @@ preferential snapshots in `canonical/` are not archived; the window filings
 in `archive/nse_events/issues/` are), and it keeps market-cap history,
 manifests, the calendar and everything under `archive/` and `clean/`.
 
-The current Streamlit pages still read dated `canonical/` files through the
-run-date selector; with retention on, that selector offers the last 14 days
-until the pages move to `clean/`.
+`Storage trim` (`storage-trim.yml`, `scripts/storage_trim.py`; owner, 15 Nov 2026: "bring it to 1 GB or less") runs
+every Sunday with `--delete` and every step: `results_xbrl` (raw results XBRL whose facts are in the archive),
+`filing_text` (every filing-text day file but today's), `price_zips` (NSE PR zip blobs older than 30 days; fetch
+records and a list of what went are kept), `compress` (gzip of plain raw text, checked byte for byte), `report` (fails
+above 5 GB). Bucket 2.29 GB on 21 Nov 2026. The age-based steps predate the raw retention decision of 21 Nov 2026
+(nothing deleted by age) and have not been changed to match it (`docs/TODO.md`, item 1).
+
+Parquet is written with zstd everywhere (#307, 20 Nov 2026); older snappy files are read as they are and rewritten as
+zstd on their next write. Raw `.xls` workbooks and `.txt` lists are gzipped on write too.
 
 Nightly bulk and block deals are read from NSE's uncapped CSV export
 (`scripts/nse_deals_csv.py`), not the JSON form (70 rows per call).
@@ -135,8 +141,11 @@ archive: counts (fetch records, blobs, bytes, fetch days; raw rows, parsed rows,
 drops with its reasons), raw fields no table keeps, `sample` records compared raw -> parsed -> stored, and what the code
 or docs say about the source still serving old data. Verdict per dataset: fully captured, gaps (with the specifics),
 not checked (with the reason: bounded sample, time, no adapter) or no parser found. GET and LIST only; the report is
-the job summary and the `raw-coverage` artifact. It is evidence for a delete decision, not one: a dataset re-parsed
-from a sample is never called fully captured.
+the job summary and the `raw-coverage` artifact. What may be deleted is decided from it (owner, 21 Nov 2026): a dataset re-parsed
+from a sample is never called fully captured. Rows a parser drops count as a gap. First run, 21 Nov 2026: 83 datasets; 5 fully
+captured, 45 with gaps, 31 not checked, 2 with no parser found. The owner's decision the same day: no time-based
+deletion of raw, and every raw line must also reach the database (`docs/PRODUCT.md`); the work is in progress on three
+branches (`docs/TODO.md`).
 
 ## Product window
 
@@ -357,10 +366,24 @@ Equal legs are only marked (`same_size_on_other_exchange`) and counted
 which the feeds never produce across exchanges (one record is in one
 exchange's file).
 
-Split and bonus adjustment (`insiders_clean/adjust.py`, used by
-`precompute_slim.py` for prices and the Track record, and by the ICDR
-estimate): a reset in the exchange's base price is applied only as a split
-or bonus. Where NSE or BSE filed a corporate action (`actions`,
+Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
+and BSE's list win on identity; the 01 Sep Value Research export only
+supplies sector and industry.
+
+## Price adjustment (`insiders_clean/adjust.py`)
+
+Used by `precompute_slim.py` for the price lines, the price summary and the Track record, and by the ICDR estimate.
+Applied kinds: `KIND_ADJUSTED = ('split_bonus', 'demerger')`. Every other kind is counted, never applied:
+`other_large` (rights, unfiled demergers, relistings, series moves, special dividends), `minor` (mostly cash
+dividends), `unknown` (no usable previous print, or `previous_session_missing`). Schemes of arrangement and
+amalgamations (kept in the action tables since #311) are applied, as kind `demerger`, only where the exchange reset the
+base price (`action_base_price`); capital reductions are never applied. Bases (`kind_basis`, counted by `adjust.coverage(...)['by_basis']`,
+printed by Precompute slim assets): `action`, `action_price` (split_bonus: a filed bonus or split), `ratio` (split_bonus:
+nothing filed, a clean ratio that the close moves with), `action_base_price` and `action_close` (demerger), and the
+reasons a large reset is not applied: `action_mismatch`, `action_not_split_bonus`, `ratio_price_disagrees`,
+`previous_session_missing`. An adjusted price at T uses only factors dated up to T (`adjust_as_of`).
+
+Splits and bonuses: where NSE or BSE filed a corporate action (`actions`,
 `bse_actions`) between the previous print and the session, the action
 decides: a bonus n:h (factor h/(h+n)) or split (new / old face value)
 within 1.5% of the price's factor is applied, even under the 5% line
@@ -408,7 +431,7 @@ our tables and no reset of the base price (BHAGYANGR 8 Oct 2026, -91%, the day i
 demergers (NSE's action feed as parsed drops schemes: VEDL 30 Apr 2026, SKFINDIA 15 Oct 2025, TMPV 14 Oct 2025);
 they were left unadjusted then (owner directive at the time: splits and bonuses only) and named in the report.
 
-**Demergers and missing splits (20 Nov 2026, branch `price-demergers`).** Read-only peeks of raw_v2 (clean-peek
+**Demergers and missing splits (20 Nov 2026, #311).** Read-only peeks of raw_v2 (clean-peek
 `RAW_ACTIONS`, `ACTIONS_COVERAGE`, `PRICE_JUMPS_BSE_RAW`):
 
 - *Demergers were fetched and dropped.* BSE's raw action feed (raw_v2/bse/corporate_actions, ex-dates 9 Oct 2025 -
@@ -420,10 +443,9 @@ they were left unadjusted then (owner directive at the time: splits and bonuses 
   14 Oct 2025. The parsers now keep them (`demerger`, `scheme`, `capital_reduction`).
 - *No exchange-published factor exists for them in our data.* The UDiFF base price was not reset on any of these
   ex-dates (VEDL 30 Apr 2026: PrvsClsgPric 773.60 on NSE and 773.25 on BSE, the closes of 29 Apr; it closed 271.55),
-  and no cost-of-acquisition ratio is in any table. `adjust.implied_factors` applies a filed demerger or scheme only
-  where the exchange did reset the base price and the close moved with it (kind `demerger`, basis
-  `action_base_price`, counted in `adjust.coverage`): 0 in the product window. No ratio is read from the move. The
-  audit names them `scheme_not_adjusted`.
+  and no cost-of-acquisition ratio is in any table. At first (#311) a filed demerger was applied only where the
+  exchange reset the base price (basis `action_base_price`: 0 in the product window) and the audit named the rest
+  `scheme_not_adjusted`; since #314 a filed demerger is applied at the ex-date close (below).
 - *Splits with no filing: NSE's action history starts on 28 Sep 2026.* `archive/nse_events/actions` holds 232 rows,
   ex-dates 28 Sep - 20 Nov 2026 (the nightly, 10 days back, never backfilled); everything earlier came from BSE's
   history, so a company not on BSE at its ex-date has no split on file: E2E (split 05 Jun 2026, new ISIN
@@ -431,14 +453,64 @@ they were left unadjusted then (owner directive at the time: splits and bonuses 
   BSE code), VMARCIND (07 Jul 2026, NSE SME, no BSE code). Board meetings on file say split for SIKKO (18 Oct 2025,
   split and bonus), TEMBO (16 Jun 2026) and E2E (20 Apr 2026). Not an ISIN or purpose-text miss: the ISIN bridge and
   the symbol match already cover a split filed under the old ISIN. `run_daily --dataset actions --from` now backfills
-  NSE's actions a month per call. Whether NSE's `corporates-corporateActions?index=equities` returns SME companies
-  (VMARCIND) is not verified.
+  NSE's actions a month per call. NSE's `corporates-corporateActions?index=equities` does not return SME companies
+  (VMARCIND): see "NSE SME corporate actions" below.
 - With BSE's raw reparsed by this branch (peek `PRICE_JUMPS_BSE_RAW`): study universe unexplained 33 -> 23 moves (31
   -> 21 companies), `scheme_not_adjusted` 10, adjusted 117; all securities unexplained 155 -> 144.
 
-Securities (`insiders_clean/securities.py`): NSE's equity lists (main + SME)
-and BSE's list win on identity; the 01 Sep Value Research export only
-supplies sector and industry.
+**Demergers adjusted at the ex-date close (owner directive, 20 Nov 2026).** The owner reversed "splits and bonuses
+only" for demergers: a filed demerger (NSE `Demerger`, BSE `Spin Off`) is now applied. Where the exchange reset the
+base price the factor is that base over our previous close (basis `action_base_price`, none in the product window);
+otherwise it is the ex-date close over the previous close (basis `action_close`), when that move is more than 5%
+(`STRUCTURAL`). `KIND_ADJUSTED = ('split_bonus', 'demerger')`. Known cost: the factor includes that day's trading move,
+not only the value spun off; the ex-date open (the exchanges' special pre-open price discovery, held in `open`) would
+exclude it. A scheme of arrangement or amalgamation is applied only on an exchange base-price reset, a capital reduction never;
+where the line still moves 40% the audit names it `scheme_not_adjusted`.
+
+**NSE SME corporate actions (21 Nov 2026, #319).** Only `index=equities` was asked, so NSE's SME board had no actions
+at all: all 12 companies behind the study universe's 13 unexplained price jumps then were NSE SME names with no BSE
+code and no action row (VMARCIND -81% 07 Jul 2026; ORIANA and DHARIWAL with a new ISIN, the mark of a split).
+`collectors/nse_events/run_daily.ACTION_INDEXES = ('equities', 'sme')`: both boards are asked, nightly and in the
+`--from` backfill; SME rows carry series SM/ST, so their event ids never collide with the main board's. With them, 12
+of the 13 are explained; GICL (15 Oct 2025) remains, with nothing filed on either exchange.
+
+
+## Results (`insiders_clean/results.py`)
+
+NSE's integrated-filing XBRL, read without a model; `clean/current/results.parquet` is rebuilt by the NSE events run
+from `archive/nse_events/results` (columns in `docs/DATA_DICTIONARY.md`, results).
+
+- **Layout** from the XBRL file name (`kind_of`): `INTEGRATED_FILING_{INDAS|NBFC_INDAS|NONINDAS|BANKING|LI|GI}_...`,
+  and `INS_IND_AS` for `IF_INS_COM_IND_AS_{id}_WebXMLFile_...` (insurers under Ind AS 117, 21 Nov 2026, #321). A row
+  with no `kind` takes the layout from its XBRL link.
+- **Revenue and profit under each layout's own names** (`TOP_LINE`, `PROFIT`, `PROFIT_OWNERS`; 20 Nov 2026, #310):
+  INDAS and NBFC_INDAS `RevenueFromOperations`; NONINDAS `RevenueFromOperations`, profit `ProfitLossForThePeriod`;
+  BANKING `Income` (interest earned plus other income), profit `ProfitLossForThePeriod`; LI `NetPremiumIncome`, profit
+  `ProfitLossAfterTaxAndExtraordinaryItems`; GI `PremiumEarned`, profit `ProfitLossAfterTax`; INS_IND_AS
+  `InsuranceRevenue`, profit `ProfitLossForPeriod`. `revenue_basis` names the line; blank when the filing has none.
+- **Same-period contexts** (`same_period`, 21 Nov 2026, #321): the quarter's and the year to date's lines are read from
+  their context and from every other plain context (no dimension, not an instant) with the same start and end; a value
+  in the context itself wins. 43 Ind AS and 8 NBFC Sep 2026 filings (AAREYDRUGS, AFIL, AMANTA, HDBFS, KALAMANDIR ...)
+  put the period end in a metadata context and the statement lines in another, so revenue and profit read blank.
+- **Periods**: a filing that reports only a half year or a full year has a blank quarter; `derive_quarters` sets it as
+  the year to date less the previous filing on the same basis (standalone or consolidated) and the same
+  `revenue_basis`, marked `quarter_derived` (EPS not derived). `ytd_disagrees` marks a quarter above its own year to
+  date (shown with a note, never fixed); `superseded` marks a filing replaced by a revision.
+- **Comparisons** (year ago, quarter before) are made only within one basis and one `revenue_basis` (#297, #310).
+- Not read: a filing NSE lists at 0 bytes or whose link answers 404 (`no_xbrl_at_nse`).
+
+## Industry classification (`scripts/industry.py`, `insiders_clean/industry.py`)
+
+Workflow Industry classification (`industry.yml`, nightly 08:13 IST, at most `limit` symbols per exchange, default
+400; `full` for every due symbol; `build_only` rebuilds from what R2 holds). Two jobs: `fetch` asks NSE's quote API and
+BSE's quote header and holds no lock (raw is write-once; a checkpoint of its answers goes to
+`staging/industry/{run}/` every 200 answers or 10 minutes, #312); `build` merges archive and checkpoints (or, with
+neither, the answers in `raw_v2/`) into `archive/industry/{nse,bse}.parquet` and rebuilds
+`clean/current/industry.parquet` inside `r2-archive-writes`. BSE is asked by 4 clients side by side (`BSE_WORKERS`,
+`INDUSTRY_BSE_WORKERS`; 1-2 s pause each; the first refusal stops all), NSE one at a time. A source's levels are never
+filled from another level or source: NSE wins, else BSE, else the VR export's two levels. 21 Nov 2026: 4,835 companies
+with four levels, 867 NSE-only companies on the VR export's two (NSE refuses GitHub's runners), 40 with no class (225
+before). Columns: `docs/DATA_DICTIONARY.md`, Industry classification.
 
 ## Backfill
 
@@ -574,12 +646,3 @@ traded range, 106 between 2% and 20% outside (marked only: about 1.2%, mostly mu
 average), 215 more than 20% outside. Most of those 215 were two filing errors, now named and held back with their
 own reasons: the value field holding one share's price (`value_filed_as_price_per_share`) and shares valued at
 face value, Rs 1-10 (`valued_at_face_value`). The 2% and 20% tolerances stay.
-
-**Demergers adjusted at the ex-date close (owner directive, 20 Nov 2026).** The owner reversed "splits and bonuses
-only" for demergers: a filed demerger (NSE `Demerger`, BSE `Spin Off`) is now applied. Where the exchange reset the
-base price the factor is that base over our previous close (basis `action_base_price`, none in the product window);
-otherwise it is the ex-date close over the previous close (basis `action_close`), when that move is more than 5%
-(`STRUCTURAL`). `KIND_ADJUSTED = ('split_bonus', 'demerger')`. Known cost: the factor includes that day's trading move,
-not only the value spun off; the ex-date open (the exchanges' special pre-open price discovery, held in `open`) would
-exclude it. A scheme of arrangement, amalgamation or capital reduction is not adjusted; the audit still names those
-`scheme_not_adjusted`.

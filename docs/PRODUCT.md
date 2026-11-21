@@ -18,7 +18,9 @@ current source of truth.
 | Signal definitions and thresholds | `docs/SIGNALS.md` |
 | Cleaning rules, storage, calendar | `docs/CLEAN_LAYER.md` |
 | Every clean table and its columns | `docs/DATA_DICTIONARY.md` |
-| What is still to do | `docs/TODO.md` |
+| What is still to do | `docs/TODO.md` (history to 20 Nov 2026: `docs/TODO_DONE.md`) |
+| Pages and the tables behind them | `docs/DATA_TO_PAGES.md` |
+| Look and theme | `docs/DESIGN.md` |
 | The site's code | `streamlit_app/README.md` |
 
 ## Purpose
@@ -45,6 +47,42 @@ reader can't get by scrolling the exchange pages:
    buyback, pledges, promoter selling, late filings.
 
 ## Decisions (with dates)
+
+- **Raw retention: nothing deleted by age; every raw line also in the database** (owner, 21 Nov 2026). Raw answers
+  in `raw_v2/` are not deleted because they are old; from now on every line a source sent must also be in the
+  database (our tables), not only the lines a page uses today. The Raw coverage audit (`scripts/raw_coverage.py`,
+  `docs/CLEAN_LAYER.md`) decides what may ever be deleted: only a dataset it finds fully captured, read whole and not
+  from a sample. On 21 Nov the audit found 5 of 83 datasets fully captured
+  (`docs/TODO.md`). Not yet matched by the code: the weekly Storage trim still deletes some raw by age (TODO 1).
+
+- **Speed: parallel requests only to hosts that are slow to answer** (owner, Nov 2026, with the speed fixes
+  #315-#318, after the BSE speed test of PR #313, 20 Nov). A host that is slow to answer but not slow to allow (BSE:
+  3.5 s an answer one at a time, 0.13 s four at a time, 40 of 40 answered) is asked by at most 4 clients side by side, each with its own session and a 1-2 s pause;
+  the first refusal (401/403/429) stops them all for the run, with no retry around it. NSE is never asked in
+  parallel. Our own bucket (R2) and separate sites (one fund house each) are not covered by the limit: raw flush runs
+  16 at a time, fund houses side by side with each house's own requests sequential (#317). In code:
+  `scripts/industry.py` `BSE_WORKERS`, `collectors/bse/events.py` `XBRL_WORKERS`, `scripts/filing_text_extract.py`
+  `PER_HOST` (TODO 10: it does not exempt NSE's archive host).
+
+- **Filed demergers are adjusted at the ex-date close** (owner directive, 20 Nov 2026; it reverses "splits and bonuses
+  only" for demergers): a demerger filed on NSE (`Demerger`) or BSE (`Spin Off`) is applied to the price line at the
+  exchange's own base price where it reset one, else at ex-date close / previous close when that move is over 5%.
+  The factor takes in the day's trading move too; the directive is the close. A scheme of arrangement or amalgamation is
+  applied only where the exchange reset the base price (none did in the product window); a capital reduction is not
+  adjusted (`docs/CLEAN_LAYER.md`, Price adjustment).
+
+- **No pill shapes; one look for every control** (owner, 19 Nov 2026, #300: "Remove such large pill shapes from
+  everywhere"; the grey pill around a label and its options "looked old"). Radius tokens `radius` 8 px, `radius-sm`
+  6 px, `radius-pill` 4 px in `streamlit_app/ui/theme.py`; Streamlit's widgets follow through `baseRadius`
+  (`scripts/sync_theme.py`). Option rows, chips, dropdowns and dates share one outlined 40 px look, the label above in
+  small grey, the chosen option tinted with the accent. Circles (avatars, dots) stay round.
+
+- **A dashboard first** (owner, 19 Nov 2026: "Why don't we have a beautiful dashboard?"): the Dashboard is the default
+  page and first in the bar; Today stays as it is.
+
+- **A date control on every dated page** (owner, 19 Nov 2026: "A date selector or a date range selector must be
+  present on required pages"): presets and a custom range (`streamlit_app/ui/dates.py`), clamped to the data and to the
+  product window, kept in the page address.
 
 - **Company page is a decision page** (owner, 19 Nov 2026: "Completely useless design and not glance-worthy to take even a
   decision"): it answers "is smart money accumulating or leaving, and is anything wrong?" in one sentence at the top, built
@@ -102,14 +140,17 @@ reader can't get by scrolling the exchange pages:
   studies find prices run up before such deals and give back from day two.
 - **Streamlit stays**; two sister sites (this and paresh.streamlit.app),
   same family of design, each its own. (07 Oct 2026)
-- **Design**: light canvas #F6F7F9, white cards with 14px corners, Geist
+- ~~**Design**: light canvas #F6F7F9, white cards with 14px corners, Geist
   with tabular figures, indigo #4F46E5 for anything clickable, green/red
   only for buying/selling, amber for "needs a look". Inspired by Paresh,
-  not copied. (08 Oct 2026)
+  not copied. (08 Oct 2026)~~ Replaced by the theme file (12 Nov), the look of 19 Nov (`docs/DESIGN.md`) and the
+  radius tokens above (19 Nov).
 - **Storage**: every collected record kept once in `archive/`, clean
   tables rebuilt from it nightly; dated snapshots deletable once archived,
   but retention stays a dry run until the multi-year archive is stable.
-  (08 Oct 2026)
+  (08 Oct 2026) Since then: the dated `raw/` and `canonical/` snapshots older than 14 days were deleted
+  once by hand (owner, 14 Nov: "Delete it"); raw results XBRL and filing text were deleted and raw text gzipped on 15 Nov
+  (owner: "bring it to 1 GB or less"; 11.9 GB to 3.53 GB; 2.29 GB on 21 Nov 2026); raw retention as decided on 21 Nov above.
 - **History**: only the last one year (from about 08 Oct 2025); the site
   grows daily from there. NSE insider filings up to 02 May 2026 come from
   the backfill (NSE's new system starts 03 May 2026 and the nightly job
@@ -150,23 +191,29 @@ reader can't get by scrolling the exchange pages:
 
 ## Pages
 
+As on `main`, 21 Nov 2026 (`streamlit_app/app.py`). The tables behind each: `docs/DATA_TO_PAGES.md`, "The site on
+21 Nov 2026".
+
 | Page | Question it answers |
 |---|---|
-| Actions (front page, 12 Oct) | What deserves a look now, from every filing: insiders buying together, promoter and director buys, promoter sales, heavy pledges, funds buying small caps, shares coming off lock-in, boards meeting on fund raising. Each list shows how that kind of filing has done against Nifty 500 in our data (`insiders_clean/evidence.py`); a list with no rows is not drawn |
-| Latest session (was Today) | What did insiders and big money do in the latest session? High-conviction buys, session feed, what was held back |
-| Screener | Which companies show insider accumulation or distribution now? One row per company, badges |
-| Insider trades | Every filing, open-market by default; ESOP/off-market and pledges in their own tabs; late filings marked |
-| Deals & big stakes | Bulk/block deals by real buyers and sellers, the most active buyers |
-| Other filings | SAST Reg 29 stake changes; gifts, inter-se and off-market transfers, ESOPs, pledges (two tabs) |
-| Capital raises | Upcoming board meetings (fund raising, preferential, buyback), corporate actions |
-| Morning brief `/brief` (12 Oct) | Before the 09:15 open: what the last session's filings brought, the week's board meetings and lock-ins, and warnings on a watchlist (secrets or `?watch=`; never committed) |
-| Track record | What happened after each signal: against Nifty 500 or the size-matched index, tradable-only, the move before the filing was public; the forward record and the model basket below it |
-| Data quality (footer link, not in the menu) | What the last cleaning run removed, held back and could not place |
-| Company `/company?symbol=` | Everything about one company on one page |
-| Person or fund `/entity?id=` | Everything one insider or fund did, across companies |
+| Dashboard (default, first in the bar, 19 Nov) | Who is buying what, and should I look? Insider net, FPI, DII, mutual funds, bulk/block deals, results profit up, SAST crossings as KPI cards; monthly flows; where insiders and funds agree; insider buying leaders; funds bought and sold; FPI sectors; the next 7 days |
+| Today `/today` | What happened on one day (a past day can be picked), as questions and answers, with the market's flows in one line |
+| Insiders | Which decision-makers bought or sold in the open market, sized as % of the company and × a day's trading |
+| Funds | What mutual funds and NPS pension funds bought and sold at the month end, house by house and scheme by scheme, by size and industry |
+| Deals | Bulk and block deals by real buyers and sellers, both sides of a block as one deal |
+| Stakes | SAST crossings and pledges (netted per day, rollovers marked) |
+| Situations | Tender offers you can tender into (spread against the last close), and capital raised: rights, QIPs, preferential listings |
+| Results (More) | One financial-year quarter: who reported, revenue and profit year on year, by size and industry |
+| Calendar (More) | What is ahead: board meetings on fund raising or buybacks, tender windows closing, lock-ins ending, record dates |
+| Filings (More) | Every filing and deal, by day if wanted |
+| Companies `/company?symbol=` (More) | A decision page: is smart money accumulating or leaving, and is anything wrong? |
+| Investors (More) | Every mutual fund and large investor in deals, each a link |
+| Data health (More) | Each source's last fetch, rows, removed and held back, NSE's own counts |
+| People & funds `/entity?id=` (hidden) | Everything one insider or fund did, across companies |
+| Data quality `/data` (footer) | What the last cleaning run removed, held back and could not place |
 
-Still to add (see `docs/TODO.md`): pages reading the BSE board meetings and shareholding
-(collected from 22 Oct 2026), a Company page for BSE-only companies, named-investor aliases as names are checked.
+Out of the menu since 13 Nov, still at their addresses: Watchlist, Screener, Raises, Holders, Sectors, Risks, Investor
+flows, Evidence (track record). Old addresses (`/brief`, `/actions`, `/filings` ...) redirect (`app.py` `MOVED`).
 
 ## What the research found (leads, not proof)
 
