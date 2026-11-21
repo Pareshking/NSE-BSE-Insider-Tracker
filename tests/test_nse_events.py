@@ -124,8 +124,8 @@ class FakeNSE:
     def sast_reg29(self, s, e):
         return self._n(load('sast_reg29.json'))
 
-    def corporate_actions(self, s, e):
-        return self._n(load('corporate_actions.json'))
+    def corporate_actions(self, s, e, index='equities'):
+        return self._n(load('corporate_actions.json') if index == 'equities' else [])
 
     def board_meetings(self, s, e):
         return self._n(load('board_meetings.json'))

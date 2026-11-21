@@ -269,8 +269,11 @@ def test_nse_actions_backfill_goes_month_by_month():
         def __init__(self):
             self.calls = []
 
-        def corporate_actions(self, a, b):
-            self.calls.append((a, b))
+        def corporate_actions(self, a, b, index='equities'):
+            self.calls.append((a, b, index))
+            if index == 'sme':   # NSE's SME board (21 Nov 2026): a bonus on an SME name
+                return [{'symbol': 'SMECO', 'series': 'SM', 'isin': 'INE000M01019', 'exDate': '07-Jul-2026',
+                         'subject': 'Bonus 4:1', 'recDate': '07-Jul-2026', 'comp': 'SME Co Limited'}] if a.month == 7 else []
             if a.month == 6:
                 return [{'symbol': 'SPLITCO', 'series': 'EQ', 'isin': 'INE000S01019', 'exDate': '05-Jun-2026',
                          'subject': 'Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 1/- Per Share',
@@ -280,10 +283,13 @@ def test_nse_actions_backfill_goes_month_by_month():
 
     nse = FakeNSE()
     df, dropped = run_daily.fetch_actions(nse, date(2026, 7, 24), date(2026, 8, 3), backfill_from=date(2026, 6, 1))
-    assert nse.calls == [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31)),
-                         (date(2026, 8, 1), date(2026, 8, 3))]
-    assert dropped == 2 and df['purpose'].tolist() == ['split']
-    assert (df['face_value_from'].item(), df['face_value_to'].item()) == (10.0, 1.0)
+    months = [(date(2026, 6, 1), date(2026, 6, 30)), (date(2026, 7, 1), date(2026, 7, 31)),
+              (date(2026, 8, 1), date(2026, 8, 3))]
+    assert nse.calls == [(a, b, i) for a, b in months for i in ('equities', 'sme')]
+    assert dropped == 2 and sorted(df['purpose']) == ['bonus', 'split']
+    sp = df[df['purpose'] == 'split']
+    assert (sp['face_value_from'].item(), sp['face_value_to'].item()) == (10.0, 1.0)
+    assert df.loc[df['purpose'] == 'bonus', 'symbol'].item() == 'SMECO'
     nse2 = FakeNSE()
     run_daily.fetch_actions(nse2, date(2026, 7, 24), date(2026, 8, 3))
-    assert nse2.calls == [(date(2026, 7, 24), date(2026, 8, 3))]
+    assert nse2.calls == [(date(2026, 7, 24), date(2026, 8, 3), 'equities'), (date(2026, 7, 24), date(2026, 8, 3), 'sme')]
