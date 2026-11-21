@@ -37,6 +37,11 @@ on:
         description: 'shareholding: XBRL files to read this run (about 5 s each; blank = 150)'
         required: false
         default: ''
+      shp_from_raw:
+        description: "shareholding: 'true' = archive the filings of the lists kept in raw_v2 that the archive lacks (no list call; max_xbrl 0 = no BSE call)"
+        type: choice
+        options: ['false', 'true']
+        default: 'false'
       dry_run:
         description: "'true' = fetch and map only, write nothing"
         type: choice
@@ -66,6 +71,7 @@ jobs:
       DRY_RUN: ${{ inputs.dry_run }}
       REDO: ${{ inputs.redo }}
       MAX_XBRL: ${{ inputs.max_xbrl }}
+      SHP_FROM_RAW: ${{ inputs.shp_from_raw }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -90,4 +96,5 @@ jobs:
           if [ -n "$MAX_XBRL" ]; then args+=(--max-xbrl "$MAX_XBRL"); fi
           if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
           if [ "$REDO" = "true" ]; then args+=(--redo); fi
+          if [ "$SHP_FROM_RAW" = "true" ]; then args+=(--shp-from-raw); fi
           python -u -m collectors.bse.events "${args[@]}"

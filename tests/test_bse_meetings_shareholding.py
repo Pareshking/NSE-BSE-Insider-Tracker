@@ -201,7 +201,9 @@ def test_shareholding_bse_only_catch_up_members_and_clean(master):
     assert bse.flag == events.SHP_FLAG_HISTORY and s['dual_listed_skipped'] == 2   # Cantabil, Utique (APPLEIND)
     assert s['xbrl_fetched'] == 2 and s['xbrl_status']['pending'] >= 1 and s['xbrl_status']['superseded'] == 1
     arch = events.Store(r2).whole('shareholding')
-    assert '533267' not in set(arch['bse_code'])   # dual-listed: NSE's collector has it
+    dual = arch[arch['bse_code'] == '533267']   # dual-listed: NSE's collector has it; archived, its XBRL not read
+    assert set(dual['xbrl_status']) == {'on_nse'} and set(dual['left_to_nse']) == {events.LEFT_NSE_SYMBOL}
+    assert '533267' not in bse.files
     # a second run reads the pending ones (404s fail per file) and keeps what was parsed
     rep2 = events.run(events.Store(r2), bse, date(2026, 10, 12), ('shareholding',), master=master, max_xbrl=50,
                       now=datetime(2026, 10, 13, 18, 0), log=lambda *_: None)
@@ -236,8 +238,10 @@ def test_a_dual_listed_company_nse_does_not_list_is_read_from_bse(master):
                      master=master, max_xbrl=50, now=datetime(2026, 10, 12, 18, 0), log=lambda *_: None)
     s = rep['streams']['shareholding']
     assert s['dual_listed_skipped'] == 1 and s['dual_listed_kept'] == 1
-    arch = events.Store(r2).whole('shareholding')
-    assert missing['bse_code'] in set(arch['bse_code']) and in_nse['bse_code'] not in set(arch['bse_code'])
+    arch = events.Store(r2).whole('shareholding').set_index('bse_code')
+    assert pd.isna(arch.at[missing['bse_code'], 'left_to_nse'])
+    assert arch.at[in_nse['bse_code'], 'left_to_nse'] == events.LEFT_IN_TABLE   # archived, not read
+    assert arch.at[in_nse['bse_code'], 'xbrl_status'] == 'on_nse' and in_nse['bse_code'] not in bse.files
 
 
 def test_shareholding_dry_run_reads_without_writing():

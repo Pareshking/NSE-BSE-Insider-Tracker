@@ -524,7 +524,12 @@ A filing whose XBRL is not read yet holds no figure and is left out (`not_parsed
 `pending`, at most 150 read a night). Run-report counts (`clean/reports/bse_events/{date}.json`, stream
 `shareholding`): `listed`, `dual_listed_skipped`, `isin_in_nse_table_skipped`, `xbrl_fetched`, `xbrl_status`,
 `categories_status`, and in `clean`: `dual_listed_left_out`, `isin_in_nse_table_left_out`, `not_parsed_yet`,
-`unmatched_securities`; `coverage` is NSE's coverage block. Archive: `archive/bse_events/shareholding/year=YYYY.parquet`;
+`unmatched_securities`, `listed_left_to_nse_not_read`; `coverage` is NSE's coverage block. Archive:
+`archive/bse_events/shareholding/year=YYYY.parquet`, every filing BSE listed (from 21 Nov 2026; before, a company left to
+NSE was dropped before the merge: 10,863 of 24,558 raw rows missing, raw coverage audit). Archive-only column
+`left_to_nse`: `isin_in_nse_table` or `nse_symbol` when the company is NSE's (its XBRL not read here, `xbrl_status`
+`on_nse`; what was read before NSE had it is kept), blank otherwise; run count `archived_left_to_nse`. The lists kept
+in raw are archived again with `--shp-from-raw` (BSE History Backfill input `shp_from_raw`);
 raw: `raw_v2/bse/shareholding_filings/` (the lists) and `raw_v2/bse/shareholding_xbrl/` (each file gzip-compressed with
 no timestamp, `params.sha256_as_sent` the hash of the bytes BSE sent). Checked live on 22 Oct 2026: Oscar Global
 (530173) and BKM Industries (539043), Sep 2026: investor types `match`, members add up to the promoter total.

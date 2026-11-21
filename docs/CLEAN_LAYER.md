@@ -540,7 +540,15 @@ again on 22 Oct 2026). Run from Actions -> **BSE History Backfill**
 - **Shareholding** of BSE-only companies only: NSE's filing wins for a company on both
   exchanges (an NSE symbol in the security master, or the ISIN in NSE's
   `shareholding` table; both counted), so `bse_shareholding` and NSE's `shareholding`
-  never hold the same company. Columns and parsers are NSE's (`docs/DATA_DICTIONARY.md`).
+  never hold the same company. Every listed filing is still archived (from 21 Nov 2026; the raw coverage audit
+  found 10,863 of 24,558 listed filings missing, all dropped here before the merge): a company left to NSE gets
+  `left_to_nse` (`isin_in_nse_table` or `nse_symbol`) and `xbrl_status` `on_nse`, its XBRL is not read, and the
+  clean step leaves it out before anything else (`bse_events.shareholding_input`, counted as
+  `listed_left_to_nse_not_read`), so the clean table is as before. Backfill of the filings left out before:
+  BSE History Backfill with dataset `shareholding`, `shp_from_raw` true (`--shp-from-raw`): every list kept in
+  `raw_v2/bse/shareholding_filings/` parsed again, no list call, raw only read; filings already archived are left
+  as they are; `max_xbrl` 0 makes no BSE call (the new BSE-only ones, if any, wait as `pending`); a dry run counts
+  what it would add. Columns and parsers are NSE's (`docs/DATA_DICTIONARY.md`).
   A filing's XBRL that answers 404 fails that file only.
 - Pacing 4-6 s, 3 retries, stop on 401/403/429; resumable through
   `archive/_backfill/bse_{dataset}.json`; reports in `clean/reports/backfill/` and
