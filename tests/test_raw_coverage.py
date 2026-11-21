@@ -479,11 +479,10 @@ def test_shareholding_xbrl_kept_gzipped_by_the_collector():
 
 
 def test_fund_house_workbook_round_trip():
-    """A month-end workbook (raw_v2/amc/{house}/portfolio_month), stored as scripts/mf_portfolios.put_schemes does."""
+    """A month-end workbook (raw_v2/amc/{house}/portfolio_month), stored as scripts/mf_portfolios.put_lines does."""
     import openpyxl
 
     from collectors.mf_portfolios.houses import BY_KEY
-    from insiders_clean import mf_holdings
     sheet = [['SCHEME NAME :', 'SBI Large Cap Fund'], [],
              ['Name of the Instrument / Issuer', 'ISIN', 'Rating / Industry^', 'Quantity', 'Market value\n(Rs. in Lakhs)', '% to AUM'],
              ['ICICI Bank Ltd.', 'INE090A01021', 'Banks', 3114000, 43533.72, 8.69],
@@ -502,14 +501,16 @@ def test_fund_house_workbook_round_trip():
     RawStore(r, bucket='b', collector='mf', clock=lambda: T1).put(
         'amc', 'sbi/portfolio_month', body, url='https://example.invalid/sbi/portfolio-oct-2026.xlsx',
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', covers={'month': '2026-10'})
-    rows, _ = mf_holdings.parse_workbook(body, 'portfolio-oct-2026.xlsx', house.value_unit)
-    sc = mf_holdings.scheme_holdings(rows, 'sbi', '2026-10', house.name)
-    r.objects['archive/mf_schemes/month=2026-10/sbi.parquet'] = parquet(sc[sc['isin'] != 'INE040A01034'])
+    import mf_portfolios
+    _, _, ln, _ = mf_portfolios.file_lines(body, 'https://example.invalid/sbi/portfolio-oct-2026.xlsx', house.value_unit)
+    assert len(ln) == 5                                       # title, header, three holdings (the GOI bond too)
+    r.objects['archive/mf_lines/month=2026-10/sbi.parquet'] = parquet(
+        ln[ln['isin'] != 'INE040A01034'].assign(amc='sbi', month='2026-10'))
     r.freeze()
     d = by(rc.run(r, 'b', sample=5, max_blobs=10), 'amc', 'sbi/portfolio_month')
     c = d['counts']
-    assert (c['raw_rows'], c['parsed_rows'], c['in_table'], c['missing_from_table']) == (3, 2, 1, 1)
-    assert c['dropped'] == {'non-equity lines (not in mf_schemes by design)': 1} and c['unexplained_drop'] == 0
+    assert (c['raw_rows'], c['parsed_rows'], c['in_table'], c['missing_from_table']) == (5, 5, 4, 1)
+    assert c['dropped'] == {} and c['unexplained_drop'] == 0      # the non-equity line is stored, not dropped
     assert d['fields'] == {'applicable': False, 'note': rc.spec_for('amc', 'sbi/portfolio_month').fields_note}
-    assert d['values_compared'] == 1 and d['mismatches'] == []
-    assert d['verdict'].startswith('gaps: 1 of 2 parsed rows not in') and r.writes == []
+    assert d['values_compared'] == 4 and d['mismatches'] == []
+    assert d['verdict'].startswith('gaps: 1 of 5 parsed rows not in') and r.writes == []

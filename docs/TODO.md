@@ -7,6 +7,18 @@ same day something is promised, started or finished. Pages follow the data:
 The earlier body of this file (every dated section to 20 Nov 2026, with run numbers) is kept word for word in
 `docs/TODO_DONE.md`. Rewritten 21 Nov 2026 from `main` at 3b6f6fd (#321).
 
+## Fund-house files: every line archived, 21 Nov 2026 (branch `mf-all-lines`)
+
+Owner: every line of every raw file must reach the database. The raw coverage audit (21 Nov) found the fund-house
+parser kept equity only (ICICI 33,232 non-equity lines, nps_lic 66,409 only in raw), skipped sheets and summed
+duplicate lines. Now every filled row of every sheet read goes to `archive/mf_lines/` with its kind (equity, debt,
+money market, cash, derivative, other, from the workbook's own headings), and every sheet not read to
+`archive/mf_sheets_skipped/` with the reason (`docs/DATA_DICTIONARY.md`); the equity tables are byte-identical
+(`tests/test_mf_lines.py`). **Next:** after merge, run Mutual fund portfolios (workflow) once with `lines` ticked
+(months and houses blank) to fill every month already in raw, then Raw coverage audit with sources `amc`: the
+non-equity lines should be found stored; what stays is the rows of skipped sheets (index and notes sheets), named.
+
+
 ## Where things stand (21 Nov 2026)
 
 - **Data.** NSE and BSE insider filings, bulk and block deals, SAST, corporate actions (NSE main board and SME board),
